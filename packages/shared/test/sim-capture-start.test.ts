@@ -227,8 +227,9 @@ describe('failed start: no camera connected', () => {
     const { h } = failedStart();
     h.sim.actions.recover();
     h.run(4_000);
-    h.sim.actions.clearFault('CAMERA_LOSS', { cameraId: 'VIDEO-01' });
-    h.sim.actions.clearFault('CAMERA_LOSS', { cameraId: 'VIDEO-02' });
+    // Audit fix row 83 (DF-03): all four lost cameras come back - lens 3/4 are checked at the gate now,
+    // so a camera still lost would (rightly) hold the next pre-check.
+    for (const cameraId of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const) h.sim.actions.clearFault('CAMERA_LOSS', { cameraId });
     // The fault of the capture outlives its session until a session records again.
     expect(h.state().faults.active.some((fault) => fault.kind === 'CAPTURE_FAULT')).toBe(true);
     h.toArmed({ ...INPUT, subjectName: 'Second Saksi' });

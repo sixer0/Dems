@@ -57,6 +57,8 @@ const ALLOWED: Readonly<Record<string, string>> = {
   // prose at line 46, which an SQL file carries as it is).
   'src/db/migrations/0036_operator_purge.sql': 'the operator purge, re-seal and ticket functions pin their own path (migration, owner role)',
   'src/db/migrations/0038_operator_purge_reseal_correction.sql': 'the corrected re-seal function pins its own path (migration, owner role)',
+  // Row 95 (DF-28, D22(4); 2026-11-05): 0043 replaces the purge function whole, its pinned path with it.
+  'src/db/migrations/0043_operator_purge_scope.sql': 'the purge function, replaced with its evidence-chain scope, pins its own path (migration, owner role)',
   'src/db/migrations/0033_capture_device_retirement_privileges.sql': 'the capture credential destroy function and the retired-row guard pin their own path (migration, owner role)',
 };
 

@@ -112,7 +112,7 @@ describe('the pre-check that blocks, the retry and the cancel (operations 25, 28
     expect(begun.rows).toEqual([]);
     expect((await readEvents(host.owner)).at(-1)).toMatchObject({ type: 'PRECHECK_STARTED', sessionId });
 
-    // While the eight checks run: the three operations that need their outcome answer PRECHECK_RUNNING.
+    // While the twelve checks run: the three operations that need their outcome answer PRECHECK_RUNNING.
     for (const [operationId, path] of [['startSession', 'start'], ['retryPrecheck', 'precheck/retry'], ['acknowledgePrecheckWarnings', 'precheck/acknowledge']] as const) {
       const running = await command(host, operationId, 409, () => host.post(supervisor, on(sessionId, path)));
       expect(errorOf(running.response), operationId).toMatchObject({ code: 'PRECHECK_RUNNING', details: { simCode: 'CHECKS_RUNNING', from: 'PRECHECK' } });

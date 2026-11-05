@@ -188,7 +188,7 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
     // Task 4 row R1b (decision C99): + CAPTURE_VIDEO_ABSENT_IN_SESSION (82 -> 83); no operation.
     // Task 4 row N2: + CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED, CAPTURE_AUDIO_SILENCE_INSERTED (83 -> 85); no operation.
     // REVISED 2026-11-02 (principal): + USER_CREATED, USER_UPDATED and USER_DELETED (87 -> 90).
-    expect(Object.values(AuditType)).toHaveLength(91); // D57: + PANEL_SETUP_CHANGED
+    expect(Object.values(AuditType)).toHaveLength(93); // D57: + PANEL_SETUP_CHANGED; audit fix row 84: + CAMERA_LINK_DOWN, CAMERA_LINK_UP
     expect(API_ERROR_CODES).toHaveLength(40);
     expect(Object.values(CoreApiAccessCondition)).toHaveLength(8); // D59 (2026-11-04): + VENDOR_ROOT and VENDOR_ACCOUNT
     const document = createOpenApiDocument({ scope: 'all' });

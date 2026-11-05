@@ -736,6 +736,48 @@ describe('after the commit', () => {
     await pipeline.run('test.commit', (unit) => unit.audit.append(entry('Committed')));
     expect(trace).toEqual([]);
   });
+
+  // Row 94 (DF-27, decision D21(3)): an operator purge re-seals the chain inside its unit. The rows the
+  // unit appended before the seal carry hashes the seal replaced, so the unit hands over the chain as
+  // stored after it, and the listeners (the engine's ring) get that with the commit.
+  it('row 94: a unit that re-sealed the chain hands the stored chain to the listeners, and its head is the sealed head', async () => {
+    const { pipeline } = rig();
+    const seen: CommittedUnit[] = [];
+    pipeline.onCommit((unit) => seen.push(unit));
+    await pipeline.run('test.plain', (unit) => unit.audit.append(entry('Plain')));
+    const sealedHash = 'b'.repeat(64);
+    let written: AuditRow | undefined;
+    let sealed: AuditRow | undefined;
+    await pipeline.run('admin.deleteUser', async (unit) => {
+      written = await unit.audit.append(entry('Announced'));
+      sealed = { ...written, hash: sealedHash };
+      await unit.audit.resealed({ head: { seq: sealed.seq, hash: sealedHash }, rows: [sealed] });
+    });
+    expect(seen).toHaveLength(2);
+    // A unit that sealed nothing carries no member for it: the shape every other listener knows.
+    expect(seen[0]).not.toHaveProperty('resealed');
+    expect(seen[1]?.resealed).toEqual({ head: { seq: 2, hash: sealedHash }, rows: [sealed] });
+    expect(seen[1]?.head).toEqual({ seq: 2, hash: sealedHash });
+    // The unit's own rows stay as written: a listener that keeps a ring takes `resealed` instead.
+    expect(seen[1]?.auditRows).toEqual([written]);
+  });
+
+  it('row 94: a re-sealed chain whose newest row is not its head, or whose rows are out of order, is refused and nothing commits', async () => {
+    const { pipeline, database } = rig();
+    await expect(
+      pipeline.run('test.foreignHead', async (unit) => {
+        const row = await unit.audit.append(entry('A'));
+        await unit.audit.resealed({ head: { seq: row.seq, hash: 'c'.repeat(64) }, rows: [row] });
+      }),
+    ).rejects.toMatchObject({ code: 'AUDIT_RESEAL_ANSWER_INVALID' });
+    await expect(
+      pipeline.run('test.outOfOrder', async (unit) => {
+        const [first, second] = await unit.audit.appendMany([entry('A'), entry('B')]);
+        await unit.audit.resealed({ head: { seq: (first as AuditRow).seq, hash: (first as AuditRow).hash }, rows: [second as AuditRow, first as AuditRow] });
+      }),
+    ).rejects.toMatchObject({ code: 'AUDIT_RESEAL_ANSWER_INVALID' });
+    expect(database.committed.auditSeqs).toEqual([]);
+  });
 });
 
 describe('the label of a unit', () => {

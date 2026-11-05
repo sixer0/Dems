@@ -49,10 +49,14 @@ const CHECK_ICON: Record<PrecheckCheckId, LucideIcon> = {
   CORE: Server,
   LENS_1: Video,
   LENS_2: Video,
+  LENS_3: Video, // audit fix row 83 (DF-03)
+  LENS_4: Video,
   MIC_1: Mic,
   MIC_2: Mic,
   MIC_PRIMARY: Mic,
   MIC_STANDBY: Mic,
+  MIC_3: Mic, // audit fix row 83
+  MIC_4: Mic,
   STORAGE: HardDrive,
   TIME: Clock,
   SECURITY: ShieldCheck,
@@ -116,7 +120,7 @@ function useCheckReason() {
 
 /**
  * Step 2, Devices Check: the design book §5.3 pre-recording gate (01_specs §14.5.11; research/04
- * §5.7). A kit `ListBox` of the 8 checks, each with a `Spinner` while it resolves and a PASS / WARN /
+ * §5.7). A kit `ListBox` of the `PRECHECK_ORDER` checks (twelve, DF-03), each with a `Spinner` while it resolves and a PASS / WARN /
  * BLOCK `Chip`; an acknowledgement `Checkbox` for warnings; an `Alert danger` for a block; two
  * camera previews (CameraFeed tiles) and two live MIC meters (DbfsMeter). The simulator resolves
  * the checks in sequence (300–700 ms each, ≤ 4.9 s) and owns the policy.

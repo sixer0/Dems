@@ -552,32 +552,37 @@ describe('regression pin: for BMP text the stored values and the audit hashes ar
     // the simulator as it was at acaff20 (slice at all four cut sites). The same journey must
     // give the same chain. They move only if the recording scenario or the audit rows of these
     // actions change by design, which is a recorded decision, not a side effect.
+    // Re-pinned by audit fix row 83 (DF-03; decisions D15(c), D22(5)): the recording scenario's pre-check
+    // now holds twelve items (and draws twelve seeded durations), so every later row of the chain moves.
+    // Probe on the host: with only row 83's sources reverted to HEAD the old literals pass; the row count
+    // stays 230. acaff20 values, in order: 470b91cf.., bd6edf6e.., 5bdb082c.., 10d0de9e.., 2519943c..,
+    // 535dd739.., e0603b5a.., f4968a78.., 3b2efcd0.. (head).
     const h = harness();
     const hashOf = (type: AuditType) => h.lastAudit(type).hash;
     h.asInvestigator();
     h.sim.actions.addMarker(ASCII_LABEL);
-    expect(hashOf('MARKER_ADDED')).toBe('470b91cf38518ebfda54f0bbf4be4d3bec16e130673ff95064919e5807b869f6');
+    expect(hashOf('MARKER_ADDED')).toBe('8b57b9d9a521622bcb89be4e00b5d55ea09c40c30fda49f01e9c8d4d117404d5');
     h.sim.actions.addMarker(BMP_LABEL);
-    expect(hashOf('MARKER_ADDED')).toBe('bd6edf6e6cc9ee71e03a942bcaed8064a30a1bbca7bb3fb6166e3dd9fbafb75b');
+    expect(hashOf('MARKER_ADDED')).toBe('9d1b2f9e87c83da5db8d4f4ed6cf7e4d1d48d8b9e31064ae89e874fe3ded98ec');
     h.sim.actions.addNote(ASCII_NOTE);
-    expect(hashOf('NOTE_ADDED')).toBe('5bdb082c4a98bf592b76924d17edff9ca6fa35ac1fdbbb6ef2c41e181f4a4f06');
+    expect(hashOf('NOTE_ADDED')).toBe('3118c8853599af7739b1aa42185e2eeab4e72ffbc9e5ee95b8794602b63bd9dd');
     h.sim.actions.addNote(BMP_NOTE);
-    expect(hashOf('NOTE_ADDED')).toBe('10d0de9e76d76023bf11172ccb2debafd4ed287e23225b1ea618f2ba4c2b6108');
+    expect(hashOf('NOTE_ADDED')).toBe('330a2d82cdc0b6cfd6c4872ff7b61d4f1376d4db5b8d96a6e67a1c88469eda5e');
     h.sim.actions.signOut();
     h.asSupervisor();
     h.sim.actions.exportEvidence(EVIDENCE_ID, { reason: 'Case file transfer', destination: ASCII_DESTINATION });
-    expect(hashOf('EVIDENCE_EXPORTED')).toBe('2519943c2e039318b246b634f2e9abd69a674f4c415cd1c009d2e95ea3c0b8d5');
+    expect(hashOf('EVIDENCE_EXPORTED')).toBe('b645ca14fafb54e6fdf14cb5665cb1a1c2ee27e21285094ee9d1997fc86172f4');
     h.sim.actions.exportEvidence(EVIDENCE_ID, { reason: 'Case file transfer', destination: BMP_DESTINATION });
-    expect(hashOf('EVIDENCE_EXPORTED')).toBe('535dd739ea14e3964a149818b269e2ff0b4e90a1c6b5c75d03a3e9394c432cbd');
+    expect(hashOf('EVIDENCE_EXPORTED')).toBe('ce74b7782ec4c249adca4590b4f3a7ef6a017e7352580f6154a092a38b3999c1');
     h.sim.actions.exportAudit({ reason: 'Quarterly audit review', destination: ASCII_DESTINATION });
-    expect(hashOf('AUDIT_EXPORTED')).toBe('e0603b5a69ab8c30f7be7872c383e4bab23af53a1075428eeae42197765c8f5e');
+    expect(hashOf('AUDIT_EXPORTED')).toBe('18fe27c73416f6c5de040eadd7ca8433c31ccf4a05a419e18c032998c3fd2aeb');
     h.sim.actions.exportAudit({ reason: 'Quarterly audit review', destination: BMP_DESTINATION });
-    expect(hashOf('AUDIT_EXPORTED')).toBe('f4968a7889787c0e1c037244d193c2bd3ccd4caeb3fd92b9f0553668be954934');
+    expect(hashOf('AUDIT_EXPORTED')).toBe('f3498c09aa981a0c1e54d25cb536b450b8c08c6ce2e32aa2041765887852a615');
     h.sim.actions.exportLogs({ reason: 'Support bundle for review', destination: ASCII_DESTINATION });
-    expect(hashOf('AUDIT_EXPORTED')).toBe('3b2efcd066c54973f73070399e7aa1abb6afeb42bb8604ae1ee72a24e45677a9');
+    expect(hashOf('AUDIT_EXPORTED')).toBe('e2389c387caf52692f8dedacee85bfb47539541d014db89cb4048b3f6bbd6664');
 
     const log = h.state().audit;
-    expect(log.head).toBe('3b2efcd066c54973f73070399e7aa1abb6afeb42bb8604ae1ee72a24e45677a9');
+    expect(log.head).toBe('e2389c387caf52692f8dedacee85bfb47539541d014db89cb4048b3f6bbd6664');
     expect(log.total).toBe(230);
     expect(verifyAuditChain(log)).toMatchObject({ ok: true, checked: 230 });
   });

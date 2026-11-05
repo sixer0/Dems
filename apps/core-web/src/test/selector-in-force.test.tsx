@@ -386,3 +386,49 @@ describe('item 2: the Core\'s blocked-seal sentences and the web\'s control agre
     expect('then start recovery for the session or restart the Core.').toMatch(/start recovery|recovery action/i)
   })
 })
+
+// Row 108 (DF-17; U-03 on /dashboard, U-20 on /session; D38 DR-7). The bench shape of 2026-11-05: the selector puts the
+// real inputs MIC-03..MIC-06 on channels 1..4, while the hardware snapshot still carries the built-in device ids on
+// AUDIO-03 / AUDIO-04 (MIC-03 / MIC-04 - the inputs of channels 1 / 2; DF-31). Both surfaces name all FOUR channels by
+// the TRACK: channel N is the one of AUDIO-0N, never found by the snapshot's device id.
+describe('row 108 - the four microphone channels are labelled on the dashboard and on the Session Monitor', () => {
+  function benchShape(): SimState {
+    const base = stateOf('idle')
+    const mic = base.captureDevices.devices.find((device) => device.kind === 'MIC')!
+    const devices = [...base.captureDevices.devices, { ...mic, id: 'MIC-05' } as Device, { ...mic, id: 'MIC-06' } as Device]
+    const inputs = ['MIC-03', 'MIC-04', 'MIC-05', 'MIC-06']
+    const captureConfig = {
+      ...base.captureConfig,
+      mics: base.captureConfig.mics.map((line, index) => ({ ...line, inputId: inputs[index]!, deviceId: inputs[index]! })),
+    } as SimState['captureConfig']
+    return { ...base, captureDevices: { devices }, captureConfig, session: null }
+  }
+
+  it('the served state is the bench one: channel 1 holds MIC-03, the AUDIO-03 row names MIC-03 too', () => {
+    const served = benchShape()
+    expect(served.captureConfig.mics.map((line) => [line.channel, line.inputId])).toEqual([['MIC-01', 'MIC-03'], ['MIC-02', 'MIC-04'], ['MIC-03', 'MIC-05'], ['MIC-04', 'MIC-06']])
+    expect(served.mics.map((entry) => entry.deviceId)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'])
+  })
+
+  it('/dashboard: MIC 1..4 read Channel 1 (transcribed), Channel 2, Channel 3, Channel 4 (U-03 read MIC 3 "Channel 1 (transcribed)", MIC 4 "Channel 2")', async () => {
+    const page = await livePage('/', 'page-dashboard', benchShape())
+    const chip = (track: string) => within(page).findByTestId(`device-tile-channel-${track}`)
+    await waitFor(async () => expect(await chip('AUDIO-03')).toHaveTextContent('Channel 3'))
+    expect(await chip('AUDIO-01')).toHaveTextContent('Channel 1 (transcribed)')
+    expect(await chip('AUDIO-02')).toHaveTextContent(/^Channel 2$/)
+    expect(await chip('AUDIO-04')).toHaveTextContent('Channel 4')
+    expect((await chip('AUDIO-03')).dataset.channel).toBe('MIC-03')
+  })
+
+  it('/session: MIC 3 and MIC 4 carry "Channel 3" / "Channel 4" beside the pair chips of MIC 1 / MIC 2 (U-20 read no label for 3/4)', async () => {
+    const page = await livePage('/session', 'page-session-monitor', benchShape())
+    const audio = await within(page).findByTestId('panel-O')
+    await waitFor(() => expect(within(audio).getByTestId('sm-audio-channel-AUDIO-03')).toHaveTextContent('Channel 3'))
+    expect(within(audio).getByTestId('sm-audio-channel-AUDIO-04')).toHaveTextContent('Channel 4')
+    expect(within(audio).getByTestId('sm-audio-role-MIC-03')).toHaveTextContent('Channel 1 (transcribed)')
+    expect(within(audio).getByTestId('sm-audio-role-MIC-04')).toHaveTextContent('Channel 2 (recorded)')
+    // One chip per half: a pair half has no second (channel) chip.
+    expect(within(audio).queryByTestId('sm-audio-channel-AUDIO-01')).not.toBeInTheDocument()
+    expect(within(audio).queryByTestId('sm-audio-channel-AUDIO-02')).not.toBeInTheDocument()
+  })
+})

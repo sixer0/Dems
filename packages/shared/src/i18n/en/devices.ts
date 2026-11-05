@@ -133,6 +133,7 @@ export const devices = {
     tabletLink: 'MGMT LAN · HTTPS / WSS',
     tabletOfflineTitle: 'Operator device offline',
     tabletOfflineBody: 'Recording continues on the Core. Reconnect the device to regain control.',
+    tabletOfflineIdleBody: 'Operator device offline. Nothing is recording on the Core. Reconnect the device to regain control.',
     gnss: 'GNSS Receiver',
     gnssLocked_one: 'Locked · {{count}} satellite',
     gnssLocked_other: 'Locked · {{count}} satellites',

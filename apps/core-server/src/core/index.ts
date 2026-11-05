@@ -100,6 +100,7 @@ export type {
   EventEntry,
   Pipeline,
   PipelineSnapshot,
+  ResealedChain,
   UnitAuditWriter,
   UnitContext,
   UnitDatabase,

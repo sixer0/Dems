@@ -4,7 +4,8 @@
 #
 #   make            static rules (check + their self-test), then build/capture-worker
 #   make check      the static rules over src/ (M3-SR-2, row 58 part)
-#   make selftest   the same rules over planted sources: each MUST fail (negative controls)
+#   make selftest   the same rules over planted sources: each MUST fail (negative controls); and the build stamp's
+#                   own self-test (stamp.sh --selftest: its format and its refusals)
 #   make proof      PROOF BUILDS, never installed and never started by the Core:
 #                     build/capture-worker-negctl   the pinned flags plus ONE forbidden mux option
 #                                                   (the negative control of the AV checks)
@@ -57,6 +58,9 @@ BUILD := build
 BIN   := $(BUILD)/capture-worker
 SRC   := src/capture_worker.c src/ipc.c src/sink.c src/ingest.c src/audio.c src/anchor.c src/micwatch.c src/announce.c
 HDR   := src/worker.h src/anchor.h src/micwatch.h src/announce.h
+# The build stamp of the program (audit 2026-11-05 row 87; the rule at $(BIN) below) and the files its source hash covers.
+STAMP     := $(BIN).stamp
+STAMP_SET := $(SRC) $(HDR) Makefile
 
 FIXTURES := $(BUILD)/fake_cam $(BUILD)/fake_mic $(BUILD)/capture-worker-skeleton111 $(BUILD)/writer_replay $(BUILD)/m5_mic $(BUILD)/gapped_mic
 
@@ -127,7 +131,7 @@ GUARD_CFLAGS := -std=c11 -D_DEFAULT_SOURCE -O2 -g -Wall -Wextra -Werror $(RELAY_
 
 .PHONY: all clean check selftest versions proof unit fixtures e2e relay relay-check relay-unit relay-asan relay-fuzz relay-fuzz-controls guard
 
-all: check selftest unit $(BIN) relay guard
+all: check selftest unit $(BIN) $(STAMP) relay guard
 
 guard: $(GUARD_BIN) $(BUILD)/guard_double
 	@CC="$(CC)" python3 test/guard_test.py all
@@ -192,16 +196,26 @@ $(RELAY_BIN): $(RELAY_SRC) $(RELAY_HDR) Makefile relay-check.sh
 # The worker itself. After the link, THE IMPORT NET (review R63-08): the file-making functions the BINARY imports
 # are exactly the pinned ones (test/static/imports.pin) - whatever the spelling in the sources was (an alias through
 # an assembler label, a name glued by the preprocessor). A binary that imports another one is removed.
-$(BIN): $(SRC) $(HDR) Makefile test/static/imports.pin test/static/pinned_calls.py
+# Then THE BUILD STAMP (audit 2026-11-05 row 87, DF-02): build/capture-worker.stamp beside the program - its version,
+# protocol, the hash of STAMP_SET and the hash of the program (stamp.sh has the format). The old stamp goes first, so a
+# failed link leaves no stamp that names another program; a program that cannot be stamped is removed with it.
+$(BIN): $(SRC) $(HDR) Makefile test/static/imports.pin test/static/pinned_calls.py stamp.sh
 	@mkdir -p $(BUILD)
+	@rm -f $(STAMP)
 	$(CC) $(CFLAGS) -o $@ $(SRC) $(LDLIBS)
 	@python3 test/static/pinned_calls.py --imports $@ test/static/imports.pin || { rm -f $@; exit 1; }
+	@sh stamp.sh $@ $(STAMP_SET) || { rm -f $@ $(STAMP); exit 1; }
+
+# A stamp that was deleted beside an up-to-date program is written again (`make build/capture-worker.stamp`).
+$(STAMP): $(BIN)
+	@sh stamp.sh $(BIN) $(STAMP_SET)
 
 check:
 	@sh check.sh src
 
 selftest:
 	@sh check.sh --selftest
+	@sh stamp.sh --selftest
 
 # The ONE occurrence of a forbidden mux option outside the planted sources of the self-test: the
 # negative control of M3-AV-1/2 (capture spec C.4). It shifts the whole video track by about

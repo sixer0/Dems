@@ -247,6 +247,25 @@ describe('AnimatedNumber (M-C-02, R4)', () => {
     render(withPolicy(<AnimatedNumber value={3.42} format={(n) => `${n.toFixed(2)} TB`} />))
     expect(screen.getByText('3.42 TB')).toBeInTheDocument()
   })
+
+  // Audit row 109 (DF-18): a hidden page runs no animation frames, so a spring started there never paints and the
+  // text held `from` ("0.0 TB Free" on the bench dashboard). Hidden, the final value is text; visible again, no replay.
+  it('renders the final value at once on a hidden page, and does not replay from `from` when shown again', async () => {
+    let visibility: DocumentVisibilityState = 'hidden'
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
+    try {
+      render(withPolicy(<AnimatedNumber value={0.4} from={0} format={(n) => n.toFixed(1)} />))
+      expect(screen.getByText('0.4')).toBeInTheDocument()
+      act(() => {
+        visibility = 'visible'
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      await realWait(200)
+      expect(screen.getByText('0.4')).toBeInTheDocument()
+    } finally {
+      Reflect.deleteProperty(document, 'visibilityState')
+    }
+  })
 })
 
 describe('TextScramble (M-C-07, M-C-21)', () => {

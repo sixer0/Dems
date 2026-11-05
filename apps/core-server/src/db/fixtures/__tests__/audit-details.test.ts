@@ -154,7 +154,7 @@ describe('where each audit type is written', () => {
   // REVISED 2026-11-02 (principal): RB-9 amended — AuditType gained USER_CREATED, USER_UPDATED and
   // USER_DELETED (operations 15 to 17), so the vocabulary has 90 types and the fixture states one
   // row of each of the three new ones.
-  it('the fixture writes all 91 types, and each has exactly one reference: the list, a module builder, or the simulator', () => {
+  it('the fixture writes all 93 types, and each has exactly one reference: the list, a module builder, or the simulator', () => {
     const written = [...new Set(rows.map((row) => row.type))].sort();
     expect(written).toEqual(Object.values(AuditType).sort());
     expect(written.filter((type) => sourceOf(type, shapes) === null)).toEqual([]);
@@ -177,7 +177,8 @@ describe('where each audit type is written', () => {
     // USER_CREATED, USER_UPDATED and USER_DELETED, all three named by the writer's list: 43 -> 46 (87 -> 90 in all).
     // D57 (2026-11-03, principal): PANEL_SETUP_CHANGED joins the list, 46 -> 47 (90 -> 91 in all):
     // the devices module writes it inside its one unit of work, with no shared builder.
-    expect(bySource).toEqual({ 'ALLOW-LIST': 47, MODULE: 11, SIMULATOR: 33 });
+    // Row 85 (D23 (1, 2)): CAMERA_LINK_DOWN and CAMERA_LINK_UP join the list, 47 -> 49 (91 -> 93 in all).
+    expect(bySource).toEqual({ 'ALLOW-LIST': 49, MODULE: 11, SIMULATOR: 33 });
     // The nineteen of the list are the nineteen the audit writer names (nine of the backend task,
     // nine of the capture phase, and STT_CONFIG_CHANGED of blueprint row 113, which has a builder:
     // `modules/stt-config`), and the nine older ones mostly have a builder too. A listed type
@@ -245,6 +246,10 @@ describe('where each audit type is written', () => {
         // -setup route of the devices module, which states the facts itself inside its one unit of
         // work (no shared builder: the value lives in the panel backend, not in the engine).
         'PANEL_SETUP_CHANGED',
+        // Row 85 (D23 (1, 2)): the two of the camera link. Their live writer is the camera-link sweep
+        // (row 102), which states the details itself; the fixture states one row of each until then.
+        'CAMERA_LINK_DOWN',
+        'CAMERA_LINK_UP',
       ].sort(),
     );
   });
@@ -339,7 +344,8 @@ describe('every audit row of the fixture', () => {
     // Task 4 row D53: 86 -> 87 with CAMERA_PREVIEW_OPENED.
     // REVISED 2026-11-02 (principal): RB-9 amended — 87 -> 90 with USER_CREATED, USER_UPDATED and USER_DELETED.
     // D57 (2026-11-03, principal): + PANEL_SETUP_CHANGED: 90 -> 91.
-    expect(lines).toHaveLength(91);
+    // Row 85 (D23 (1, 2)): + CAMERA_LINK_DOWN, CAMERA_LINK_UP: 91 -> 93.
+    expect(lines).toHaveLength(93);
     console.log(['[w25] audit detail keys per type: | type | written by | keys expected | keys written (rows) |', ...lines].join('\n'));
   });
 
@@ -354,7 +360,7 @@ describe('every audit row of the fixture', () => {
     });
     // REVISED 2026-11-02 (principal): RB-9 amended — + USER_CREATED, USER_UPDATED, USER_DELETED: 87 -> 90.
     // D57 (2026-11-03, principal): + PANEL_SETUP_CHANGED: 90 -> 91.
-    expect(lines).toHaveLength(91); // task 4 row RD2: + CAPTURE_DEVICE_RETIRED; row D53: + CAMERA_PREVIEW_OPENED
+    expect(lines).toHaveLength(93); // row 85: + CAMERA_LINK_DOWN, CAMERA_LINK_UP; task 4 row RD2: + CAPTURE_DEVICE_RETIRED; row D53: + CAMERA_PREVIEW_OPENED
     console.log(['[w25] audit severity per type: | type | category | severity from | severity expected | severity written (rows) |', ...lines].join('\n'));
   });
 });

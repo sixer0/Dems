@@ -1,4 +1,4 @@
-import { eventTitle } from '@/lib/event-words'
+import { eventTitle, faultClearedStillInFault, selectFaultSessionId } from '@/lib/event-words'
 import { useCallback, useMemo } from 'react'
 import { ScrollShadow } from '@heroui/react'
 import { AnimatePresence } from 'motion/react'
@@ -47,6 +47,8 @@ export function RecentEventsPanel() {
   const minute = useSim(selectMinute)
   const operators = useSim(selectOperators)
   const startOutcomes = useSim(selectStartOutcomes)
+  // Row 110b (DF-19, U-07): the open session's id while it is in FAULT (a primitive: no re-render per session tick).
+  const faultSessionId = useSim(selectFaultSessionId)
   const outcomeOf = useMemo(() => {
     const map = new Map<string, RecordingStartOutcome>()
     for (const pair of startOutcomes === '' ? [] : startOutcomes.split(',')) {
@@ -90,7 +92,7 @@ export function RecentEventsPanel() {
                 <AnimatePresence initial={false}>
                   {group.events.map((event) => (
                     <AnimatedListItem key={event.id} highlight={fresh.has(event.id)}>
-                      <EventRow event={event} detail={eventDetail(event, operatorName)} fresh={fresh.has(event.id)} start={outcomeOf.get(event.id) ?? 'STARTED'} />
+                      <EventRow event={event} detail={eventDetail(event, operatorName)} fresh={fresh.has(event.id)} start={outcomeOf.get(event.id) ?? 'STARTED'} faultSessionId={faultSessionId} />
                     </AnimatedListItem>
                   ))}
                 </AnimatePresence>
@@ -103,13 +105,42 @@ export function RecentEventsPanel() {
   )
 }
 
-function EventRow({ event, detail, fresh, start }: { event: SimEvent; detail: string | null; fresh: boolean; start: RecordingStartOutcome }) {
+function EventRow({
+  event,
+  detail,
+  fresh,
+  start,
+  faultSessionId,
+}: {
+  event: SimEvent
+  detail: string | null
+  fresh: boolean
+  start: RecordingStartOutcome
+  faultSessionId: string | null
+}) {
   const { t } = useTranslation()
+  // Row 110b (DF-19, U-07): a fault cleared while its session is still in FAULT is not a green "Fault cleared".
+  const stillInFault = faultClearedStillInFault(event, faultSessionId)
   // G75-11: an accepted start that recorded nothing (yet) is not worded as a recording that started.
-  const title = start === 'STARTED' ? eventTitle(t, event) : t(`dashboard.captureStart.${start}`)
-  const tone = start === 'FAILED' ? EVENT_TONE.CRITICAL : start === 'CONNECTING' ? EVENT_TONE.INFO : EVENT_TONE[event.severity]
+  const title = start === 'STARTED' ? eventTitle(t, event, faultSessionId) : t(`dashboard.captureStart.${start}`)
+  const tone =
+    start === 'FAILED'
+      ? EVENT_TONE.CRITICAL
+      : start === 'CONNECTING'
+        ? EVENT_TONE.INFO
+        : stillInFault
+          ? EVENT_TONE.WARNING
+          : EVENT_TONE[event.severity]
   return (
-    <div role="listitem" className="dems-event-row" data-testid="recent-event" data-event-id={event.id} data-fresh={fresh ? 'true' : 'false'} data-start={start === 'STARTED' ? undefined : start}>
+    <div
+      role="listitem"
+      className="dems-event-row"
+      data-testid="recent-event"
+      data-event-id={event.id}
+      data-fresh={fresh ? 'true' : 'false'}
+      data-start={start === 'STARTED' ? undefined : start}
+      data-still-in-fault={stillInFault ? 'true' : undefined}
+    >
       <StatusDot tone={tone} />
       <time dateTime={new Date(event.at).toISOString()}>{formatDate(event.at, DATE_PATTERNS.time)}</time>
       <span className="dems-event-title">{title}</span>

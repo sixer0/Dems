@@ -9,12 +9,14 @@
  * | # | Rule | Result | Choice offered |
  * |--:|------|--------|----------------|
  * | 1 | A packaged build (`VITE_DEMS_CORE_ORIGIN=same-origin`) or a production build | SIMULATED, whatever is stored or set | no |
+ * | 1b | `VITE_DEMS_PRODUCTION_LOCK` is exactly `1` (the production console unit sets it; audit row 106, D25 N3, D29 Q6) | LIVE, whatever is stored or set | no |
  * | 2 | `localStorage` key `dems.core.mode.v1` holds exactly `SIMULATED` or `LIVE` | That value | yes |
  * | 3 | `VITE_DEMS_CORE_MODE` is exactly `simulated` or `live` (a lane sets `live`) | That value | yes |
  * | 4 | Otherwise | SIMULATED | yes |
  *
- * Any other stored or environment value counts as absent. `localStorage` is per origin, so each
- * dev lane (5176 to 5178) keeps its own choice. The key collides with none of the console's
+ * Any other stored or environment value counts as absent; any lock value other than `1` is off, so
+ * lanes and developer runs (which do not set the lock) keep rules 2 to 4 and the choice.
+ * `localStorage` is per origin, so each dev lane (5176 to 5178) keeps its own choice. The key collides with none of the console's
  * eight existing keys (MD-1).
  *
  * Pure but for the two storage helpers, which never throw: a browser that blocks its storage
@@ -28,10 +30,18 @@ export const CORE_MODE_STORAGE_KEY = 'dems.core.mode.v1'
 /** Build-time preselection of a dev server (a lane sets `live`). Value: `simulated` or `live`. */
 export const CORE_MODE_ENV_KEY = 'VITE_DEMS_CORE_MODE'
 
+/**
+ * The production console lock (audit register S1/S2; D25 N3, D29 Q6). On = the value is exactly `1`;
+ * any other value, or absent, = off. Set only in the `dems-console` unit, never by a lane.
+ */
+export const CORE_MODE_LOCK_ENV_KEY = 'VITE_DEMS_PRODUCTION_LOCK'
+
 /** Which rule of MD-2 decided. */
 export const CoreModeSource = {
   /** Rule 1: the build offers no choice. */
   BUILD: 'BUILD',
+  /** Rule 1b: the production console lock is on; LIVE, no choice (register S3). */
+  PRODUCTION_LOCK: 'PRODUCTION_LOCK',
   /** Rule 2: the stored choice. */
   STORED: 'STORED',
   /** Rule 3: the preselection of the dev server. */
@@ -50,6 +60,8 @@ export interface CoreModeInput {
   readonly stored: string | null
   /** The raw value of `VITE_DEMS_CORE_MODE`, or `undefined`. */
   readonly env: string | undefined
+  /** The raw value of `VITE_DEMS_PRODUCTION_LOCK`, or `undefined` (absent = off). */
+  readonly lock?: string | undefined
 }
 
 export interface CoreModeResolution {
@@ -70,10 +82,19 @@ export function parseCoreModeEnv(value: unknown): CoreMode | null {
   return Object.prototype.hasOwnProperty.call(ENV_VALUES, value) ? (ENV_VALUES[value] ?? null) : null
 }
 
+/** Register S1: the lock is on only when the value is exactly `1`. */
+function isProductionLockOn(value: unknown): boolean {
+  return value === '1'
+}
+
 /** MD-2: the data mode of this page load. */
 export function resolveCoreMode(input: CoreModeInput): CoreModeResolution {
   if (!input.dev || input.packaged) {
     return { mode: CoreMode.SIMULATED, selectable: false, source: CoreModeSource.BUILD }
+  }
+  // Rule 1b (register S4): the stored choice and the preselection are not read.
+  if (isProductionLockOn(input.lock)) {
+    return { mode: CoreMode.LIVE, selectable: false, source: CoreModeSource.PRODUCTION_LOCK }
   }
   const stored = parseCoreMode(input.stored)
   if (stored !== null) return { mode: stored, selectable: true, source: CoreModeSource.STORED }

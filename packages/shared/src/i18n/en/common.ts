@@ -468,6 +468,9 @@ export const common = {
     CAPTURE_DEVICE_RETIRED: 'Capture device retired',
     // Decisions D51 / D53: a live camera preview session was opened.
     CAMERA_PREVIEW_OPENED: 'Live camera preview opened',
+    // Audit fix row 84 (DF-24, DF-25): the camera network link went down / came back.
+    CAMERA_LINK_DOWN: 'Camera link down',
+    CAMERA_LINK_UP: 'Camera link up',
   },
 
   /** Audit filter categories (sim `AuditCategory`). */
@@ -1403,5 +1406,13 @@ export const common = {
     SESSION_KEY_NOT_OF_SESSION:
       "This session cannot be started: a session key of an earlier session with this session number is in the Core's key store, so its recording could not be sealed. Nothing was recorded. Cancel this session and create a new one.",
     SESSION_KEY_STORE_UNAVAILABLE: "This session cannot be started: the Core's key store cannot be used, so its recording could not be sealed. Nothing was recorded.",
+  },
+  /**
+   * Audit fix row 84 (DF-19; register B1): the wording of a `FAULT_CLEARED` event on a session that is
+   * still in FAULT. `{{kind}}` is the cleared fault kind. Row 110 builds the same sentence in
+   * `sim/faults.ts` and pins it equal to this key.
+   */
+  faultCleared: {
+    sessionStillInFault: 'Fault cleared · {{kind}}. The session is still in FAULT and needs recovery.',
   },
 } as const satisfies ResourceTree;

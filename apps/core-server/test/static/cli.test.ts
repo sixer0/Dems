@@ -817,6 +817,28 @@ describe('D. no secret from the environment', () => {
     expect(fileOf('cli/operator-set.ts').text).toContain('environmentNames: () => Object.keys(process.env),');
   });
 
+  it('DF-29 / D20(d): a system principal is refused on BOTH paths (--username, --all-demo), after the operators are read and before the D56 create path, the word or any prompt', () => {
+    const command = fileOf(PASSWORD_COMMAND).text;
+    // The predicate rests on the shared reserved id, not on a second literal of its own.
+    expect(command).toMatch(/SYSTEM_PRINCIPAL_OPERATOR_IDS: readonly string\[\] = Object\.freeze\(\[UNATTRIBUTED_OPERATOR_ID\]\);/);
+    const refusals = [...command.matchAll(/return refuse\(SetPasswordRefusal\.SYSTEM_PRINCIPAL,/g)].map((match) => match.index ?? -1);
+    expect(refusals).toHaveLength(2);
+    const byUsername = command.indexOf('pool.query<OperatorRow & { has_credential: boolean }>(SELECT_OPERATOR_BY_USERNAME');
+    const walk = command.indexOf('pool.query<OperatorRow>(SELECT_OPERATOR_CREDENTIALS)');
+    const create = command.indexOf('const create = row.has_credential !== true;');
+    expect(byUsername).toBeGreaterThan(0);
+    expect(walk).toBeGreaterThan(0);
+    expect(create).toBeGreaterThan(0);
+    const [first, second] = refusals as [number, number];
+    expect(first).toBeGreaterThan(byUsername);
+    expect(first).toBeLessThan(create);
+    expect(second).toBeGreaterThan(walk);
+    for (const later of ['ports.ask(', 'ports.prompt.readSecretLine(', 'ports.hasher(', 'CREATE_CREDENTIAL :']) {
+      const at = command.indexOf(later);
+      expect(at, later).toBeGreaterThan(second);
+    }
+  });
+
   it('finds a value read from the environment, and a refusal list that was emptied (planted control)', () => {
     const variable = ['DEMS', 'OPERATOR', 'PASSWORD'].join('_');
     const planted: SourceFile[] = [

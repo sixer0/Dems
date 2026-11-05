@@ -5,7 +5,7 @@
  * - **Steps.** Which step the URL may show follows the simulator session: no session in setup →
  *   step 1 only; CREATE or PRECHECK → up to step 2; ARMED → up to step 3. Any other live state
  *   (RECORDING, STOPPING, FINALIZING, FAULT, RECOVERY) belongs to the Session Monitor (R4 n5).
- * - **Gate.** The simulator resolves the 8 checks (300–700 ms each, ≤ 4.9 s) and owns the policy
+ * - **Gate.** The simulator resolves the `PRECHECK_ORDER` checks (twelve, DF-03; 300–700 ms each, ≤ 4.9 s) and owns the policy
  *   (BLOCK: Core offline, lens fault, storage full, security fault; WARN: MIC no signal or clip,
  *   storage low, time on RTC, enclosure tamper). The page only reads the outcome: PASS arms the
  *   session by itself, WARN needs the acknowledgement checkbox, BLOCK disables Next.
@@ -180,11 +180,15 @@ export function isSecurityNotReportedNote(item: Pick<PrecheckItem, 'status' | 'p
 export const CHECK_DEVICE_KEY = {
   LENS_1: 'common.devices.camera1',
   LENS_2: 'common.devices.camera2',
+  LENS_3: 'common.devices.camera3', // audit fix row 83 (DF-03)
+  LENS_4: 'common.devices.camera4', // audit fix row 83
   MIC_1: 'common.devices.mic1',
   MIC_2: 'common.devices.mic2',
   // Schema v2 (SH-03; blueprint row 67): the role-keyed pair names the input by the role it holds.
   MIC_PRIMARY: 'sessionNew.devices.checks.MIC_PRIMARY',
   MIC_STANDBY: 'sessionNew.devices.checks.MIC_STANDBY',
+  MIC_3: 'sessionNew.devices.checks.MIC_3', // audit fix row 83: channels 3 and 4 named as channels 1 and 2 are
+  MIC_4: 'sessionNew.devices.checks.MIC_4', // audit fix row 83
 } as const
 
 /** The `common.enums.*` map that labels a check's `value`. */
@@ -192,10 +196,14 @@ export const CHECK_VALUE_ENUM = {
   CORE: 'coreLinkState',
   LENS_1: 'lensState',
   LENS_2: 'lensState',
+  LENS_3: 'lensState', // audit fix row 83 (DF-03)
+  LENS_4: 'lensState',
   MIC_1: 'micState',
   MIC_2: 'micState',
   MIC_PRIMARY: 'micState',
   MIC_STANDBY: 'micState',
+  MIC_3: 'micState', // audit fix row 83
+  MIC_4: 'micState',
   STORAGE: 'storageState',
   TIME: 'timeSource',
   SECURITY: 'securityState',

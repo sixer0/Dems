@@ -365,6 +365,12 @@ describe('row 129b: a restart keeps the sealed columns of a v2 item and the orde
     const state = idleAt(FIXED_NOW);
     const swapped = { ...state, captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.map((mic) => mic.channel === 'MIC-01' ? { ...mic, inputId: 'MIC-02' as SimState['captureConfig']['mics'][number]['inputId'], deviceId: 'MIC-02' } : mic.channel === 'MIC-02' ? { ...mic, inputId: 'MIC-01' as SimState['captureConfig']['mics'][number]['inputId'], deviceId: 'MIC-01' } : mic) } } as SimState; // D61: only channels 1 and 2 exchange devices; 3 and 4 stand
     expect(swapped.captureConfig.mics.map((mic) => mic.inputId)).toEqual(['MIC-02', 'MIC-01', 'MIC-03', 'MIC-04']); // D61 (2026-11-04): channel order — the transcribed channel lists first
-    expect(roundTrip(swapped)).toStrictEqual(pickDurable(swapped));
+    // Audit row 92 (D21(2)): the engine's selector edit moves the mic slice with it (sim/capture-config.ts, "the mic
+    // slice carries the input of its own channel"), and the boot-load re-derives the same; the state the engine holds
+    // after this edit names MIC-02 on AUDIO-01 and MIC-01 on AUDIO-02.
+    const held = { ...swapped, mics: swapped.mics.map((mic) => (mic.id === 'AUDIO-01' ? { ...mic, deviceId: 'MIC-02' } : mic.id === 'AUDIO-02' ? { ...mic, deviceId: 'MIC-01' } : mic)) } as SimState;
+    expect(roundTrip(held)).toStrictEqual(pickDurable(held));
+    // The comparison can fail: a mic slice left on the old pairing comes back on the selector's devices.
+    expect(roundTrip(swapped).mics.map((mic) => mic.deviceId)).toEqual(['MIC-02', 'MIC-01', 'MIC-03', 'MIC-04']);
   });
 });

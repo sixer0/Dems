@@ -5,7 +5,8 @@ import { formatClock } from '@dems/shared/realtime'
 import { useSimInstance } from '@dems/shared/sim'
 import { palette, statusText } from '@dems/shared/tokens'
 import { useSimSecond } from '@/components/media'
-import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
+import { NoProducerNotice } from '@/components/synthetic-values-chip'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { useMotionPolicy } from '@/motion'
 import { useMicPoints } from './context'
 import { useDeviceWords } from './live'
@@ -72,14 +73,26 @@ export function HealthChart({ deviceId }: HealthChartProps) {
     }
   }
   const stroke = series.metric === 'temperature' && last && last.v >= 70 ? statusText.danger : palette.gold
+  // Fix wave J (JW-23 (1)) -> audit fix row 104 (DF-21, D25 N3): "LINK QUALITY - NOW 99.7%" of a source nobody checked is the
+  // device model's series. On a Core in its own capture every series but a microphone's measured level ('signal') has
+  // no producer: the tab names the metric and says "Not reported" - no figure, no line.
+  const noProducer = useSelfCaptureCore() && series.metric !== 'signal'
+
+  if (noProducer) {
+    return (
+      <div className="dev-health" data-testid="device-health" data-metric={series.metric} data-reported="false">
+        <div className="dev-health-head">
+          <span className="dev-health-metric">{metric}</span>
+        </div>
+        <NoProducerNotice block={`health-${series.metric}`} className="dev-health-empty" />
+      </div>
+    )
+  }
 
   return (
     <div className="dev-health" data-testid="device-health" data-metric={series.metric} data-points={series.points.length}>
       <div className="dev-health-head">
         <span className="dev-health-metric">{metric}</span>
-        {/* Fix wave J (JW-23 (1)): "LINK QUALITY - NOW 99.7%" of a source nobody checked is the device model's series. Every
-            series but a microphone's measured level carries the mark on a Core in its own capture. */}
-        {series.metric === 'signal' ? null : <SyntheticValuesChip block={`health-${series.metric}`} />}
         <span className="dev-health-now">
           <span className="dev-health-now-label">{t('devices.drawer.health.now')}</span>
           <span className="dev-health-now-value font-mono tabular-nums">{last ? format(last.v) : '—'}</span>

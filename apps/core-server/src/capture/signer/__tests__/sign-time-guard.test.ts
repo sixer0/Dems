@@ -355,7 +355,7 @@ describe('row 226c: a running Core holds its signer to the key its boot judged a
   function production(dataDir: string, clock: () => number, seams: Partial<CaptureBootMount> = {}): { control: CaptureBootControl; boot: () => Promise<string> } {
     const sinks = { info() {}, warn() {}, error() {}, persist() {} };
     const app = { config: unitTestConfig({ dataDir, captureMode: 'real', captureWorkerPath: '/opt/dems/capture-worker', captureRelayPath: '/opt/dems/capture-relay', captureGuardPath: '/opt/dems/capture-guard' }), stages: {}, readiness: createReadiness({ info() {} } as never), clock: { now: clock } } as unknown as FastifyInstance;
-    const control = mountCaptureBootChecks(app, { sinks, timers: createSystemTimers(), inspect: () => program, probeEvidenceVolume: () => volume, demoPasswordOperators: async () => 0, launcher: helloLauncher, host: TEST_CAPTURE_HOST, installationId: INSTALLATION, ...seams });
+    const control = mountCaptureBootChecks(app, { sinks, timers: createSystemTimers(), inspect: () => program, probeEvidenceVolume: () => volume, demoPasswordOperators: async () => 0, launcher: helloLauncher, host: TEST_CAPTURE_HOST, installationId: INSTALLATION, workerBuildStampProblem: () => null, ...seams });
     return { control, boot: () => app.readiness.boot().then(() => 'PASSED', (error: unknown) => String((error as { cause?: { code?: unknown } }).cause?.code ?? error)) };
   }
   function productionStore(): { dataDir: string; dir: string } {

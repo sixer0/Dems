@@ -272,7 +272,7 @@ export const SESSION_OPERATIONS = [
     mode: CoreApiMode.LIVE,
     summary: 'Begin the pre-check',
     description: [
-      'Starts the eight pre-recording checks of a session in **CREATE** and answers `202` with state **PRECHECK**. The checks resolve on the Core over the next seconds; their progress and their outcome arrive in the `session` slice.',
+      'Starts the twelve pre-recording checks of a session in **CREATE** and answers `202` with state **PRECHECK**. The checks resolve on the Core over the next seconds; their progress and their outcome arrive in the `session` slice.',
       'Writes no audit row: the event PRECHECK_STARTED is emitted, and the outcome is audited when the checks end (PRECHECK_PASSED or PRECHECK_BLOCKED).',
       hostedNote('beginPrecheck'),
     ].join('\n\n'),

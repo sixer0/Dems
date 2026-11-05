@@ -436,7 +436,7 @@
           "Session"
         ],
         "summary": "Start recording",
-        "description": "Runs the Core pre-check (book §5.3: 8 checks) and starts recording.\n\n- From **CREATE**: begins the pre-check and answers `202` with state **PRECHECK**. Poll `GET /api/v1/session/current` and call again once it is **ARMED**.\n- From **ARMED**: starts recording and answers `200` with state **RECORDING**.\n- Pre-check ended with **WARN**: send `{\"acknowledgeWarnings\": true}` to acknowledge and start; without it the answer is `409 PRECHECK_WARNINGS`.\n- Pre-check with a **BLOCK** (Core offline, lens fault, storage full, security fault): `409 PRECHECK_BLOCKED` with the reasons.\n\nRequires a signed-in operator holding SESSION_START; the audit rows name that operator.\n\nOne session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.\n\nIn a real capture operation a start is refused `503 NOT_READY` with `details.reason: CAPTURE_HELPERS_LEFT` while helper processes of an earlier capture are still running (envelope level; nothing is opened twice).\n\nA body that does not match its schema answers `422 INVALID_INPUT`. The pre-check and its outcome also have operations of their own: `beginPrecheck`, `retryPrecheck` and `acknowledgePrecheckWarnings`.\n\nThe Core server's refusal texts are fixed and quote no part of the request: a session that is not the open one answers `404 NOT_FOUND` \"This session is not the open session.\" (`details.simCode: NOT_FOUND`), and an action that does not fit the session's state answers `409 INVALID_STATE` \"The action is not allowed in the current state.\" with `details.simCode: ILLEGAL_STATE`, `from` and `event`. A `409 SESSION_ACTIVE` names the open session in `details.sessionId`. The examples show the texts of the in-app simulator.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
+        "description": "Runs the Core pre-check (book §5.3: twelve checks) and starts recording.\n\n- From **CREATE**: begins the pre-check and answers `202` with state **PRECHECK**. Poll `GET /api/v1/session/current` and call again once it is **ARMED**.\n- From **ARMED**: starts recording and answers `200` with state **RECORDING**.\n- Pre-check ended with **WARN**: send `{\"acknowledgeWarnings\": true}` to acknowledge and start; without it the answer is `409 PRECHECK_WARNINGS`.\n- Pre-check with a **BLOCK** (Core offline, lens fault, storage full, security fault): `409 PRECHECK_BLOCKED` with the reasons.\n\nRequires a signed-in operator holding SESSION_START; the audit rows name that operator.\n\nOne session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.\n\nIn a real capture operation a start is refused `503 NOT_READY` with `details.reason: CAPTURE_HELPERS_LEFT` while helper processes of an earlier capture are still running (envelope level; nothing is opened twice).\n\nA body that does not match its schema answers `422 INVALID_INPUT`. The pre-check and its outcome also have operations of their own: `beginPrecheck`, `retryPrecheck` and `acknowledgePrecheckWarnings`.\n\nThe Core server's refusal texts are fixed and quote no part of the request: a session that is not the open one answers `404 NOT_FOUND` \"This session is not the open session.\" (`details.simCode: NOT_FOUND`), and an action that does not fit the session's state answers `409 INVALID_STATE` \"The action is not allowed in the current state.\" with `details.simCode: ILLEGAL_STATE`, `from` and `event`. A `409 SESSION_ACTIVE` names the open session in `details.sessionId`. The examples show the texts of the in-app simulator.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
         "responses": {
           "200": {
             "description": "Recording started (state RECORDING).",
@@ -1081,13 +1081,37 @@
                               "reason": null
                             },
                             {
-                              "id": "MIC_1",
+                              "id": "LENS_3",
                               "status": "PASS",
                               "value": "READY",
                               "reason": null
                             },
                             {
-                              "id": "MIC_2",
+                              "id": "LENS_4",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "MIC_PRIMARY",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "MIC_STANDBY",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "MIC_3",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "MIC_4",
                               "status": "PASS",
                               "value": "READY",
                               "reason": null
@@ -1159,13 +1183,37 @@
                               "reason": null
                             },
                             {
-                              "id": "MIC_1",
+                              "id": "LENS_3",
                               "status": "PASS",
                               "value": "READY",
                               "reason": null
                             },
                             {
-                              "id": "MIC_2",
+                              "id": "LENS_4",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "MIC_PRIMARY",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "MIC_STANDBY",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "MIC_3",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "MIC_4",
                               "status": "PASS",
                               "value": "READY",
                               "reason": null
@@ -8125,7 +8173,7 @@
           "Session"
         ],
         "summary": "Begin the pre-check",
-        "description": "Starts the eight pre-recording checks of a session in **CREATE** and answers `202` with state **PRECHECK**. The checks resolve on the Core over the next seconds; their progress and their outcome arrive in the `session` slice.\n\nWrites no audit row: the event PRECHECK_STARTED is emitted, and the outcome is audited when the checks end (PRECHECK_PASSED or PRECHECK_BLOCKED).\n\nCore server only: the server runs the shared simulator action `beginPrecheck` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
+        "description": "Starts the twelve pre-recording checks of a session in **CREATE** and answers `202` with state **PRECHECK**. The checks resolve on the Core over the next seconds; their progress and their outcome arrive in the `session` slice.\n\nWrites no audit row: the event PRECHECK_STARTED is emitted, and the outcome is audited when the checks end (PRECHECK_PASSED or PRECHECK_BLOCKED).\n\nCore server only: the server runs the shared simulator action `beginPrecheck` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
         "responses": {
           "202": {
             "description": "The checks are running (state PRECHECK).",
@@ -16098,7 +16146,9 @@
                 "CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED",
                 "CAPTURE_AUDIO_SILENCE_INSERTED",
                 "CAPTURE_DEVICE_RETIRED",
-                "CAMERA_PREVIEW_OPENED"
+                "CAMERA_PREVIEW_OPENED",
+                "CAMERA_LINK_DOWN",
+                "CAMERA_LINK_UP"
               ]
             }
           },
@@ -17534,7 +17584,7 @@
                           "version": "0.2.0"
                         },
                         "captureWorker": {
-                          "version": "capture-worker/0.6.0"
+                          "version": "capture-worker/0.7.0"
                         },
                         "apiContract": {
                           "version": "0.3.0"
@@ -32099,7 +32149,7 @@
           }
         ],
         "x-dems-mode": "live",
-        "x-dems-source": "Decision D57 (principal, 2026-11-03): operation 118 and operation 119, the pre-delivery setup moved into the console, gated to the vendor identities",
+        "x-dems-source": "Decision D57 (principal, 2026-11-03): operation 115 and operation 116, the pre-delivery setup moved into the console, gated to the vendor identities",
         "security": [
           {
             "sessionCookie": []
@@ -32131,7 +32181,7 @@
           "Device"
         ],
         "summary": "Change the pre-delivery panel setup",
-        "description": "Sets the unit word, the client word, and queues a PNG logo (base64) for one or both logo slots of the LCD front panel. Absent members change nothing; the answer is the setup as it stands after the change. The values live in the panel backend — the Core forwards and repeats, it stores nothing.\n\nWrites PANEL_SETUP_CHANGED naming which fields changed and whether a logo was queued; the image bytes are never in the audit row.\n\n**Vendor accounts only** (D57): the session username must be `root` or `gsp.teknisi`; any other operator is 403 `NOT_PERMITTED` with no audit row and nothing forwarded. **Web console sessions only.**\n\nAn empty request answers 422 INVALID_INPUT; a body the backend refuses (an image it cannot decode) answers 422 too, with the backend's reason carried in `details.reason`.\n\n**A missing panel backend answers the global 503** `NOT_READY` (`details.reason: LCD_BACKEND_UNREACHABLE`) and nothing is changed.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Sets the unit word, the client word, and queues a PNG logo (base64) for one logo slot (client or splash) of the LCD front panel. Absent members change nothing; the answer is the setup as it stands after the change. The values live in the panel backend — the Core forwards and repeats, it stores nothing.\n\nWrites PANEL_SETUP_CHANGED naming which fields changed and whether a logo was queued; the image bytes are never in the audit row.\n\n**Vendor accounts only** (D57): the session username must be `root` or `gsp.teknisi`; any other operator is 403 `NOT_PERMITTED` with no audit row and nothing forwarded. **Web console sessions only.**\n\nAn empty request answers 422 INVALID_INPUT; a body the backend refuses (an image it cannot decode) answers 422 too, with the backend's reason carried in `details.reason`.\n\n**A missing panel backend answers the global 503** `NOT_READY` (`details.reason: LCD_BACKEND_UNREACHABLE`) and nothing is changed.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "200": {
             "description": "The setup after the change.",
@@ -32329,7 +32379,7 @@
           }
         ],
         "x-dems-mode": "live",
-        "x-dems-source": "Decision D57 (principal, 2026-11-03): operation 118 and operation 119, the pre-delivery setup moved into the console, gated to the vendor identities",
+        "x-dems-source": "Decision D57 (principal, 2026-11-03): operation 115 and operation 116, the pre-delivery setup moved into the console, gated to the vendor identities",
         "requestBody": {
           "required": true,
           "content": {
@@ -32348,11 +32398,11 @@
                   }
                 },
                 "logoOnly": {
-                  "summary": "Queue a logo for both slots",
+                  "summary": "Queue a logo for the client slot",
                   "description": "The words stay. The base64 body is elided in this example; the real one is the whole PNG file, within the console path bound (a PNG of 45,000 bytes).",
                   "value": {
                     "logoBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-                    "logoTarget": "both",
+                    "logoTarget": "client",
                     "reason": "Client branding approved"
                   }
                 }
@@ -32591,10 +32641,14 @@
               "CORE",
               "LENS_1",
               "LENS_2",
+              "LENS_3",
+              "LENS_4",
               "MIC_1",
               "MIC_2",
               "MIC_PRIMARY",
               "MIC_STANDBY",
+              "MIC_3",
+              "MIC_4",
               "STORAGE",
               "TIME",
               "SECURITY"
@@ -32631,7 +32685,7 @@
           "value",
           "reason"
         ],
-        "description": "One of the 8 book §5.3 pre-recording checks."
+        "description": "One of the twelve book §5.3 pre-recording checks (the first eight of the book keep their readable sense; lens 3, lens 4, microphone 3 and microphone 4 were added by audit fix row 83)."
       },
       "SessionResource": {
         "type": "object",
@@ -32772,7 +32826,7 @@
                   },
                   "items": {
                     "minItems": 8,
-                    "maxItems": 8,
+                    "maxItems": 12,
                     "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/PrecheckItem"
@@ -37829,10 +37883,14 @@
                         "CORE",
                         "LENS_1",
                         "LENS_2",
+                        "LENS_3",
+                        "LENS_4",
                         "MIC_1",
                         "MIC_2",
                         "MIC_PRIMARY",
                         "MIC_STANDBY",
+                        "MIC_3",
+                        "MIC_4",
                         "STORAGE",
                         "TIME",
                         "SECURITY"
@@ -40050,7 +40108,9 @@
               "CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED",
               "CAPTURE_AUDIO_SILENCE_INSERTED",
               "CAPTURE_DEVICE_RETIRED",
-              "CAMERA_PREVIEW_OPENED"
+              "CAMERA_PREVIEW_OPENED",
+              "CAMERA_LINK_DOWN",
+              "CAMERA_LINK_UP"
             ]
           },
           "category": {
@@ -42739,7 +42799,9 @@
               "CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED",
               "CAPTURE_AUDIO_SILENCE_INSERTED",
               "CAPTURE_DEVICE_RETIRED",
-              "CAMERA_PREVIEW_OPENED"
+              "CAMERA_PREVIEW_OPENED",
+              "CAMERA_LINK_DOWN",
+              "CAMERA_LINK_UP"
             ]
           },
           "actorId": {
@@ -47549,8 +47611,7 @@
             "type": "string",
             "enum": [
               "client",
-              "splash",
-              "both"
+              "splash"
             ]
           },
           "reason": {

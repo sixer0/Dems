@@ -877,6 +877,31 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
       details: { deviceId: 'CAM-01', expiresAt: previewAt + 60_000, operationId: 'createCameraPreviewSession', permission: 'CAPTURE_CONFIG' },
     },
   });
+  // Row 85 (W1 register A9; decision D23 (1, 2)): the camera network link went down and, two minutes later, came
+  // back; the live writer is the camera-link sweep (row 102), a timer, so no actor, no device and no operation.
+  // Placed last so that no draw of the stream above moves. The DOWN row is the earlier evening.
+  const linkDownAt = at(36);
+  const linkUpAt = at(35);
+  world.record(linkDownAt, {
+    audit: {
+      type: 'CAMERA_LINK_DOWN',
+      message: 'Camera network link down',
+      severity: 'WARNING',
+      actorId: null,
+      deviceId: null,
+      details: { previous: 'UP' },
+    },
+  });
+  world.record(linkUpAt, {
+    audit: {
+      type: 'CAMERA_LINK_UP',
+      message: 'Camera network link up',
+      severity: 'INFO',
+      actorId: null,
+      deviceId: null,
+      details: { previous: 'DOWN', downMs: 120_000 },
+    },
+  });
 }
 
 // ── The lineage of discarded chains ────────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE, SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, CORE_NOT_RUNNING_FAULT_EXAMPLE, START_REFUSED_SESSION_KEY_EXAMPLE, CORE_API_EXAMPLES, EVIDENCE_SEALED_PROFILE_EXAMPLE, EVIDENCE_STREAM_PROFILE_NOTICE_EXAMPLE } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { type SocketLike } from '@dems/shared/realtime'
-import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, HOST_CLOCK_TIME, OPERATOR_IDS, SOFTWARE_VERSION, UPDATER_NOT_AVAILABLE, type ScenarioName, type Sim, CORE_NOT_RUNNING_LABEL, SEAL_BLOCKED_EXAMPLE_ALERT, SEAL_BLOCKED_EXAMPLE_FINALIZATION, SEAL_BLOCKED_EXAMPLE_SESSION_ID, START_REFUSED_REASONS, coreNotRunningFaultTransition, startRefusedReasonOf, startRefusedSentenceKey, type EvidenceItem } from '@dems/shared/sim'
+import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, HOST_CLOCK_TIME, OPERATOR_IDS, SOFTWARE_VERSION, UPDATER_NOT_AVAILABLE, DEVICE_ID, DEVICE_IDENTITY, type ScenarioName, type Sim, CORE_NOT_RUNNING_LABEL, SEAL_BLOCKED_EXAMPLE_ALERT, SEAL_BLOCKED_EXAMPLE_FINALIZATION, SEAL_BLOCKED_EXAMPLE_SESSION_ID, START_REFUSED_REASONS, coreNotRunningFaultTransition, startRefusedReasonOf, startRefusedSentenceKey, type EvidenceItem } from '@dems/shared/sim'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys, createI18n } from '@/i18n'
 import { enWeb } from '@/i18n-web'
@@ -1169,6 +1169,7 @@ describe("every page of a Core in its own capture: Security & Audit, Devices, Da
 // | G70c-02 | "Online" / "Ready" / "Reachable" only for a checked fact | "G70c-02" |
 // | G70c-08 | an unassigned built-in camera has its card | "G70c-08" |
 // | G75d-07 | the chip on every model block; one count for the other devices | "G75d-07" |
+// | DF-21 (audit row 104) | a block without a producer reads "Not reported", never synthetic values | "G75d-07 / DF-21" |
 // | G89c-05 | a stated signing key is not "Not reported" | "G89c-05" |
 // | G75d-01 / -03 | the open notice on pill and bell, its acknowledgement; no alert of another session as a FAULT | "G75d-01" |
 // | G75d-02 | the retry of a blocked seal for the role operation 33 allows | "G75d-02" |
@@ -1447,7 +1448,14 @@ describe("the Core's own fact, \"Not reported\", or nothing: hashes, verify rows
     })
   })
 
-  describe('G75d-07: the "Synthetic demo values" chip and the one count', () => {
+  // Audit fix row 104 (DF-21, ruling D25 N3; register S7 `system.noProducer`): on a Core in its own capture (the
+  // REAL_PRODUCTION console) a block without a producer draws "Not reported" in place of the model's values - no
+  // block carries the "Synthetic demo values" chip of wave L any more (the mixed blocks Other devices and Network
+  // status gate their model rows in their own files, row 107). The simulated lane is pinned unchanged.
+  describe('G75d-07 / DF-21: no synthetic slice on a Core in its own capture - "Not reported" - and the one count', () => {
+    const NOT_REPORTED = en.system.noProducer
+    /** Every block of the document that still shows model values under the chip. */
+    const chippedBlocks = (): string[] => Array.from(document.querySelectorAll('[data-synthetic-block]')).map((element) => element.getAttribute('data-synthetic-block') ?? '')
     it('"OTHER DEVICES" counts what the banner counts: no GNSS receiver and no TPM reading on a Core in its own capture', () => {
       const sim = newSim('idle')
       const simulated = selectSummary(sim.store.getState())
@@ -1456,39 +1464,97 @@ describe("the Core's own fact, \"Not reported\", or nothing: hashes, verify rows
       const own = selectSummary(sim.store.getState())
       expect([own.otherOk, own.otherTotal]).toEqual([3, 3])
     })
-    it('Devices: the chip on the other devices, the front panel, the port map and the two model cards; no gain, no phantom power, no dataset role', async () => {
+    it('System (U-14): no synthetic block - services, health, update and the banner read "Not reported"; the maintenance actions stay', async () => {
+      mount('/system', 'idle', realCore)
+      const root = await page('page-system')
+      for (const block of ['services', 'health', 'update', 'system-banner']) expect(await page(`no-producer-${block}`)).toHaveTextContent(NOT_REPORTED)
+      expect(chippedBlocks()).toEqual([])
+      expect(within(root).queryByTestId('system-services-summary')).toBeNull()
+      expect(within(root).getByTestId('system-banner')).not.toHaveTextContent(en.system.banner.ok)
+      expect(within(root).getByTestId('system-banner')).not.toHaveTextContent(SOFTWARE_VERSION)
+      expect(within(root).getByTestId('system-run-diagnostics')).toBeInTheDocument()
+      expect(within(root).getByTestId('system-export-logs')).toBeInTheDocument()
+      expect(getMissingI18nKeys()).toEqual([])
+    })
+    // Audit fix row 105 (DF-21 / U-14, D25 N3, D29 Q5; S7, S8, S9): System > About of a Core in its own capture.
+    it('System > About (U-14): no "Synthetic demo values" chip; the dataset\'s reserved device id and every model row read "Not reported"', async () => {
+      const sim = mount('/system', 'idle', realCore)
+      const about = await page('system-panel-about')
+      expect(within(about).queryByTestId('system-about-synthetic')).toBeNull()
+      expect(about).not.toHaveTextContent(en.system.about.synthetic)
+      expect(within(about).getByTestId('system-about-deviceId')).toHaveTextContent(NOT_REPORTED)
+      for (const key of ['room', 'model', 'hardware', 'slot', 'ip', 'serialNumber', 'hardwareUuid', 'chassisRevision', 'bspVersion', 'provisioningRecordId', 'buildId', 'checksum', 'sbom', 'sbomFormat']) {
+        expect(within(about).getByTestId(`system-about-${key}`), key).toHaveTextContent(NOT_REPORTED)
+      }
+      const state = sim.store.getState()
+      for (const model of [DEVICE_ID, DEVICE_IDENTITY.serialNumber, DEVICE_IDENTITY.hardwareUuid, state.device.room, state.device.productName, state.network.ip]) expect(about, model).not.toHaveTextContent(model)
+      expect(getMissingI18nKeys()).toEqual([])
+    })
+    it('System > About (S9): the device id is the Core\'s own record when it is not the dataset\'s reserved id', async () => {
+      mount('/system', 'idle', (sim) => {
+        realCore(sim)
+        sim.store.setState({ device: { ...sim.store.getState().device, id: 'DEMS-BENCH-01' } })
+      })
+      expect(await page('system-about-deviceId')).toHaveTextContent('DEMS-BENCH-01')
+    })
+    it('CONTROL - System > About on the simulated lane keeps the chip, the dataset\'s device id and the model rows', async () => {
+      mount('/system', 'idle')
+      const about = await page('system-panel-about')
+      expect(within(about).getByTestId('system-about-synthetic')).toHaveTextContent(en.system.about.synthetic)
+      expect(within(about).getByTestId('system-about-deviceId')).toHaveTextContent(DEVICE_ID)
+      expect(about).toHaveTextContent(DEVICE_IDENTITY.serialNumber)
+      expect(about).not.toHaveTextContent(NOT_REPORTED)
+    })
+    it('CONTROL - the simulated lane keeps the services, the health and the banner count; no chip, no notice', async () => {
+      mount('/system', 'idle')
+      const root = await page('page-system')
+      expect(await page('system-services-summary')).toBeInTheDocument()
+      expect(within(root).getByTestId('system-banner')).toHaveTextContent(en.system.banner.ok)
+      expect(root.querySelector('[data-no-producer-block]')).toBeNull()
+      expect(chippedBlocks()).toEqual([])
+    })
+    it('Devices (U-10): the port map, the front panel and the two model cards read "Not reported"; no chip anywhere; no gain, no phantom power, no dataset role', async () => {
       mount('/devices', 'idle', realCore)
       await page('page-devices')
-      for (const block of ['other', 'front', 'ports', 'summary-other', 'summary-ports']) expect(await page(`synthetic-values-${block}`)).toHaveTextContent(L.syntheticChip)
+      for (const block of ['ports', 'front', 'summary-other', 'summary-ports']) expect(await page(`no-producer-${block}`)).toHaveTextContent(NOT_REPORTED)
+      expect(chippedBlocks()).toEqual([])
+      expect(screen.getByTestId('summary-ports')).not.toHaveAttribute('data-value')
+      expect(screen.getByTestId('summary-other')).toHaveAttribute('data-reported', 'false')
+      expect(screen.queryByTestId('port-GNSS_SMA')).toBeNull()
       const root = screen.getByTestId('page-devices')
       await page('audio-input-AUDIO-01')
       expect(root.querySelector('[data-fact=gain]')).toBeNull()
       expect(root.querySelector('[data-fact=phantom]')).toBeNull()
       expect(root.querySelector('[data-fact=clip]')).not.toBeNull()
       for (const model of ['Interviewer', 'Subject (Ch 2)', 'Balanced XLR', 'Dual-lens DL-2', '48 V phantom']) expect(root).not.toHaveTextContent(model)
-      expect(screen.getByTestId('port-GNSS_SMA')).not.toHaveTextContent(en.devices.ports.linkUp)
       expect(getMissingI18nKeys()).toEqual([])
     })
-    it('CONTROL - the simulated lane draws no chip on Devices and keeps gain, phantom power and the dataset roles', async () => {
+    it('CONTROL - the simulated lane draws no chip and no notice on Devices and keeps the port map, gain, phantom power and the dataset roles', async () => {
       mount('/devices', 'idle')
       const root = await page('page-devices')
       await page('audio-input-AUDIO-01')
       expect(root.querySelector('[data-synthetic-block]')).toBeNull()
+      expect(root.querySelector('[data-no-producer-block]')).toBeNull()
+      expect(screen.getByTestId('port-GNSS_SMA')).toBeInTheDocument()
       expect(root.querySelector('[data-fact=gain]')).not.toBeNull()
       expect(root.querySelector('[data-fact=phantom]')).not.toBeNull()
       expect(root).toHaveTextContent('Interviewer')
     })
-    it('Network & Time and Storage: the chip on the model blocks of a Core in its own capture, none on the simulated lane', async () => {
+    it('Network & Time and Storage: domains, volumes and the usage series read "Not reported" on a Core in its own capture; no chip anywhere; none on the simulated lane', async () => {
       mount('/network-time', 'idle', realCore)
-      expect(await page('synthetic-values-network')).toBeInTheDocument()
-      expect(await page('synthetic-values-domains')).toBeInTheDocument()
+      expect(await page('no-producer-domains')).toHaveTextContent(NOT_REPORTED)
+      expect(await page('no-producer-network-lan')).toHaveTextContent(NOT_REPORTED)
+      expect(chippedBlocks()).toEqual([])
       cleanup()
       mount('/storage', 'idle', realCore)
-      expect(await page('synthetic-values-volumes')).toBeInTheDocument()
+      expect(await page('no-producer-volumes')).toHaveTextContent(NOT_REPORTED)
+      expect(await page('no-producer-usage')).toHaveTextContent(NOT_REPORTED)
+      expect(chippedBlocks()).toEqual([])
       cleanup()
       mount('/storage', 'idle')
       await page('page-storage')
       expect(document.querySelector('[data-synthetic-block]')).toBeNull()
+      expect(document.querySelector('[data-no-producer-block]')).toBeNull()
     })
   })
 

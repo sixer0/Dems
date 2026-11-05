@@ -278,4 +278,22 @@ describe('Storage page (01_specs §14.5.5)', { timeout: 30_000 }, () => {
     expect(screen.getAllByTestId('storage-activity-row')[0]).toHaveTextContent('365 days · auto-archive off')
     expect(getMissingI18nKeys()).toEqual([])
   })
+
+  it('row 110b (DF-19): a storage fault cleared while the open session is still in FAULT reads the still-in-FAULT label with a warning dot', async () => {
+    stubMatchMedia(true)
+    const sim = mount('recording')
+    await screen.findByTestId('page-storage', {}, PAGE_WAIT)
+    act(() => {
+      const state = sim.store.getState()
+      const sessionId = state.session!.id
+      const event = { id: 'EVT-110B-STOR', seq: (state.events.at(-1)?.seq ?? 0) + 1, at: state.clock.now, type: 'FAULT_CLEARED', severity: 'SUCCESS', message: 'Fault cleared · STORAGE_FULL', params: { kind: 'STORAGE_FULL', target: null }, sessionId, deviceId: null }
+      sim.store.setState({ session: { ...state.session!, state: 'FAULT' } as never, events: [...state.events, event] as never })
+    })
+    await waitFor(() => expect(screen.getAllByTestId('storage-activity-row')[0]).toHaveTextContent('still in FAULT'))
+    const row = screen.getAllByTestId('storage-activity-row')[0]!
+    expect(row).toHaveTextContent('Fault cleared · Storage full. The session is still in FAULT and needs recovery.')
+    expect(row).not.toHaveTextContent('Storage full · Storage full')
+    expect(row.querySelector('.stor-activity-dot')).toHaveAttribute('data-tone', 'warning')
+    expect(getMissingI18nKeys()).toEqual([])
+  })
 })

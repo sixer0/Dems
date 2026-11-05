@@ -53,14 +53,14 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { createSystemTimers } from '../../../capture';
-import { sealCredential, type StoredCameraAddressRule } from '../../../capture/adapters';
+import { CaptureAdapterKind, sealCredential, type StoredCameraAddressRule } from '../../../capture/adapters';
 import { captureOperationOf, isProductionCaptureOperation } from '../../../capture/fence';
 import { coreCredentialStore, isStoreSealedSecret } from '../../../credential-store';
 import type { Principal } from '../../../plugins/authenticate';
 import { notSignedIn } from '../../../plugins/authenticate';
 import { ApiFailure } from '../../../plugins/error-envelope';
 import { routeOfOperation } from '../../../plugins/permission-guard';
-import { SYSTEM_OWNER_SESSION_ID } from '../segment-scan';
+import { SYSTEM_OWNER_SESSION_ID, ipInSegment, segmentCidrOctets } from '../segment-scan';
 import { createConnectionTestLimits, type ConnectionTestLimits } from './limits';
 import {
   adoptCandidate,
@@ -303,9 +303,27 @@ export function registerCaptureConnectRoutes(app: FastifyInstance, options: Capt
     systemFlow: (credential, pacing) => {
       if (credential.username.length > CAPTURE_CREDENTIAL_USERNAME_MAX_CHARS) throw new Error('the SMART ATTACH bench user name is longer than the credential table takes');
       const sealed = operatorCredential(sealCredential(credential));
+      // Audit 2026-11-05 row 103 (DF-26; D23 (3)): THE SCOPE OF THE BENCH CREDENTIAL, held again at the one door that spends
+      // it. The pair is offered ONLY to a candidate whose host AND service address lie inside the configuration's
+      // DEMS_CAMERA_SEGMENT_CIDR and that answered as ONVIF; anything else is refused BEFORE a step runs (the operators'
+      // own 409 CANDIDATE_NOT_TESTABLE - no new word), so nothing is sent. No segment configured refuses every candidate.
+      const segmentCidr: unknown = app.config.cameraSegmentCidr;
+      const segment = typeof segmentCidr === 'string' ? segmentCidrOctets(segmentCidr) : null;
+      const outOfScope = (camera: ConnectCandidate['camera']): boolean => {
+        if (segment === null || camera.adapterKind !== CaptureAdapterKind.ONVIF_RTSP || !ipInSegment(camera.host, segment)) return true;
+        if (camera.serviceAddress === null) return false; // the flow's own rule refuses an untestable candidate
+        try {
+          return !ipInSegment(new URL(camera.serviceAddress).hostname, segment);
+        } catch {
+          return true;
+        }
+      };
       const wait = pacing?.wait ?? ((ms: number) => new Promise<void>((resolve) => void timers.after(ms, resolve)));
       const paced = async <Value>(candidateId: string, step: () => Promise<Value>): Promise<Value> => {
         const candidate = control.candidates?.find(SYSTEM_OWNER_SESSION_ID, candidateId) ?? null;
+        if (candidate !== null && outOfScope(candidate.camera)) {
+          throw new ApiFailure(409, ApiErrorCode.INVALID_STATE, 'This device cannot be tested.', { details: { reason: CaptureDiscoveryReason.CANDIDATE_NOT_TESTABLE } });
+        }
         if (candidate !== null) {
           const refusal = control.limits.refusal(candidate.camera.host, SYSTEM_OWNER_SESSION_ID);
           if (refusal !== null && refusal.reason === CaptureDiscoveryReason.CONNECTION_TEST_RATE_LIMITED && refusal.retryAfterMs > 0 && refusal.retryAfterMs <= AUTOATTACH_TEST_PACING_CAP_MS) {

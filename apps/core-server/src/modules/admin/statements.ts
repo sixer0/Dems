@@ -26,9 +26,9 @@
  * states the expected state and whose returned row decides.
  */
 import type { AdminUser } from '@dems/shared/api';
-import { GENESIS_HASH, chainHash, type AuditEventBody, type AuditRow, type OperatorRole, type Permission } from '@dems/shared/sim';
+import { GENESIS_HASH, chainHash, type AuditEventBody, type AuditRow, type AuditType, type OperatorRole, type Permission } from '@dems/shared/sim';
 import type { QueryResultRow } from 'pg';
-import { CoreError } from '../../core';
+import { CoreError, type ResealedChain } from '../../core';
 
 /** A connection that runs one parameterised statement: the runtime pool, or a unit of work. */
 export interface Queryable {
@@ -295,9 +295,56 @@ export interface PurgeCounts {
   readonly credentialsRemoved: number;
   readonly pairingCodes: number;
   readonly activeSessions: number;
-  /** The first sequence that disappeared, or null when the account never wrote a row. */
+  /** The first sequence that disappeared, or null when no row of the account was removed. */
   readonly resealFromSeq: number | null;
+  /**
+   * D38 DR-1 (migration 0043): true when kept evidence-chain rows still name the account, so its row
+   * stays, disabled, instead of being deleted (the chain's `actor_id` is RESTRICT and never NULLed).
+   */
+  readonly accountKept: boolean;
 }
+
+/**
+ * The evidence-chain audit types a purge never removes (decision D22(4); register E5, accepted as
+ * D38 DR-8): session lifecycle, seal and integrity, verify, export and custody. The same 28 strings
+ * are the literal list of `audit_purge_operator` in migration 0043; a static test pins the two equal.
+ * Everything else the account wrote (sign-ins, pairing, user administration, device and
+ * configuration rows) is personal and goes with it.
+ */
+export const PURGE_KEPT_AUDIT_TYPES: readonly AuditType[] = Object.freeze([
+  // Session lifecycle
+  'SESSION_CREATED',
+  'PRECHECK_PASSED',
+  'PRECHECK_BLOCKED',
+  'RECORDING_STARTED',
+  'RECORDING_STOPPED',
+  'SESSION_CANCELLED',
+  'SESSION_INCOMPLETE',
+  'SUMMARY_ACKNOWLEDGED',
+  'MARKER_ADDED',
+  'NOTE_ADDED',
+  'SNAPSHOT_TAKEN',
+  'AUDIO_SOURCE_SWITCHED',
+  'RECOVERY_STARTED',
+  'RECOVERY_COMPLETED',
+  // Seal and integrity
+  'EVIDENCE_SEALED',
+  'FRAME_HASH',
+  'WRITE_VERIFIED',
+  'TIMESTAMP_CONFIRMED',
+  // Verify
+  'EVIDENCE_VERIFIED',
+  'EVIDENCE_VERIFY_FAILED',
+  // Export and custody
+  'EVIDENCE_EXPORTED',
+  'EVIDENCE_EXPORT_FAILED',
+  'EXPORT_DENIED',
+  'AUDIT_EXPORTED',
+  'EVIDENCE_ARCHIVED',
+  'EVIDENCE_REVIEW_OPENED',
+  'EVIDENCE_MEDIA_SERVED',
+  'TRANSCRIPT_REVISED',
+] as const satisfies readonly AuditType[]);
 
 export const PURGE_OPERATOR = 'SELECT public.audit_purge_operator($1, $2, $3) AS counts';
 
@@ -305,20 +352,27 @@ export const PURGE_OPERATOR = 'SELECT public.audit_purge_operator($1, $2, $3) AS
  * What the purge is about to erase, counted the same way the function counts it, so the two answers
  * can be compared. Read before anything is touched: a unit that reports an erasure it did not
  * perform, or performs one it did not report, is a unit that should not commit.
+ *
+ * Row 95 (DF-28, migration 0043): `$2` is `PURGE_KEPT_AUDIT_TYPES`. The audit count and the first
+ * removed sequence skip the kept types exactly as the function's DELETE does, and `accountKept` is
+ * true when a kept row names the account. `lineageRows` counts every chain-reset row of the account
+ * (the table has no audit type; 0043 removes them all, as 0036 did). `activeSessions` is 0 whenever
+ * the purge is allowed to run: a party of the active session is refused first (D43).
  */
 export const PURGE_FORECAST = `SELECT
-  (SELECT count(*)::int FROM public.audit_log           WHERE actor_id = $1)     AS "auditRows",
+  (SELECT count(*)::int FROM public.audit_log           WHERE actor_id = $1 AND type <> ALL ($2::text[])) AS "auditRows",
   (SELECT count(*)::int FROM public.audit_chain_history WHERE actor_id = $1)     AS "lineageRows",
   (SELECT count(*)::int FROM public.auth_sessions       WHERE operator_id = $1)  AS "signInRows",
   (SELECT count(*)::int FROM public.biometric_tokens    WHERE operator_id = $1)  AS "biometricTokens",
   (SELECT count(*)::int FROM public.operator_credentials WHERE operator_id = $1) AS "credentialsRemoved",
   (SELECT count(*)::int FROM public.pairing_codes       WHERE issued_by_operator_id = $1) AS "pairingCodes",
   (SELECT count(*)::int FROM public.active_session      WHERE investigator_id = $1)       AS "activeSessions",
-  (SELECT min(seq) FROM public.audit_log WHERE actor_id = $1)                             AS "resealFromSeq"`;
+  (SELECT min(seq) FROM public.audit_log WHERE actor_id = $1 AND type <> ALL ($2::text[])) AS "resealFromSeq",
+  EXISTS (SELECT 1 FROM public.audit_log WHERE actor_id = $1 AND type = ANY ($2::text[]))  AS "accountKept"`;
 
 /** The same counts the purge function will answer with, taken before the erasure. */
 export async function purgeForecast(db: Queryable, operatorId: string): Promise<PurgeCounts> {
-  const { rows } = await db.query<PurgeCounts & QueryResultRow>(PURGE_FORECAST, [operatorId]);
+  const { rows } = await db.query<PurgeCounts & QueryResultRow>(PURGE_FORECAST, [operatorId, PURGE_KEPT_AUDIT_TYPES]);
   const row = rows[0];
   if (row === undefined) throw new CoreError('AUDIT_PURGE_ANSWER_INVALID', 'the purge forecast read nothing');
   return {
@@ -331,6 +385,7 @@ export async function purgeForecast(db: Queryable, operatorId: string): Promise<
     activeSessions: row.activeSessions,
     operatorId,
     resealFromSeq: row.resealFromSeq === null ? null : Number(row.resealFromSeq),
+    accountKept: row.accountKept === true,
   };
 }
 
@@ -338,7 +393,8 @@ export async function purgeForecast(db: Queryable, operatorId: string): Promise<
 export function samePurge(a: PurgeCounts, b: PurgeCounts): boolean {
   return a.auditRows === b.auditRows && a.lineageRows === b.lineageRows && a.signInRows === b.signInRows
     && a.biometricTokens === b.biometricTokens && a.credentialsRemoved === b.credentialsRemoved
-    && a.pairingCodes === b.pairingCodes && a.activeSessions === b.activeSessions && a.resealFromSeq === b.resealFromSeq;
+    && a.pairingCodes === b.pairingCodes && a.activeSessions === b.activeSessions && a.resealFromSeq === b.resealFromSeq
+    && a.accountKept === b.accountKept;
 }
 
 /** Erase the account and what belongs to it. Must be the last-but-one statement of its unit. */
@@ -355,6 +411,8 @@ export async function purgeOperator(db: Queryable, operatorId: string, actorId: 
   if (typeof given.operatorId !== 'string' || given.operatorId !== operatorId) throw new CoreError('AUDIT_PURGE_ANSWER_INVALID', 'the purge function names an operator other than the one this unit targeted');
   const from = given.resealFromSeq;
   if (from !== null && (typeof from !== 'number' || !Number.isInteger(from) || from < 1)) throw new CoreError('AUDIT_PURGE_ANSWER_INVALID', 'the purge counts hold no usable first removed sequence');
+  // Migration 0043 (D38 DR-1): whether the account row stayed, disabled, under its kept rows.
+  if (typeof given.accountKept !== 'boolean') throw new CoreError('AUDIT_PURGE_ANSWER_INVALID', 'the purge counts do not say whether the account was kept');
   return {
     operatorId,
     auditRows: count('auditRows'),
@@ -365,7 +423,30 @@ export async function purgeOperator(db: Queryable, operatorId: string, actorId: 
     pairingCodes: count('pairingCodes'),
     activeSessions: count('activeSessions'),
     resealFromSeq: (from ?? null) as number | null,
+    accountKept: given.accountKept,
   };
+}
+
+// ── The active session's parties: a purge never runs under them (decision D43) ─────────────────
+
+/** The people the active session names, as `rule.ts` judges them. At most one row: the table is a singleton. */
+export interface ActiveSessionParties {
+  readonly sessionId: string;
+  readonly investigatorId: string;
+  readonly createdBy: string | null;
+  readonly startedBy: string | null;
+  readonly stoppedBy: string | null;
+}
+
+export const READ_ACTIVE_SESSION_PARTIES =
+  'SELECT id, investigator_id, created_by, started_by, stopped_by FROM public.active_session';
+
+/** The active session's parties, or null when no session is active. A read: it changes nothing. */
+export async function readActiveSessionParties(db: Queryable): Promise<ActiveSessionParties | null> {
+  const { rows } = await db.query<{ id: string; investigator_id: string; created_by: string | null; started_by: string | null; stopped_by: string | null }>(READ_ACTIVE_SESSION_PARTIES);
+  const row = rows[0];
+  if (row === undefined) return null;
+  return { sessionId: row.id, investigatorId: row.investigator_id, createdBy: row.created_by ?? null, startedBy: row.started_by ?? null, stoppedBy: row.stopped_by ?? null };
 }
 
 /**
@@ -470,6 +551,30 @@ export async function resealChain(db: Queryable, operatorId: string, resealFromS
   const last = sealed.length === 0 ? 0 : (sealed[sealed.length - 1] as AuditRow).seq;
   if (!Number.isFinite(headSeq) || (sealed.length > 0 && headSeq !== last)) throw new CoreError('AUDIT_RESEAL_ANSWER_INVALID', 'the chain head is not the last row this unit sealed');
   return { rows: given.rows, headSeq };
+}
+
+// ── The chain after the seal, for the engine (row 94; DF-27, decision D21(3)) ─────────────────
+
+const CHAIN_HEAD_SQL = 'SELECT seq, hash FROM public.audit_chain_head';
+
+const CHAIN_RING_SQL = `SELECT seq, id, at, type, category, severity,
+       actor_id AS "actorId", message, session_id AS "sessionId", evidence_id AS "evidenceId",
+       device_id AS "deviceId", details, prev_hash AS "prevHash", hash
+  FROM public.audit_log ORDER BY seq DESC LIMIT $1`;
+
+/**
+ * The stored chain AFTER a re-seal, read inside the purge unit (which still holds the chain lock):
+ * the head and the newest `ringSize` rows, oldest first, mapped as the seal mapped them (and as boot
+ * check B-8 and a rehydration read them). The unit hands this to `unit.audit.resealed`, so the engine
+ * takes the new hashes when the unit commits instead of failing its next write on the old ones.
+ */
+export async function readResealedChain(db: Queryable, ringSize: number): Promise<ResealedChain> {
+  const heads = await db.query<{ seq: string | number; hash: string }>(CHAIN_HEAD_SQL);
+  const stored = heads.rows[0];
+  if (stored === undefined || heads.rows.length !== 1) throw new CoreError('AUDIT_RESEAL_ANSWER_INVALID', 'the chain head after the seal is not one row');
+  const newestFirst = (await db.query<TailRow>(CHAIN_RING_SQL, [ringSize])).rows;
+  const rows = newestFirst.reverse().map((row): AuditRow => ({ ...auditBodyOfStored(row), prevHash: row.prevHash, hash: row.hash }) as AuditRow);
+  return { head: { seq: Number(stored.seq), hash: stored.hash }, rows };
 }
 
 // ── Why a delete is refused, in numbers ────────────────────────────────────────────────────────

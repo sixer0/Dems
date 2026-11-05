@@ -3,8 +3,9 @@ import { Alert, ListBox } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ChevronRight, Lightbulb, MapPinned, Network, ShieldCheck, TabletSmartphone, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { SessionState } from '@dems/shared/domain'
 import { useSim, type SimState } from '@dems/shared/sim'
-import { useOwnCaptureCore, usePlatformNotReported } from '@/lib/own-capture'
+import { useOwnCaptureCore, usePlatformNotReported, useSelfCaptureCore } from '@/lib/own-capture'
 import { useAmbientLoop, useMotionPolicy } from '@/motion'
 import { useDeviceActions } from './context'
 import { IdentifyRing } from './device-menu'
@@ -24,6 +25,8 @@ interface OtherModel {
   satellites: number
   timeSource: SimState['time']['source']
   tpm: DeviceStatusCode
+  /** DF-22 (register S13): a session is RECORDING on the Core right now. */
+  recording: boolean
 }
 
 function selectOther(state: SimState): OtherModel {
@@ -38,7 +41,16 @@ function selectOther(state: SimState): OtherModel {
     satellites: state.time.gnss.satellites,
     timeSource: state.time.source,
     tpm: deviceStatus(state, 'TPM'),
+    recording: state.session?.state === SessionState.RECORDING,
   }
+}
+
+/**
+ * DF-22 / U-11 (register S10, S13): the operator-device-offline body says "Recording continues on the Core" only while
+ * a session is RECORDING. With nothing recording it says so instead of claiming a recording that does not exist.
+ */
+export function tabletOfflineBodyKey(recording: boolean): 'devices.other.tabletOfflineBody' | 'devices.other.tabletOfflineIdleBody' {
+  return recording ? 'devices.other.tabletOfflineBody' : 'devices.other.tabletOfflineIdleBody'
 }
 
 const ICONS: Record<OtherDeviceId, LucideIcon> = {
@@ -54,8 +66,8 @@ const ICONS: Record<OtherDeviceId, LucideIcon> = {
  * `ListBox` of the PoE switch (book view: PoE CAM 1 active, CAM 2/AUX spare; the simulator's 2-port model, D79), the
  * recording indicator relay with its "SEDANG MEREKAM" lamp, the tablet control link, the GNSS
  * receiver and the TPM / Secure Element (the simulator's platform devices). Choosing a row opens the drawer. When the
- * tablet goes OFFLINE, its chip escalates once and the "recording continues" `Alert` slides in
- * (S9, M-PG-DEV data moment).
+ * tablet goes OFFLINE, its chip escalates once and the operator-device-offline `Alert` slides in
+ * (S9, M-PG-DEV data moment); its body claims "recording continues" only while a session is RECORDING (DF-22, S13).
  */
 export function OtherDevices() {
   const { t } = useTranslation()
@@ -68,7 +80,11 @@ export function OtherDevices() {
   // and has no GNSS receiver (no "No fix · time from RTC"). A TPM row that shows a fault keeps it.
   const tpmNotReported = usePlatformNotReported() && model.tpm === 'OK'
   const gnssNotConfigured = useOwnCaptureCore()
+  // Audit fix rows 104/107 (DF-21, U-10, register S7): a Core in its own capture has no producer for the PoE switch
+  // book view or the relay lamp - those rows read "Not reported" instead of the appliance model's values.
+  const noProducer = useSelfCaptureCore() // the one rule row 104's NoProducerGate also reads
   const notReported: Partial<Record<OtherDeviceId, string>> = {
+    ...(noProducer ? { 'POE-SWITCH': t('system.noProducer'), 'REC-INDICATOR': t('system.noProducer') } : {}),
     ...(tpmNotReported ? { TPM: t('common.platformNotReported.note') } : {}),
     ...(gnssNotConfigured ? { GNSS: t('web.realCore.devices.gnssNotConfigured') } : {}),
   }
@@ -108,7 +124,9 @@ export function OtherDevices() {
             const code = codes[id]
             const Icon = ICONS[id]
             let trailing: ReactNode
-            if (id === 'REC-INDICATOR') trailing = <RecordingLamp lit={code === 'LAMP_ON'} />
+            if (noProducer && (id === 'POE-SWITCH' || id === 'REC-INDICATOR'))
+              trailing = <StatusChip tone="default" label={t('system.noProducer')} severity={STATUS_SEVERITY.OK} testId={`other-status-${id}`} />
+            else if (id === 'REC-INDICATOR') trailing = <RecordingLamp lit={code === 'LAMP_ON'} />
             else if (notReported[id] !== undefined)
               trailing = <StatusChip tone="default" label={t(id === 'GNSS' ? 'web.ownCore.time.notConfigured' : 'common.platformNotReported.value')} severity={STATUS_SEVERITY.OK} testId={`other-status-${id}`} />
             else
@@ -145,11 +163,11 @@ export function OtherDevices() {
             exit={{ opacity: 0 }}
             transition={m.reduced ? m.transitions.crossFade : { duration: m.seconds(240), ease: [0.2, 0, 0, 1] }}
           >
-            <Alert status="warning" data-testid="tablet-offline-alert">
+            <Alert status="warning" data-testid="tablet-offline-alert" data-recording={model.recording ? 'true' : 'false'}>
               <Alert.Indicator />
               <Alert.Content>
                 <Alert.Title>{t('devices.other.tabletOfflineTitle')}</Alert.Title>
-                <Alert.Description>{t('devices.other.tabletOfflineBody')}</Alert.Description>
+                <Alert.Description>{t(tabletOfflineBodyKey(model.recording))}</Alert.Description>
               </Alert.Content>
             </Alert>
           </motion.div>

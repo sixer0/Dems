@@ -880,7 +880,7 @@ describe('the indexed view of the media session', () => {
       // REVISED 2026-11-02 (principal): three user-management operations and audit types added to the registry.
       const methods = CORE_API_OPERATIONS.map((operation) => String(operation.method).toUpperCase());
       expect([methods.length, methods.filter((method) => method === 'GET').length, methods.filter((method) => method === 'POST').length]).toEqual([119, 41, 78]);
-      expect(Object.keys(AuditType)).toHaveLength(91);
+      expect(Object.keys(AuditType)).toHaveLength(93); // audit fix row 84: + CAMERA_LINK_DOWN, CAMERA_LINK_UP
     });
   });
 });

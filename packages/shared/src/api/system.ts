@@ -94,7 +94,7 @@ export type SystemStatus = z.output<typeof SystemStatusSchema>;
 /** The versions a Core in its own capture states (fix wave J round two, JW-26). A Core in SIMULATED capture states no `captureWorker`. */
 export const SYSTEM_COMPONENTS_EXAMPLE = {
   core: { name: 'dems-core-server', version: '0.2.0' },
-  captureWorker: { version: 'capture-worker/0.6.0' },
+  captureWorker: { version: 'capture-worker/0.7.0' },
   apiContract: { version: '0.3.0' },
 } as const satisfies NonNullable<SystemStatus['components']>;
 

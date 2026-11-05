@@ -145,6 +145,13 @@ export const system = {
     simulated: 'Simulated update',
   },
 
+  /**
+   * Audit fix row 104 (DF-21, ruling D25 N3; register S7): the value of a block that has no producer on a Core
+   * in its own capture (the appliance model's services, health, port map, front panel, volumes, domains). Such a
+   * block draws this in place of the model's values - never "Synthetic demo values" (`about.synthetic`, S8).
+   */
+  noProducer: 'Not reported',
+
   about: {
     title: 'About / Identity',
     deviceId: 'Device ID',

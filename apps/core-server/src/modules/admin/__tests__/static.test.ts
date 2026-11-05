@@ -18,6 +18,9 @@
 //   7. The module reaches other folders only through the seams and the plugins.
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { AuditType } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
 import * as statements from '../statements';
@@ -147,7 +150,17 @@ describe('rule 2 (M3): who may call is stage 6, only', () => {
   });
 
   it('writes no denial row and takes no place in the denial budget: neither of its refusals is audited', () => {
-    expect(places(DENIAL)).toEqual([]);
+    // REVISED 2026-11-05 (row 95, D22(4), migration 0043): `PURGE_KEPT_AUDIT_TYPES` NAMES the
+    // export-denied type as a row a purge must keep. Naming it to keep it is not writing it: that one
+    // line is the only hit, and it lies inside that list.
+    const lines = textOf('statements.ts').split('\n');
+    const start = lines.findIndex((line) => line.startsWith('export const PURGE_KEPT_AUDIT_TYPES'));
+    const end = lines.findIndex((line, index) => index > start && line.startsWith('] as const'));
+    const hits = places(DENIAL);
+    expect(hits).toHaveLength(1);
+    const line = Number(/^src\/modules\/admin\/statements\.ts:(\d+)$/.exec(hits[0] ?? '')?.[1] ?? 0);
+    expect(line).toBeGreaterThan(start + 1);
+    expect(line).toBeLessThan(end + 1);
   });
 
   // REVISED 2026-11-02 (principal): RB-9 amended — the amendment adds the ONE thing the registry's
@@ -274,7 +287,10 @@ describe('rule 4 (M5): one unit per change, one audit path, publications after t
     // REVISED again 2026-11-02 (backend move of 15:01): a reference no longer refuses the delete —
     // the unit counts them, announces them and purges. The builder is gone, so is its throw.
     expect(count(changes, /throw operatorStillReferenced\(/g)).toBe(0);
-    expect(count(changes, /new ApiFailure\(409, ApiErrorCode\.INVALID_STATE,/g)).toBe(1);
+    // REVISED 2026-11-05 (row 95, decision D43): the second 409 INVALID_STATE is the refusal of a
+    // party of the active session, built once (`activeSessionParty`) and thrown once, before any write.
+    expect(count(changes, /new ApiFailure\(409, ApiErrorCode\.INVALID_STATE,/g)).toBe(2);
+    expect(count(changes, /throw activeSessionParty\(/g)).toBe(1);
     expect(changes).toMatch(/new ApiFailure\(403, ApiErrorCode\.NOT_PERMITTED,/);
     expect(changes).toMatch(/new ApiFailure\(422, ApiErrorCode\.INVALID_INPUT,/);
     // The identity half of the narrowed rule is read on the caller's own row, inside the unit.
@@ -316,6 +332,8 @@ describe('rule 5: the statements', () => {
       'NEXT_OPERATOR_ID',
       'PURGE_FORECAST',
       'PURGE_OPERATOR',
+      // Row 95 (D43): the active session's parties, read before a purge so a party is refused.
+      'READ_ACTIVE_SESSION_PARTIES',
       'READ_ROLES_HOLDING',
       'READ_ROLE_PERMISSIONS',
       'READ_USER',
@@ -400,7 +418,7 @@ describe('rule 5: the statements', () => {
     const own = ['auth_sessions', 'operators', 'permissions', 'role_permissions', 'operator_credentials'];
     expect(
       list
-        .filter(([name, text]) => !['REFERENCED_BY', 'PURGE_FORECAST'].includes(name) && [...text.matchAll(/\bpublic\.([a-z_]+)\b(?!\s*\()/g)].some((match) => !own.includes(match[1] ?? '')))
+        .filter(([name, text]) => !['REFERENCED_BY', 'PURGE_FORECAST', 'READ_ACTIVE_SESSION_PARTIES'].includes(name) && [...text.matchAll(/\bpublic\.([a-z_]+)\b(?!\s*\()/g)].some((match) => !own.includes(match[1] ?? '')))
         .map(([name]) => name),
     ).toEqual([]);
     // The two functions of migration 0036 are the only route this module has to the chain, and both
@@ -510,6 +528,83 @@ describe('rule 5: the statements', () => {
     expect(byName['READ_USER']).toMatch(/ FROM public\.operators o WHERE o\.id = \$1$/);
     expect(byName['LIST_USERS']?.replace(/ ORDER BY o\.id$/, '')).toBe(byName['READ_USER']?.replace(/ WHERE o\.id = \$1$/, ''));
     expect(byName['LIST_USERS']).toMatch(/s\.ended_at IS NULL\) AS active_sessions/);
+  });
+});
+
+// Row 95 (DF-28; decisions D22(4), D38 DR-1 and DR-8, D43; migration 0043): the purge keeps the
+// evidence-chain audit types. The list lives twice, once for the forecast (TypeScript) and once in
+// the function (SQL); this pins the two equal, so the forecast cannot count a different erasure
+// than the one the database performs (`samePurge` would then fail every purge).
+describe('row 95: the kept audit types of the purge (migration 0043)', () => {
+  const migration = readFileSync(join(WORKSPACE, 'src/db/migrations/0043_operator_purge_scope.sql'), 'utf8');
+  const sqlKept = (): string[] => {
+    const block = /v_kept CONSTANT text\[\] := ARRAY\[([\s\S]*?)\];/.exec(migration)?.[1] ?? '';
+    return [...block.matchAll(/'([A-Z_]+)'/g)].map((match) => match[1] ?? '');
+  };
+
+  it('the TypeScript list is the 28 types of register E5, each an existing AuditType, without repeats', () => {
+    expect(statements.PURGE_KEPT_AUDIT_TYPES).toHaveLength(28);
+    expect(new Set(statements.PURGE_KEPT_AUDIT_TYPES).size).toBe(28);
+    const known = new Set<string>(Object.values(AuditType));
+    expect(statements.PURGE_KEPT_AUDIT_TYPES.filter((type) => !known.has(type))).toEqual([]);
+    // Personal rows stay purgeable (D38 DR-8): none of these is kept.
+    for (const personal of ['AUTH_SUCCESS', 'USER_CREATED', 'USER_DELETED', 'ROLE_CHANGED', 'OPERATOR_PASSWORD_SET', 'ACCESS_DENIED']) {
+      if (known.has(personal)) expect(statements.PURGE_KEPT_AUDIT_TYPES, personal).not.toContain(personal);
+    }
+  });
+
+  it('the SQL list of 0043 equals the TypeScript list, in the same order', () => {
+    expect(sqlKept()).toEqual([...statements.PURGE_KEPT_AUDIT_TYPES]);
+  });
+
+  it('the function and the forecast skip the kept types in the same three places: the count, the first removed sequence, the account', () => {
+    // The function: the removed range, the DELETE of the chain rows, the account kept while a row names it.
+    expect(migration).toMatch(/SELECT min\(seq\), max\(seq\) INTO v_first, v_last FROM public\.audit_log\s+WHERE actor_id = p_operator_id AND type <> ALL \(v_kept\);/);
+    expect(migration).toMatch(/DELETE FROM public\.audit_log\s+WHERE actor_id = p_operator_id AND type <> ALL \(v_kept\);/);
+    expect(migration).toMatch(/v_account_kept := EXISTS \(SELECT 1 FROM public\.audit_log WHERE actor_id = p_operator_id\);/);
+    // D43: the database's own guard, before the ticket opens anything.
+    expect(migration.indexOf("USING ERRCODE = 'ZA007'")).toBeGreaterThan(0);
+    expect(migration.indexOf("USING ERRCODE = 'ZA007'")).toBeLessThan(migration.indexOf('INSERT INTO public.audit_purge_ticket'));
+    // The forecast: the same filter on the count and on the first removed sequence, and the kept flag.
+    const forecast = statements.PURGE_FORECAST.replace(/\s+/g, ' ');
+    expect(forecast).toContain('FROM public.audit_log WHERE actor_id = $1 AND type <> ALL ($2::text[])) AS "auditRows"');
+    expect(forecast).toContain('(SELECT min(seq) FROM public.audit_log WHERE actor_id = $1 AND type <> ALL ($2::text[])) AS "resealFromSeq"');
+    expect(forecast).toContain('EXISTS (SELECT 1 FROM public.audit_log WHERE actor_id = $1 AND type = ANY ($2::text[])) AS "accountKept"');
+  });
+
+  // Cycle 3 (decision D67; DB window DBW1 R-1): 0043 also replaces `audit_purge_reseal`. Its body is
+  // the applied 0038 body plus exactly one branch, the empty tail, so the head is never set to NULL.
+  it('the re-seal of 0043 is the re-seal of 0038 plus the empty-tail branch, and the head is never set from an unset variable', () => {
+    const fnOf = (text: string): string => {
+      const start = text.indexOf('FUNCTION public.audit_purge_reseal(');
+      return text.slice(start, text.indexOf('$$;', text.indexOf('AS $$', start)) + 3);
+    };
+    const applied = fnOf(readFileSync(join(WORKSPACE, 'src/db/migrations/0038_operator_purge_reseal_correction.sql'), 'utf8'));
+    const replaced = fnOf(migration);
+    const branch = /  -- 0043 \(row 95 cycle 3, D67\)[\s\S]*?  IF v_count = 0 THEN\n[\s\S]*?\n  END IF;\n/.exec(replaced)?.[0] ?? '';
+    expect(branch).toContain("v_last_seq := 0; v_last_hash := repeat('0', 64);");
+    expect(branch).toContain('WHERE l.seq < v_reseal_from ORDER BY l.seq DESC LIMIT 1;');
+    expect(replaced.replace(branch, '')).toBe(applied);
+    // The branch sits right before the one head update, and the search path is 0038's.
+    expect(replaced.indexOf(branch) + branch.length).toBe(replaced.indexOf('  UPDATE public.audit_chain_head SET seq = v_last_seq, hash = v_last_hash WHERE singleton;'));
+    expect(replaced).toContain('SET search_path = pg_catalog, pg_temp');
+    // Two functions, one breakpoint line between them, and no grant (a replaced function keeps the grants of 0036).
+    expect(migration.split('\n').filter((line) => line === ['-->', 'statement-breakpoint'].join(' '))).toHaveLength(1);
+    expect(migration).not.toMatch(/\b(?:GRANT|REVOKE)\b/);
+  });
+
+  it('D43: the delete reads the active session and refuses a party of it before its first write', () => {
+    const changes = textOf('changes.ts');
+    const unit = changes.slice(changes.indexOf('export function deleteUser('));
+    const refusal = unit.indexOf('throw activeSessionParty(');
+    expect(refusal).toBeGreaterThan(unit.indexOf('readActiveSessionParties(unit)'));
+    for (const write of ['app.sessionRegistry.endForOperator(', 'revokeBiometricTokens(', 'unit.audit.append(', 'purgeOperator(unit']) {
+      expect(unit.indexOf(write), write).toBeGreaterThan(refusal);
+    }
+    // Row 94's order stands: the re-seal is the last write, then the read-back for the engine.
+    expect(unit.indexOf('await resealChain(unit')).toBeGreaterThan(unit.indexOf('purgeOperator(unit'));
+    expect(unit.indexOf('readResealedChain(unit')).toBeGreaterThan(unit.indexOf('await resealChain(unit'));
+    expect(statements.READ_ACTIVE_SESSION_PARTIES).toBe('SELECT id, investigator_id, created_by, started_by, stopped_by FROM public.active_session');
   });
 });
 

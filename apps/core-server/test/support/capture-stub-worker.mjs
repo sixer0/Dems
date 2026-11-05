@@ -82,7 +82,7 @@ if (args.includes('--lavf-mismatch')) {
   // The release word of the worker of this tree (`apps/capture-worker/src/worker.h`), as the fake worker of
   // `capture.ts` says it: the supervisor holds EVERY HELLO to the version rule of the boot check since fix
   // pass F-M3 (review R63-04) and ends a worker that says another. `tidy-fy.test.ts` holds the word equal.
-  write({ type: 'HELLO', protocolVersion: PROTOCOL_VERSION, workerVersion: 'capture-worker/0.6.0' });
+  write({ type: 'HELLO', protocolVersion: PROTOCOL_VERSION, workerVersion: 'capture-worker/0.7.0' });
   if (args.includes('--garbage')) process.stdout.write('this line is no frame\n');
   timer = setInterval(() => write({ type: 'HEARTBEAT', counter: (counter += 1) }), heartbeatMs);
 }

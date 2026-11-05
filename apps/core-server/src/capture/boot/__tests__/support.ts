@@ -17,7 +17,8 @@
  * `remove()` removes both; the test calls it in its teardown (`afterAll`), which runs after a failed case
  * too. A fixture a test did not remove is removed when the test process ends.
  */
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { CAPTURE_PROTOCOL_VERSION } from '@dems/capture-protocol';
@@ -120,6 +121,32 @@ function standIn(directory: string, name: string, workerVersion: string, protoco
   const hello = JSON.stringify({ v: CAPTURE_PROTOCOL_VERSION, type: 'HELLO', protocolVersion, workerVersion });
   writeFileSync(path, `#!/bin/sh\nprintf '%s\\n' '${hello}'\nexec /bin/cat > /dev/null\n`, { mode: 0o700 });
   chmodSync(path, 0o700);
+  // Audit 2026-11-05 row 88 (DF-02, boot check 5b): every stand-in carries the build stamp a build of THIS tree writes
+  // beside its program (`apps/capture-worker/stamp.sh`) - so a stand-in boots as a built worker does. A test of the
+  // check itself removes or rewrites the stamp (`writeWorkerStamp`).
+  writeWorkerStamp(path);
+  return path;
+}
+
+/** Register W8: the four lines of a build stamp, in their order, LF ends. The defaults are those of a build of this tree. */
+export function workerStampText(fields: { readonly workerVersion?: string; readonly protocolVersion?: number | string; readonly sourceSha256?: string; readonly binarySha256: string }): string {
+  const { workerVersion = CAPTURE_WORKER_VERSION, protocolVersion = CAPTURE_PROTOCOL_VERSION, sourceSha256 = '0'.repeat(64), binarySha256 } = fields;
+  return `workerVersion=${workerVersion}\nprotocolVersion=${protocolVersion}\nsourceSha256=${sourceSha256}\nbinarySha256=${binarySha256}\n`;
+}
+
+/** The sha256 of a file as the stamp writes it: 64 lowercase hex. */
+export function fileSha256(path: string): string {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
+
+/**
+ * Writes `<program>.stamp` (mode 0600, the path rule of a program holds for it) and returns its path. With no
+ * `text`, the stamp of a build of this tree naming the program as it is now; with `text`, those bytes as given.
+ */
+export function writeWorkerStamp(program: string, text?: string): string {
+  const path = `${program}.stamp`;
+  writeFileSync(path, text ?? workerStampText({ binarySha256: fileSha256(program) }), { mode: 0o600 });
+  chmodSync(path, 0o600);
   return path;
 }
 

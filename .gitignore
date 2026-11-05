@@ -130,3 +130,8 @@ ggml-*.bin
 !packages/shared/assets/demo-evidence/**/media/**
 !apps/mobile/assets/media/**
 !docs/2026-10-04_dems_backend_rbac_pairing/**/*.mp4
+
+# C-LCD backend: Python bytecode and hand-made backups (DF-37, D20(b))
+__pycache__/
+*.pyc
+apps/lcd-backend/**/*.bak-*

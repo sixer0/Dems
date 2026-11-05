@@ -75,7 +75,7 @@ const HOUR = 60 * MINUTE;
 const TICK_MS = 50;
 /** How long the server is down in a restart of this file. Under the idle limit of a session. */
 const STOP_MS = 90 * SECOND;
-/** The engine resolves the eight checks within 4.9 s, stops in 1.5 s, finalises in at most 7.2 s and recovers in 3 s. */
+/** The engine resolves the twelve checks within 4.9 s, stops in 1.5 s, finalises in at most 7.2 s and recovers in 3 s. */
 const PRECHECK_MS = 5 * SECOND;
 const FINALIZE_MS = 20 * SECOND;
 const RECOVERY_MS = 4 * SECOND;

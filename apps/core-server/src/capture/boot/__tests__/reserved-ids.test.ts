@@ -244,7 +244,8 @@ describe('row 228b, the boot fixture: its key lies in a temporary directory of t
       const worker = fixture.worker('worker-hygiene');
       expect(worker.startsWith(`${FIXTURE_PROGRAMS_ROOT}/`)).toBe(true);
       expect(FIXTURE_PROGRAMS_ROOT).toBe(resolve(REPOSITORY, '.cache', 'test-row61-programs'));
-      expect(namesOf(fixture.programsDir)).toEqual(['worker-hygiene']);
+      // Audit 2026-11-05 row 88 (DF-02): a stand-in carries the build stamp a build of this tree writes beside it (check 5b).
+      expect(namesOf(fixture.programsDir)).toEqual(['worker-hygiene', 'worker-hygiene.stamp']);
       expect(lstatSync(fixture.programsDir).mode & 0o777).toBe(0o700);
     } finally {
       const { dataDir, programsDir } = fixture;

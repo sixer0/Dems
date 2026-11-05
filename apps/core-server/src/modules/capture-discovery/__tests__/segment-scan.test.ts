@@ -14,15 +14,22 @@ import { CaptureCandidateStatus, CaptureConnectionOutcome, CaptureDiscoveryState
 import { SessionState, VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain';
 import { describe, expect, it } from 'vitest';
 import { sourceClassOf } from '../../../capture/adapters';
-import type { AuditEntry } from '../../../core';
+import { detailRulesOf, type AuditEntry } from '../../../core';
+import type { CameraLinkSource, CameraLinkState } from '../../../capture';
 import { createCandidateStore, type CandidateStore } from '../store';
 import {
   AUTOATTACH_MAX_ADOPTS_PER_SWEEP,
   AUTOATTACH_SWEEP_INTERVAL_MS,
+  CAMERA_LINK_DOWN_MESSAGE,
+  CAMERA_LINK_POLL_INTERVAL_MS,
+  CAMERA_LINK_UP_MESSAGE,
   SEGMENT_NEIGHBOUR_COMMAND,
   SEGMENT_PROBE_MODEL,
   SYSTEM_OWNER_SESSION_ID,
   autoSearchIdOf,
+  cameraLinkDownEntry,
+  cameraLinkReaderOver,
+  cameraLinkUpEntry,
   createSegmentSweeper,
   firstEmptyVideoTrack,
   foundOfProbe,
@@ -438,5 +445,177 @@ describe('D62: the search id of a sweep', () => {
     expect(autoSearchIdOf(T0, 1)).toMatch(/^DSC-\d{13,14}$/);
     expect(autoSearchIdOf(1, 12)).toBe('DSC-0000000000012');
     expect(autoSearchIdOf(T0, 1)).not.toBe(autoSearchIdOf(T0, 2));
+  });
+});
+
+// ── The camera link (audit 2026-11-05 row 102; DF-24, DF-25; decisions D23 (1, 2), D41, D58) ──────────────────────
+
+/** A fake carrier: the state a test sets is what the next reading says; `reads` counts the readings. */
+function fakeLink(initial: CameraLinkState): { set(state: CameraLinkState): void; readonly reads: () => number; readonly readLink: () => Promise<CameraLinkState> } {
+  let state = initial;
+  let reads = 0;
+  return {
+    set: (next) => { state = next; },
+    reads: () => reads,
+    readLink: async () => {
+      reads += 1;
+      return state;
+    },
+  };
+}
+
+const linkRows = (audits: readonly AuditEntry[]): AuditEntry[] => audits.filter((entry) => entry.type === 'CAMERA_LINK_DOWN' || entry.type === 'CAMERA_LINK_UP');
+const searchRows = (audits: readonly AuditEntry[]): AuditEntry[] => audits.filter((entry) => entry.type === 'CAPTURE_DISCOVERY_SEARCHED');
+
+describe('row 102 (DF-24, DF-25): the sweep follows the camera link', () => {
+  it('link-up runs ONE sweep at once and keeps the 60 s timer; DOWN runs no sweep and writes no row but ONE CAMERA_LINK_DOWN; the return writes ONE CAMERA_LINK_UP with downMs', async () => {
+    const h = harness({ neighbours: [{ ip: '192.168.7.11', mac: null }], probes: { '192.168.7.11': { onvif: true, rtsp: false } } });
+    const link = fakeLink('UP');
+    h.options.readLink = link.readLink;
+    const sweepTicks: (() => void)[] = [];
+    const linkTicks: (() => void)[] = [];
+    h.options.schedule = (tick) => { sweepTicks.push(tick); return () => undefined; };
+    h.options.scheduleLinkPoll = (tick) => { linkTicks.push(tick); return () => undefined; };
+    const sweeper = createSegmentSweeper(h.options);
+    sweeper.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Both timers are scheduled once; the first reading (UP) is no edge: no row, no sweep.
+    expect(sweepTicks).toHaveLength(1);
+    expect(linkTicks).toHaveLength(1);
+    expect(CAMERA_LINK_POLL_INTERVAL_MS).toBe(5_000);
+    expect(AUTOATTACH_SWEEP_INTERVAL_MS).toBe(60_000);
+    expect(link.reads()).toBe(1);
+    expect(h.audits).toEqual([]);
+    expect(h.probed).toEqual([]);
+
+    // The cable is pulled: one DOWN row (previous UP, WARNING, register message), no sweep.
+    h.setNow(T0 + 1_000);
+    link.set('DOWN');
+    expect(await sweeper.pollLink()).toEqual({ state: 'DOWN', audited: 'CAMERA_LINK_DOWN', sweep: null });
+    // Ten minutes of polls and 60 s ticks with the link down: still the one row, no search row, no probe.
+    for (let minute = 1; minute <= 10; minute += 1) {
+      h.setNow(T0 + 1_000 + minute * 60_000);
+      for (let poll = 0; poll < 12; poll += 1) expect((await sweeper.pollLink()).audited).toBeNull();
+      expect(await sweeper.sweep()).toMatchObject({ ran: false, skipped: 'LINK_DOWN' });
+    }
+    expect(h.audits).toEqual([cameraLinkDownEntry('UP')]);
+    expect(h.probed).toEqual([]);
+    expect(h.logs.filter((entry) => entry.message.includes('skipped'))).toEqual([]);
+
+    // The cable is back: one UP row with downMs and ONE immediate sweep, which writes its own search row.
+    h.setNow(T0 + 1_000 + 120_000 * 5);
+    link.set('UP');
+    const up = await sweeper.pollLink();
+    expect(up.audited).toBe('CAMERA_LINK_UP');
+    expect(up.sweep).toMatchObject({ ran: true, skipped: null, probed: 1, found: 1 });
+    expect(linkRows(h.audits)).toEqual([cameraLinkDownEntry('UP'), cameraLinkUpEntry('DOWN', 600_000)]);
+    expect(linkRows(h.audits)[1]).toEqual({ type: 'CAMERA_LINK_UP', message: CAMERA_LINK_UP_MESSAGE, severity: 'INFO', actorId: null, deviceId: null, details: { previous: 'DOWN', downMs: 600_000 } });
+    expect(searchRows(h.audits)).toHaveLength(1);
+    // Unchanged UP: no row, no second sweep from the poll; the 60 s fallback still sweeps.
+    expect(await sweeper.pollLink()).toEqual({ state: 'UP', audited: null, sweep: null });
+    expect(searchRows(h.audits)).toHaveLength(1);
+    sweepTicks[0]?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(searchRows(h.audits)).toHaveLength(2);
+    sweeper.stop();
+  });
+
+  it('UNKNOWN is never DOWN (D41): an unreadable link sweeps on the timer and writes no link row; DOWN -> UNKNOWN -> DOWN writes ONE DOWN row; a throwing reader is UNKNOWN', async () => {
+    const h = harness({ neighbours: [{ ip: '192.168.7.11', mac: null }] });
+    const link = fakeLink('UNKNOWN');
+    h.options.readLink = link.readLink;
+    const sweeper = createSegmentSweeper(h.options);
+    expect(await sweeper.pollLink()).toEqual({ state: 'UNKNOWN', audited: null, sweep: null });
+    expect((await sweeper.sweep()).ran).toBe(true);
+    link.set('ABSENT');
+    expect((await sweeper.pollLink()).audited).toBeNull();
+    expect((await sweeper.sweep()).ran).toBe(true);
+    expect(linkRows(h.audits)).toEqual([]);
+    link.set('DOWN');
+    expect((await sweeper.pollLink()).audited).toBe('CAMERA_LINK_DOWN');
+    link.set('UNKNOWN');
+    expect((await sweeper.pollLink()).audited).toBeNull();
+    link.set('DOWN');
+    expect((await sweeper.pollLink()).audited).toBeNull();
+    expect(linkRows(h.audits)).toEqual([cameraLinkDownEntry('ABSENT')]);
+    // A first reading of DOWN (Core started with the cable out) opens the row with previous UNKNOWN.
+    const cold = harness();
+    cold.options.readLink = async () => 'DOWN';
+    expect((await createSegmentSweeper(cold.options).pollLink()).audited).toBe('CAMERA_LINK_DOWN');
+    expect(cold.audits).toEqual([cameraLinkDownEntry('UNKNOWN')]);
+    const throwing = harness();
+    throwing.options.readLink = async () => { throw new Error('sysfs gone'); };
+    expect(await createSegmentSweeper(throwing.options).pollLink()).toEqual({ state: 'UNKNOWN', audited: null, sweep: null });
+  });
+
+  it('a link-up sweep that meets a busy store is owed and runs at the next poll; a failed link row is one warn line and the edge still counts', async () => {
+    const h = harness({ neighbours: [{ ip: '192.168.7.11', mac: null }] });
+    const link = fakeLink('DOWN');
+    h.options.readLink = link.readLink;
+    const sweeper = createSegmentSweeper(h.options);
+    await sweeper.pollLink();
+    h.store.begin({ sessionId: 'S-OPERATOR', searchId: 'DSC-000001', trigger: CaptureDiscoveryTrigger.MANUAL, startedAt: T0, windowMs: 3_000, interfaceCount: 1 });
+    link.set('UP');
+    expect((await sweeper.pollLink()).sweep).toMatchObject({ ran: false, skipped: 'SEARCH_RUNNING' });
+    h.store.complete('DSC-000001', [], { responderCount: 0, interfaceCount: 1, truncated: false, completedAt: T0 });
+    expect((await sweeper.pollLink()).sweep).toMatchObject({ ran: true });
+    expect((await sweeper.pollLink()).sweep).toBeNull();
+
+    const deaf = harness();
+    deaf.options.readLink = async () => 'DOWN';
+    deaf.options.audit = async () => { throw new Error('chain refused'); };
+    const deafSweeper = createSegmentSweeper(deaf.options);
+    expect((await deafSweeper.pollLink()).audited).toBe('CAMERA_LINK_DOWN');
+    expect((await deafSweeper.pollLink()).audited).toBeNull();
+    expect(deaf.logs.filter((entry) => entry.fields.code === 'CAMERA_LINK_AUDIT_FAILED')).toHaveLength(1);
+  });
+
+  it('the two rows carry exactly the keys of their allow-lists (D58: previous; downMs on UP only), the register messages and severities, and no interface or address', () => {
+    for (const entry of [cameraLinkDownEntry('UP'), cameraLinkUpEntry('DOWN', 1_500.7), cameraLinkUpEntry('UNKNOWN', null)]) {
+      const rules = detailRulesOf(entry.type);
+      expect(rules).toBeDefined();
+      for (const key of Object.keys(entry.details)) expect(Object.keys(rules ?? {})).toContain(key);
+      expect(entry.actorId).toBeNull();
+      expect(entry.deviceId).toBeNull();
+    }
+    expect(cameraLinkDownEntry('UP')).toEqual({ type: 'CAMERA_LINK_DOWN', message: CAMERA_LINK_DOWN_MESSAGE, severity: 'WARNING', actorId: null, deviceId: null, details: { previous: 'UP' } });
+    expect(CAMERA_LINK_DOWN_MESSAGE).toBe('Camera network link down');
+    expect(CAMERA_LINK_UP_MESSAGE).toBe('Camera network link up');
+    expect(cameraLinkUpEntry('DOWN', 1_500.7).details).toEqual({ previous: 'DOWN', downMs: 1_500 });
+    expect(cameraLinkUpEntry('UNKNOWN', null).details).toEqual({ previous: 'UNKNOWN' });
+  });
+
+  it('the production reader: the stored interface through the seam, re-read once a minute; no interface, a refused name or a failed read is UNKNOWN', async () => {
+    let nowMs = T0;
+    let stored: string | null = 'eth1';
+    let interfaceReads = 0;
+    const made: string[] = [];
+    const states: Record<string, CameraLinkState> = { eth1: 'UP', eth2: 'DOWN' };
+    const sourceOf = (name: string): CameraLinkSource => {
+      if (name === 'bad name') throw new RangeError('the camera interface is named by one interface name');
+      made.push(name);
+      return { interfaceName: name, read: async () => ({ state: states[name] ?? 'ABSENT', operstate: null, reason: null }) };
+    };
+    const read = cameraLinkReaderOver(async () => { interfaceReads += 1; if (stored === 'THROW') throw new Error('db down'); return stored; }, sourceOf, () => nowMs);
+    expect(await read()).toBe('UP');
+    expect(await read()).toBe('UP');
+    expect(interfaceReads).toBe(1);
+    stored = 'eth2';
+    expect(await read()).toBe('UP');
+    nowMs += 60_000;
+    expect(await read()).toBe('DOWN');
+    expect(made).toEqual(['eth1', 'eth2']);
+    nowMs += 60_000;
+    stored = null;
+    expect(await read()).toBe('UNKNOWN');
+    nowMs += 60_000;
+    stored = 'bad name';
+    expect(await read()).toBe('UNKNOWN');
+    nowMs += 60_000;
+    stored = 'THROW';
+    expect(await read()).toBe('UNKNOWN');
+    // A failed read of the stored row is retried at once on the next reading, not a minute later.
+    stored = 'eth1';
+    expect(await read()).toBe('UP');
   });
 });

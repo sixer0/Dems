@@ -952,3 +952,78 @@ describe('row NB: a production boot on darwin holds the two system programs of t
     expect(text).not.toMatch(/\/usr\/|ioreg|system_profiler/);
   });
 });
+
+// ── Audit 2026-11-05 row 88 (C-P0-1b, DF-02; D15(b), D38 DR-5/DR-6; register W3, W5, W9-W14): the worker version
+// moves to 0.7.0 with worker.h, and check 5b - the build stamp beside the program - refuses a stale stamp. The reader
+// of the stamp file is judged on real files in `boot.test.ts`; here it is a seam that answers a word.
+describe('row 88: THE version is capture-worker/0.7.0; an older worker is refused by its version; check 5b refuses a stale build stamp in REAL_PRODUCTION only', () => {
+  const OLDER = 'capture-worker/0.6.0';
+  const NEWER = 'capture-worker/9.0.0';
+  const STAMP_WORDS = ['STAMP_MISSING', 'STAMP_UNREADABLE', 'STAMP_VERSION_MISMATCH', 'STAMP_PROTOCOL_MISMATCH', 'STAMP_BINARY_MISMATCH'] as const;
+  /** A scene whose stamp reader answers `word` and records that it was asked. */
+  const stamped = (word: (typeof STAMP_WORDS)[number] | null, extra: Parameters<typeof scene>[0] = {}): Scene => {
+    const made = scene({ workerBuildStampProblem: () => (made.calls.push('stamp'), word), ...extra });
+    return made;
+  };
+
+  it('W3 pin: the constant is the new word; the version rule takes it and refuses the older (0.6.0) and a newer (9.0.0) release word by name', () => {
+    expect(CAPTURE_WORKER_VERSION).toBe('capture-worker/0.7.0');
+    expect(workerVersionRefusalOf({ protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: CAPTURE_WORKER_VERSION })).toBeNull();
+    expect(workerVersionRefusalOf({ protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: OLDER })).toBe(CaptureBootRefusal.WORKER_VERSION_MISMATCH);
+    expect(workerVersionRefusalOf({ protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: NEWER })).toBe(CaptureBootRefusal.WORKER_VERSION_MISMATCH);
+    expect(CaptureBootRefusal.WORKER_BUILD_STAMP_STALE).toBe('CAPTURE_WORKER_BUILD_STAMP_STALE');
+  });
+
+  it('an OLDER worker (0.6.0, the build before the 4+4 plan) is refused at HELLO by CAPTURE_WORKER_VERSION_MISMATCH with expected and found - the stamp is not asked (W14)', async () => {
+    const { deps, calls } = stamped(null, { hello: { outcome: 'HELLO', protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: OLDER } });
+    const failure = await refusalOf(deps);
+    expect([failure.code, failure.reason]).toEqual(['CAPTURE_WORKER_VERSION_MISMATCH', `expected capture-worker/0.7.0, found ${OLDER}`]);
+    expect(calls).toEqual(['inspect', 'volume', 'key', 'handshake']);
+  });
+
+  it('CONTROL: REAL_PRODUCTION, THE version and a stamp that vouches for the program - every check runs, the stamp LAST (after the worker answered), and the start passes', async () => {
+    const { deps, calls, recorded } = stamped(null);
+    await expect(runCaptureBootChecks(deps)).resolves.toEqual({ operation: 'REAL_PRODUCTION', label: null, workerVersion: CAPTURE_WORKER_VERSION, evidenceVolume: { totalBytes: 1_000_000_000_000, freeBytes: 400_000_000_000 } });
+    expect(calls).toEqual(['inspect', 'volume', 'key', 'handshake', 'stamp']);
+    expect(recorded.persisted).toEqual([]);
+  });
+
+  it('each word of the stamp reader is a refusal by the ONE code W9 with that word as the reason: logged, persisted, nothing passes; the sentence is W11', async () => {
+    for (const word of STAMP_WORDS) {
+      const { deps, calls, recorded } = stamped(word);
+      const failure = await refusalOf(deps);
+      expect([failure.code, failure.reason], word).toEqual(['CAPTURE_WORKER_BUILD_STAMP_STALE', word]);
+      expect(calls, word).toEqual(['inspect', 'volume', 'key', 'handshake', 'stamp']);
+      expect(recorded.lines.map((line) => [line.level, line.fields]), word).toEqual([['error', { code: 'CAPTURE_WORKER_BUILD_STAMP_STALE', operation: 'REAL_PRODUCTION', reason: word }]]);
+      expect(recorded.persisted, word).toEqual([{ level: 'error', source: 'capture.boot', code: 'CAPTURE_WORKER_BUILD_STAMP_STALE' }]);
+      expect(failure.message, word).toBe(
+        `The program in DEMS_CAPTURE_WORKER does not match its build stamp (<program>.stamp): the stamp is missing or unreadable, or it names another version, another protocol or another program file than the one in place, so the program was replaced or built without its stamp. Build the worker of this repository state (make -C apps/capture-worker), which writes the stamp beside it, install both, then start again. Reason: ${word}.`,
+      );
+    }
+  });
+
+  it('REAL_DEVELOPMENT and SIMULATED never ask (D38 DR-6 keeps the check to the production boot); a decision built without the reader is not asked (the mount always hands one in: boot.test.ts)', async () => {
+    const never = (): null => {
+      throw new Error('check 5b was asked outside REAL_PRODUCTION');
+    };
+    const development = scene({ config: { captureDevSources: true }, workerBuildStampProblem: never });
+    await expect(runCaptureBootChecks(development.deps)).resolves.toMatchObject({ operation: 'REAL_DEVELOPMENT', workerVersion: CAPTURE_WORKER_VERSION });
+    const simulated = scene({ config: { captureMode: 'simulated', demoControls: true }, workerBuildStampProblem: never });
+    await expect(runCaptureBootChecks(simulated.deps)).resolves.toMatchObject({ operation: 'SIMULATED' });
+    const without = scene();
+    expect(without.deps.workerBuildStampProblem).toBeUndefined();
+    await expect(runCaptureBootChecks(without.deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+  });
+
+  it('an earlier refusal stays the one that is said: a proof build, another protocol and a worker that does not answer never reach the stamp', async () => {
+    for (const hello of [
+      { outcome: 'HELLO', protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: `${CAPTURE_WORKER_VERSION}-PROOF` },
+      { outcome: 'HELLO', protocolVersion: CAPTURE_PROTOCOL_VERSION - 1, workerVersion: CAPTURE_WORKER_VERSION },
+      { outcome: 'NONE', failure: HandshakeFailure.TIMEOUT },
+    ] as const satisfies readonly WorkerHandshake[]) {
+      const { deps, calls } = stamped('STAMP_MISSING', { hello });
+      expect((await refusalOf(deps)).code).not.toBe(CaptureBootRefusal.WORKER_BUILD_STAMP_STALE);
+      expect(calls).not.toContain('stamp');
+    }
+  });
+});

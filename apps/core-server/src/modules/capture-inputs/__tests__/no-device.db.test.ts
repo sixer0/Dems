@@ -144,7 +144,8 @@ describe('situation B through the sessions routes (M4-NODEV-B-1, M4-PRECHK-RULE-
     expect(searches[0]).toMatchObject({ operatorId: investigator, deviceId: null });
     let session = await currentSession();
     expect(session.precheck.outcome).toBe('WARN');
-    expect(session.precheck.items.map((item) => item.id)).toEqual(['CORE', 'LENS_1', 'LENS_2', 'MIC_PRIMARY', 'MIC_STANDBY', 'STORAGE', 'TIME', 'SECURITY']);
+    // Audit fix rows 83/90 (DF-03): twelve checks - four lenses, four channels.
+    expect(session.precheck.items.map((item) => item.id)).toEqual(['CORE', 'LENS_1', 'LENS_2', 'LENS_3', 'LENS_4', 'MIC_PRIMARY', 'MIC_STANDBY', 'MIC_3', 'MIC_4', 'STORAGE', 'TIME', 'SECURITY']);
     expect(session.precheck.items.find((item) => item.id === 'LENS_2')).toMatchObject({ status: 'WARN', value: 'UNREACHABLE', reason: 'CAM-02 is not reachable' });
     expect(sliceItem('LENS_2')).toMatchObject({ status: 'WARN', value: 'UNREACHABLE', reasonCode: null, params: { deviceId: 'CAM-02', deviceKind: 'CAMERA', rule: 'oneCamera' } });
     expect(validateCoreApiResponse('getCurrentSession', 200, bodyOf(await server.get('INVESTIGATOR', CURRENT)))).toEqual({ ok: true });
@@ -239,6 +240,9 @@ describe('situation B through the sessions routes (M4-NODEV-B-1, M4-PRECHK-RULE-
     expect(both.session.precheck.outcome).toBe('BLOCK');
     expect(itemOf(both.session, 'LENS_1')).toMatchObject({ status: 'BLOCK', params: { rule: 'noCamera' } });
     expect(itemOf(both.session, 'LENS_2')).toMatchObject({ status: 'BLOCK', params: { rule: 'noCamera' } });
+    // Audit fix rows 83/90 (DF-03): lenses 3 and 4 have their own items and say the same.
+    expect(itemOf(both.session, 'LENS_3')).toMatchObject({ status: 'BLOCK', params: { deviceId: 'CAM-03', rule: 'noCamera' } });
+    expect(itemOf(both.session, 'LENS_4')).toMatchObject({ status: 'BLOCK', params: { deviceId: 'CAM-04', rule: 'noCamera' } });
     expect(typed(both.rows, 'CAPTURE_DEVICE_UNREACHABLE').map((row) => [row.details['deviceId'], row.details['degraded']])).toEqual([['CAM-01', false], ['CAM-02', false], ['CAM-03', false], ['CAM-04', false]]); // D60: one row per stopped track
     expect(typed(both.rows, 'PRECHECK_BLOCKED')).toHaveLength(1);
     // A start from a blocked result is refused, also with the acknowledgement.
@@ -261,12 +265,24 @@ describe('situation B through the sessions routes (M4-NODEV-B-1, M4-PRECHK-RULE-
     expect((await server.post('INVESTIGATOR', on(active.sessionId, 'cancel'))).statusCode).toBe(204);
     adapters.fakes.mics[0]?.setPresent(true);
 
+    // Audit fix rows 83/90 (DF-03): channel 3 has its own item (MIC_3). Removed, it WARNS like channel 2 - only channel 1
+    // blocks (D83) - and names its own device. Run before the STANDBY case, which then resolves this alert.
+    const third = adapters.fakes.mics.find((mic) => mic.devices[0]?.id === 'MIC-03');
+    if (third === undefined) throw new Error('the fake registry holds no MIC-03');
+    third.setPresent(false, AudioInputErrorCode.DEVICE_NOT_FOUND);
+    const channel3 = await run('LP/2026/1001-0138');
+    expect(channel3.session.precheck.outcome).toBe('WARN');
+    expect(itemOf(channel3.session, 'MIC_3')).toMatchObject({ status: 'WARN', value: 'UNREACHABLE', params: { deviceId: 'MIC-03', deviceKind: 'MIC', rule: 'noStandby' } });
+    expect(typed(channel3.rows, 'CAPTURE_DEVICE_UNREACHABLE').map((row) => [row.details['deviceId'], row.details['degraded']])).toEqual([['MIC-03', true]]);
+    expect((await server.post('INVESTIGATOR', on(channel3.sessionId, 'cancel'))).statusCode).toBe(204);
+    third.setPresent(true);
+
     // The STANDBY microphone: a warning, and the degraded session starts after the acknowledgement.
     adapters.fakes.mics[1]?.setPresent(false, AudioInputErrorCode.DEVICE_NOT_FOUND);
     const standby = await run('LP/2026/1001-0137');
     expect(standby.session.precheck.outcome).toBe('WARN');
     expect(itemOf(standby.session, 'MIC_STANDBY')).toMatchObject({ status: 'WARN', params: { deviceId: 'MIC-02', rule: 'noStandby' } });
-    // The previous run's MIC-01 alert was resolved by this run (it answered), with no row.
+    // The previous run's MIC-03 alert (the channel 3 case above) was resolved by this run (it answered), with no row.
     expect(alerts('CAPTURE_DEVICE_UNREACHABLE', true).map((alert) => alert.target)).toEqual(['MIC-02']);
     expect(typed(standby.rows, 'CAPTURE_DEVICE_UNREACHABLE').map((row) => [row.details['deviceId'], row.details['degraded']])).toEqual([['MIC-02', true]]);
     await expectStoredEqualsCommitted();

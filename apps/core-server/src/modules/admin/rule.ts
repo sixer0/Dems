@@ -15,7 +15,7 @@
  */
 import { isVendorRoot, VENDOR_ROOT_USERNAME } from '@dems/shared/sim';
 import type { OperatorRole } from '@dems/shared/sim';
-import type { LockedOperator } from './statements';
+import type { ActiveSessionParties, LockedOperator } from './statements';
 
 /**
  * The username of the vendor account that alone may create, edit or delete an operator (RB-9 as
@@ -55,4 +55,27 @@ export function leavesNoAdministrator(
   change: OperatorChange,
 ): boolean {
   return administratorsOf(applyChange(operators, change), administratorRoles).length === 0;
+}
+
+// ── Decision D43: no purge under the active session ────────────────────────────────────────────
+
+/** How an operator takes part in the active session: the columns of `active_session` that name one. */
+export type SessionPartyRole = 'INVESTIGATOR' | 'CREATED_BY' | 'STARTED_BY' | 'STOPPED_BY';
+
+/**
+ * The ways `operatorId` takes part in the active session, in column order; empty when it takes no
+ * part or no session is active. A purge of a party is refused before anything is written (D43): the
+ * purge would otherwise delete the session row under a running recording, or strip its attribution.
+ * Any state counts, not only RECORDING: the row exists until the session is done with, and the
+ * database guard of migration 0043 (SQLSTATE ZA007) applies the same rule.
+ */
+export function partyOfActiveSession(session: ActiveSessionParties | null, operatorId: string): SessionPartyRole[] {
+  if (session === null) return [];
+  const columns: ReadonlyArray<readonly [SessionPartyRole, string | null]> = [
+    ['INVESTIGATOR', session.investigatorId],
+    ['CREATED_BY', session.createdBy],
+    ['STARTED_BY', session.startedBy],
+    ['STOPPED_BY', session.stoppedBy],
+  ];
+  return columns.filter(([, id]) => id !== null && id === operatorId).map(([role]) => role);
 }

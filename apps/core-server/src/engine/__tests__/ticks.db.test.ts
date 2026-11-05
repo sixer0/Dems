@@ -1,6 +1,7 @@
 // The scheduler of the hosted engine against PostgreSQL as `dems_app` (plan row W26; spec ENG-1,
 // ENG-5, §8.7): one unit per tick and never two in flight, the suspension after a write that
 // failed, the 60 s health snapshot, and the write budget of an idle Core.
+import { CAPTURE_CONNECT_MS, RECOVERY_MS } from '@dems/shared/sim';
 import type { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 import { useTestDatabase, type TestDatabase } from '../../../test/helpers/db';
@@ -9,6 +10,7 @@ import { readHead, readTrail, verifyTrail } from '../../../test/support/core';
 import { DURABLE_SLICE_KEYS, STORED_SLICE_KEYS, pickDurable, type DurableSliceKey } from '../../db/mapping';
 import { tableChecksums, withoutNegativeZeros } from '../../../test/support/seed';
 import { FIXED_NOW, engineApp, meterFrames, seedScenario, stateChanges, storedSlices, type EngineApp } from './support';
+import { actionOf } from '../../modules/sessions/operations';
 
 const db = useTestDatabase({ template: 'seed' });
 
@@ -367,5 +369,66 @@ describe('meters(): the newest meter frame, by reference, never stored (decision
     });
     await host.drive(500);
     expect(atPublication).toEqual(Array.from({ length: 10 }, () => true));
+  });
+});
+
+// Audit 2026-11-05, W1 DB window, decision D54 (row 111, R111-2; DF-20 / U-18): the Session Monitor kept the FAULT banner
+// of a closed failed start until a reload. Row 111 proved the client chain live (a real-router test) and the Core path
+// by a static read only. THIS is the Core half on PostgreSQL: a failed start (no camera connects, D84), operation 33's
+// hosted action (`recoverSession` -> RECOVERY), then the engine's own ticks past RECOVERY_MS. The engine must PUBLISH
+// the end - one state change whose ops `replace` the session with null, as a record (sent at once, not paced) - and the
+// tables must hold the null session too. If this fails, the bench symptom has a Core cause (D54 (1): a new fix row).
+describe('D54 / R111-2: the close of a failed start - operation 33, then the ticks past RECOVERY_MS - publishes `replace session null`', () => {
+  it('a failed start is recovered; the tick that ends RECOVERY publishes the null session as a record change, the revisions stay without a gap, and the stored session is null', async () => {
+    const target = await db.another({ template: 'seed', slug: 'dbw1_r1112_recover' });
+    const owner = target.ownerPool();
+    const host = await engineApp(target, db.run.dataDir);
+    await host.app.readiness.boot();
+    const investigator = host.principal('INVESTIGATOR');
+    const supervisor = host.principal('SUPERVISOR');
+    await host.engine.setTabletLink('CONNECTED');
+    await host.engine.command(investigator, 'createSession', { caseNumber: 'LP/2026/1105-0111', subjectType: 'SAKSI', subjectName: 'Test Subject', investigatorId: investigator.operatorId, room: 'Interview Room 1', profileId: 'STANDARD_1080P25' });
+    await host.engine.command(investigator, 'beginPrecheck');
+    await host.drive(5_000);
+    expect(host.engine.slice('session')?.state).toBe('ARMED');
+    // A start at which NO camera connects (D60: all four tracks lost) is a failed start: FAULT, nothing durable (D84).
+    for (const cameraId of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const) await host.engine.command(supervisor, 'inject', 'CAMERA_LOSS', { cameraId });
+    await host.engine.command(investigator, 'startRecording');
+    await host.drive(CAPTURE_CONNECT_MS + 500);
+    const failed = host.engine.slice('session');
+    expect(failed).toMatchObject({ state: 'FAULT', captureDurable: false, startedAt: null, fault: { kind: 'CAPTURE_FAULT', fromState: 'RECORDING' } });
+    const sessionId = failed?.id;
+    expect(sessionId).toMatch(/^SES-/);
+
+    // Operation 33 (`recoverSession`): the same hosted action the route runs - "Close session" of the failed start.
+    const published = stateChanges(host.publications).length;
+    const recoveredAt = host.clock.now();
+    await host.engine.command(supervisor, actionOf('recoverSession'));
+    expect(host.engine.slice('session')).toMatchObject({ id: sessionId, state: 'RECOVERY' });
+
+    // The engine's own ticks, past RECOVERY_MS: the session ends without another command.
+    await host.drive(RECOVERY_MS + 500);
+    expect(host.engine.slice('session')).toBeNull();
+    expect(host.engine.stats()).toMatchObject({ ticksFailed: 0, suspended: false });
+
+    const changes = stateChanges(host.publications).slice(published);
+    // The answer of operation 33 was published: a change of cause `command` that replaces the session with its RECOVERY.
+    const recovering = changes.filter((change) => change.ops.some((op) => op.op === 'replace' && op.slice === 'session' && op.value?.state === 'RECOVERY'));
+    expect(recovering.length).toBeGreaterThanOrEqual(1);
+    expect(recovering[0]).toMatchObject({ cause: 'command', records: true });
+    // THE PROOF D54 asks for: ONE publication replaces the session with null, made by a tick, as a record change, at or after RECOVERY_MS.
+    const nulling = changes.filter((change) => change.ops.some((op) => op.op === 'replace' && op.slice === 'session' && op.value === null));
+    expect(nulling).toHaveLength(1);
+    expect(nulling[0]).toMatchObject({ cause: 'tick', records: true });
+    expect(nulling[0]?.at).toBeGreaterThanOrEqual(recoveredAt + RECOVERY_MS);
+    // Nothing after it brings a session back, and one publication per committed unit: the revisions have no gap.
+    const after = changes.slice(changes.indexOf(nulling[0] as (typeof changes)[number]) + 1);
+    expect(after.some((change) => change.ops.some((op) => op.op === 'replace' && op.slice === 'session'))).toBe(false);
+    expect(changes.map((change) => change.revision)).toEqual(changes.map((_, index) => (changes[0]?.revision ?? 0) + index));
+
+    // What a client folds is what is stored: the null session is in the tables, and the trail verifies.
+    expect((await storedSlices(owner)).session).toBeNull();
+    expect(await storedSlices(owner)).toStrictEqual(withoutNegativeZeros(host.engine.state()));
+    expect(verifyTrail(await readTrail(owner), await readHead(owner))).toMatchObject({ ok: true });
   });
 });

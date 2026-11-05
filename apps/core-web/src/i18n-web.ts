@@ -226,12 +226,11 @@ export const enWeb = {
     /**
      * Fix wave L, driver L-W. ONE RULE of a Core in its own capture: a screen states the Core's own
      * fact, or "Not reported", or nothing - never a constant of the simulator, of a bundled
-     * demonstration index or of an adapter default. A block that still shows model values carries
-     * the chip `syntheticChip`.
+     * demonstration index or of an adapter default. (Audit fix rows 104/105, D52: the chip strings
+     * `syntheticChip` / `syntheticHint` are removed - no block draws model values on such a Core; a block
+     * without a producer reads `system.noProducer`.)
      */
     waveL: {
-      syntheticChip: 'Synthetic demo values',
-      syntheticHint: 'This block shows values of the appliance model. This Core does not report them.',
       notReported: 'Not reported',
       /** G89c-02: Security & Audit, Tamper & Integrity - the Core's own verify rows instead of the bundled index. */
       tamper: {

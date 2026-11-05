@@ -39,13 +39,13 @@ import { ApiErrorCode, type AdminUser, type CreateUserRequest, type DeleteUserRe
 // lahir tanpa kredensial; sandi hanya ditulis perintah host lewat TTY (keputusan U19; aturan statis
 // rule 6 modul ini). Yang boleh modul ini lakukan terhadap tabel kredensial hanyalah menghapus
 // barisnya ketika akunnya sendiri dihapus, tanpa pernah membaca atau menulis nilai sandi.
-import { Permission, type OperatorRole } from '@dems/shared/sim';
+import { AUDIT_RING_SIZE, Permission, type OperatorRole } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import type { UnitContext } from '../../core';
 import { CoreError } from '../../core';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { revokeBiometricTokens } from '../identity/biometric';
-import { isVendorRoot, leavesNoAdministrator, VENDOR_ROOT_USERNAME } from './rule';
+import { isVendorRoot, leavesNoAdministrator, partyOfActiveSession, VENDOR_ROOT_USERNAME } from './rule';
 import {
   assignRole,
   purgeForecast,
@@ -60,6 +60,8 @@ import {
   lockOperator,
   lockOperators,
   nextOperatorId,
+  readActiveSessionParties,
+  readResealedChain,
   readRolePermissions,
   readRolesHolding,
   readUser,
@@ -245,6 +247,20 @@ function deleteNotConfirmed(): ApiFailure {
   return new ApiFailure(409, ApiErrorCode.INVALID_STATE, 'The confirmation does not match this operator.');
 }
 
+/** The `details.reason` of the D43 refusal: the operator takes part in the active session. */
+export const ACTIVE_SESSION_PARTY_REASON = 'ACTIVE_SESSION_PARTY';
+
+/**
+ * 409 of decision D43: the operator is a party of the active session, so the purge is refused before
+ * anything is written (it would otherwise delete or strip the session under a running recording).
+ * Same code as the other refusals of operation 17 (`INVALID_STATE`, "nothing is deleted").
+ */
+function activeSessionParty(sessionId: string): ApiFailure {
+  return new ApiFailure(409, ApiErrorCode.INVALID_STATE, 'This operator takes part in the active session. Finish that session first; nothing was deleted.', {
+    details: { reason: ACTIVE_SESSION_PARTY_REASON, sessionId },
+  });
+}
+
 /** The identity half of the access rule, read under the unit's own lock. */
 async function requireVendorRoot(unit: UnitContext, operatorId: string): Promise<void> {
   if (!isVendorRoot(await readUsername(unit, operatorId))) throw notVendorRoot();
@@ -354,6 +370,12 @@ export function deleteUser(app: FastifyInstance, actor: Actor, operatorId: strin
     const administratorRoles = await readRolesHolding(unit, ADMINISTRATION_PERMISSION);
     if (leavesNoAdministrator(operators, administratorRoles, { kind: 'DELETE', operatorId })) throw lastAdministrator();
 
+    // Decision D43: never under the active session. A party of it (its investigator, or whoever
+    // created, started or stopped it) is refused here, before the first write of the unit; the
+    // purge function of migration 0043 holds the same rule as its own guard (SQLSTATE ZA007).
+    const activeSession = await readActiveSessionParties(unit);
+    if (activeSession !== null && partyOfActiveSession(activeSession, operatorId).length > 0) throw activeSessionParty(activeSession.sessionId);
+
     // Purge, not merely removal (RB-9 as amended by the principal on 2026-11-02): the account goes
     // together with the history that belongs to it. What the account DID to the unit stays — the
     // evidence, the custody entries, the session records, the acceptance of the installation — with
@@ -369,10 +391,12 @@ export function deleteUser(app: FastifyInstance, actor: Actor, operatorId: strin
     // the chain is re-sealed AFTER it, with nothing appended afterwards: the unit read its chain head
     // when it began (AP-2) and the seal moves that head, so a later append would be refused by the
     // database's own guard rather than quietly accepted.
-    const unattributed = referenceTotal(references);
+    // Migration 0043 (DF-28, D22(4), D38 DR-1): the evidence-chain rows the account wrote stay, and
+    // while one does the account row stays too, disabled; its records then keep their attribution.
+    const unattributed = forecast.accountKept ? 0 : referenceTotal(references);
     await unit.audit.append({
       type: 'USER_DELETED',
-      message: `Operator ${operatorId} deleted with its history: ${forecast.auditRows} audit row(s) removed, ${forecast.signInRows} sign-in row(s), chain re-sealed${forecast.resealFromSeq === null ? ' untouched' : ` from ${forecast.resealFromSeq}`}`,
+      message: `Operator ${operatorId} deleted with its history: ${forecast.auditRows} audit row(s) removed, ${forecast.signInRows} sign-in row(s), chain re-sealed${forecast.resealFromSeq === null ? ' untouched' : ` from ${forecast.resealFromSeq}`}${forecast.accountKept ? '; evidence-chain rows kept, account kept disabled' : ''}`,
       severity: 'WARNING',
       actorId: actor.operatorId,
       deviceId: actor.deviceId,
@@ -391,6 +415,11 @@ export function deleteUser(app: FastifyInstance, actor: Actor, operatorId: strin
     const erased = await purgeOperator(unit, operatorId, actor.operatorId, reason ?? 'operator deleted');
     if (!samePurge(forecast, erased)) throw new CoreError('AUDIT_PURGE_FORECAST_MISMATCH', 'the purge erased a different set of rows than this unit counted and announced');
     await resealChain(unit, operatorId, erased.resealFromSeq);
+    // Row 94 (DF-27, decision D21(3)): the seal replaced hashes the engine's ring holds. The unit
+    // reads the chain back as stored (it still holds the chain lock) and hands it over; the commit
+    // gives it to the engine, which takes the new head: no `audit head diverged`, no not-ready
+    // moment, no reload under a live recording. Nothing is appended after this.
+    await unit.audit.resealed(await readResealedChain(unit, AUDIT_RING_SIZE));
 
     unit.afterCommit(() => {
       if (sessionsEnded.length > 0) app.publish({ kind: 'session.ended', sessionIds: sessionsEnded, reason: 'USER_DISABLED' });

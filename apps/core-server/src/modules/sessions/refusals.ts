@@ -46,7 +46,7 @@ export function notOpenSession(): ApiFailure {
 /** What the simulator's `startRecording` would say of a session in PRECHECK: the transition it refuses. */
 const START_FROM_PRECHECK = { from: SessionState.PRECHECK, event: 'startRecording' } as const;
 
-/** 409: the eight checks have not all ended. */
+/** 409: the twelve checks have not all ended. */
 export function precheckRunning(): ApiFailure {
   return refusal(SimErrorCode.CHECKS_RUNNING, { details: START_FROM_PRECHECK });
 }

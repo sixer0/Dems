@@ -28,6 +28,10 @@ import { captureDoorsOf, engineControl } from '../../engine';
 import type { Principal } from '../../plugins/authenticate';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { sessionTapPath, transcriptionControl } from '../../transcription';
+import { captureNotices, probeOfAdapters } from '../../capture-notices';
+import { createUsbAudioProductionAdapter, type RegisteredAudioInput } from '../../capture/adapters/audio/usb-audio-production';
+import { createCardEnumerator, type CardListingSource } from '../../capture/adapters/audio/card-listing';
+import { createAlsaConfigWriter } from '../../capture/adapters/audio/alsa-config-writer';
 import { FIRST_DELIVERY_MS } from '../../capture/adapters/local/camera-helper';
 import { CAMERA_CLOCK_OFFSET_ADVISORY_MS, CAPTURE_NOT_DURABLE, MIC_START_BOUND_MS, RELAY_PLAYING_SILENCE_BOUND_MS, RELAY_REPORTS_NOT_WIRED,SESSION_LEFT_RECORDING, SOURCE_KIND_NOT_RECORDABLE, readSessionCaptureFacts, sessionCapture, type SessionCaptureEvent } from '../index';
 
@@ -2468,6 +2472,111 @@ describe('task 4 row 71 (WP-07c; schema design 2.3; AD-07 (1), S13-13): the card
     // What the adapter threw may carry device text: its message is in no entry and in no log line.
     expect(JSON.stringify(entries) + JSON.stringify(of.log.lines())).not.toContain('SECRET');
     expect(of.app.engine.slice('session')?.state).toBe('RECORDING');
+    await sessionCapture(of.app).shutdown();
+  });
+});
+
+// Audit 2026-11-05, W1 DB window, decision D42 (row 96, DF-33): the row-71 block above proves the write of the facts with
+// DOUBLES that answer `sourceFacts` whether or not a microphone is open - so it could not catch DF-33 (every production
+// row `{}`: the rows are written at the start, BEFORE the microphones open, and the adapter stated only an open card).
+// THIS case uses THE REAL `USB_AUDIO` PRODUCTION ADAPTER (`createUsbAudioProductionAdapter`) over the fake card-listing
+// seam (`CardListingSource` -> `createCardEnumerator`: fixed texts in the forms of a Linux host; no card, no ALSA). Its
+// enumeration, identification memo and `sourceFacts` are the production code. The pre-check is the app's own gate
+// (`captureNotices(app).beforePrecheck`, what operation 28 runs before the hosted pre-check) over a probe of THIS adapter.
+// WHAT STANDS IN, AND WHY IT DOES NOT TOUCH THE CLAIM: the adapter's `open` is routed to a fake microphone (a real open
+// needs the helper program and an ALSA card), and the cameras are the fake cameras under the production kind. The source
+// rows are written before any open (capture-session/index.ts `recordingStartedIn`), so no open can feed what is asserted.
+describe('D42 (W1 DB window; row 96, DF-33): the REAL USB_AUDIO production adapter states its card at the start - session_capture_sources holds non-empty facts', () => {
+  it('pre-check through the gate, then the start: all four MIC rows hold the card the pre-check identified, no CAPTURE_SOURCE_FACTS_NOT_STATED; before the pre-check the adapter stated nothing (CONTROL)', async () => {
+    const PORT = '0000:00:14.0-2';
+    const QUAD = { index: 1, id: 'Quad', product: 'DEMS Test Quad', usbId: '1a2b:0004', channels: 4 } as const;
+    let lists = 0;
+    // The card-listing seam with the texts of a host that has ONE four-input USB card (the forms of the adapter's unit test).
+    const listing: CardListingSource = {
+      async captureDevices() {
+        lists += 1;
+        return `**** List of CAPTURE Hardware Devices ****\ncard ${QUAD.index}: ${QUAD.id} [${QUAD.product}], device 0: USB Audio [USB Audio]\n  Subdevices: 1/1\n  Subdevice #0: subdevice #0\n`;
+      },
+      async presentCards() {
+        return `${String(QUAD.index).padStart(2)} [${QUAD.id.padEnd(15)}]: USB-Audio - ${QUAD.product}\n                      ${QUAD.product}\n`;
+      },
+      async usbId(cardIndex) {
+        return cardIndex === QUAD.index ? `${QUAD.usbId}\n` : null;
+      },
+      async usbSerial() {
+        return null;
+      },
+      async stream(cardIndex) {
+        if (cardIndex !== QUAD.index) return null;
+        return `${QUAD.product} at usb-${PORT}, high speed : USB Audio\n\nCapture:\n  Status: Stop\n  Interface 1\n    Altset 1\n    Format: S24_3LE\n    Channels: ${QUAD.channels}\n    Endpoint: 0x81 (1 IN) (ASYNC)\n    Rates: 44100, 48000\n    Bits: 24\n\n`;
+      },
+      async hwParams(cardIndex) {
+        if (cardIndex !== QUAD.index) return null;
+        return `HW Params of device "hw:${cardIndex},0":\n--------------------\nFORMAT:  S16_LE S32_LE\nCHANNELS: ${QUAD.channels}\nRATE: [44100 192000]\n--------------------\n`;
+      },
+    };
+    const MICS = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const;
+    // The stored rows as the registration stores them: input n of the card for MIC-0n.
+    const stored = new Map<string, RegisteredAudioInput>(MICS.map((deviceId, index) => [deviceId, { deviceId, usbId: QUAD.usbId, usbSerial: null, usbPort: PORT, cardId: QUAD.id, cardDevice: 0, inputNumber: index + 1, nativeChannels: QUAD.channels }]));
+    const runDir = `${fixture.dataDir}/run-dbw1-d42/run/capture`;
+    mkdirSync(runDir, { recursive: true });
+    const real = createUsbAudioProductionAdapter({
+      devices: MICS.map((id) => ({ id, deviceClass: 'MIC', label: id, capabilities: ['AUDIO'], profiles: [] })),
+      registered: async (deviceId) => stored.get(deviceId) ?? null,
+      cards: createCardEnumerator(listing),
+      configWriter: createAlsaConfigWriter(runDir),
+      helperProgram: '/opt/dems/bin/ffmpeg',
+      guardProgram: '/opt/dems/bin/capture-guard',
+      runDir,
+      timers: createSystemTimers(),
+      // No process is started by this case: a door that is asked at all fails the case loudly.
+      door: () => {
+        throw new Error('D42 case: the production door was asked to start a process');
+      },
+    });
+    expect(real.kind).toBe('USB_AUDIO');
+    const stand = new Map(MICS.map((id) => [id, createFakeAudioInputAdapter({ id, runDir })] as const));
+    const microphone = { ...real, open: async (inputId: string, to: Parameters<typeof real.open>[1]) => (stand.get(inputId as (typeof MICS)[number]) ?? stand.get('MIC-01'))!.open(inputId, to) } as unknown as typeof real;
+    const cameras = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'].map((id) => ({ ...createFakeCameraAdapter({ id }), kind: 'ONVIF_RTSP' as const, hasOpener: true }));
+    const productionRegistry = (): CaptureDeviceRegistry => {
+      const production = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
+      for (const camera of cameras) production.register(camera);
+      production.register(microphone);
+      return production;
+    };
+    const of = await rig('dbw1_d42_usb_audio', { registry: productionRegistry });
+    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION, relayReports: SILENT_RELAYS });
+    captureNotices(of.app).provideProbe(probeOfAdapters({ cameras, microphones: [microphone] }));
+
+    // CONTROL: before any identification the real adapter states nothing - the memo row 96 added is empty.
+    for (const id of MICS) expect(real.sourceFacts(id), id).toBeNull();
+
+    // Idle -> ARMED as the routes do it: operation 24, then operation 28 = the gate's probe run, then the hosted pre-check.
+    await of.app.engine.setTabletLink('CONNECTED');
+    const created = await of.app.engine.command(of.investigator, 'createSession', { caseNumber: 'LP/2026/1105-0042', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25', investigatorId: of.investigator.operatorId });
+    if (!created.value.ok) throw new Error(`the session was not created: ${created.value.reason}`);
+    const id = created.value.sessionId;
+    await captureNotices(of.app).beforePrecheck({ sessionId: id, kind: 'BEGIN', owner: { operatorId: of.investigator.operatorId, authSessionId: of.investigator.sessionId, deviceId: null } });
+    // The gate asked THIS adapter: the card listing was read, and the identification of every input is held.
+    expect(lists).toBeGreaterThan(0);
+    for (const id_ of MICS) expect(real.sourceFacts(id_), id_).toMatchObject({ product: QUAD.product, usbId: QUAD.usbId, cardId: QUAD.id, inputNumber: Number(id_.slice(-1)), nativeChannels: QUAD.channels });
+    await of.app.engine.command(of.investigator, 'beginPrecheck');
+    await of.drive(5_000);
+    if (of.app.engine.slice('session')?.state === 'PRECHECK') await of.app.engine.command(of.investigator, 'acknowledgePrecheckWarnings');
+    expect(of.app.engine.slice('session')?.state).toBe('ARMED');
+
+    await of.start(id);
+    const rows = await of.rows<{ slot: string; adapter_kind: string; source_facts: Record<string, unknown> }>('SELECT slot, adapter_kind, source_facts FROM public.session_capture_sources WHERE session_id = $1 ORDER BY slot', [id]);
+    expect(rows.map((row) => row.slot)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']);
+    for (const row of rows.filter((candidate) => candidate.slot.startsWith('MIC-'))) {
+      expect(row.adapter_kind, row.slot).toBe('USB_AUDIO');
+      // DF-33 was `{}` here on every production start.
+      expect(Object.keys(row.source_facts).length, row.slot).toBeGreaterThan(0);
+      expect(row.source_facts, row.slot).toMatchObject({ model: QUAD.product, usbId: QUAD.usbId, cardId: QUAD.id, cardDevice: 0, inputNumber: Number(row.slot.slice(-1)), nativeChannels: QUAD.channels, sampleRate: 48_000 });
+    }
+    for (const row of rows.filter((candidate) => candidate.slot.startsWith('VIDEO-'))) expect(row.source_facts, row.slot).toEqual({});
+    // The log of the start: no "stated no card facts" (CAPTURE_SOURCE_FACTS_NOT_STATED), no "could not be read".
+    expect(of.log.lines().map((line) => String(line.code)).filter((code) => code.startsWith('CAPTURE_SOURCE_FACTS_'))).toEqual([]);
     await sessionCapture(of.app).shutdown();
   });
 });

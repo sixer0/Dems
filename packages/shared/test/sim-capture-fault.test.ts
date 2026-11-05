@@ -35,6 +35,8 @@ import {
   type SessionCreateInput,
   applySealingProgressTransition,
   completeSealTransition,
+  clearCaptureFaultsTransition,
+  FAULT_SESSION_RECOVERY_NEEDED_SENTENCE,
 } from '../src/sim';
 import * as sessionFaultBed from './support/session-fault-bed';
 import * as failedStartBed from './support/failed-start-bed';
@@ -454,5 +456,61 @@ describe('the fault a failed start leaves', () => {
       other.sim.actions.clearFault('CAPTURE_FAULT');
       expect(other.state().faults.active.some((fault) => fault.kind === 'CAPTURE_FAULT')).toBe(false);
     });
+  });
+});
+
+// Audit fix row 110 (DF-19; register B1-B3; ruling D56; UI finding U-07): a FAULT_CLEARED that is
+// written while the open session is in FAULT says that the session still needs recovery. On the
+// Core the boot of D84 R-4 clears the capture fault of an earlier run (`clearCaptureFaultsTransition`;
+// journal CAPTURE_STALE_FAULTS_CLEARED cleared:1 at 17:59:57) while the failed start SES-...-0032 was
+// still in FAULT, and its row read "Fault cleared" as if the session were. Written RED against the
+// worktree before row 110 (`Fault cleared · CAPTURE_FAULT`, no recovery sentence).
+describe('DF-19: a fault cleared while the session stays in FAULT', () => {
+  const stillInFault = (kind: string): string => en.common.faultCleared.sessionStillInFault.replace('{{kind}}', kind);
+  const newestCleared = (state: SimState) => ({
+    event: state.events.filter((event) => event.type === 'FAULT_CLEARED').at(-1),
+    row: state.audit.rows.filter((row) => row.type === 'FAULT_CLEARED').at(-1),
+  });
+
+  it('B2 is the sentence of the i18n label B1 (row 84): one wording, two homes', () => {
+    expect(en.common.faultCleared.sessionStillInFault.endsWith(` ${FAULT_SESSION_RECOVERY_NEEDED_SENTENCE}`)).toBe(true);
+    expect(stillInFault('CAPTURE_FAULT')).toBe(`Fault cleared · CAPTURE_FAULT. ${FAULT_SESSION_RECOVERY_NEEDED_SENTENCE}`);
+  });
+
+  it('the boot clear of D84 R-4 on an open failed start: the event equals B1 with the kind, the audit row ends with B2, the session stays FAULT', () => {
+    const h = failedStartBed.harness();
+    const sessionId = h.failedStart();
+    h.sim.store.setState(clearCaptureFaultsTransition(h.state(), h.clock.now()));
+    const { event, row } = newestCleared(h.state());
+    expect(event).toMatchObject({ sessionId, params: { kind: 'CAPTURE_FAULT' } });
+    expect(event?.message).toBe(stillInFault('CAPTURE_FAULT'));
+    expect(row?.sessionId).toBe(sessionId);
+    // Row 110b (D60 R110-2): a full stop after "cleared" - "... — cleared. The session is still in FAULT and needs recovery."
+    expect(row?.message.endsWith(` — cleared. ${FAULT_SESSION_RECOVERY_NEEDED_SENTENCE}`)).toBe(true);
+    expect(row?.message).not.toContain(` — cleared ${FAULT_SESSION_RECOVERY_NEEDED_SENTENCE}`);
+    expect(h.state().session).toMatchObject({ id: sessionId, state: 'FAULT' });
+  });
+
+  it('a demo clear of a critical fault that moved the recording to FAULT says the same (kind STORAGE_FULL)', () => {
+    const h = sessionFaultBed.harness();
+    h.toRecording();
+    h.sim.actions.inject('STORAGE_FULL');
+    expect(h.state().session?.state).toBe('FAULT');
+    h.sim.actions.clearFault('STORAGE_FULL');
+    const { event, row } = newestCleared(h.state());
+    expect(event?.message).toBe(stillInFault('STORAGE_FULL'));
+    expect(row?.message.endsWith(` — cleared. ${FAULT_SESSION_RECOVERY_NEEDED_SENTENCE}`)).toBe(true);
+    expect(h.state().session?.state).toBe('FAULT');
+  });
+
+  it('CONTROL - a clear while the session records keeps the old words: no recovery sentence', () => {
+    const h = sessionFaultBed.harness();
+    h.toRecording();
+    h.sim.actions.inject('CAPTURE_FAULT');
+    h.sim.actions.clearFault('CAPTURE_FAULT');
+    const { event, row } = newestCleared(h.state());
+    expect(h.state().session?.state).toBe('RECORDING');
+    expect(event?.message).toBe('Fault cleared · CAPTURE_FAULT');
+    expect(row?.message).not.toContain(FAULT_SESSION_RECOVERY_NEEDED_SENTENCE);
   });
 });

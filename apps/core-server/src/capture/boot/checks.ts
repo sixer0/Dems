@@ -89,6 +89,13 @@
  *                          version this Core was built to drive (`CAPTURE_WORKER_VERSION`; gate 64
  *                          condition C7, ruling D194): an older or a newer worker binary is refused
  *                          HERE, by name, and not at the first session start
+ *                       5b. REAL_PRODUCTION only, and only when the composition hands the reader in (audit 2026-11-05
+ *                          row 88, DF-02; D15(b), D38 DR-6): THE BUILD STAMP `<program>.stamp` beside the worker
+ *                          (`worker-stamp.ts`) names THIS version, THIS protocol and the sha256 of the program in place.
+ *                          A missing, unreadable or stale stamp is refused by `CAPTURE_WORKER_BUILD_STAMP_STALE` with a
+ *                          word of `WorkerBuildStampProblem`. Asked AFTER the version of 5, so an older worker still reads
+ *                          `CAPTURE_WORKER_VERSION_MISMATCH` (register W14). At boot only: a session start does not ask
+ *                          it (the supervisor keeps the version rule of 5 for every HELLO)
  *
  * A refused combination of the flags (`decision.refusal`) is the capture fence's refusal; this
  * step repeats it with the fence's own code, so that it can never run a real check - or pass - on
@@ -105,6 +112,8 @@ import { CaptureHostRefusal, HOST_REFUSAL_TEXT, hostCheckOutcomeOf, type Capture
 import { CaptureProgramRefusal, PROGRAM_REFUSAL_TEXT, deliveredProgramOutcomeOf, type DeliveredProgramDeps } from './program-checks';
 // Row HC: the installed socket path (check 4d-3) and the finding of the socket question that 4d hands to 4e.
 import { ALIAS_SOCKET_INSTALLED_PATH, type AliasSocketFinding } from './host-checks';
+// Audit 2026-11-05 row 88 (DF-02): the words of the build-stamp check 5b (type only: the reader lives in `worker-stamp.ts`).
+import type { WorkerBuildStampProblem } from './worker-stamp';
 
 /** ID of the boot step. It appears in the log line of a boot that stops at it. */
 export const CAPTURE_BOOT_STEP = 'capture.boot';
@@ -145,6 +154,12 @@ export const CaptureBootRefusal = {
   WORKER_VERSION_UNKNOWN: 'CAPTURE_WORKER_VERSION_UNKNOWN',
   /** The worker is a release build of ANOTHER version than this Core drives (wave H driver F; gate 64 C7, ruling D194). */
   WORKER_VERSION_MISMATCH: 'CAPTURE_WORKER_VERSION_MISMATCH',
+  /**
+   * The worker program of a REAL_PRODUCTION Core does not match its build stamp `<program>.stamp` (audit 2026-11-05
+   * row 88, DF-02; register W9): the stamp is missing or unreadable, or names another version, protocol or program file
+   * than the one in place. The reason is a word of `WorkerBuildStampProblem` (W10). Check 5b, at boot only (D38 DR-6).
+   */
+  WORKER_BUILD_STAMP_STALE: 'CAPTURE_WORKER_BUILD_STAMP_STALE',
   /**
    * The platform of a REAL_PRODUCTION Core is not one a production Core is allowed on (row P1; decision U21 (2):
    * Linux and this Mac, `PRODUCTION_PLATFORMS`). The reason is a fixed word, never the platform's own text.
@@ -191,6 +206,9 @@ const TEXT: Readonly<Record<CaptureBootRefusal, string>> = Object.freeze({
   CAPTURE_WORKER_VERSION_UNKNOWN: 'The capture worker names a version this server does not know as a release build. Only capture-worker/<major>.<minor>.<patch> is started.',
   CAPTURE_WORKER_VERSION_MISMATCH:
     'The program in DEMS_CAPTURE_WORKER is a capture worker of another version than the one this server was built to drive: the two are released together and neither is used with another. Build the worker of this repository state (make -C apps/capture-worker) and set the key to it.',
+  // Audit 2026-11-05 row 88: register W11, verbatim.
+  CAPTURE_WORKER_BUILD_STAMP_STALE:
+    'The program in DEMS_CAPTURE_WORKER does not match its build stamp (<program>.stamp): the stamp is missing or unreadable, or it names another version, another protocol or another program file than the one in place, so the program was replaced or built without its stamp. Build the worker of this repository state (make -C apps/capture-worker), which writes the stamp beside it, install both, then start again.',
   CAPTURE_HOST_PLATFORM_NOT_SUPPORTED:
     'A production Core (DEMS_CAPTURE_MODE=real without DEMS_CAPTURE_DEV_SOURCES) runs on Linux, where the whole host profile (scripts/host/HOST-PROFILE-UBUNTU-24.04.md) is checked at every start, or on macOS, where the host profile is NOT checked and every start and every sealed package says so. The platform of this host is neither, or was not stated: the Core does not start here. Run the Core on a prepared Linux host, or in development capture mode.',
   CAPTURE_HOST_FACTS_NOT_HANDED_IN:
@@ -386,7 +404,7 @@ export const RELEASE_WORKER_VERSION = /^capture-worker\/\d{1,4}\.\d{1,4}\.\d{1,4
  * an additive member, so a worker of an earlier tree (no fragment size bound, no stated sync level)
  * speaks the same protocol and has the release FORM - only its version tells it apart.
  */
-export const CAPTURE_WORKER_VERSION = 'capture-worker/0.6.0';
+export const CAPTURE_WORKER_VERSION = 'capture-worker/0.7.0';
 
 /** True when a worker version carries the proof-build mark, in any case and at any place. */
 export function isProofWorkerVersion(workerVersion: string): boolean {
@@ -543,6 +561,12 @@ export interface CaptureBootDeps {
    * installed one is refused. ABSENT: not asked (a test from before this member); THE MOUNT ALWAYS HANDS IT IN.
    */
   readonly configuredAliasSocket?: string | null;
+  /**
+   * Check 5b (audit 2026-11-05 row 88, DF-02): a word of `WorkerBuildStampProblem` when the build stamp beside the worker
+   * program does not vouch for it, else null. Asked in REAL_PRODUCTION only, after the worker answered with THE version.
+   * ABSENT: not asked (a decision built by a test from before the check); THE MOUNT ALWAYS HANDS IT IN.
+   */
+  readonly workerBuildStampProblem?: () => WorkerBuildStampProblem | null;
   readonly sinks: CaptureBootSinks;
 }
 
@@ -688,6 +712,12 @@ export async function runCaptureBootChecks(deps: CaptureBootDeps): Promise<Captu
   if (hello.outcome !== 'HELLO') return refuse(CaptureBootRefusal.WORKER_NO_HANDSHAKE, hello.failure);
   const version = workerVersionRefusalOf(hello);
   if (version !== null) return refuse(version, version === CaptureBootRefusal.WORKER_VERSION_MISMATCH ? workerVersionMismatchReasonOf(hello.workerVersion) : null);
+  // 5b (audit 2026-11-05 row 88, DF-02; register W14): the build stamp beside the program vouches for THIS program. After 5, so
+  // an older worker is still named by its version. REAL_PRODUCTION only; a decision built without the reader is not asked.
+  if (operation === CaptureOperation.REAL_PRODUCTION && deps.workerBuildStampProblem !== undefined) {
+    const stamp = deps.workerBuildStampProblem();
+    if (stamp !== null) return refuse(CaptureBootRefusal.WORKER_BUILD_STAMP_STALE, stamp);
+  }
 
   const evidenceVolume = Object.freeze({ totalBytes: volume.totalBytes, freeBytes: volume.freeBytes });
   sinks.info({ code: 'CAPTURE_BOOT_CHECKS_PASSED', operation, checks: 'real', workerVersion: hello.workerVersion, volumeTotalBytes: volume.totalBytes ?? -1, volumeFreeBytes: volume.freeBytes ?? -1 }, PASSED);

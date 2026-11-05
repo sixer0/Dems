@@ -431,8 +431,9 @@ export interface UsbAudioCardFacts {
 }
 
 /**
- * What the adapter states of the card behind one OPEN input, for the session's source facts (row
- * 71; the shape of the fence's `AudioCardStatement`, which this layer does not import).
+ * What the adapter states of the card behind one input - open, or identified and not yet opened
+ * (audit row 96) - for the session's source facts (row 71; the shape of the fence's
+ * `AudioCardStatement`, which this layer does not import).
  *
  * `usbSerial` and `usbPort` (row 200) are the serial and the port path ACTUALLY USED: those of the
  * card the open found, as its listing stated them. They are stated here; the session row holds
@@ -475,8 +476,10 @@ export interface UsbAudioProductionAdapter extends AudioInputAdapter {
   /** One short open of the card through the shared capture, nothing written. Null when it worked; else the named refusal. */
   precheck(inputId: string, signal?: AbortSignal): Promise<UsbAudioError | AudioInputBeyondCardError | null>;
   /**
-   * The card behind an OPEN input, from what the open found: no listing, no process, no file.
-   * Null for an input that is not open.
+   * The card behind an OPEN input, from what the open found; for an input that is not open, the
+   * card its LAST IDENTIFICATION found - an enumeration or a pre-check (audit 2026-11-05 row 96,
+   * DF-33). No listing, no process, no file. Null for an input that was never identified, whose
+   * last identification failed, or that was closed since.
    */
   sourceFacts(inputId: string): UsbAudioSourceStatement | null;
   /** The microphones whose pipe is prepared or whose helper runs. */
@@ -535,6 +538,17 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
   /** The microphones whose pipe is prepared or whose helper runs. Claimed before the first await of `open`. */
   const held = new Map<string, Held>();
   const processes = new Map<string, ProductionProcess>();
+  /**
+   * DF-33 (audit 2026-11-05 row 96; decision D21(6)): the card each microphone's stored row was LAST IDENTIFIED with
+   * while the input is not open. The session start writes its source rows BEFORE it opens the microphones
+   * (`capture-session/index.ts`: `recordingStartedIn`, then `begin`), so the facts of an OPEN input alone left every
+   * row `{}`. Every start follows a pre-check run (PRECHECK -> ARMED -> RECORDING), whose probe enumerates this
+   * adapter: the card stated for a slot is the one that run identified, by the rule the open applies a moment later
+   * (`identifyRegisteredCard`). Replaced by every identification; REMOVED by every one that fails (absent, changed,
+   * ambiguous, beyond the card, unlisted) and by the close of the input - a card that is not there now is never stated
+   * from an older listing.
+   */
+  const identified = new Map<string, UsbAudioCardFacts>();
 
   /** Row 85d: the microphones admitted after the build. */
   const admittedLater: CaptureDeviceEntry[] = [];
@@ -623,6 +637,34 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
     return locateIn(await listNow(deviceId), stored);
   }
 
+  /** Row 96: `locate`, and a failed identification forgets the card last stated for the input. */
+  async function locateOrForget(deviceId: string): Promise<Located> {
+    try {
+      return await locate(deviceId);
+    } catch (error) {
+      identified.delete(deviceId);
+      throw error;
+    }
+  }
+
+  /** The facts of a located card: what an open hands its stream, and what an identification remembers (row 96). */
+  function cardFactsOf(located: Located): UsbAudioCardFacts {
+    return Object.freeze({
+      cardIndex: located.card.cardIndex,
+      deviceIndex: located.card.deviceIndex,
+      channelCount: located.card.channelCount,
+      inputNumber: located.stored.inputNumber,
+      rateHz: located.shared.rateHz,
+      nativeFormat: located.shared.format,
+      sampleBits: Math.min(BITS_OF_FORMAT[located.shared.format] ?? CAPTURE_BITS, CAPTURE_BITS),
+      cardId: located.card.cardId,
+      usbId: located.card.usbId,
+      usbSerial: identityText(located.card.usbSerial),
+      usbPort: identityText(located.card.usbPort),
+      product: located.card.product,
+    });
+  }
+
   /** One writer at a time: the configuration is ONE file, and two starts of a session come in the same turn. */
   let writing: Promise<unknown> = Promise.resolve();
   function writeConfig(deviceId: string, extra: SharedCaptureCard | null): Promise<AlsaConfigResult> {
@@ -693,7 +735,7 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
     let helperArguments: readonly string[];
     try {
       assertPrograms(inputId);
-      located = await locate(inputId);
+      located = await locateOrForget(inputId);
       entry.shared = located.shared;
       config = await writeConfig(inputId, null);
       if (target.signal.aborted) throw new UsbAudioError(UsbAudioRefusal.ABORTED, inputId);
@@ -733,20 +775,7 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
       input: Object.freeze({ kind: CaptureMicInputKind.PCM_FIFO, path }),
       transport,
       helperArguments,
-      card: Object.freeze({
-        cardIndex: opened.card.cardIndex,
-        deviceIndex: opened.card.deviceIndex,
-        channelCount: opened.card.channelCount,
-        inputNumber: opened.stored.inputNumber,
-        rateHz: opened.shared.rateHz,
-        nativeFormat: opened.shared.format,
-        sampleBits: Math.min(BITS_OF_FORMAT[opened.shared.format] ?? CAPTURE_BITS, CAPTURE_BITS),
-        cardId: opened.card.cardId,
-        usbId: opened.card.usbId,
-        usbSerial: identityText(opened.card.usbSerial),
-        usbPort: identityText(opened.card.usbPort),
-        product: opened.card.product,
-      }),
+      card: cardFactsOf(opened),
 
       started: () => launched,
       guardPid: () => helper?.pid ?? null,
@@ -840,6 +869,8 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
           processes.delete(inputId);
           if (!removePipe(files, path)) notice(UsbAudioNoticeCode.PIPE_NOT_REMOVED, inputId);
           held.delete(inputId);
+          // Row 96: a closed input states nothing until it is identified again (the pre-check of the next start).
+          identified.delete(inputId);
           listeners.clear();
         })();
         return closing;
@@ -876,7 +907,8 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
     try {
       if (abortedNow(signal)) return new UsbAudioError(UsbAudioRefusal.ABORTED, inputId);
       assertPrograms(inputId);
-      const located = await locate(inputId);
+      const located = await locateOrForget(inputId);
+      identified.set(inputId, cardFactsOf(located));
       const config = await writeConfig(inputId, located.shared);
       let args: readonly string[];
       try {
@@ -914,10 +946,13 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
       const answers: AudioInputDescriptor[] = [];
       for (const entry of servedDevices()) {
         let errorCode: AudioInputErrorCode | null = listing === null ? AudioInputErrorCode.OPEN_FAILED : null;
+        // Row 96: no listing, no identification - the card last stated is forgotten.
+        if (listing === null) identified.delete(entry.id);
         if (listing !== null) {
           try {
-            locateIn(listing, await storedRow(entry.id));
+            identified.set(entry.id, cardFactsOf(locateIn(listing, await storedRow(entry.id))));
           } catch (error) {
+            identified.delete(entry.id);
             if (error instanceof UsbAudioError) errorCode = error.wireCode;
             else if (error instanceof AudioInputBeyondCardError) errorCode = AudioInputErrorCode.OPEN_FAILED;
             else throw error;
@@ -939,7 +974,8 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
     precheck,
 
     sourceFacts(inputId: string): UsbAudioSourceStatement | null {
-      const facts = held.get(inputId)?.stream?.card;
+      // The open's own card first; before the open, the card the last identification found (row 96, DF-33).
+      const facts = held.get(inputId)?.stream?.card ?? identified.get(inputId);
       if (facts === undefined) return null;
       return Object.freeze({
         product: facts.product,

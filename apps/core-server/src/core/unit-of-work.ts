@@ -48,7 +48,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import type { Pool, PoolClient, QueryConfig, QueryResult, QueryResultRow } from 'pg';
 import { RUNTIME_SEARCH_PATH } from '../plugins/db';
 import { CoreError, PipelineFailure, PipelineRefusal, isConnectionFailure } from './errors';
-import type { ChainHead, UnitContext, UnitDatabase, UnitOfWork } from './types';
+import type { ChainHead, ResealedChain, UnitContext, UnitDatabase, UnitOfWork } from './types';
 import { unitStatementRefusal } from './unit-statement';
 
 /** The statements the unit itself issues, in the order of the header. */
@@ -132,6 +132,7 @@ export class UnitState {
   #client: PoolClient | null = null;
   #begun: Promise<void> | null = null;
   #head: ChainHead | null = null;
+  #resealed: ResealedChain | null = null;
   /** The first statement that failed. A unit that has one never commits. */
   #failure: { readonly error: unknown } | null = null;
   /** What took the unit's connection away while the unit held it. Such a unit answers 503. */
@@ -323,6 +324,20 @@ export class UnitState {
   recordAuditRow(row: AuditRow): void {
     this.#head = { seq: row.seq, hash: row.hash };
     this.auditRows.push(row);
+  }
+
+  /** The chain after a re-seal of this unit (row 94; DF-27); null while the unit sealed nothing. */
+  get resealed(): ResealedChain | null {
+    return this.#resealed;
+  }
+
+  /**
+   * Called by the audit writer after the unit re-sealed the chain: the head moves to the stored head
+   * the seal left, so the commit reports where the chain really ends (DF-27).
+   */
+  recordReseal(chain: ResealedChain): void {
+    this.#head = chain.head;
+    this.#resealed = chain;
   }
 
   recordEvent(event: SimEvent): void {

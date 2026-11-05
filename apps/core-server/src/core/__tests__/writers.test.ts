@@ -101,7 +101,7 @@ const SECRET_FORMS = {
 };
 
 describe('the vocabulary', () => {
-  it('every one of the 90 shared audit types is accepted, with the category of the shared map', () => {
+  it('every one of the 93 shared audit types is accepted, with the category of the shared map', () => {
     const types = Object.values(AuditType);
     // C3 §2.5 (blueprint row 113): 62 + STT_CONFIG_CHANGED = 63. C3 §5.2, §10.1 (blueprint row 132,
     // decision D106): + the four of the camera search, the test, the adoption and the no-device warning = 67.
@@ -115,7 +115,8 @@ describe('the vocabulary', () => {
     // Task 4 row D53 (decisions D51, D53): + CAMERA_PREVIEW_OPENED = 87.
     // REVISED 2026-11-02 (principal): RB-9 amended — + USER_CREATED, USER_UPDATED, USER_DELETED = 90.
     // REVISED 2026-11-03 (principal): D57 adds PANEL_SETUP_CHANGED = 91.
-    expect(types).toHaveLength(91);
+    // Row 84 (D23 (1, 2)): + CAMERA_LINK_DOWN, CAMERA_LINK_UP = 93.
+    expect(types).toHaveLength(93);
     const typed = new Set<string>(Object.keys(SERVER_AUDIT_DETAIL_RULES));
     for (const type of types.filter((candidate) => !typed.has(candidate))) {
       const input = auditInputOf(audit({ type }));
@@ -449,10 +450,19 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
       { type: 'CAMERA_PREVIEW_OPENED', actorId: 'OPR-001', deviceId: 'CAM-03', message: 'Live camera preview opened for CAM-03', details: { deviceId: 'CAM-03', expiresAt: 1_790_825_000_000, operationId: 'createCameraPreviewSession', permission: 'SESSION_START' } },
       { type: 'CAMERA_PREVIEW_OPENED', actorId: 'OPR-003', deviceId: 'CAM-01', message: 'Live camera preview opened for CAM-01', details: { deviceId: 'CAM-01', expiresAt: 1_790_825_000_000, operationId: 'createCameraPreviewSession' } },
     ],
+    // Row 85 (W1 register A7, A8): the camera link went down (WARNING), and came back with and without the length of the outage.
+    CAMERA_LINK_DOWN: [
+      { type: 'CAMERA_LINK_DOWN', actorId: null, deviceId: null, severity: 'WARNING', message: 'Camera network link down', details: { previous: 'UP' } },
+      { type: 'CAMERA_LINK_DOWN', actorId: null, deviceId: null, severity: 'WARNING', message: 'Camera network link down', details: { previous: 'UNKNOWN' } },
+    ],
+    CAMERA_LINK_UP: [
+      { type: 'CAMERA_LINK_UP', actorId: null, deviceId: null, severity: 'INFO', message: 'Camera network link up', details: { previous: 'DOWN', downMs: 120_000 } },
+      { type: 'CAMERA_LINK_UP', actorId: null, deviceId: null, severity: 'INFO', message: 'Camera network link up', details: { previous: 'ABSENT' } },
+    ],
   };
 
   // REVISED 2026-11-02 (principal): RB-9 amended — 43 + the three of the vendor-only operations = 46.
-  it('covers exactly the forty-seven types the server writes; the simulator\'s 44 have no list', () => {
+  it('covers exactly the forty-nine types the server writes; the simulator\'s 44 have no list', () => {
     const typed = Object.keys(SERVER_AUDIT_DETAIL_RULES).sort();
     expect(typed).toEqual(Object.keys(accepted).sort());
     // Task 4 blueprint row 19: 23 + the ten of the hardware-input port = 33; the simulator's 44 do not move.
@@ -465,7 +475,8 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
     // REVISED 2026-11-02 (principal): RB-9 amended: + USER_CREATED, USER_UPDATED, USER_DELETED = 46; the 44 still do not move.
     // D57 (2026-11-03, principal): + PANEL_SETUP_CHANGED = 47; the 44 still do not move (the Core's
     // console module writes it; the simulator never sees the panel backend).
-    expect(typed).toHaveLength(47);
+    // Row 85 (D23 (1, 2)): + CAMERA_LINK_DOWN, CAMERA_LINK_UP = 49; the 44 still do not move (both have a list).
+    expect(typed).toHaveLength(49);
     expect(Object.values(AuditType).filter((type) => detailRulesOf(type) === undefined)).toHaveLength(44);
     for (const type of typed) expect(Object.values(AuditType)).toContain(type);
   });
@@ -538,6 +549,9 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
       CAPTURE_AUDIO_SILENCE_INSERTED: ['sessionId', 'attempt', 'index', 'fromSample', 'samples'],
       CAPTURE_DEVICE_RETIRED: ['deviceId', 'kind', 'reason', 'credentialDestroyed', 'streamRowsKept', 'operationId', 'permission'],
       CAMERA_PREVIEW_OPENED: ['deviceId', 'expiresAt', 'operationId', 'permission'],
+      // Row 85 (W1 register A7, A8): no operation id, no interface name, no address.
+      CAMERA_LINK_DOWN: ['previous'],
+      CAMERA_LINK_UP: ['previous', 'downMs'],
     });
     expect(required).toEqual({
       ACCESS_DENIED: ['operationId'],
@@ -590,11 +604,48 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
       CAPTURE_AUDIO_SILENCE_INSERTED: ['sessionId', 'attempt', 'index', 'fromSample', 'samples'],
       CAPTURE_DEVICE_RETIRED: ['deviceId', 'kind', 'reason', 'credentialDestroyed', 'streamRowsKept', 'operationId'],
       CAMERA_PREVIEW_OPENED: ['deviceId', 'expiresAt', 'operationId'],
+      CAMERA_LINK_DOWN: ['previous'],
+      CAMERA_LINK_UP: ['previous'],
     });
   });
 
+  it('row 85 (D23 (1, 2)): CAMERA_LINK_DOWN and CAMERA_LINK_UP are the last two types, category DEVICE; accepted in their stated forms; refuse an interface, an address, an operation id and a state outside the four', () => {
+    expect(Object.values(AuditType).slice(-2)).toEqual(['CAMERA_LINK_DOWN', 'CAMERA_LINK_UP']);
+    expect(AUDIT_TYPE_CATEGORY.CAMERA_LINK_DOWN).toBe('DEVICE');
+    expect(AUDIT_TYPE_CATEGORY.CAMERA_LINK_UP).toBe('DEVICE');
+    const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
+    const codeOf = (run: () => unknown): string => {
+      try {
+        run();
+      } catch (error) {
+        return (error as { code?: string }).code ?? 'threw';
+      }
+      return 'accepted';
+    };
+    const [down] = accepted['CAMERA_LINK_DOWN'] as [AuditEntry, AuditEntry];
+    const [up] = accepted['CAMERA_LINK_UP'] as [AuditEntry, AuditEntry];
+    for (const item of [...(accepted['CAMERA_LINK_DOWN'] ?? []), ...(accepted['CAMERA_LINK_UP'] ?? [])]) {
+      expect(codeOf(() => auditInputOf(item)), `${item.type} ${String(item.details?.['previous'])}`).toBe('accepted');
+    }
+    for (const item of [down, up]) {
+      for (const key of ['interface', 'interfaceName', 'address', 'host', 'operationId']) {
+        expect(codeOf(() => auditInputOf(withDetail(item, key, 'eth1'))), `${item.type} ${key}`).not.toBe('accepted');
+      }
+      for (const value of ['up', 'LOWERLAYERDOWN', '', 7, null]) {
+        expect(codeOf(() => auditInputOf(withDetail(item, 'previous', value))), `${item.type} previous ${String(value)}`).not.toBe('accepted');
+      }
+    }
+    for (const value of [-1, 1.5, 'long', null]) {
+      expect(codeOf(() => auditInputOf(withDetail(up, 'downMs', value))), `downMs ${String(value)}`).not.toBe('accepted');
+    }
+    // `previous` is required on both.
+    expect(codeOf(() => auditInputOf({ ...down, details: {} as AuditEntry['details'] }))).not.toBe('accepted');
+    expect(codeOf(() => auditInputOf({ ...up, details: { downMs: 5 } as AuditEntry['details'] }))).not.toBe('accepted');
+  });
+
   it('task 4 row D53 (decisions D51, D53): CAMERA_PREVIEW_OPENED is the last type, category DEVICE; accepted in its stated forms; refuses a token, a URL, an address, a credential and a value outside its form', () => {
-    expect(Object.values(AuditType).at(-1)).toBe('CAMERA_PREVIEW_OPENED');
+    // Row 85: two types joined the end (91 -> 93); the position moves by that delta of two.
+    expect(Object.values(AuditType).at(-3)).toBe('CAMERA_PREVIEW_OPENED');
     expect(AUDIT_TYPE_CATEGORY.CAMERA_PREVIEW_OPENED).toBe('DEVICE');
     const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
     const without = (item: AuditEntry, key: string): AuditEntry => ({ ...item, details: Object.fromEntries(Object.entries(item.details ?? {}).filter(([name]) => name !== key)) as AuditEntry['details'] });
@@ -620,7 +671,7 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
   it('task 4 row RD2 (C147): CAPTURE_DEVICE_RETIRED is the last type, category SECURITY; accepted in its stated forms (the shared builder\'s output); refuses an address, a hardware id, a serial, a credential, free text and a value outside its form', () => {
     // MUTATIONS THIS CASE WAS SEEN RED ON: `kind` given the word POE; `deviceId` taken as any hardware id; `reason` taken as a code.
     // Row D53: one type joined the end (86 -> 87); the position moves by that delta of one.
-    expect(Object.values(AuditType).at(-2)).toBe('CAPTURE_DEVICE_RETIRED');
+    expect(Object.values(AuditType).at(-4)).toBe('CAPTURE_DEVICE_RETIRED'); // row 85: + two (91 -> 93)
     expect(AUDIT_TYPE_CATEGORY.CAPTURE_DEVICE_RETIRED).toBe('SECURITY');
     const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
     const without = (item: AuditEntry, key: string): AuditEntry => ({ ...item, details: Object.fromEntries(Object.entries(item.details ?? {}).filter(([name]) => name !== key)) as AuditEntry['details'] });
@@ -659,7 +710,7 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
     // MUTATIONS THIS CASE WAS SEEN RED ON: the bound of `bufferedSamples` raised to one day; `samples` of a run admitted from 0; `captureLayer` given a second word.
     const TYPES = ['CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED', 'CAPTURE_AUDIO_SILENCE_INSERTED'] as const;
     // Row RD2: one type joined the end (85 -> 86); the positions move by that delta of one. Row D53: one more (86 -> 87).
-    expect(Object.values(AuditType).slice(-4, -2)).toEqual([...TYPES]);
+    expect(Object.values(AuditType).slice(-6, -4)).toEqual([...TYPES]); // row 85: two types joined the end (91 -> 93)
     expect(TYPES.map((type) => AUDIT_TYPE_CATEGORY[type])).toEqual(['DEVICE', 'DEVICE']);
     const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
     const without = (item: AuditEntry, key: string): AuditEntry => ({ ...item, details: Object.fromEntries(Object.entries(item.details ?? {}).filter(([name]) => name !== key)) as AuditEntry['details'] });
@@ -824,7 +875,7 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
 
   it('task 4 row R1b (C99): CAPTURE_VIDEO_ABSENT_IN_SESSION is the last type, category DEVICE; accepted in its stated forms; refuses a foreign key, a locator, a profile, a cause, a value outside its form; its sets and bound are the manifest\'s', () => {
     // Row N2: two types follow it (83 -> 85); the position moves by that delta of two. Row RD2: one more (85 -> 86).
-    expect(Object.values(AuditType).at(-5)).toBe('CAPTURE_VIDEO_ABSENT_IN_SESSION'); // row D53: + one (86 -> 87)
+    expect(Object.values(AuditType).at(-7)).toBe('CAPTURE_VIDEO_ABSENT_IN_SESSION'); // row D53: + one (86 -> 87)
     expect([AUDIT_TYPE_CATEGORY.CAPTURE_VIDEO_ABSENT_IN_SESSION, AUDIT_TYPE_CATEGORY.CAPTURE_AUDIO_ABSENT_ON_RESTART, AUDIT_TYPE_CATEGORY.CAPTURE_DEVICE_UNREACHABLE]).toEqual(['DEVICE', 'DEVICE', 'DEVICE']);
     const rows = accepted['CAPTURE_VIDEO_ABSENT_IN_SESSION'] as AuditEntry[];
     const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
@@ -880,7 +931,7 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
     // The four are the last of the vocabulary, in this order (78 -> 82), each in an existing category.
     // Row R1b: one type follows them (82 -> 83); the positions move by that delta of one.
     // Row N2: two more follow (83 -> 85); the positions move by that delta of two. Row RD2: one more (85 -> 86).
-    expect(Object.values(AuditType).slice(-9, -5)).toEqual([...NEW_TYPES]); // row D53: + one (86 -> 87)
+    expect(Object.values(AuditType).slice(-11, -7)).toEqual([...NEW_TYPES]); // row 85: + two (91 -> 93); // row D53: + one (86 -> 87)
     expect(NEW_TYPES.map((type) => AUDIT_TYPE_CATEGORY[type])).toEqual(['SECURITY', 'SECURITY', 'DEVICE', 'SECURITY']);
     // As the existing types of their kind: the three alias types, the capture-fault types, the candidate's test.
     expect([AUDIT_TYPE_CATEGORY.HOST_ALIAS_ADDED, AUDIT_TYPE_CATEGORY.MIC_SILENT, AUDIT_TYPE_CATEGORY.CAPTURE_DEVICE_UNREACHABLE, AUDIT_TYPE_CATEGORY.CAPTURE_CONNECTION_TESTED]).toEqual(['SECURITY', 'DEVICE', 'DEVICE', 'SECURITY']);
@@ -1004,7 +1055,7 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
   it('task 4 row 201 (X-C; SX-14): OPERATOR_PASSWORD_SET is accepted and refuses every foreign key, among them each name of a password, a length, a salt, a tag or a hash parameter; its severity is fixed', () => {
     // The one type follows the ten of row 19 (77 -> 78), category SECURITY; the four of row V3 follow it (78 -> 82).
     // Row N2: two types joined the end (83 -> 85); the position moves by that delta of two. Row RD2: one more (85 -> 86).
-    expect(Object.values(AuditType).at(-10)).toBe('OPERATOR_PASSWORD_SET'); // row D53: + one (86 -> 87)
+    expect(Object.values(AuditType).at(-12)).toBe('OPERATOR_PASSWORD_SET'); // row D53: + one (86 -> 87)
     expect(AUDIT_TYPE_CATEGORY.OPERATOR_PASSWORD_SET).toBe('SECURITY');
     expect(SERVER_AUDIT_FIXED_SEVERITY).toEqual({ OPERATOR_PASSWORD_SET: 'WARNING' });
     expect(fixedSeverityOf(AuditType.OPERATOR_PASSWORD_SET)).toBe('WARNING');
@@ -1205,7 +1256,7 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
     ] as const;
     // The ten are in this order (67 -> 77); the one type of row 201 follows them (77 -> 78), then the four of row V3 (78 -> 82).
     // Row N2: two types joined the end (83 -> 85); the positions move by that delta of two. Row RD2: one more (85 -> 86).
-    expect(Object.values(AuditType).slice(-20, -10)).toEqual([...NEW_TYPES]); // row D53: + one (86 -> 87)
+    expect(Object.values(AuditType).slice(-22, -12)).toEqual([...NEW_TYPES]); // row 85: + two (91 -> 93); // row D53: + one (86 -> 87)
     const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
     const first = (type: string): AuditEntry => accepted[type]?.[0] as AuditEntry;
     for (const type of NEW_TYPES) {

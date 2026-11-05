@@ -1,4 +1,4 @@
-import { eventTitle, faultKindWords } from '@/lib/event-words'
+import { eventTitle, faultClearedStillInFault, faultKindWords, selectFaultSessionId } from '@/lib/event-words'
 import { ScrollShadow } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { AnimatePresence } from 'motion/react'
@@ -14,8 +14,12 @@ import { useNewRowIds } from './use-new-rows'
 /** Rows shown (newest first); the list scrolls inside its ScrollShadow when the card is short. */
 const ACTIVITY_ROWS = 10
 
-/** Dot tone per event: sealed violet (D28/Q4), warnings amber, faults red, the rest by severity. */
-function toneOf(event: SimEvent): string {
+/**
+ * Dot tone per event: sealed violet (D28/Q4), warnings amber, faults red, the rest by severity. A fault
+ * cleared while its session is still in FAULT is amber, not green (row 110b, DF-19).
+ */
+function toneOf(event: SimEvent, faultSessionId: string | null): string {
+  if (faultClearedStillInFault(event, faultSessionId)) return 'warning'
   if (event.type === 'EVIDENCE_SEALED') return 'sealed'
   if (event.type === 'EVIDENCE_EXPORTED') return 'info'
   if (event.severity === 'CRITICAL') return 'danger'
@@ -34,9 +38,13 @@ export function ActivityPanel() {
   const { t } = useTranslation()
   const events = useSim((s) => selectStorageActivity(s, ACTIVITY_ROWS))
   const fresh = useNewRowIds(events.map((event) => event.id))
+  // Row 110b (DF-19): the open session's id while it is in FAULT.
+  const faultSessionId = useSim(selectFaultSessionId)
 
   const titleOf = (event: SimEvent) => {
-    const title = eventTitle(t, event)
+    const title = eventTitle(t, event, faultSessionId)
+    // The still-in-FAULT label carries the fault's words already.
+    if (faultClearedStillInFault(event, faultSessionId)) return title
     if (event.type !== 'FAULT_RAISED' && event.type !== 'FAULT_CLEARED') return title
     // Only the two storage fault kinds pass the storage-activity filter.
     const kind = event.params.kind === 'STORAGE_FULL' ? 'STORAGE_FULL' : 'STORAGE_LOW'
@@ -81,7 +89,7 @@ export function ActivityPanel() {
                 <li key={event.id} className="stor-activity-item" data-testid="storage-activity-row">
                   <AnimatedListItem highlight={fresh.has(event.id)}>
                     <div className="stor-activity-row">
-                      <span className="stor-activity-dot" data-tone={toneOf(event)} aria-hidden="true" />
+                      <span className="stor-activity-dot" data-tone={toneOf(event, faultSessionId)} aria-hidden="true" />
                       <time className="stor-activity-time" dateTime={new Date(event.at).toISOString()}>
                         {formatWibTime(event.at)}
                       </time>

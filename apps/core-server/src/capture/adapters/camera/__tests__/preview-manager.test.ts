@@ -1,6 +1,7 @@
 // The live camera previews of one Core (decisions D51 / D53): the bounds, the linger, the yield to a
 // recording and its order, the restart bound, the stop at a refused credential, and the mpjpeg frame
 // parser across split chunks. No process, no socket, no clock: timers and the opener are doubles.
+import { CAMERA_PREVIEW_LIMITS } from '@dems/shared/api';
 import { describe, expect, it } from 'vitest';
 import type { CaptureTimers } from '../../../types';
 import { CameraOpenError, CameraOpenRefusal } from '../onvif-relay';
@@ -206,6 +207,7 @@ describe('the mpjpeg parser: pictures by their Content-length', () => {
 describe('the bounds: one pipeline per camera, four in all (the D60 tracks); four viewers per camera, sixteen in all', () => {
   it('viewers of one camera share ONE pipeline; the fifth viewer of a camera is refused PREVIEW_LIMIT', async () => {
     const { manager, opener } = rig();
+    expect(PREVIEW_LIMITS).toEqual(CAMERA_PREVIEW_LIMITS); // DF-14: the Core bounds ARE the contract bounds
     expect(PREVIEW_LIMITS).toEqual({ pipelinesPerCamera: 1, pipelines: 4, viewersPerCamera: 4, viewers: 16 });
     for (let index = 0; index < 4; index += 1) joined(manager.join('CAM-03', 'OPR-001', sink().value));
     await settle();

@@ -23,6 +23,7 @@ import {
   ManifestV2Schema,
   UnsignedManifestV2Schema,
   type ManifestAudioInterval,
+  type ManifestAudioTrack,
   type ManifestTrack,
   type ManifestV2,
   type UnsignedManifestV2,
@@ -31,10 +32,13 @@ import { deriveDevelopmentSources, sessionSourceClasses, type ManifestSourceClas
 
 export type ManifestTrackInput = Omit<ManifestTrack, 'sourceClass'>;
 export type ManifestAudioIntervalInput = Omit<ManifestAudioInterval, 'sourceClass'>;
+/** D5 (fields 159-171): an audio file record of a pair without its class; field 172 is computed here, as fields 124 and 125. */
+export type ManifestAudioTrackInput = Omit<ManifestAudioTrack, 'sourceClass'>;
 
 /** Everything of a manifest that the sealing pipeline supplies. No source class, no flag, no hash. */
-export type ManifestV2Input = Omit<UnsignedManifestV2, 'developmentSources' | 'manifestSha256' | 'tracks' | 'audio'> & {
+export type ManifestV2Input = Omit<UnsignedManifestV2, 'developmentSources' | 'manifestSha256' | 'tracks' | 'audio' | 'audioTracks'> & {
   readonly tracks: readonly ManifestTrackInput[];
+  readonly audioTracks?: readonly ManifestAudioTrackInput[] | undefined;
   readonly audio: Omit<UnsignedManifestV2['audio'], 'sourceIntervals'> & { readonly sourceIntervals: readonly ManifestAudioIntervalInput[] };
 };
 
@@ -58,9 +62,20 @@ export function buildUnsignedManifest(input: ManifestV2Input, sourceRows: readon
   // manifest naming a track the plan did not record is refused HERE, as SOURCE_NOT_RECORDED.
   const unclassed = tracks.find((track) => track.sourceClass === undefined);
   if (unclassed !== undefined) throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_NOT_RECORDED, ['tracks']);
-  const developmentSources = deriveDevelopmentSources(
-    [...tracks.map((track) => track.sourceClass as ManifestSourceClass), ...sourceIntervals.map((interval) => interval.sourceClass)],
-  );
+  // D5 (fields 159-172, optional): the class of each pair microphone is that of its start row, as
+  // for an interval (MR-S2); a microphone the session did not record is refused. Left out or
+  // `undefined` gives NO key, so a package without the member is the manifest of before.
+  const { audioTracks: audioTracksInput, audioFiles, audioTracksMissing, ...rest } = input;
+  const audioTracks = audioTracksInput?.map((record, index) => {
+    const sourceClass = classes.micByDeviceId.get(record.micDeviceId);
+    if (sourceClass === undefined) throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_NOT_RECORDED, [`audioTracks.${index}.micDeviceId`]);
+    return { ...record, sourceClass };
+  });
+  const developmentSources = deriveDevelopmentSources([
+    ...tracks.map((track) => track.sourceClass as ManifestSourceClass),
+    ...sourceIntervals.map((interval) => interval.sourceClass),
+    ...(audioTracks ?? []).map((record) => record.sourceClass),
+  ]);
   // Fields 129-132 (row V4): the one optional member. A caller with no restart gap leaves the key
   // out or hands `undefined`; either way the manifest has NO such key (never `undefined`, which has
   // no canonical form, and never an empty list, which the schema refuses).
@@ -77,13 +92,16 @@ export function buildUnsignedManifest(input: ManifestV2Input, sourceRows: readon
       })
     : handed;
   // Field 133 (row P1): the second optional member, by the same rule - left out or `undefined` gives NO key.
-  const { hostProfileNotAsked, ...body } = input;
+  const { hostProfileNotAsked, ...body } = rest;
   const draft = {
     ...body,
     developmentSources,
     tracks,
     audio: { ...audio, sourceIntervals, ...(absentOnRestart === undefined ? {} : { absentOnRestart }), ...(shortfall === undefined ? {} : { samplesNotReceived: shortfall }) },
     ...(hostProfileNotAsked === undefined ? {} : { hostProfileNotAsked }),
+    ...(audioTracks === undefined ? {} : { audioTracks }),
+    ...(audioFiles === undefined ? {} : { audioFiles }),
+    ...(audioTracksMissing === undefined ? {} : { audioTracksMissing }),
   };
   // The digest is taken over the draft; the placeholder below is replaced, and the canonical body
   // sets the member to null in any case.

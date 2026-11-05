@@ -31,4 +31,6 @@ export { MIC_HELPER_LIMITS, createMicHelper, type LocalMicStream, type MicHelper
 export { LOCAL_MIC_DEVICE_NAME, MIC_HELPER_TABLE, MicGeneratedTone, MicHelperArgumentError, SPEECH_FIXTURE_SUBPATH, isMicPipeArgument, isSpeechFixtureArgument, micPrecheckArguments, micPushArguments, speechFixturePath, type MicSource } from './mic-helper-args';
 export type { PipeFiles } from './pipe-files';
 export { FILE_HEAD_MAX_BYTES, readFileHead, type FileHeadReader } from './process-door';
+// Audit 2026-11-05 row 88 (DF-02): the bounded whole-file read the boot's build-stamp check hashes the worker program with.
+export { FILE_WHOLE_MAX_BYTES, readWholeFile, type WholeFileReader } from './process-door';
 export { HELPER_OUTPUT_CAP_BYTES, inspectProgram, startHelperProcess, type HelperDoor, type HelperExit, type HelperProcess, type HelperProcessOptions, type PathStepFacts, type ProgramFacts, type ProgramInspector } from './process-door';

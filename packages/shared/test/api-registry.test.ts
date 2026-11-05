@@ -674,7 +674,7 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
     // Task 4 row D53: + CAMERA_PREVIEW_OPENED, 86 -> 87.
     // REVISED 2026-11-02 (principal): RB-9 as amended adds USER_CREATED, USER_UPDATED and
     // USER_DELETED beside USER_ENABLED and USER_DISABLED, 87 -> 90.
-    expect(AUDIT_TYPES).toHaveLength(91); // D57: + PANEL_SETUP_CHANGED
+    expect(AUDIT_TYPES).toHaveLength(93); // D57: + PANEL_SETUP_CHANGED; audit fix row 84: + CAMERA_LINK_DOWN, CAMERA_LINK_UP
   });
 
   it('counts by access rule: 5 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 74 with one permission, 3 any-of', () => {

@@ -468,6 +468,17 @@ function isCaptureOriginatedFault(state: SimState): boolean {
   return reason !== null && reason !== DEMO_CAPTURE_FAULT_REASON;
 }
 
+/**
+ * Audit fix row 110 (DF-19; register B2, B3; ruling D56). A fault that is cleared while the open
+ * session is in FAULT does not end that FAULT: the session stays there until `recover()` (operation
+ * 33). On the Core this is the boot of D84 R-4 (`clearCaptureFaultsTransition`: the capture fault of
+ * an earlier run is over because no worker runs) while a failed start is still open - the dashboard
+ * read "Fault cleared SES-..." beside a session card that still said FAULT (UI finding U-07). The
+ * FAULT_CLEARED event and audit row then say that the session still needs recovery, in this sentence
+ * (the i18n label `common.faultCleared.sessionStillInFault` is the same text with the kind filled in).
+ */
+export const FAULT_SESSION_RECOVERY_NEEDED_SENTENCE = 'The session is still in FAULT and needs recovery.';
+
 /** `clearFault(kind, target?)`: without a target, every active fault of that kind clears. */
 export function clearFaultTransition(state: SimState, now: EpochMs, kind: FaultKind, target?: FaultTarget): SimState {
   let key: string | null | undefined;
@@ -529,6 +540,8 @@ export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
   // Task 4 row V7 (finding E-01): the last fault of a camera's stream family is cleared - its lines say LIVE again.
   next = cameraStreamStateAfterFaults(state, next);
   const sessionId = next.session?.id ?? null;
+  // Audit fix row 110 (DF-19, register B3): the clear does not end the FAULT of the open session; its rows say so.
+  const stillInFault = next.session?.state === SessionState.FAULT;
   return {
     ...next,
     ...recordActivity(
@@ -538,13 +551,16 @@ export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
         audit: {
           type: 'FAULT_CLEARED' as const,
           // Closing pass J (D217 (5)): the restart fault of a Core in its own capture is cleared in its own words too.
-          message: fault.coreNotRunning === true ? CORE_NOT_RUNNING_CLEARED_SENTENCE : `${describeFault(state, kind, fault.target, causes.get(fault) ?? null).message} — cleared`,
+          message:
+            fault.coreNotRunning === true
+              ? CORE_NOT_RUNNING_CLEARED_SENTENCE
+              : `${describeFault(state, kind, fault.target, causes.get(fault) ?? null).message} — cleared${stillInFault ? `. ${FAULT_SESSION_RECOVERY_NEEDED_SENTENCE}` : ''}`,
           sessionId,
           details: { kind, evt: FaultEvt[kind], target: fault.target, ...((causes.get(fault) ?? null) === null ? {} : { reason: causes.get(fault) }), ...(fault.coreNotRunning === true ? { coreNotRunning: true } : {}) },
         },
         event: {
           type: 'FAULT_CLEARED' as const,
-          message: fault.coreNotRunning === true ? CORE_NOT_RUNNING_CLEARED_SENTENCE : `Fault cleared · ${kind}`,
+          message: fault.coreNotRunning === true ? CORE_NOT_RUNNING_CLEARED_SENTENCE : stillInFault ? `Fault cleared · ${kind}. ${FAULT_SESSION_RECOVERY_NEEDED_SENTENCE}` : `Fault cleared · ${kind}`,
           severity: 'SUCCESS' as const,
           sessionId,
           params: { kind, target: fault.target, ...(fault.coreNotRunning === true ? { coreNotRunning: true } : {}) },

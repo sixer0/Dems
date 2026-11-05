@@ -257,7 +257,7 @@ const COMMITTED_OPENAPI = fileURLToPath(new URL('../../../../packages/shared/ope
 
 const SECOND = 1_000;
 const TICK_MS = 50;
-/** The engine resolves the eight checks within 4.9 s, finalises in at most 7.2 s and recovers in 3 s. */
+/** The engine resolves the twelve checks within 4.9 s, finalises in at most 7.2 s and recovers in 3 s. */
 const PRECHECK_MS = 5 * SECOND;
 const FINALIZE_MS = 20 * SECOND;
 const RECOVERY_MS = 4 * SECOND;
@@ -1709,7 +1709,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     // Gap W34-1, closed by W83 (the envelope's `details` names `sessionId`): the 409 names the open session.
     expect(detailsOf(active)['sessionId']).toBe(blockedId);
     await expectCall(main, 'createSession', investigator, 'an input without its members', { payload: {} }, 422, 'INVALID_INPUT');
-    await expectCall(main, 'beginPrecheck', investigator, 'the eight checks start', { id: blockedId }, 202);
+    await expectCall(main, 'beginPrecheck', investigator, 'the twelve checks start', { id: blockedId }, 202);
     await expectCall(main, 'beginPrecheck', investigator, 'a pre-check that runs already', { id: blockedId }, 409, 'INVALID_STATE');
     await expectCall(main, 'startSession', investigator, 'while the checks run', { id: blockedId }, 409, 'PRECHECK_RUNNING');
     await expectCall(main, 'retryPrecheck', investigator, 'while the checks run', { id: blockedId }, 409, 'PRECHECK_RUNNING');

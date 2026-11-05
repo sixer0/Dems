@@ -74,6 +74,7 @@ import {
   MIC_CHANNEL_IDS, // D61 (2026-11-04): the four microphone channels
   OperatorRole,
   Permission,
+  PRECHECK_ORDER,
   PrecheckCheckId,
   PrecheckStatus,
   RecordingProfileId,
@@ -307,7 +308,7 @@ export const PrecheckItemSchema = z
     value: z.string().nullable().describe('Live device state, e.g. ONLINE, READY, NO_SIGNAL, GNSS.'),
     reason: z.string().nullable().describe('Why the check warns or blocks.'),
   })
-  .describe('One of the 8 book §5.3 pre-recording checks.');
+  .describe('One of the twelve book §5.3 pre-recording checks (the first eight of the book keep their readable sense; lens 3, lens 4, microphone 3 and microphone 4 were added by audit fix row 83).');
 export type PrecheckItemBody = z.output<typeof PrecheckItemSchema>;
 
 export const SessionResourceSchema = z
@@ -331,7 +332,9 @@ export const SessionResourceSchema = z
     precheck: z
       .object({
         outcome: z.enum(['PASS', 'WARN', 'BLOCK']).nullable().describe('Null while checks run.'),
-        items: z.array(PrecheckItemSchema).length(8),
+        // Audit fix row 83 (DF-03): a run holds the twelve checks of `PRECHECK_ORDER`; a session whose
+        // pre-check ran before the fix (still ARMED or RECORDING across the deploy) holds its eight.
+        items: z.array(PrecheckItemSchema).min(8).max(PRECHECK_ORDER.length),
       })
       .nullable()
       .describe('Null before the pre-check starts.'),
@@ -800,7 +803,7 @@ const CREATE_SESSION_TEXT = [
 ];
 
 const START_SESSION_TEXT = [
-  'Runs the Core pre-check (book §5.3: 8 checks) and starts recording.',
+  'Runs the Core pre-check (book §5.3: twelve checks) and starts recording.',
   [
     '- From **CREATE**: begins the pre-check and answers `202` with state **PRECHECK**. Poll `GET /api/v1/session/current` and call again once it is **ARMED**.',
     '- From **ARMED**: starts recording and answers `200` with state **RECORDING**.',

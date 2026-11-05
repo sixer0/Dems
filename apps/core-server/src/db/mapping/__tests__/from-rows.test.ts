@@ -529,33 +529,90 @@ describe('D64: a hardware snapshot persisted before D60 / D61 widens at the boot
   it('two stored camera rows come back as four: the stored rows stand first, the two built-in tracks are appended', () => {
     const legacy = freshRow();
     const stored = legacy.cameras.slice(0, 2);
-    const slices = snapshotSlicesFromRow({ ...legacy, cameras: stored });
+    const slices = snapshotSlicesFromRow({ ...legacy, cameras: stored }, state.captureConfig);
     expect(slices.cameras.map((camera) => camera.id)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']);
     expect(slices.cameras.slice(0, 2)).toEqual(stored);
-    expect(slices.cameras[2]).toEqual(defaultHardwareCameras()[2]);
+    // Audit row 92 (D24): the appended row is the default's shape, but it claims no READY.
+    expect(slices.cameras[2]).toEqual({ ...defaultHardwareCameras()[2], lens: 'FAULT', online: false });
   });
 
   it('two stored microphone rows come back as four channels the same way', () => {
     const legacy = freshRow();
     const stored = legacy.mics.slice(0, 2);
-    const slices = snapshotSlicesFromRow({ ...legacy, mics: stored });
+    const slices = snapshotSlicesFromRow({ ...legacy, mics: stored }, state.captureConfig);
     expect(slices.mics.map((mic) => mic.id)).toEqual(['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']);
     expect(slices.mics.slice(0, 2)).toEqual(stored);
+    // Audit row 92 (D24): the appended channels claim no signal they were never seen to have.
+    expect(slices.mics.slice(2).map((mic) => mic.state)).toEqual(['NO_SIGNAL', 'NO_SIGNAL']);
   });
 
   it('a current four-row snapshot passes the widening unchanged (the widening does not dirty what is already right)', () => {
     const row = freshRow();
-    const slices = snapshotSlicesFromRow(row);
+    const slices = snapshotSlicesFromRow(row, state.captureConfig);
     expect(slices.cameras).toEqual(row.cameras);
     expect(slices.mics).toEqual(row.mics);
   });
 
   it('the widened slices pass the slice schemas of the contract (the boot teeth accept them)', () => {
     const legacy = freshRow();
-    const slices = snapshotSlicesFromRow({ ...legacy, cameras: legacy.cameras.slice(0, 2), mics: legacy.mics.slice(0, 2) });
+    const slices = snapshotSlicesFromRow({ ...legacy, cameras: legacy.cameras.slice(0, 2), mics: legacy.mics.slice(0, 2) }, state.captureConfig);
     expect(CamerasSliceSchema.safeParse(slices.cameras).success).toBe(true);
     expect(MicsSliceSchema.safeParse(slices.mics).success).toBe(true);
     // and the two-row slice alone would now REFUSE the boot instead of poisoning every read
     expect(CamerasSliceSchema.safeParse((legacy.cameras as unknown[]).slice(0, 2)).success).toBe(false);
+  });
+});
+
+// Audit row 92 (DF-31, D21(2); DF-11 widening part, D24): the boot-load takes each channel's device from the
+// selector (capture_config.mic_0N_id), never from the built-in default id, and an appended default claims no READY.
+// The bench (judge ch3 F-3-04): capture_config held MIC-03/04/05/06 on channels 1..4, while the widened snapshot
+// stored AUDIO-03/04 on MIC-03/04 - the devices of channels 1/2 - so the dashboard labelled MIC 3 "Channel 1".
+describe('row 92: the hardware mic rows name the device their channel holds in capture_config', () => {
+  const state = createIdleState({ now: FIXED_NOW, seed: DEFAULT_SEED });
+  const freshRow = () => hardwareSnapshotToRow({ ...state, meta: { ...state.meta, seededAt: FIXED_NOW } } as never, { at: FIXED_NOW, seededAt: FIXED_NOW, lastResetAt: null });
+  const line = (channel: 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04', deviceId: string) => ({ channel, inputId: deviceId, deviceId, transport: 'USB', online: true }) as SimState['captureConfig']['mics'][number];
+  const BENCH_SELECTOR = { mics: [line('MIC-01', 'MIC-03'), line('MIC-02', 'MIC-04'), line('MIC-03', 'MIC-05'), line('MIC-04', 'MIC-06')] };
+  const deviceOf = (mics: readonly { id: string; deviceId: string }[]) => mics.map((mic) => [mic.id, mic.deviceId]);
+
+  it('AUDIO-03/04 = capture_config mic_03/04: the bench snapshot (AUDIO-03/04 on MIC-03/04) reads back on MIC-05/06', () => {
+    const legacy = freshRow();
+    const benchStored = legacy.mics.map((mic, index) => ({ ...mic, deviceId: ['MIC-03', 'MIC-04', 'MIC-03', 'MIC-04'][index] as string }));
+    const slices = snapshotSlicesFromRow({ ...legacy, mics: benchStored }, BENCH_SELECTOR);
+    expect(deviceOf(slices.mics)).toEqual([['AUDIO-01', 'MIC-03'], ['AUDIO-02', 'MIC-04'], ['AUDIO-03', 'MIC-05'], ['AUDIO-04', 'MIC-06']]);
+    // Only the device moves: the channel word and every other member of the row stand as stored.
+    expect(slices.mics.map((mic) => mic.channel)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']);
+    expect(slices.mics[2]).toEqual({ ...benchStored[2], deviceId: 'MIC-05' });
+    expect(MicsSliceSchema.safeParse(slices.mics).success).toBe(true);
+  });
+
+  it('a pre-D61 two-row snapshot widens with channels 3/4 on the selector devices, never on the default MIC-03/04', () => {
+    const legacy = freshRow();
+    const slices = snapshotSlicesFromRow({ ...legacy, mics: legacy.mics.slice(0, 2) }, BENCH_SELECTOR);
+    expect(deviceOf(slices.mics)).toEqual([['AUDIO-01', 'MIC-03'], ['AUDIO-02', 'MIC-04'], ['AUDIO-03', 'MIC-05'], ['AUDIO-04', 'MIC-06']]);
+    expect(slices.mics.slice(2).map((mic) => mic.state)).toEqual(['NO_SIGNAL', 'NO_SIGNAL']); // D24: appended, not READY
+  });
+
+  it('a channel the selector does not assign keeps the device the row holds (no line, no fact to take)', () => {
+    const legacy = freshRow();
+    const slices = snapshotSlicesFromRow(legacy, { mics: [line('MIC-01', 'MIC-02'), line('MIC-02', 'MIC-01')] });
+    expect(deviceOf(slices.mics)).toEqual([['AUDIO-01', 'MIC-02'], ['AUDIO-02', 'MIC-01'], ['AUDIO-03', 'MIC-03'], ['AUDIO-04', 'MIC-04']]);
+    expect(deviceOf(snapshotSlicesFromRow(legacy, { mics: [] }).mics)).toEqual(deviceOf(legacy.mics));
+  });
+
+  it('a snapshot that already agrees with its selector is handed on as it came (the read never dirties it)', () => {
+    const row = freshRow();
+    const slices = snapshotSlicesFromRow(row, state.captureConfig);
+    expect(slices.mics).toEqual(row.mics);
+    expect(slices.mics.map((mic) => mic.state)).toEqual(['READY', 'READY', 'READY', 'READY']); // stored rows stand
+  });
+
+  it('through fromRows: a stored selector that swapped the built-in channels moves the snapshot devices with it', () => {
+    const rows = asStored(toRows(idle(), context));
+    const swapped = { ...rows, captureConfig: rows.captureConfig.map((row) => ({ ...row, mic01Id: 'MIC-03', mic02Id: 'MIC-04', mic03Id: 'MIC-01', mic04Id: 'MIC-02' })) } as typeof rows;
+    const back = fromRows(swapped);
+    expect(back.captureConfig.mics.map((mic) => [mic.channel, mic.deviceId])).toEqual([['MIC-01', 'MIC-03'], ['MIC-02', 'MIC-04'], ['MIC-03', 'MIC-01'], ['MIC-04', 'MIC-02']]);
+    expect(deviceOf(back.mics)).toEqual([['AUDIO-01', 'MIC-03'], ['AUDIO-02', 'MIC-04'], ['AUDIO-03', 'MIC-01'], ['AUDIO-04', 'MIC-02']]);
+    // CONTROL: the seeded store reads back on the built-in pairing, untouched.
+    expect(deviceOf(fromRows(rows).mics)).toEqual([['AUDIO-01', 'MIC-01'], ['AUDIO-02', 'MIC-02'], ['AUDIO-03', 'MIC-03'], ['AUDIO-04', 'MIC-04']]);
   });
 });

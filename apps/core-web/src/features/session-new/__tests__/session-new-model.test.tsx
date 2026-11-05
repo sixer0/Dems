@@ -16,7 +16,7 @@ function slice(statuses: PrecheckItem['status'][], outcome: PrecheckSlice['outco
   }
 }
 
-const ALL_PASS = Array<PrecheckItem['status']>(8).fill('PASS')
+const ALL_PASS = Array<PrecheckItem['status']>(PRECHECK_ORDER.length).fill('PASS') // audit fix row 83 (DF-03): twelve checks
 
 describe('step gating', () => {
   it('never shows a step the session does not allow', () => {
@@ -39,7 +39,7 @@ describe('step gating', () => {
 describe('gate view', () => {
   it('is running while checks resolve and allows nothing yet', () => {
     const view = gateView(slice(['PASS', 'PASS', 'RUNNING'], null), 'PRECHECK', false)
-    expect(view).toMatchObject({ phase: 'running', done: 2, total: 8, canProceed: false, canRetry: false, needsAck: false })
+    expect(view).toMatchObject({ phase: 'running', done: 2, total: 12, canProceed: false, canRetry: false, needsAck: false }) // row 83: twelve checks
   })
 
   it('BLOCK disables Next and offers a re-run', () => {
@@ -59,7 +59,7 @@ describe('gate view', () => {
   })
 
   it('PASS (the simulator arms by itself) allows Next', () => {
-    expect(gateView(slice(ALL_PASS, 'PASS'), 'ARMED', false)).toMatchObject({ phase: 'pass', done: 8, canProceed: true, canRetry: false })
+    expect(gateView(slice(ALL_PASS, 'PASS'), 'ARMED', false)).toMatchObject({ phase: 'pass', done: 12, canProceed: true, canRetry: false })
     expect(gateView(null, null, false)).toMatchObject({ phase: 'idle', canProceed: false })
   })
 })

@@ -17,7 +17,7 @@ import { AUDIO_TRACK_IDS, AuditEventKind, FINALIZATION_STEPS_V2, SessionState, V
 import { DEFAULT_SESSION_ROOM, sessionCreateSchema } from '../api/session-schema';
 import { findOperatorById, requirePermission, roleHas } from './auth';
 import { captureMicLines, channelOfMicLine, micInputOfChannel } from './audio';
-import { PRIMARY_MIC_CHANNEL, SECOND_MIC_CHANNEL } from './vocabulary'; // D61 (2026-11-04): the transcription pair is channels 1 and 2
+import { MicChannel, PRIMARY_MIC_CHANNEL, SECOND_MIC_CHANNEL } from './vocabulary'; // D61 (2026-11-04): the transcription pair is channels 1 and 2; audit fix row 83: channels 3 and 4
 import { selectorInForce, selectorOfSession } from './selector-in-force';
 import {
   CAPTURE_SOURCE_NOT_ASSIGNED_REASON,
@@ -529,11 +529,17 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
   switch (id) {
     case 'CORE':
       return state.tabletLink.state === 'OFFLINE'
-        ? { status: isOwnCaptureCoreState(state) ? 'WARN' : 'BLOCK', value: 'OFFLINE', reason: 'Core link offline', reasonCode: R.CORE_OFFLINE, params: {} }
+        ? isOwnCaptureCoreState(state)
+          ? // D48 kept (D29 Q2): the item reads the tablet link; on an own-capture Core it says so (audit fix row 83, DF-03).
+            { status: 'WARN', value: 'OFFLINE', reason: 'Operator tablet offline. This Core runs the session from its console.', reasonCode: R.CORE_OFFLINE, params: {} }
+          : { status: 'BLOCK', value: 'OFFLINE', reason: 'Core link offline', reasonCode: R.CORE_OFFLINE, params: {} }
         : { status: 'PASS', value: 'ONLINE', ...PASSED };
     case 'LENS_1':
-    case 'LENS_2': {
-      const track = id === 'LENS_1' ? 'VIDEO-01' : 'VIDEO-02';
+    case 'LENS_2':
+    case 'LENS_3':
+    case 'LENS_4': {
+      // Audit fix row 83 (DF-03; D15(c)): all four lenses of the plane (D60), the same rules per track.
+      const track = id === 'LENS_1' ? 'VIDEO-01' : id === 'LENS_2' ? 'VIDEO-02' : id === 'LENS_3' ? 'VIDEO-03' : 'VIDEO-04';
       // Real capture only: a track without a source blocks, before every other rule of the item (C18 (1)).
       const unassigned = unassignedSource(state, track);
       if (unassigned !== null) return unassigned;
@@ -545,10 +551,14 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
       return unreachableSource(state, track) ?? { status: 'PASS', value: 'READY', ...PASSED };
     }
     case 'MIC_PRIMARY':
-    case 'MIC_STANDBY': {
+    case 'MIC_STANDBY':
+    case 'MIC_3':
+    case 'MIC_4': {
       // D61 (2026-11-04): the stored check IDs name the two transcription roles; the roles became
       // channels `MIC-01` and `MIC-02` (0040 data migration). The check reads those channels.
-      const channel = id === 'MIC_PRIMARY' ? PRIMARY_MIC_CHANNEL : SECOND_MIC_CHANNEL;
+      // Audit fix row 83 (DF-03; D15(c)): `MIC_3` / `MIC_4` read channels `MIC-03` / `MIC-04` with the same rules.
+      const channel =
+        id === 'MIC_PRIMARY' ? PRIMARY_MIC_CHANNEL : id === 'MIC_STANDBY' ? SECOND_MIC_CHANNEL : id === 'MIC_3' ? MicChannel.MIC_03 : MicChannel.MIC_04;
       // Real capture only: a channel without a source blocks - channels 2 too (C25, eight required slots) - before every other rule of the item.
       const unassigned = unassignedSource(state, channel);
       if (unassigned !== null) return unassigned;

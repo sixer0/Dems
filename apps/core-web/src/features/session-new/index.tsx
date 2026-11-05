@@ -11,7 +11,7 @@
  *    disabled until the form is valid; pressing it shows "Creating session…", then
  *    `createSession` + `beginPrecheck` (a changed form on an existing setup session cancels it and
  *    creates a new one; the same form reuses it, S26).
- * 2. **Devices Check**: the §5.3 gate run by the simulator (8 checks, 300–700 ms each). PASS arms
+ * 2. **Devices Check**: the §5.3 gate run by the simulator (the twelve `PRECHECK_ORDER` checks, 300–700 ms each). PASS arms
  *    the session; WARN needs "Acknowledge warnings" (`acknowledgePrecheckWarnings` on Next); BLOCK
  *    disables Next and offers "Re-run checks" once the fault is cleared.
  * 3. **Ready**: summary, mini GlowRing, optional 3-2-1, "Start Recording" (`startRecording`, gated

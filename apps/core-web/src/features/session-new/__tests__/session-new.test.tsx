@@ -16,6 +16,7 @@ import {
   createMemoryAuthStorage,
   createSim,
   OPERATOR_IDS,
+  PRECHECK_ORDER,
   PRECHECK_TOTAL_MAX_MS,
   type ScenarioName,
   type Sim,
@@ -191,6 +192,13 @@ describe('Start New Session: step 1 validation (sessionCreateSchema, D62)', () =
     await vi.waitFor(() => expect(isDisabled(nextButton())).toBe(false))
     expect(screen.getByTestId('sn-subject-SAKSI')).toHaveAttribute('data-selected', 'true')
     expect(screen.getByTestId('sn-preview')).toHaveTextContent('Siti Rahma')
+    // Audit fix row 89 (DF-03): the step-1 readiness column lists every PRECHECK_ORDER item (4 lenses + 4 mics), in order.
+    const readinessRows = within(screen.getByTestId('sn-readiness')).getAllByRole('listitem')
+    expect(readinessRows).toHaveLength(PRECHECK_ORDER.length)
+    expect(PRECHECK_ORDER).toHaveLength(12)
+    expect(readinessRows.map((row) => row.querySelector('.sn-readiness-label')?.textContent)).toEqual(
+      PRECHECK_ORDER.map((id) => i18n.t(`sessionNew.devices.checks.${id}`)),
+    )
     // Nothing is created before Next.
     expect(sim.store.getState().session).toBeNull()
     expect(getMissingI18nKeys()).toEqual([])
@@ -265,7 +273,7 @@ describe('Start New Session: step 2 gate (§5.3, fake timers)', () => {
 })
 
 describe('Start New Session: happy path to RECORDING (AC-62 unit form, fake timers)', () => {
-  it('creates, checks 8 devices within 5 s, counts down 3-2-1 and lands on /session recording', async () => {
+  it('creates, checks 12 devices within 5 s, counts down 3-2-1 and lands on /session recording', async () => {
     const m = mount()
     await findPage()
     fillForm({ caseNumber: 'LP/2026/1001-0103', name: 'Rudi Hartono' })
@@ -282,13 +290,13 @@ describe('Start New Session: happy path to RECORDING (AC-62 unit form, fake time
     const precheckStart = session?.precheck.startedAt ?? 0
     expect(screen.getByTestId('sn-header-session')).toHaveTextContent(sessionId)
 
-    // The checks resolve one by one; all 8 PASS within 5 s of simulator time and the session arms.
+    // The checks resolve one by one; all 12 PASS within 5 s of simulator time and the session arms (audit fix row 83, DF-03).
     const armed = await flushUntil(m.flush, () => m.sim.store.getState().session?.state === 'ARMED', 5_000)
     expect(armed).toBe(true)
     const precheck = m.sim.store.getState().session?.precheck
-    expect(precheck?.items.map((item) => item.status)).toEqual(Array(8).fill('PASS'))
+    expect(precheck?.items.map((item) => item.status)).toEqual(Array(12).fill('PASS'))
     expect((precheck?.completedAt ?? Infinity) - precheckStart).toBeLessThanOrEqual(5_000)
-    expect(screen.getAllByTestId('sn-check-chip')).toHaveLength(8)
+    expect(screen.getAllByTestId('sn-check-chip')).toHaveLength(12)
 
     fireEvent.click(nextButton())
     await m.flush(100)

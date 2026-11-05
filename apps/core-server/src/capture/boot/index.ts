@@ -75,6 +75,8 @@ import { CAPTURE_BOOT_STEP, SIGNING_STORE_SUBPATH, runCaptureBootChecks, type Ca
 import { probeEvidenceVolume } from './evidence-volume';
 import type { CaptureHostDeps } from './host-checks';
 import { probeWorkerHandshake } from './worker-probe';
+// Audit 2026-11-05 row 88 (DF-02): the reader of the worker's build stamp, check 5b.
+import { workerBuildStampProblemOf, type WorkerBuildStampProblem } from './worker-stamp';
 
 export {
   CAPTURE_BOOT_STEP,
@@ -139,6 +141,10 @@ export { ALIAS_HELPER_ABSENT, CONFIGURED_PATH_NOT_THE_INSTALLED_ONE, NO_HOST_FAC
 export { ALIAS_SOCKET_INSTALLED_PATH, type AliasSocketFinding } from './host-checks';
 export { BOOT_PROBE_SESSION, probeWorkerHandshake, type WorkerProbeOptions } from './worker-probe';
 export { captureHostOfProcess, captureHostRunnerOf, coreFileLimitOf, type OwnProcessFacts } from './host-facts';
+// Audit 2026-11-05 row 101 (DF-24, decision D23 (1)): the read-only source of the camera interface's carrier, beside the host-runner seam.
+export { CAMERA_LINK_OPERSTATES, CAMERA_LINK_ROOT, CameraLinkState, cameraLinkReadingOf, createCameraLinkSource, type CameraLinkFileFact, type CameraLinkOperstate, type CameraLinkReading, type CameraLinkSource } from './camera-link';
+// Audit 2026-11-05 row 88 (DF-02, register W7, W10): the build stamp of the worker, as the boot reads it (check 5b).
+export { CAPTURE_WORKER_STAMP_SUFFIX, WORKER_STAMP_KEYS, WORKER_STAMP_MAX_BYTES, WorkerBuildStampProblem, workerBuildStampOf, workerBuildStampProblemOf, type WorkerBuildStamp, type WorkerStampDoors } from './worker-stamp';
 
 /**
  * THE HOST FACTS the entry point hands in (task 4 rows 80, 81): what only the Core's own process
@@ -277,6 +283,13 @@ export interface CaptureBootMount {
    */
   readonly demoPasswordOperators?: () => Promise<number | null>;
   readonly launcher?: WorkerLauncher;
+  /**
+   * Another reader of "the build stamp beside the worker program does not vouch for it" (check 5b; audit 2026-11-05
+   * row 88, DF-02), for a test whose worker is a seam (`launcher`) and no program file. Default: the stamp file
+   * `<DEMS_CAPTURE_WORKER>.stamp`, read through the same inspector as the program (`workerBuildStampProblemOf`).
+   * Asked in REAL_PRODUCTION only.
+   */
+  readonly workerBuildStampProblem?: (program: string) => WorkerBuildStampProblem | null;
   readonly helloTimeoutMs?: number;
   /** Where the measured figures go (CS-09). Default: the engine's fact door `applyStorageVolume`, when an engine runs behind the seam. */
   readonly applyStorageVolume?: (volume: { readonly totalBytes: number; readonly freeBytes: number }) => Promise<unknown>;
@@ -710,6 +723,8 @@ export function mountCaptureBootChecks(app: FastifyInstance, mount: CaptureBootM
         hostFactsHandedIn: provided !== null,
         // Row HC (C53 (4c)): the socket path the client of the address helper would dial; a production start refuses one that is not the installed path.
         configuredAliasSocket: captureAliasSocketPath,
+        // Row 88 (DF-02, check 5b): ALWAYS handed in - the build stamp beside the program; `checks.ts` asks it in REAL_PRODUCTION only.
+        workerBuildStampProblem: () => (mount.workerBuildStampProblem ?? ((program: string) => workerBuildStampProblemOf(program, { inspect: mount.inspect ?? inspectProgram })))(captureWorkerPath ?? ''),
         ...hostChecks,
         sinks: mount.sinks,
       });

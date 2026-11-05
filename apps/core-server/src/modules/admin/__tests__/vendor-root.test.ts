@@ -95,6 +95,8 @@ function purgeCounts(operatorId: string, world: World, done: { removedCredential
     pairingCodes: 0,
     activeSessions: 0,
     resealFromSeq: null,
+    // Row 95 (D38 DR-1): kept evidence-chain rows keep the account row, disabled.
+    accountKept: (world.keptRows.get(operatorId) ?? 0) > 0,
   };
 }
 
@@ -105,6 +107,10 @@ interface World {
   credentials: Set<string>;
   openSessions: Map<string, string[]>;
   references: Array<{ source: string; n: number }>;
+  /** Row 95: evidence-chain rows (migration 0043's kept types) each operator wrote. */
+  keptRows: Map<string, number>;
+  /** Row 95 (D43): the one row of `active_session`, or null when no session is active. */
+  activeSession: { id: string; investigator_id: string; created_by: string | null; started_by: string | null; stopped_by: string | null } | null;
 }
 
 /** What one run of one unit left behind: the committed rows, the rows it tried to audit, its publications. */
@@ -132,6 +138,7 @@ async function run<Result>(
   const world: World = structuredClone(base);
   const audit: Record<string, unknown>[] = [];
   const stagedAudit: Record<string, unknown>[] = [];
+  const resealedChains: unknown[] = [];
   const published: unknown[] = [];
   const afterCommit: Array<() => void> = [];
   const written: string[] = [];
@@ -159,6 +166,7 @@ async function run<Result>(
       }
       if (text === store.READ_ROLES_HOLDING) return answer([...administratorRoles()].map((role) => ({ role_id: role })));
       if (text === store.READ_USER) return answer([userRow(String(values[0]))].filter((row) => row !== null));
+      if (text === store.READ_ACTIVE_SESSION_PARTIES) return answer(world.activeSession === null ? [] : [world.activeSession]);
       if (text === store.REFERENCED_BY) return answer(world.references.map((row) => ({ source: row.source, count: row.n })));
       // The purge statements of the delete (migration 0036). The account of these tests wrote no row
       // of the chain, so the forecast, the erasure and the re-seal all agree on an empty history: the
@@ -172,14 +180,25 @@ async function run<Result>(
       if (store.PURGE_OPERATOR !== undefined && text.startsWith('SELECT public.audit_purge_operator')) {
         const id = String(values[0]);
         const had = world.credentials.delete(id);
-        const lived = world.operators.delete(id);
         if (had) written.push(store.DELETE_CREDENTIAL);
-        if (lived) written.push(store.DELETE_OPERATOR);
+        // Migration 0043 (D38 DR-1): a row of the kept types keeps the account, disabled.
+        const kept = (world.keptRows.get(id) ?? 0) > 0;
+        const row = world.operators.get(id);
+        if (kept && row !== undefined) {
+          world.operators.set(id, { ...row, enabled: false });
+          written.push('KEEP_OPERATOR_DISABLED');
+        } else if (world.operators.delete(id)) {
+          written.push(store.DELETE_OPERATOR);
+        }
         // The erasure answers with the counts the forecast announced — the unit compares the two
         // (`samePurge`), and the stand-in has to keep that promise the same way the function does.
         return answer([{ counts: forecast.get(id) ?? purgeCounts(id, world, { removedCredential: had }) }]);
       }
       if (store.RESEAL !== undefined && text.startsWith('SELECT public.audit_purge_reseal')) return answer([{ seal: { rows: 0, headSeq: 0 } }]);
+      // Row 94 (DF-27): after the seal the unit reads the chain back for the engine. The stand-in's
+      // chain is empty (head 0, genesis hash), the same chain the seal above answered.
+      if (text.startsWith('SELECT seq, hash FROM public.audit_chain_head')) return answer([{ seq: 0, hash: '0'.repeat(64) }]);
+      if (text.includes('FROM public.audit_log ORDER BY seq DESC')) return answer([]);
       if (text === store.INSERT_OPERATOR) {
         const [id, username, rank, name, display_name, initials, role_id, at] = values as [string, string, string, string, string, string, OperatorRole, number];
         world.operators.set(id, { id, username, rank, name, display_name, initials, role_id, enabled: true, last_sign_in_at: null, role_changed_at: at });
@@ -219,6 +238,10 @@ async function run<Result>(
       append: async (entry: Record<string, unknown>) => {
         stagedAudit.push(entry);
         return { seq: 1 };
+      },
+      // Row 94 (DF-27): the chain read back after a re-seal, handed to the commit for the engine.
+      resealed: async (chain: { head: { seq: number; hash: string }; rows: readonly unknown[] }) => {
+        resealedChains.push(chain);
       },
     },
     afterCommit: (task: () => void) => void afterCommit.push(task),
@@ -267,11 +290,22 @@ async function run<Result>(
   return { result, failure, failureMessage: message, world, audit, published: [...published], written };
 }
 
-const world = (operators: readonly OperatorSeed[], options: { readonly credentials?: string[]; readonly sessions?: Record<string, string[]>; readonly references?: Array<{ source: string; n: number }> } = {}): World => ({
+const world = (
+  operators: readonly OperatorSeed[],
+  options: {
+    readonly credentials?: string[];
+    readonly sessions?: Record<string, string[]>;
+    readonly references?: Array<{ source: string; n: number }>;
+    readonly keptRows?: Record<string, number>;
+    readonly activeSession?: World['activeSession'];
+  } = {},
+): World => ({
   operators: new Map(operators.map((operator) => [operator.id, seed(operator)])),
   credentials: new Set(options.credentials ?? operators.map((operator) => operator.id)),
   openSessions: new Map(Object.entries(options.sessions ?? {})),
   references: options.references ?? [],
+  keptRows: new Map(Object.entries(options.keptRows ?? {})),
+  activeSession: options.activeSession ?? null,
 });
 
 const actor = (operatorId: string) => ({ operatorId, deviceId: DEVICE });
@@ -418,6 +452,78 @@ describe('deleteUser: the confirmation, the rule and the references', () => {
     // The chain keeps every row the deleted operator wrote: no statement of this module names it.
     expect(revoked.mock.calls).toHaveLength(1);
     expect(built.published.length).toBeGreaterThan(0);
+  });
+});
+
+// Row 95 (DF-28; decisions D43 and D38 DR-1; migration 0043).
+describe('deleteUser: never under the active session (D43), and the account kept under its evidence rows (D38 DR-1)', () => {
+  const session = (over: Partial<NonNullable<World['activeSession']>> = {}): NonNullable<World['activeSession']> => ({
+    id: 'SES-20261105-0001',
+    investigator_id: SUPERVISOR.id,
+    created_by: null,
+    started_by: null,
+    stopped_by: null,
+    ...over,
+  });
+
+  it.each([
+    ['investigator', { investigator_id: TARGET.id }],
+    ['creator', { created_by: TARGET.id }],
+    ['starter', { started_by: TARGET.id }],
+    ['stopper', { stopped_by: TARGET.id }],
+  ] as const)('the %s of the active session is 409 INVALID_STATE before any write: no row, no session ended, no token revoked', async (_party, over) => {
+    const before = world([ROOT, SUPERVISOR, TARGET], { sessions: { [TARGET.id]: ['SES-T'] }, activeSession: session(over) });
+    const built = await run(before, (app) => deleteUser(app, actor(ROOT.id), TARGET.id, remove(TARGET.username), 'left the unit'));
+    expect(built.failure).toEqual({ status: 409, code: ApiErrorCode.INVALID_STATE });
+    expect(built.failureMessage).toMatch(/active session/);
+    expect(built.audit).toEqual([]);
+    expect(built.written).toEqual([]);
+    expect(built.world.operators.get(TARGET.id)).toEqual(before.operators.get(TARGET.id));
+    expect(built.world.credentials.has(TARGET.id)).toBe(true);
+    expect(built.world.openSessions.get(TARGET.id)).toEqual(['SES-T']);
+    expect(built.published).toEqual([]);
+    expect(revoked.mock.calls).toEqual([]);
+  });
+
+  it('the refusal carries the reason and the session in its details', async () => {
+    const { ACTIVE_SESSION_PARTY_REASON } = await import('../changes');
+    let caught: unknown;
+    await run(world([ROOT, SUPERVISOR, TARGET], { activeSession: session({ investigator_id: TARGET.id }) }), async (app) => {
+      try {
+        return await deleteUser(app, actor(ROOT.id), TARGET.id, remove(TARGET.username), undefined);
+      } catch (error) {
+        caught = error;
+        throw error;
+      }
+    });
+    expect((caught as { details?: unknown }).details).toEqual({ reason: ACTIVE_SESSION_PARTY_REASON, sessionId: 'SES-20261105-0001' });
+  });
+
+  it('positive control: an active session that does not name the target lets the purge through', async () => {
+    const built = await run(world([ROOT, SUPERVISOR, TARGET], { activeSession: session() }), (app) => deleteUser(app, actor(ROOT.id), TARGET.id, remove(TARGET.username), undefined));
+    expect(built.failure).toBeNull();
+    expect(built.world.operators.has(TARGET.id)).toBe(false);
+  });
+
+  it('kept evidence-chain rows keep the account row, disabled, with its credential gone; the USER_DELETED row says so and leaves nothing unattributed', async () => {
+    const before = world([ROOT, SUPERVISOR, TARGET], { keptRows: { [TARGET.id]: 3 }, references: [{ source: 'evidence_items', n: 2 }] });
+    const built = await run(before, (app) => deleteUser(app, actor(ROOT.id), TARGET.id, remove(TARGET.username), 'left the unit'));
+    expect(built.failure).toBeNull();
+    expect(built.world.operators.get(TARGET.id)).toMatchObject({ id: TARGET.id, enabled: false });
+    expect(built.world.credentials.has(TARGET.id)).toBe(false);
+    expect(built.written).toEqual([store.DELETE_CREDENTIAL, 'KEEP_OPERATOR_DISABLED']);
+    const row = built.audit[0] as { type: string; message: string; details: Record<string, unknown> };
+    expect(row.type).toBe('USER_DELETED');
+    expect(row.message).toMatch(/; evidence-chain rows kept, account kept disabled$/);
+    expect(row.details['recordsLeftUnattributed']).toBe(0);
+    // And without kept rows the account goes, and the references count as before.
+    const gone = await run(world([ROOT, SUPERVISOR, TARGET], { references: [{ source: 'evidence_items', n: 2 }] }), (app) =>
+      deleteUser(app, actor(ROOT.id), TARGET.id, remove(TARGET.username), undefined),
+    );
+    expect(gone.world.operators.has(TARGET.id)).toBe(false);
+    const goneRow = gone.audit[0] as { message: string; details: Record<string, unknown> };
+    expect(goneRow.message).not.toMatch(/account kept/);
+    expect(goneRow.details['recordsLeftUnattributed']).toBe(2);
   });
 });
 

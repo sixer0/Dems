@@ -43,7 +43,7 @@ const db = useTestDatabase({ template: 'seed' });
 // default five seconds of a test are not enough for either (the reset row's files do the same).
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
 
-/** The engine resolves the eight checks within 4.9 s, stops in 1.5 s and finalises in at most 7.2 s. */
+/** The engine resolves the twelve checks within 4.9 s, stops in 1.5 s and finalises in at most 7.2 s. */
 const PRECHECK_MS = 5_000;
 const RECORD_MS = 3_000;
 const FINALIZE_MS = 20_000;
@@ -185,7 +185,7 @@ describe('one recording, from create to history (spec §7.8)', () => {
     expect(started.moved).toBe(1);
     expect(sessionState()).toBe('PRECHECK');
 
-    const armed = await elapse('(the eight checks resolve)', PRECHECK_MS);
+    const armed = await elapse('(the twelve checks resolve)', PRECHECK_MS);
     expect(typesOf(armed)).toEqual(['PRECHECK_PASSED']);
     // The engine's own row: it names the session's creator, as the system (decision D28 D-2).
     expect(armed[0]).toMatchObject({ actorId: investigator.operator.id, details: { by: 'system' } });
@@ -375,7 +375,7 @@ describe('one recording, from create to history (spec §7.8)', () => {
     record('createSession (equal input)', 200, () => reference.runAs(first, () => actions.createSession(input)));
     record('createSession (other input)', 409, () => reference.runAs(second, () => actions.createSession(sessionInput(second.id, 'LP/2026/1001-0100'))));
     record('startSession (from CREATE)', 202, () => reference.runAs(first, () => actions.beginPrecheck()));
-    record('(the eight checks resolve)', null, () => reference.drive(PRECHECK_MS));
+    record('(the twelve checks resolve)', null, () => reference.drive(PRECHECK_MS));
     record('startSession (from ARMED)', 200, () => reference.runAs(first, () => actions.startRecording()));
     record('(recording)', null, () => reference.drive(RECORD_MS));
     record('addSessionMarker', 204, () => reference.runAs(first, () => actions.addMarker('Key statement')));

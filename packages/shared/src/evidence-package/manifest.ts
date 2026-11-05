@@ -9,7 +9,12 @@
  * package sealed before it verifies differently; since row P1 the same list holds a second member,
  * `hostProfileNotAsked` (field 133), for the same reason; since row R1b a third,
  * `tracks[].absentInSession` (fields 134-138); since row N2 a fourth,
- * `audio.samplesNotReceived` (fields 139-158).
+ * `audio.samplesNotReceived` (fields 139-158); since D5 (audit 2026-11-05, decisions D27, D28,
+ * D30; spec S5 §5.2) three top-level members: `audioTracks` (fields 159-172) with `audioFiles`
+ * (fields 173-174), the sealed audio file of each camera-microphone pair, and `audioTracksMissing`
+ * (fields 175-179), the statement of a paired microphone that recorded nothing (D30 K-3). A
+ * manifest that carries any of the three names the stepped schema id `dems.evidence-manifest/2.1`
+ * (D30 K-2, `MANIFEST_V2_1_SCHEMA_ID`); one that carries none keeps `dems.evidence-manifest/2`.
  *
  * WHERE THE 128 LIVE. 119 fields are members of the sealed `session-manifest.json`; the 9 fields
  * of §B.11 (`export.*`) are "present only in an export" and live in the export manifest, because
@@ -22,7 +27,26 @@
  */
 import { z } from 'zod';
 import { FinalizationStep } from '../domain';
-import { CAMERA_FILE_MEDIA_TYPE, MANIFEST_V2_SCHEMA_ID, MANIFEST_V2_VERSION, PackageFile, SESSION_AUDIO_TRACK_ID, VIDEO_TRACK_IDS, cameraFileName, isSealedTrackList } from './layout';
+import {
+  AUDIO_FILE_MEDIA_TYPE,
+  AUDIO_FILE_TRACK_IDS,
+  CAMERA_FILE_MEDIA_TYPE,
+  MANIFEST_V2_1_SCHEMA_ID,
+  MANIFEST_V2_SCHEMA_ID,
+  MANIFEST_V2_SCHEMA_IDS,
+  MANIFEST_V2_VERSION,
+  PAIR_MIC_CHANNELS,
+  PackageFile,
+  SESSION_AUDIO_TRACK_ID,
+  VIDEO_TRACK_IDS,
+  audioFileName,
+  cameraFileName,
+  isSealedAudioTrackList,
+  isSealedTrackList,
+  pairedMicChannelOfAudioTrack,
+  pairedVideoTrackOfAudioTrack,
+  type ManifestV2SchemaId,
+} from './layout';
 import { MANIFEST_SOURCE_CLASSES, ManifestSourceClass, deriveDevelopmentSources } from './source-class';
 
 // ── Leaf types ───────────────────────────────────────────────────────────────────────────────
@@ -34,6 +58,8 @@ const positive = z.number().int().min(1);
 const epochMs = count;
 const sourceClass = z.enum(MANIFEST_SOURCE_CLASSES);
 const videoTrackId = z.enum(VIDEO_TRACK_IDS);
+const audioFileTrackId = z.enum(AUDIO_FILE_TRACK_IDS);
+const pairMicChannel = z.enum(PAIR_MIC_CHANNELS);
 
 export const ManifestIntegrity = ['REAL', 'DEMO_PACKAGE', 'SIMULATED'] as const;
 export const ManifestSignatureAlgorithm = ['Ed25519', 'ECDSA-P256-SHA256'] as const;
@@ -458,6 +484,80 @@ export const ManifestFileSchema = z.strictObject({
   fragments: z.array(ManifestFragmentSchema),
 });
 
+// ── Fields 159-179 (optional, D5): the audio file of each pair, and a missing paired microphone ─
+/**
+ * ONE SEALED AUDIO FILE OF A CAMERA-MICROPHONE PAIR (D5; decisions D27, D28; spec S5 §5.2, register
+ * N-14). Pair N is `VIDEO-0N` <-> `MIC-0N` <-> `AUDIO-0N`, fixed by number. The microphone of channel
+ * N is recorded on its own file (`MIC-0N.m4a` beside the package), sealed as
+ * `fragments/AUDIO-0N.m4a` with the same encryption, fragment table and hash rules as a camera
+ * file; the same encoded sound is also the audio stream of `VIDEO-0N.mp4` when that camera was
+ * recorded (`containsIn`). The members mirror fields 41-49 and 124 of a track record.
+ */
+export const ManifestAudioTrackSchema = z.strictObject({
+  /** Field 159. */
+  trackId: audioFileTrackId,
+  /** Field 160: the channel of the pair, the same number as field 159. */
+  micChannel: pairMicChannel,
+  /** Field 161: the registry id of the microphone that sat on the channel (the session's start row of that slot). */
+  micDeviceId: text,
+  /** Field 162: `[VIDEO-0N]` of the same number exactly when that camera file is in the package, else `[]`. */
+  containsIn: z.array(videoTrackId),
+  /** Field 163: `AUDIO-0N.m4a`. */
+  file: text,
+  /** Field 164. */
+  mediaType: z.literal(AUDIO_FILE_MEDIA_TYPE),
+  /** Field 165. */
+  codec: text.nullable(),
+  /** Field 166: bytes of the stored (sealed) file. */
+  bytes: count,
+  /** Field 167. */
+  durationMs: count.nullable(),
+  /** Field 168: SHA-256 of the stored (sealed) bytes. */
+  sha256: hex64,
+  /** Field 169: SHA-256 of the plaintext. */
+  sha256Plain: hex64.nullable(),
+  /** Field 170. */
+  fragmentChainHead: hex64.nullable(),
+  /** Field 171. */
+  fragmentCount: count.nullable(),
+  /** Field 172: as field 124. */
+  sourceClass,
+});
+/** Fields 173-174: the fragment records of one audio file; the sub-fields are those of `files[].fragments[]` (63-78). */
+export const ManifestAudioFileSchema = z.strictObject({
+  /** Field 173. */
+  trackId: audioFileTrackId,
+  /** Field 174. */
+  fragments: z.array(ManifestFragmentSchema),
+});
+
+/**
+ * Field 179: why a pair recorded no microphone (D30 K-3). `NOT_ASSIGNED`: no microphone sat on the
+ * channel when the session started (field 177 is null); `NOT_OPENED`: the microphone on the
+ * channel could not be opened at the start (field 177 names it). Closed words.
+ */
+export const MANIFEST_AUDIO_TRACK_MISSING_REASONS = ['NOT_ASSIGNED', 'NOT_OPENED'] as const;
+export type ManifestAudioTrackMissingReason = (typeof MANIFEST_AUDIO_TRACK_MISSING_REASONS)[number];
+/**
+ * THE MISSING-MICROPHONE STATEMENT (D5; decision D30 K-3). The paired microphone of channel N did
+ * not record, the recording went on (an interview is never lost because one microphone failed),
+ * the camera file `VIDEO-0N.mp4` carries a SILENT audio track, and the operator saw a WARN. This
+ * record says so under the signature, so that the silence is a stated fact and never read as a
+ * quiet room. There is no `AUDIO-0N` file for such a pair.
+ */
+export const ManifestAudioTrackMissingSchema = z.strictObject({
+  /** Field 175. */
+  trackId: audioFileTrackId,
+  /** Field 176: the channel of the pair, the same number as field 175. */
+  micChannel: pairMicChannel,
+  /** Field 177: the registry id of the microphone that did not open; null exactly when field 179 is `NOT_ASSIGNED`. */
+  micDeviceId: text.nullable(),
+  /** Field 178: `[VIDEO-0N]` of the same number exactly when that camera file is in the package (it holds the silent track), else `[]`. */
+  silentIn: z.array(videoTrackId),
+  /** Field 179. */
+  reason: z.enum(MANIFEST_AUDIO_TRACK_MISSING_REASONS),
+});
+
 // ── B.7 + B.7a transcript (16 + 3 = 19) ──────────────────────────────────────────────────────
 const TranscriptSchema = z.strictObject({
   file: z.literal(PackageFile.TRANSCRIPT_JSON).nullable(),
@@ -535,7 +635,8 @@ export type ManifestV2ExportBlock = z.output<typeof ManifestV2ExportBlockSchema>
 
 // ── The manifest ─────────────────────────────────────────────────────────────────────────────
 const bodyMembers = {
-  schema: z.literal(MANIFEST_V2_SCHEMA_ID),
+  /** Field 1: `dems.evidence-manifest/2`, or the D5 step `/2.1` exactly when a D5 member is present (D30 K-2; `crossFieldRules`). */
+  schema: z.enum(MANIFEST_V2_SCHEMA_IDS),
   evidenceId: text,
   sessionId: text,
   caseNumber: text,
@@ -564,6 +665,16 @@ const bodyMembers = {
    * profile being asked. When present it is inside the digest and under the signature.
    */
   hostProfileNotAsked: ManifestHostProfileNotAskedSchema.optional(),
+  /**
+   * Fields 159-172 (D5, optional; spec S5 §5.2, register N-14): the sealed audio file of each pair,
+   * one to four, in ascending AUDIO order. ABSENT in every package sealed before D5, which therefore
+   * parses, digests and verifies as before. Present together with `audioFiles` or not at all.
+   */
+  audioTracks: z.array(ManifestAudioTrackSchema).min(1).optional(),
+  /** Fields 173-174 (D5, optional; N-15): the fragment records of the audio files, one record per `audioTracks` record, in its order. */
+  audioFiles: z.array(ManifestAudioFileSchema).min(1).optional(),
+  /** Fields 175-179 (D5, optional; D30 K-3): the pairs whose microphone recorded nothing. Absent = none. */
+  audioTracksMissing: z.array(ManifestAudioTrackMissingSchema).min(1).optional(),
 };
 
 type Issue = (path: readonly (string | number)[], message: string) => void;
@@ -602,8 +713,11 @@ function crossFieldRules(manifest: BodyShape, issue: Issue): void {
   manifest.files.forEach((file, index) => {
     if (file.trackId !== trackIds[index]) issue(['files', index, 'trackId'], 'the file records follow the track records');
   });
-  // §B.5: the session audio lies in a camera file of THIS package, and in at least one.
-  if (manifest.audio.containsIn.length === 0) issue(['audio', 'containsIn'], 'at least one camera file');
+  // §B.5: the session audio lies in a camera file of THIS package, and in at least one. D5 (S5 §5.2
+  // rule 4): in a stepped (/2.1) manifest the "at least one" is waived - AUDIO-01 has its own sealed
+  // file, or its microphone is stated missing - and `pairedAudioRules` states what holds instead.
+  const pairedAudio = manifest.schema === MANIFEST_V2_1_SCHEMA_ID;
+  if (!pairedAudio && manifest.audio.containsIn.length === 0) issue(['audio', 'containsIn'], 'at least one camera file');
   manifest.audio.containsIn.forEach((trackId, index) => {
     if (!trackIds.includes(trackId)) issue(['audio', 'containsIn', index], 'a camera file of this package');
   });
@@ -642,8 +756,22 @@ function crossFieldRules(manifest: BodyShape, issue: Issue): void {
   // Fields 139-158 (row N2, optional): the account of a path that is not sample-continuous reconciles to the sample.
   samplesNotReceivedRules(manifest, issue);
 
-  // §B.12 field 126 and rule 5: the flag is exactly the summary of fields 124 and 125.
-  const classes = [...manifest.tracks.map((track) => track.sourceClass), ...intervals.map((interval) => interval.sourceClass)];
+  // Fields 159-179 (D5, optional) and the schema version step (D30 K-2).
+  pairedAudioRules(manifest, trackIds, issue);
+  // §B.12 rule 4 over the D5 member: a microphone of a pair file has the class it has on its intervals.
+  (manifest.audioTracks ?? []).forEach((record, index) => {
+    const seen = classOfMic.get(record.micDeviceId);
+    if (seen !== undefined && seen !== record.sourceClass) issue(['audioTracks', index, 'sourceClass'], 'one microphone has one class');
+    classOfMic.set(record.micDeviceId, record.sourceClass);
+  });
+
+  // §B.12 field 126 and rule 5: the flag is exactly the summary of fields 124 and 125 - and, in a D5
+  // package, of field 172 (each pair microphone is a source of the package; absent before D5).
+  const classes = [
+    ...manifest.tracks.map((track) => track.sourceClass),
+    ...intervals.map((interval) => interval.sourceClass),
+    ...(manifest.audioTracks ?? []).map((record) => record.sourceClass),
+  ];
   if (manifest.developmentSources !== deriveDevelopmentSources(classes)) issue(['developmentSources'], 'equals "some source is not PRODUCTION"');
   // §B.12 rule 6: a demo package has FAKE on every source.
   if ((manifest.demo || manifest.integrity === 'DEMO_PACKAGE') && classes.some((value) => value !== ManifestSourceClass.FAKE)) {
@@ -660,6 +788,83 @@ function crossFieldRules(manifest: BodyShape, issue: Issue): void {
   if (manifest.timeline.stoppedAt === null && !manifest.timeline.interrupted) issue(['timeline', 'stoppedAt'], 'null only for an interrupted seal');
 
   transcriptRules(manifest.transcript, issue);
+}
+
+/**
+ * THE SCHEMA ID A MANIFEST NAMES (D30 K-2): the stepped `dems.evidence-manifest/2.1` exactly when
+ * one of the D5 members is present, else `dems.evidence-manifest/2`. The sealing pipeline sets
+ * field 1 from this; the schema refuses a manifest whose id and members disagree.
+ */
+export function manifestSchemaIdOf(members: { readonly audioTracks?: unknown; readonly audioTracksMissing?: unknown }): ManifestV2SchemaId {
+  return members.audioTracks !== undefined || members.audioTracksMissing !== undefined ? MANIFEST_V2_1_SCHEMA_ID : MANIFEST_V2_SCHEMA_ID;
+}
+
+/**
+ * D5 (spec S5 §5.2 cross-field rules 1-4; decision D30 K-2, K-3). Messages name members, never values.
+ *
+ *   0. Field 1 is `/2.1` exactly when `audioTracks` or `audioTracksMissing` is present.
+ *   1. `audioTracks` and `audioFiles` are both present or both absent.
+ *   2. `audioTracks` holds 1..4 records, each id once, ascending; `audioFiles` follows it one to one.
+ *   3. Fields 160, 162, 163 follow the pair rule (N-04): channel and camera of the same number, the
+ *      file named after its track; `containsIn` is `[VIDEO-0N]` exactly when that camera file is in
+ *      the package. One microphone device sits on one channel.
+ *   4. `audio` (the transcribed track AUDIO-01) in a `/2.1` manifest: when AUDIO-01 has a file,
+ *      `audio.containsIn` equals that record's `containsIn`; when its microphone is stated missing,
+ *      `audio.containsIn` is `[]` (the silent track of VIDEO-01 is not its sound).
+ *   K-3. `audioTracksMissing` holds 1..4 records, each id once, ascending, none of them also a file
+ *      of `audioTracks`; channel of the same number; `silentIn` is `[VIDEO-0N]` exactly when that
+ *      camera file is in the package; field 177 is null exactly for `NOT_ASSIGNED`.
+ */
+function pairedAudioRules(manifest: BodyShape, trackIds: readonly string[], issue: Issue): void {
+  const { audioTracks, audioFiles, audioTracksMissing } = manifest;
+  const stepped = manifest.schema === MANIFEST_V2_1_SCHEMA_ID;
+  if (stepped !== (manifestSchemaIdOf(manifest) === MANIFEST_V2_1_SCHEMA_ID)) {
+    issue(['schema'], 'dems.evidence-manifest/2.1 exactly when audioTracks or audioTracksMissing is present (D30 K-2)');
+  }
+  if ((audioTracks === undefined) !== (audioFiles === undefined)) issue([audioTracks === undefined ? 'audioTracks' : 'audioFiles'], 'audioTracks and audioFiles are both present or both absent');
+  /** `[VIDEO-0N]` when the camera of the pair is a file of this package, else `[]`. */
+  const pairCamera = (trackId: (typeof AUDIO_FILE_TRACK_IDS)[number]): readonly string[] => {
+    const video = pairedVideoTrackOfAudioTrack(trackId);
+    return trackIds.includes(video) ? [video] : [];
+  };
+  const sameList = (left: readonly string[], right: readonly string[]): boolean => left.length === right.length && left.every((value, index) => value === right[index]);
+
+  const filed = (audioTracks ?? []).map((record) => record.trackId);
+  if (audioTracks !== undefined && !isSealedAudioTrackList(filed)) issue(['audioTracks'], '1 to 4 audio track records, each once, in ascending AUDIO order');
+  const devices = new Set<string>();
+  (audioTracks ?? []).forEach((record, index) => {
+    const at = ['audioTracks', index] as const;
+    if (record.micChannel !== pairedMicChannelOfAudioTrack(record.trackId)) issue([...at, 'micChannel'], 'the channel of the pair: the same number as the audio track (D27)');
+    if (!sameList(record.containsIn, pairCamera(record.trackId))) issue([...at, 'containsIn'], 'the camera file of the same number exactly when it is in this package, else none');
+    if (record.file !== audioFileName(record.trackId)) issue([...at, 'file'], 'the audio file is named after its track');
+    if (devices.has(record.micDeviceId)) issue([...at, 'micDeviceId'], 'one microphone sits on one channel');
+    devices.add(record.micDeviceId);
+  });
+  if (audioTracks !== undefined && audioFiles !== undefined) {
+    if (audioFiles.length !== audioTracks.length) issue(['audioFiles'], 'one audio file record per audio track record');
+    audioFiles.forEach((file, index) => {
+      if (file.trackId !== filed[index]) issue(['audioFiles', index, 'trackId'], 'the audio file records follow the audio track records');
+    });
+  }
+
+  const missing = (audioTracksMissing ?? []).map((record) => record.trackId);
+  if (audioTracksMissing !== undefined && !isSealedAudioTrackList(missing)) issue(['audioTracksMissing'], '1 to 4 records, each once, in ascending AUDIO order');
+  (audioTracksMissing ?? []).forEach((record, index) => {
+    const at = ['audioTracksMissing', index] as const;
+    if (filed.includes(record.trackId)) issue([...at, 'trackId'], 'a pair whose microphone has a sealed file is not stated missing');
+    if (record.micChannel !== pairedMicChannelOfAudioTrack(record.trackId)) issue([...at, 'micChannel'], 'the channel of the pair: the same number as the audio track (D27)');
+    if (!sameList(record.silentIn, pairCamera(record.trackId))) issue([...at, 'silentIn'], 'the camera file of the same number exactly when it is in this package, else none');
+    if ((record.micDeviceId === null) !== (record.reason === 'NOT_ASSIGNED')) issue([...at, 'micDeviceId'], 'null exactly when no microphone was assigned to the channel');
+  });
+
+  if (!stepped) return;
+  const transcribed = (audioTracks ?? []).find((record) => record.trackId === SESSION_AUDIO_TRACK_ID);
+  if (transcribed !== undefined && !sameList(manifest.audio.containsIn, transcribed.containsIn)) {
+    issue(['audio', 'containsIn'], 'equals the containsIn of the AUDIO-01 record (S5 §5.2 rule 4)');
+  }
+  if (missing.includes(SESSION_AUDIO_TRACK_ID) && manifest.audio.containsIn.length !== 0) {
+    issue(['audio', 'containsIn'], 'none when the microphone of AUDIO-01 is stated missing (D30 K-3)');
+  }
 }
 
 /**
@@ -1134,12 +1339,39 @@ export const MANIFEST_V2_OPTIONAL_FIELDS: readonly ManifestFieldDefinition[] = O
   sealed(156, 'audio.samplesNotReceived[].openRunFromSample'),
   sealed(157, 'audio.samplesNotReceived[].insertedRuns[].fromSample'),
   sealed(158, 'audio.samplesNotReceived[].insertedRuns[].samples'),
+  // D5 (audit 2026-11-05; decisions D27, D28, D30; spec S5 §5.2): the fifth, sixth and seventh
+  // optional members - the audio file of each pair (159-172), its fragment records (173-174) and the
+  // missing-microphone statement (175-179). A manifest with any of them names `/2.1` (D30 K-2).
+  sealed(159, 'audioTracks[].trackId'),
+  sealed(160, 'audioTracks[].micChannel'),
+  sealed(161, 'audioTracks[].micDeviceId'),
+  sealed(162, 'audioTracks[].containsIn'),
+  sealed(163, 'audioTracks[].file'),
+  sealed(164, 'audioTracks[].mediaType'),
+  sealed(165, 'audioTracks[].codec'),
+  sealed(166, 'audioTracks[].bytes'),
+  sealed(167, 'audioTracks[].durationMs'),
+  sealed(168, 'audioTracks[].sha256'),
+  sealed(169, 'audioTracks[].sha256Plain'),
+  sealed(170, 'audioTracks[].fragmentChainHead'),
+  sealed(171, 'audioTracks[].fragmentCount'),
+  sealed(172, 'audioTracks[].sourceClass'),
+  sealed(173, 'audioFiles[].trackId'),
+  sealed(174, 'audioFiles[].fragments'),
+  sealed(175, 'audioTracksMissing[].trackId'),
+  sealed(176, 'audioTracksMissing[].micChannel'),
+  sealed(177, 'audioTracksMissing[].micDeviceId'),
+  sealed(178, 'audioTracksMissing[].silentIn'),
+  sealed(179, 'audioTracksMissing[].reason'),
 ]);
 export type ManifestAudioSamplesNotReceived = z.output<typeof ManifestAudioSamplesNotReceivedSchema>;
 export type ManifestAudioInsertedRun = z.output<typeof ManifestAudioInsertedRunSchema>;
 export type ManifestVideoAbsence = z.output<typeof ManifestVideoAbsenceSchema>;
 export type ManifestAudioRestartGap = z.output<typeof ManifestAudioRestartGapSchema>;
 export type ManifestHostProfileNotAsked = z.output<typeof ManifestHostProfileNotAskedSchema>;
+export type ManifestAudioTrack = z.output<typeof ManifestAudioTrackSchema>;
+export type ManifestAudioFile = z.output<typeof ManifestAudioFileSchema>;
+export type ManifestAudioTrackMissing = z.output<typeof ManifestAudioTrackMissingSchema>;
 
 /** The two members that the canonical body leaves out (spec §B.10). Nothing else is excluded. */
 export const MANIFEST_SIGNATURE_EXCLUSIONS = Object.freeze(['manifestSha256', 'signature.value'] as const);

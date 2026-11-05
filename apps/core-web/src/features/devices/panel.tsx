@@ -1,6 +1,7 @@
 import { DemoMark } from '@/components/demo-mark'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
+import { NoProducerNotice } from '@/components/synthetic-values-chip'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { Button, Card } from '@heroui/react'
 import { motion } from 'motion/react'
 import type { LucideIcon } from 'lucide-react'
@@ -12,11 +13,17 @@ import { PANEL_BEAT_MS, usePanelVariants, type DevicesPanelId } from './motion'
 import { reportDevicesError } from './report'
 
 /**
- * Fix wave L (G75d-07): the blocks of this page whose values a Core in its own capture replicates from the
- * appliance model and does not report (PoE switch, relay lamp, tablet link; the front panel; the port map).
- * Each carries the "Synthetic demo values" chip on such a Core; the simulated lane draws none.
+ * Fix wave L (G75d-07) -> audit fix row 104 (DF-21, D25 N3): the blocks of this page whose values a Core in its own
+ * capture replicates from the appliance model and does not report.
+ * - ALL model (the port map): on such a Core the block draws "Not reported" (`NoProducerNotice`, register S7)
+ *   in place of its body.
+ * - The front panel: its LEDs and model LCD pages are gated where they are drawn (`NoProducerGate` around
+ *   `<FrontPanel />` in index.tsx); the LCD connection beside them is the Core's own fact and stays.
+ * - Other devices mixes model rows with the tablet link the Core produces: other-devices.tsx gates its model rows
+ *   (PoE switch, relay lamp) row by row (row 107, on row 104's routed request), so the block carries no chip.
+ * No block carries the "Synthetic demo values" chip any more. The simulated lane draws no notice.
  */
-const SYNTHETIC_BLOCKS: ReadonlySet<string> = new Set(['other', 'front', 'ports'])
+const NO_PRODUCER_BLOCKS: ReadonlySet<string> = new Set(['ports'])
 
 export interface DevicesPanelProps {
   id: DevicesPanelId
@@ -53,6 +60,7 @@ export function DevicesPanel({
   children,
 }: DevicesPanelProps) {
   const variants = usePanelVariants(PANEL_BEAT_MS[id])
+  const noProducer = useSelfCaptureCore() && NO_PRODUCER_BLOCKS.has(id)
   return (
     <motion.section
       className={cn('dev-panel', `dev-panel-${id}`, className)}
@@ -71,13 +79,12 @@ export function DevicesPanel({
             <h2 className="dev-card-title">{title}</h2>
             {subtitle ? <p className="dev-card-subtitle">{subtitle}</p> : null}
           </div>
-          {SYNTHETIC_BLOCKS.has(id) ? <SyntheticValuesChip block={id} /> : null}
           {/* Fix wave J (JW-07): the demonstration Core's values are marked on every panel. */}
           <DemoMark block={`devices-${id}`} />
-          {action ? <div className="dev-card-action">{action}</div> : null}
+          {action && !noProducer ? <div className="dev-card-action">{action}</div> : null}
         </header>
-        <div className={cn('dev-card-body', bodyClassName)}>
-          <DevicesErrorBoundary panel={id}>{children}</DevicesErrorBoundary>
+        <div className={cn('dev-card-body', noProducer ? undefined : bodyClassName)}>
+          {noProducer ? <NoProducerNotice block={id} /> : <DevicesErrorBoundary panel={id}>{children}</DevicesErrorBoundary>}
         </div>
       </Card>
     </motion.section>

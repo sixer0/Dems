@@ -60,6 +60,18 @@ export function mergeTrail(state: TrailSlices, auditRows: readonly AuditRow[], e
   return merged;
 }
 
+/**
+ * Row 94 (DF-27, decision D21(3)): the audit slice of a chain that a unit re-sealed (an operator
+ * purge), built exactly as a rehydration builds it from the tables (`fromRows`, MR-4): the newest
+ * rows up to the ring size, the stored head, and `dropped` as the head's sequence minus the rows
+ * held. The engine takes this instead of its own ring, whose hashes the seal replaced and which may
+ * still hold rows the purge erased. Pure; the rows are taken by reference.
+ */
+export function resealedAudit(chain: { readonly head: { readonly seq: number; readonly hash: string }; readonly rows: readonly AuditRow[] }): SimState['audit'] {
+  const rows = chain.rows.length > AUDIT_RING_SIZE ? chain.rows.slice(chain.rows.length - AUDIT_RING_SIZE) : [...chain.rows];
+  return { rows, head: chain.head.hash, total: chain.head.seq, dropped: chain.head.seq - rows.length };
+}
+
 /** True when `merged` holds anything. */
 export function hasTrail(merged: Partial<TrailSlices>): boolean {
   return merged.audit !== undefined || merged.events !== undefined || merged.meta !== undefined;

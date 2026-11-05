@@ -10,7 +10,7 @@
 // `MIC-01`..`MIC-04` (the PRIMARY/STANDBY roles are superseded, and the caller now names each
 // channel's OWN audio file - the `outputPath` of the protocol's D61 wave).
 import { CAPTURE_MIC_CHANNELS, CapturePlanSchema, LOOPBACK_RTSP_URL, StartMessageSchema, CAPTURE_PROTOCOL_VERSION } from '@dems/capture-protocol';
-import { CAPTURE_START_REQUIRED_SLOTS, DEFAULT_CAPTURE_CONFIG, unassignedSlotsOf } from '@dems/shared/sim';
+import { CAPTURE_START_REQUIRED_SLOTS, DEFAULT_CAPTURE_CONFIG, DEFAULT_SEED, PRECHECK_ORDER, createIdleState, evaluatePrecheck, unassignedSlotOfPrecheckItem, unassignedSlotsOf, type SimState } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import {
   CaptureAdapterKind,
@@ -323,6 +323,19 @@ describe('what is no plan: CAPTURE_PLAN_INVALID', () => {
     const asked: string[] = [];
     const untouched: CapturePlanRegistry = { operation: CaptureOperation.REAL_PRODUCTION, assertRecordable: (deviceId) => (asked.push(deviceId), base.registry.assertRecordable(deviceId)) };
     expect([...CAPTURE_START_REQUIRED_SLOTS]).toEqual([...SLOTS]);
+    // Audit fix rows 83/90 (DF-03): a Core in its own capture (`isOwnCaptureCoreState`: the host clock) holding the seeded
+    // selector minus the unassigned slots - the state the twelve-check pre-check reads.
+    const idle = createIdleState({ now: Date.UTC(2026, 10, 5), seed: DEFAULT_SEED });
+    const ownCaptureOn = (unassigned: readonly string[]): SimState => ({
+      ...idle,
+      time: { ...idle.time, hostClock: true },
+      captureConfig: {
+        ...idle.captureConfig,
+        cameras: idle.captureConfig.cameras.filter((camera) => !unassigned.includes(camera.trackId)),
+        mics: idle.captureConfig.mics.filter((mic) => !unassigned.includes(mic.channel)),
+      },
+    });
+    expect(PRECHECK_ORDER).toHaveLength(12);
 
     const outcomes: [string, boolean, boolean][] = [];
     for (let bits = 0; bits < 256; bits += 1) { // D60, D61: 2^8 selectors
@@ -330,6 +343,13 @@ describe('what is no plan: CAPTURE_PLAN_INVALID', () => {
       const selector = without(unassigned);
       // The shared rule (`startRecordingTransition`, `evaluatePrecheck`): a required slot that no line names.
       expect(unassignedSlotsOf(selector)).toEqual(unassigned);
+      // Audit fix rows 83/90 (DF-03): the twelve-check pre-check names the SAME slots - one "source not assigned" item per slot,
+      // in the order of the checks - so every track and every channel the plan refuses has an item of its own.
+      const precheckNames = PRECHECK_ORDER.flatMap((id) => {
+        const slot = unassignedSlotOfPrecheckItem(evaluatePrecheck(ownCaptureOn(unassigned), id));
+        return slot === null ? [] : [slot];
+      });
+      expect(precheckNames, unassigned.join('+')).toEqual(unassigned);
       const sharedRefuses = unassignedSlotsOf(selector).some((slot) => CAPTURE_START_REQUIRED_SLOTS.includes(slot));
       const refusal = refusalOf(() => assertRecordableSelector(selector, untouched));
       const planRefusesByShape = refusal !== 'no refusal' && refusal.reason === 'SELECTOR_SHAPE';

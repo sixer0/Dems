@@ -496,3 +496,90 @@ describe('Simulated mode is unchanged (the simulator answers inside the press)',
     expect(getMissingI18nKeys()).toEqual([])
   })
 })
+
+// Row 111 (DF-20; controller evidence U-18 of the audit 2026-11-05): "Close session" of a FAILED START (operation 33,
+// 202) left the Monitor on "FAULT ... Recording did not start" until a manual reload, although the Core had ended the
+// session. Held here on the real Live source: the answer's delta (RECOVERY) and then the Core's own later delta that
+// empties the slice (the 3 s recovery runs on the Core's tick, cause `tick`) must turn the page to NO SESSION without
+// a reload.
+describe('B-3 close of a failed start (operation 33; DF-20 / U-18): the session leaving the Core empties the Monitor live', () => {
+  /** The Core's model with its session as the Core leaves a start that failed: FAULT, nothing recorded. */
+  async function liveFailedStart(ownCapture: boolean): Promise<{ bed: LiveTestBed; page: LivePage }> {
+    const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
+    bed = created
+    core = coreModel(created.fake.clock.now())
+    const state = core.store.getState()
+    core.store.setState({
+      session: {
+        ...state.session!,
+        state: 'FAULT',
+        fault: { kind: 'CAPTURE_FAULT', at: state.clock.now, fromState: 'RECORDING' },
+        startedAt: null,
+        bytesWritten: 0,
+        captureDurable: false,
+      },
+      // The bench of U-18 is a Core in its own capture (host clock, platform not reported); the demonstration Core is the control.
+      ...(ownCapture ? { time: { ...state.time, hostClock: true }, security: { ...state.security, platformNotReported: true } } : {}),
+      alerts: [
+        ...state.alerts,
+        {
+          id: 'ALR-000901',
+          at: state.clock.now,
+          severity: 'CRITICAL',
+          kind: 'CAPTURE_FAULT',
+          message: 'Capture fault',
+          active: true,
+          acknowledged: false,
+          resolvedAt: null,
+          target: null,
+          params: { kind: 'CAPTURE_FAULT', reason: 'NO_CAMERA_CONNECTED', evidenceFiles: 0 },
+        },
+      ],
+    })
+    created.core.served = core.store.getState()
+    const page = await created.load()
+    loaded = page
+    await created.mount(page, '/session')
+    await screen.findByTestId('page-session-monitor', {}, { timeout: 15_000 })
+    await waitFor(() => expect(screen.getByTestId('page-session-monitor')).toHaveAttribute('data-phase', 'FAULT'))
+    return { bed: created, page }
+  }
+
+  it.each([['a Core in its own capture (the bench)', true], ['the demonstration Core (control)', false]] as const)('%s: the answer\'s RECOVERY keeps the failed-start words without the control; the Core\'s later delta (session null) turns the page to NO SESSION with no reload', async (_name, ownCapture) => {
+    const { bed, page } = await liveFailedStart(ownCapture)
+    const banner = screen.getByTestId('sm-status-banner')
+    expect(banner).toHaveAttribute('data-kind', 'FAULT')
+    expect(banner).toHaveAttribute('data-failed-start')
+    const recovering = effect((sim) => sim.actions.recover())
+    const command = bed.fake.scriptCommand('recoverSession', { ops: recovering, order: 'answer-first', answer: bed.fake.example('recoverSession', 202) })
+    fireEvent.click(within(banner).getByTestId('sm-banner-cta'))
+    await bed.fake.arrived()
+    await bed.flush()
+    expect(requests('recoverSession')).toHaveLength(1)
+    command.sendDelta()
+    await bed.flush()
+    await waitFor(() => expect(sessionOf(page).state).toBe('RECOVERY'))
+    // D158: the close of a failed start is no recovery of evidence - the words stay, the control is gone, no overlay.
+    expect(screen.getByTestId('sm-status-banner')).toHaveAttribute('data-kind', 'FAULT')
+    expect(screen.queryByTestId('sm-banner-cta')).not.toBeInTheDocument()
+
+    // The Core ends the session on its own tick; that change reaches the client as the next delta.
+    for (let step = 0; step < 200 && core!.store.getState().session !== null; step += 1) {
+      coreClock!.advance(50)
+      core!.tick()
+    }
+    expect(core!.store.getState().session).toBeNull()
+    const ended = core!.store.getState()
+    bed.fake.connection().delta([
+      { op: 'replace', slice: 'session', value: null },
+      { op: 'replace', slice: 'sessionHistory', value: JSON.parse(JSON.stringify(ended.sessionHistory)) },
+    ] as Ops)
+    await bed.flush()
+    await waitFor(() => expect(page.live.store.getState().session).toBeNull())
+    await waitFor(() => expect(screen.getByTestId('page-session-monitor')).toHaveAttribute('data-phase', 'IDLE'))
+    expect(screen.getByTestId('sm-status-banner')).toHaveAttribute('data-kind', 'NO_SESSION')
+    expect(screen.getByTestId('sm-status-banner')).not.toHaveAttribute('data-failed-start')
+    expect(screen.queryByTestId('finalization-modal')).not.toBeInTheDocument()
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+})

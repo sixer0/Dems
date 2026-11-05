@@ -28,7 +28,8 @@
  */
 import type { TFunction } from 'i18next'
 import { en } from '@dems/shared/i18n'
-import { exportPhaseOfEvent, SEAL_BLOCKED_DETAIL_SENTENCE, type SimEvent } from '@dems/shared/sim'
+import { SessionState } from '@dems/shared/domain'
+import { exportPhaseOfEvent, SEAL_BLOCKED_DETAIL_SENTENCE, type SimEvent, type SimState } from '@dems/shared/sim'
 
 const holds = (tree: object, code: string): boolean => Object.prototype.hasOwnProperty.call(tree, code)
 
@@ -72,9 +73,50 @@ export const eventTypeWords = (t: TFunction, type: string): string => codeWords(
 export const faultKindWords = (t: TFunction, kind: string): string => codeWords(t, 'faultKind', kind)
 export const severityWords = (t: TFunction, severity: string): string => codeWords(t, 'severity', severity)
 
-/** The title of an event in an activity list (Storage, Network & Time, the Dashboard's recent events). */
-export function eventTitle(t: TFunction, event: Pick<SimEvent, 'type' | 'params'>): string {
+// ── A fault cleared while its session is still in FAULT (audit fix row 110b; DF-19, R110-1, D60) ──
+
+/**
+ * The id of the open session while it is in FAULT, else null - a primitive, so a list that subscribes
+ * to it re-renders only when the session enters or leaves FAULT (not on every session tick).
+ */
+export function selectFaultSessionId(state: Pick<SimState, 'session'>): string | null {
+  const session = state.session
+  return session !== null && session.state === SessionState.FAULT ? session.id : null
+}
+
+/**
+ * True for a `FAULT_CLEARED` event that names the open session while that session is still in FAULT
+ * (`faultSessionId` from `selectFaultSessionId`). A fault clear does not end a session's FAULT: the
+ * session stays there until `recover()` (operation 33; `packages/shared/src/sim/faults.ts` header). On
+ * the Core the boot clears the capture fault of an earlier run (D84 R-4,
+ * `CAPTURE_STALE_FAULTS_CLEARED`) and names the open failed start; the Dashboard then read
+ * "Fault cleared SES-..." with a green dot beside a session card that said FAULT (UI finding U-07).
+ * Such a row is worded `common.faultCleared.sessionStillInFault` and drawn with a warning dot,
+ * mirroring how a failed start's `RECORDING_STARTED` is worded (G75-11). The Core-not-running clear
+ * keeps its own sentence (the source does the same: `CORE_NOT_RUNNING_CLEARED_SENTENCE` first). The
+ * event's severity stays `SUCCESS` (D60 R110-3): the console decides the dot from the session state
+ * it already has; no contract change.
+ */
+export function faultClearedStillInFault(event: Pick<SimEvent, 'type' | 'params'> & { sessionId?: string | null }, faultSessionId: string | null): boolean {
+  return (
+    event.type === 'FAULT_CLEARED' &&
+    event.params.coreNotRunning !== true &&
+    faultSessionId !== null &&
+    (event.sessionId ?? null) === faultSessionId
+  )
+}
+
+/**
+ * The title of an event in an activity list (Storage, Network & Time, the Dashboard's recent events).
+ * `faultSessionId` (row 110b): the open session's id while it is in FAULT (`selectFaultSessionId`); a
+ * `FAULT_CLEARED` of that session then reads `common.faultCleared.sessionStillInFault`, the fault kind
+ * in its words (never the raw code). Omitted or null: the type's own title, as before.
+ */
+export function eventTitle(t: TFunction, event: Pick<SimEvent, 'type' | 'params'> & { sessionId?: string | null }, faultSessionId: string | null = null): string {
   if (exportPhaseOfEvent(event) === 'REQUESTED') return t('web.waveJ.events.exportRequested')
+  if (faultClearedStillInFault(event, faultSessionId)) {
+    return t('common.faultCleared.sessionStillInFault', { kind: faultKindWords(t, String(event.params.kind ?? '')) })
+  }
   return eventTypeWords(t, event.type)
 }
 

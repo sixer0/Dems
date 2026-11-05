@@ -10,8 +10,8 @@
  *   rule, the vertical RECORD / PRESERVE / PROTECT and the device strip; never the officer photo
  *   of the mobile mockup (D28);
  * - auth side: the sign-in card (fields and gold Sign In with dark text from the mobile Login,
- *   D28/Q5; "Use security key (simulated)", D28/Q15; the 3 synthetic demo operators in a
- *   collapsible Disclosure, hidden in presentation mode; the §20.1 trust line) and the footer.
+ *   D28/Q5; "Use security key (simulated)", D28/Q15; no demo operators since D58; the §20.1
+ *   trust line) and the footer.
  *
  * The 8 states of §14.8 are exposed as `data-state` on the page root: idle, validating,
  * submitting, error, locked, offline, signed-out (signed out / console locked / expired), success.
@@ -177,7 +177,6 @@ export function LoginPage() {
           choreography={choreography}
           leaving={leaving}
           onExitComplete={finishHandOff}
-          presentation={presentation}
           modeSwitch={modeSwitch}
           shakeRef={shakeRef}
           usernameRef={usernameRef}

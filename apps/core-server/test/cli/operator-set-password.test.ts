@@ -31,6 +31,7 @@ import {
   STOPPED_LIMIT,
   SetPasswordExit,
   connectionFileOf,
+  isSystemPrincipal,
   runSetPasswordCommand,
   type SetPasswordPorts,
 } from '../../cli/operator-set-password-command';
@@ -44,6 +45,7 @@ import { REVOKE_TOKENS } from '../../src/modules/identity/biometric/store';
 import { hashPassword, type PasswordHashRecord } from '../../src/modules/identity/password-hash';
 import { RunRepeatGuardError, createRunRepeatGuard as realRunRepeatGuard, type RunRepeatGuard } from '../../src/modules/identity/password-policy';
 import { END_SESSIONS_OF_OPERATOR } from '../../src/modules/identity/session-store';
+import { SYSTEM_OPERATOR_ID } from '../../src/modules/capture-discovery/connect';
 import { recordingErrorLog, standInDatabase, type StandInDatabase } from '../support/core';
 
 // Row 215c: THE ONE MODULE DOUBLE OF THIS FILE. The command makes the repeat guard of a run by calling
@@ -584,6 +586,78 @@ describe('refused before the first prompt (SX-01, SX-12, R-X2-8)', () => {
     expect(run.lines.join('\n')).toMatch(/REFUSED \(NOT_CONFIRMED\)/);
     expect(run.lines.join('\n')).not.toMatch(/ROLE_NOT_RUNTIME/);
     expect(r.asks).toHaveLength(1);
+  });
+
+  // ── DF-29, decision D20(d) (2026-11-05): a SYSTEM PRINCIPAL gets no password, before the first prompt ──
+  const systemRow = (operatorId: string, username: string, set: PasswordHashRecord | null): WorldOperator => ({ operator_id: operatorId, username, role: 'TECHNICIAN', set });
+  const refusedUntouched = (r: Rig): void => {
+    expect(r.labels).toEqual([]);
+    expect(r.asks).toEqual([]);
+    expect(r.hashed.count).toBe(0);
+    expect(wrote(r.database.sent)).toBe(false);
+    expect(r.database.sent.some((statement) => statement.text === CREATE_CREDENTIAL || statement.text === SET_CREDENTIAL || statement.text === UNIT_STATEMENTS.begin)).toBe(false);
+    expect(r.database.inner.committed.auditSeqs).toEqual([]);
+    // A refusal by design, not a failure: nothing goes to the persistent error log.
+    expect(r.errorLog.entries).toEqual([]);
+  };
+
+  it('the installer`s `system` row (OPR-000, NO credential) is refused - the D56 create path never writes its first credential', async () => {
+    const state = world();
+    state.operators.push(systemRow(SYSTEM_OPERATOR_ID, 'system', null));
+    const r = rig({ state, typed: [runValue(), runValue()] });
+    const run = await runSetPasswordCommand(r.args('--username', 'system'), r.ports);
+    expect(run.code).toBe(SetPasswordExit.REFUSED);
+    expect(run.lines).toEqual([
+      'operator:set-password: REFUSED (SYSTEM_PRINCIPAL) system (OPR-000) is a system principal: it stands for the Core itself and never signs in, so this command sets no password of it. Nothing was changed.',
+    ]);
+    expect(run.set).toEqual([]);
+    refusedUntouched(r);
+    expect(state.operators.find((operator) => operator.operator_id === SYSTEM_OPERATOR_ID)?.set).toBeNull();
+  });
+
+  it.each<[string, string, string]>([
+    ['the reserved id under another username', SYSTEM_OPERATOR_ID, 'core.auto'],
+    ['the reserved username in another case, under another id', 'OPR-099', 'System'],
+  ])('a system principal by %s, even WITH a credential row, is refused: nothing replaced', async (_name, operatorId, username) => {
+    const state = world();
+    state.operators.push(systemRow(operatorId, username, otherSet));
+    const r = rig({ state, typed: [runValue(), runValue()] });
+    const run = await runSetPasswordCommand(r.args('--username', username), r.ports);
+    expect(run.code).toBe(SetPasswordExit.REFUSED);
+    expect(run.lines.join('\n')).toMatch(/REFUSED \(SYSTEM_PRINCIPAL\)/);
+    refusedUntouched(r);
+    expect(state.operators.find((operator) => operator.operator_id === operatorId)?.set).toBe(otherSet);
+  });
+
+  it('--all-demo: a system principal that holds the demo password stops the whole walk before the word - nobody is prompted, no operator changed', async () => {
+    const state = world();
+    state.operators.push(systemRow(SYSTEM_OPERATOR_ID, 'system', demoSet));
+    const r = rig({ state, typed: [runValue(), runValue()] });
+    const run = await runSetPasswordCommand(r.args('--all-demo'), r.ports);
+    expect(run.code).toBe(SetPasswordExit.REFUSED);
+    expect(run.lines).toHaveLength(1);
+    expect(run.lines[0]).toMatch(/^operator:set-password: REFUSED \(SYSTEM_PRINCIPAL\) system \(OPR-000\): a system principal holds the published demo password\./);
+    refusedUntouched(r);
+    for (const operator of state.operators) expect(operator.set).toBe(demoSet);
+  });
+
+  it('CONTROL: a system principal WITHOUT the demo password is not in the walk - the walk lists the other three and goes on to the word', async () => {
+    const state = world();
+    state.operators.push(systemRow(SYSTEM_OPERATOR_ID, 'system', otherSet));
+    const r = rig({ state, word: 'no' });
+    const run = await runSetPasswordCommand(r.args('--all-demo'), r.ports);
+    expect(run.lines.join('\n')).not.toMatch(/SYSTEM_PRINCIPAL/);
+    expect(run.lines.filter((line) => line.startsWith('    - '))).toEqual(['    - run.supervisor (SUPERVISOR)', '    - run.investigator (INVESTIGATOR)', '    - run.technician (TECHNICIAN)']);
+    expect(run.lines.join('\n')).toMatch(/REFUSED \(NOT_CONFIRMED\)/);
+    expect(r.asks).toHaveLength(1);
+  });
+
+  it('the predicate: the auto-attach actor of capture-discovery IS a system principal; a real operator and a look-alike name are not', () => {
+    expect(SYSTEM_OPERATOR_ID).toBe('OPR-000');
+    expect(isSystemPrincipal({ operatorId: SYSTEM_OPERATOR_ID, username: 'anything' })).toBe(true);
+    expect(isSystemPrincipal({ operatorId: 'OPR-123', username: 'SYSTEM' })).toBe(true);
+    expect(isSystemPrincipal({ operatorId: 'OPR-001', username: 'run.technician' })).toBe(false);
+    expect(isSystemPrincipal({ operatorId: 'OPR-0001', username: 'systemd' })).toBe(false);
   });
 });
 

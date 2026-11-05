@@ -33,7 +33,7 @@
  * behave alike; the table only decides which one a rehydrated state holds.
  */
 // UNATTRIBUTED_OPERATOR_ID is imported below with the other vocabulary constants.
-import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, TRACK_LABELS, TRACK_ORDER, UNATTRIBUTED_OPERATOR_ID, captureDeviceProfilesOf, defaultHardwareCameras, defaultHardwareMics, eventCategory, neverSealedShape } from '@dems/shared/sim';
+import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, TRACK_LABELS, TRACK_ORDER, UNATTRIBUTED_OPERATOR_ID, captureDeviceProfilesOf, defaultHardwareCameras, defaultHardwareMics, eventCategory, meterInputOfChannel, neverSealedShape } from '@dems/shared/sim';
 import type {
   ActiveSession,
   AuditRow,
@@ -320,14 +320,50 @@ export function hardwareSnapshotToRow(state: Pick<MappableState, 'meta' | (typeo
  * a built-in row the stored slice does not name is APPENDED in the default's own order. A complete slice is
  * returned as a copy of the stored rows, so the widening never by itself changes a snapshot that is already current.
  */
-function widenHardwareSlice<T extends { id: string }>(stored: readonly T[] | null | undefined, defaults: readonly T[]): T[] {
+function widenHardwareSlice<T extends { id: string }>(stored: readonly T[] | null | undefined, defaults: readonly T[], appended: (entry: T) => T): T[] {
   const rows = Array.isArray(stored) ? stored : [];
   const known = new Set(rows.map((entry) => (entry as { id?: unknown } | null)?.id));
   const missing = defaults.filter((entry) => !known.has(entry.id));
-  return missing.length === 0 ? [...rows] : [...rows, ...missing];
+  return missing.length === 0 ? [...rows] : [...rows, ...missing.map(appended)];
 }
 
-export function snapshotSlicesFromRow(row: HardwareSnapshotRow): Pick<DurableSlices, (typeof SNAPSHOT_SLICE_KEYS)[number]> {
+/**
+ * Audit row 92 (D24; DF-11 widening part): a row the widening APPENDS is a shape guard only. The built-in default
+ * states `lens READY` / `online true` for a camera and `READY` for a microphone - facts of the simulated unit,
+ * observed by nobody on this Core. The appended row claims neither: the camera is not online and its lens is not
+ * READY (the lens domain holds READY | FAULT only), the microphone reads NO_SIGNAL. Live telemetry and the
+ * meter frames put the real state in afterwards; until then no screen reads READY for a device no one has seen.
+ * Stored rows are untouched by this guard (they are what the running Core last wrote).
+ */
+function unclaimedCamera(camera: DurableSlices['cameras'][number]): DurableSlices['cameras'][number] {
+  return { ...camera, lens: 'FAULT', online: false };
+}
+
+function unclaimedMic(mic: DurableSlices['mics'][number]): DurableSlices['mics'][number] {
+  return { ...mic, state: 'NO_SIGNAL' };
+}
+
+/**
+ * Audit row 92 (D21(2); DF-31): the device of each microphone row is the input its CHANNEL holds in the
+ * selector (`capture_config.mic_0N_id`), never the built-in default's id. The same rule the simulator keeps on
+ * every selector edit (`sim/capture-config.ts`, "the mic slice carries the input of its own channel") is applied
+ * at the boot-load, to stored and appended rows alike: a snapshot widened by D64 before this row stored
+ * AUDIO-03/04 on MIC-03/04 - the devices of channels 1/2 on the bench - and only a re-derivation corrects it.
+ * A channel the selector does not assign keeps the row's device (no line, no fact to take). An already-agreeing
+ * slice is returned as it came, so the read never by itself dirties a current snapshot.
+ */
+function micsOfSelector(mics: DurableSlices['mics'], selector: Pick<CaptureConfigSlice, 'mics'>): DurableSlices['mics'] {
+  let changed = false;
+  const next = mics.map((mic) => {
+    const inputId = meterInputOfChannel(selector.mics, mic.id);
+    if (inputId === null || inputId === mic.deviceId) return mic;
+    changed = true;
+    return { ...mic, deviceId: inputId };
+  });
+  return changed ? next : mics;
+}
+
+export function snapshotSlicesFromRow(row: HardwareSnapshotRow, selector: Pick<CaptureConfigSlice, 'mics'>): Pick<DurableSlices, (typeof SNAPSHOT_SLICE_KEYS)[number]> {
   if (row.simSchemaVersion !== SIM_SNAPSHOT_VERSION) {
     throw new MappingError(
       'ROW_SHAPE',
@@ -343,8 +379,9 @@ export function snapshotSlicesFromRow(row: HardwareSnapshotRow): Pick<DurableSli
     // its own contract on every op-44 / op-46 read (the response `.length(4)` refused serialization: the bench
     // saw 500s and the console froze its status chips on the last good read). The stored rows stand untouched;
     // only the built-in rows the widening added are APPENDED, from the shared defaults (ONE statement per fact).
-    cameras: widenHardwareSlice(row.cameras, defaultHardwareCameras()),
-    mics: widenHardwareSlice(row.mics, defaultHardwareMics()),
+    // Audit row 92 (D24, D21(2)): the appended rows claim no READY, and every mic row names its channel's device.
+    cameras: widenHardwareSlice(row.cameras, defaultHardwareCameras(), unclaimedCamera),
+    mics: micsOfSelector(widenHardwareSlice(row.mics, defaultHardwareMics(), unclaimedMic), selector),
     storage: row.storage,
     time: row.timeStatus,
     network: row.network,

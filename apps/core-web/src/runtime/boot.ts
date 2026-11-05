@@ -51,6 +51,8 @@ export interface BootCoreRuntimeOptions {
   readonly packaged?: boolean
   /** Default `import.meta.env.VITE_DEMS_CORE_MODE`. */
   readonly env?: string | undefined
+  /** Default `import.meta.env.VITE_DEMS_PRODUCTION_LOCK` (register S1: on only when exactly `1`). */
+  readonly lock?: string | undefined
   /** Default: the origin's `localStorage` (`null` when the browser has none). */
   readonly storage?: Storage | null
   /** Default `window.location`. */
@@ -90,7 +92,10 @@ export interface LiveRuntimeStarted extends RuntimeBase {
 export interface RefusedRuntime extends RuntimeBase {
   readonly kind: 'REFUSED'
   readonly refusal: LiveHostRefusal
-  /** Stores SIMULATED for this origin and loads the page again. False when the choice could not be stored. */
+  /**
+   * Stores SIMULATED for this origin and loads the page again. False when the choice could not be
+   * stored, or when the page offers no choice (`resolution.selectable` false: the production lock).
+   */
   useSimulated(): boolean
 }
 
@@ -169,6 +174,9 @@ export async function bootCoreRuntime(options: BootCoreRuntimeOptions): Promise<
     packaged,
     stored: readStoredCoreMode(storage),
     env: options.env === undefined ? import.meta.env.VITE_DEMS_CORE_MODE : options.env,
+    // Rule 1b (audit row 106, register S1/S4): the production console unit sets the lock. The storage
+    // above is still handed to the Live start-up (its owed sign-out); the resolver ignores the stored mode.
+    lock: options.lock === undefined ? import.meta.env.VITE_DEMS_PRODUCTION_LOCK : options.lock,
   })
 
   if (resolution.mode === CoreMode.LIVE && loadLive !== null) {
@@ -187,6 +195,8 @@ export async function bootCoreRuntime(options: BootCoreRuntimeOptions): Promise<
         resolution,
         refusal,
         useSimulated() {
+          // The production lock offers no Simulated mode, not even from this screen (D25 N3).
+          if (!resolution.selectable) return false
           if (!writeStoredCoreMode(storage, CoreMode.SIMULATED)) return false
           location.reload()
           return true

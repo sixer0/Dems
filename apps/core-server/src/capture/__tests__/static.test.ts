@@ -89,6 +89,8 @@ const PRODUCTION_DOOR = 'src/capture/adapters/production-door.ts';
 const CARD_LISTING_READER = 'src/capture/adapters/audio/card-listing-reader.ts';
 /** Task 4 row 65 (WP-08; amended by row 3's decision text SR-1, entry 2): the ONE file of the sound configuration that touches the file system, FOR WRITING UNDER THE CORE'S RUN DIRECTORY ONLY (pinned; G-R2). */
 const ALSA_CONFIG_WRITER = 'src/capture/adapters/audio/alsa-config-writer.ts';
+/** Audit 2026-11-05 row 101 (DF-24, decision D23 (1)): the ONE file that reads the camera interface's carrier, FOR READING ONLY (pinned; G-R2). */
+const CAMERA_LINK_READER = 'src/capture/boot/camera-link.ts';
 
 const places = (files: readonly SourceFile[], pattern: RegExp): string[] => [...new Set(occurrences(files, pattern).map((place) => place.replace(/:\d+$/, '')))];
 
@@ -163,7 +165,7 @@ describe('G-R1: the host units open no door of their own', () => {
 
 describe('G-R2: the pinned allowlist of the capture folder (SEC35-25)', () => {
   /** The files that own the spawn and the handshake (spec §G G-R2). */
-  const ALLOWLIST = ['src/capture/supervisor.ts', 'src/capture/ipc.ts', SIGNER_HOST_KEY, LOCAL_HELPER_DOOR, LOCAL_PIPE_FILES, BOOT_EVIDENCE_VOLUME, PRODUCTION_DOOR, CARD_LISTING_READER, ALSA_CONFIG_WRITER];
+  const ALLOWLIST = ['src/capture/supervisor.ts', 'src/capture/ipc.ts', SIGNER_HOST_KEY, LOCAL_HELPER_DOOR, LOCAL_PIPE_FILES, BOOT_EVIDENCE_VOLUME, PRODUCTION_DOOR, CARD_LISTING_READER, ALSA_CONFIG_WRITER, CAMERA_LINK_READER];
 
   it('the process module and the file system are imported by files of the allowlist only', () => {
     const importers = [...new Set([...places(capture, PROCESS_MODULE), ...places(capture, FILE_SYSTEM)])];
@@ -177,7 +179,24 @@ describe('G-R2: the pinned allowlist of the capture folder (SEC35-25)', () => {
     // Row 61: the probe of the evidence store (`boot/evidence-volume.ts`: one exclusive create, a sync, a link and the removal of its own two names).
     // Task 4 row 64 (SR-1, entry 3): the reader of the card listing (`audio/card-listing-reader.ts`: open for reading, read, close and nothing else).
     // Task 4 row 65 (SR-1, entry 2): the writer of the shared-capture configuration (`audio/alsa-config-writer.ts`: one file below the run directory, made whole by a rename).
-    expect(places(capture, FILE_SYSTEM).sort()).toEqual([LOCAL_PIPE_FILES, LOCAL_HELPER_DOOR, BOOT_EVIDENCE_VOLUME, SIGNER_HOST_KEY, CARD_LISTING_READER, ALSA_CONFIG_WRITER].sort());
+    // Audit 2026-11-05 row 101 (DF-24, decision D23 (1)): the reader of the camera link (`boot/camera-link.ts`: open for reading, read, close and nothing else).
+    expect(places(capture, FILE_SYSTEM).sort()).toEqual([LOCAL_PIPE_FILES, LOCAL_HELPER_DOOR, BOOT_EVIDENCE_VOLUME, SIGNER_HOST_KEY, CARD_LISTING_READER, ALSA_CONFIG_WRITER, CAMERA_LINK_READER].sort());
+  });
+
+  // Audit 2026-11-05 row 101 (DF-24, decision D23 (1): "the Core watches the camera interface carrier"). For reading only,
+  // like the card listing reader: two fixed file words below one directory named by the interface form, no process, no timer.
+  it('the camera link reader: one import of the file system, one open and that for reading; it writes, removes, starts and waits on nothing', () => {
+    const reader = capture.find((file) => file.path === CAMERA_LINK_READER)?.text ?? '';
+    expect(reader.match(FILE_SYSTEM)).toEqual([`'node:${'fs'}/promises'`]);
+    expect(reader).toMatch(new RegExp(`^import \\{ open \\} from 'node:${'fs'}/promises';$`, 'm'));
+    expect(reader.match(/\bopen\([^)]*\)/g)).toEqual(["open(file, 'r')"]);
+    expect(reader.match(/\b(?:write|writeFile|appendFile|mkdir|mkdtemp|rm|rmdir|unlink|rename|truncate|chmod|chown|copyFile|link|symlink|utimes|readdir|readlink|realpath|watch)\s*\(/g)).toBeNull();
+    // The two files are fixed words; the one variable part of the directory is held to the interface form before it is used.
+    expect(reader.match(/readFact\(`[^`]*`/g)).toEqual(['readFact(`${directory}/carrier`', 'readFact(`${directory}/operstate`']);
+    expect(reader).toMatch(/^ {2}if \(!CAPTURE_INTERFACE_NAME_PATTERN\.test\(interfaceName\)\) \{$/m);
+    expect(reader).toMatch(/^ {2}const directory = `\$\{root\}\/\$\{interfaceName\}`;$/m);
+    expect([...reader.matchAll(PROCESS_MODULE), ...reader.matchAll(PROCESS_START), ...reader.matchAll(ENVIRONMENT), ...reader.matchAll(GLOBAL_TIMER), ...reader.matchAll(SOCKET_OR_THREAD)]).toEqual([]);
+    expect(logCalls(reader)).toEqual([]);
   });
 
   // Task 4 row 65 (SR-1, entry 2: "for writing under the Core's run directory only"). The generator beside it imports no module of the host at all.

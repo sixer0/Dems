@@ -584,12 +584,11 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
   type Category = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '2 (S-5)' | '3 (S-5)';
   type Operation = 'SIMULATED' | 'REAL_DEVELOPMENT' | 'REAL_PRODUCTION';
   const SLOT_ORDER: readonly Slot[] = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'];
-  // D61 (2026-11-04): the pre-check answer keeps its CLOSED item list (`PRECHECK_ORDER`, packages/shared):
-  // only these four slots ever carried an item (LENS_1, LENS_2, MIC_PRIMARY, MIC_STANDBY); VIDEO-03/04 and
-  // MIC-03/04 have none of their own. The eight-slot rule of D60/D61 bites at the START
-  // (`startRecordingTransition` refuses on any unassigned slot) — see the `of.start` pins below and the
-  // sibling contract in precheck-unassigned.db.test.ts (row 30).
-  const ITEM_CARRYING_SLOTS: readonly Slot[] = ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02'];
+  // Audit fix rows 83/90 (DF-03; D15(c), D22(5)): the pre-check covers all EIGHT slots - `PRECHECK_ORDER`
+  // (packages/shared) holds twelve checks: LENS_1..LENS_4 for VIDEO-01..04, MIC_PRIMARY, MIC_STANDBY, MIC_3,
+  // MIC_4 for MIC-01..04. Every unassigned slot is therefore ONE BLOCK item of its own at the pre-check (until
+  // row 83 only four slots carried one and VIDEO-03/04, MIC-03/04 were refused at the START only). The sibling
+  // contract is precheck-unassigned.db.test.ts (row 30).
   const U = null;
   const PROFILE = 'H264_1080P25';
   /** D: CAM-01..04, MIC-01..04 (the seed's FAKE rows). P: CAM-11..14 (ONVIF_RTSP), MIC-11..14 (USB_AUDIO). */
@@ -912,10 +911,9 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
       );
       // From CREATE a start is the pre-check run, in every operation.
       expect(attempt.first.slice(0, 2), label).toEqual([202, 'PRECHECK']);
-      // "Source not assigned": one BLOCK item per unassigned slot IN THE CLOSED ITEM LIST (C18 (1), C25); D61 (2026-11-04):
-      // the selector is eight slots but the answer keeps its four item-carrying checks — an unassigned VIDEO-03/04 or
-      // MIC-03/04 refuses the START below, it carries no item of its own. None in SIMULATED (C21 (6)).
-      expect(attempt.notAssigned, label).toEqual(of.operation === 'SIMULATED' ? [] : unassignedOf(lines).filter((slot) => ITEM_CARRYING_SLOTS.includes(slot)).map((slot) => `${slot} BLOCK`));
+      // "Source not assigned": one BLOCK item per unassigned slot (C18 (1), C25), for each of the EIGHT slots since audit
+      // fix row 83 (DF-03: twelve checks), in the order of the checks (VIDEO-01..04, then MIC-01..04). None in SIMULATED (C21 (6)).
+      expect(attempt.notAssigned, label).toEqual(of.operation === 'SIMULATED' ? [] : unassignedOf(lines).map((slot) => `${slot} BLOCK`));
       if (of.start === null) throw new Error(`${label}: the table states no start for a Core that boots`);
       expect(attempt.second.slice(0, of.start.length), label).toEqual([...of.start]);
       const accepted = of.start[0] === 200;
@@ -1017,8 +1015,8 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
       expect(attempt.second[0]).toBe(409);
       if (served.length === 0) {
         expect(attempt.second.slice(0, 2)).toEqual([...BLOCKED]);
-        // D61 (2026-11-04): all eight slots are unassigned; the closed item list answers with its four items.
-        expect(attempt.notAssigned).toEqual(ITEM_CARRYING_SLOTS.map((slot) => `${slot} BLOCK`));
+        // All eight slots are unassigned (D60/D61); since audit fix row 83 (DF-03) each has its own BLOCK item.
+        expect(attempt.notAssigned).toEqual(SLOT_ORDER.map((slot) => `${slot} BLOCK`));
       }
       expect([attempt.started, attempt.sourceRows, attempt.workers]).toEqual([0, [], 0]);
       expect(await sourceRowsOf(owner)).toEqual([]);

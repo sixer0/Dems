@@ -112,6 +112,8 @@ export function fromRows(rows: StoredRows, options: FromRowsOptions = {}): Durab
     .sort((a, b) => a.recordedAt - b.recordedAt || compareText(a.id, b.id))
     .map((item) => evidenceItemFromRows(item, tracksByItem.get(item.id) ?? NO_TRACKS, custodyByItem.get(item.id) ?? NO_CUSTODY));
   const evidenceBySession = new Map(rows.evidenceItems.map((item) => [item.sessionId, item.id] as const));
+  // The selector (capture_config), read once: its own slice and the source of every mic row's device (audit row 92).
+  const captureConfig = captureConfigFromRow(single(rows.captureConfig, 'capture_config'), rows.captureDevices);
 
   // The audit ring and the chain head (MR-4).
   const auditRows = newest(
@@ -154,9 +156,9 @@ export function fromRows(rows: StoredRows, options: FromRowsOptions = {}): Durab
     // least one row; a database that holds neither was never seeded (the boot refuses it the same
     // way it refuses a missing core_device). The derivations are rows.ts's, mirroring the
     // capture-config module's builders.
-    captureConfig: captureConfigFromRow(single(rows.captureConfig, 'capture_config'), rows.captureDevices),
+    captureConfig,
     captureDevices: captureDevicesFromRows(rows.captureDevices, options.captureDeviceListing, selectorDeviceIds(single(rows.captureConfig, 'capture_config'))),
-    // Snapshot slices.
-    ...snapshotSlicesFromRow(single(rows.hardwareSnapshot, 'hardware_snapshot')),
+    // Snapshot slices. Audit row 92 (D21(2)): the mic rows take each channel's device from the selector just read.
+    ...snapshotSlicesFromRow(single(rows.hardwareSnapshot, 'hardware_snapshot'), captureConfig),
   };
 }

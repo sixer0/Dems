@@ -475,7 +475,8 @@ function selectReadiness(s: Parameters<typeof evaluatePrecheck>[0]): PrecheckEva
 }
 
 /**
- * Step 1 side column: the session as typed so far, and the live state of the eight gate checks
+ * Step 1 side column: the session as typed so far, and the live state of every gate check in `PRECHECK_ORDER`
+ * (twelve since audit fix rows 83/89, DF-03: 4 lenses + 4 mics; the list and the count derive from the order, no fixed count)
  * (`evaluatePrecheck`, exported by the sim for live previews, 13_sim_engine §2.3).
  */
 function InfoAside({ control, investigators }: { control: Control<SessionCreateFormValues>; investigators: SimOperator[] }) {

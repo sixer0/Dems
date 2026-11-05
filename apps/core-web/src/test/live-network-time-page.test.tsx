@@ -189,14 +189,15 @@ describe('the Core\'s deltas (M-PG-NET in Live mode)', () => {
     expect(demoMarkBlocks().length).toBeGreaterThan(0)
   })
 
-  it('a tablet link the Core reports offline degrades the Management domain and reminds that recording continues on the Core', async () => {
+  it('a tablet link the Core reports offline degrades the Management domain and, with nothing recording, claims no recording (DF-22)', async () => {
     const { bed, page } = await liveNetworkTime()
     page.sockets.at(-1)!.delta([
       { op: 'replace', slice: 'tabletLink', value: { ...bed.core.served.tabletLink, state: 'OFFLINE', changedAt: bed.fake.clock.now() } },
     ] as FakeCommandOptions['ops'])
     await bed.flush()
     await waitFor(() => expect(screen.getByTestId('network-time-tablet-state')).toHaveTextContent('Offline'))
-    expect(screen.getByTestId('network-time-tablet-alert')).toHaveTextContent('Recording continues on the Core')
+    expect(screen.getByTestId('network-time-tablet-alert')).toHaveTextContent(N.network.tabletOfflineIdle)
+    expect(screen.getByTestId('network-time-tablet-alert')).not.toHaveTextContent('Recording continues')
     expect(screen.getByTestId('network-time-domain-MANAGEMENT')).toHaveTextContent('Degraded')
     await waitFor(() => expect(toastWith(N.toast.tabletOffline)).toHaveLength(1))
   })

@@ -48,12 +48,32 @@
  * holds it out of probing and carrying meanwhile); after that a fresh sweep may find it again.
  * Without the bench pair nothing is attempted and nothing is carried: the list replaces as before.
  *
+ * THE SCOPE OF THE BENCH CREDENTIAL (audit 2026-11-05 row 103; DF-26; decision D23 (3): the default pair is
+ * KEPT, hardened only). The pair is spent ONLY on a candidate whose host is a strict quad INSIDE the ONE /24 of
+ * `DEMS_CAMERA_SEGMENT_CIDR` and that answered as ONVIF (`adapter` `ONVIF_RTSP`). Anything else is never
+ * attempted, spends no attempt, is never carried, and is said at warn once per sweep and candidate (code
+ * `CAPTURE_AUTOATTACH_OUT_OF_SCOPE`, the candidate id only). The connect flow's `systemFlow` door holds the same
+ * scope a second time where the pair is spent. The retry cap stays `AUTOATTACH_MAX_ATTACH_ATTEMPTS` (5),
+ * pinned by `__tests__/segment-scan.attach.test.ts`; no log line of this file ever carries the pair.
+ *
  * TESTABILITY. Every outside world is a parameter: `listNeighbours`, `probeAddress`,
  * `ownAddresses`, `registeredAddresses`, `store`, `audit`, `attach`, `schedule`. The unit tests
  * (`__tests__/segment-scan.test.ts`) drive the sweep over fakes; the production implementations
  * (`listNeighboursOver`, `ownInterfaceAddresses` here and `probeSegmentAddress` in
  * `src/segment-probe-socket.ts`, the file of no unit that holds the two raw probes) are wired by
  * the module's plugin behind the configuration flag and nowhere else.
+ *
+ * THE CAMERA LINK (audit 2026-11-05 row 102; DF-24, DF-25; decisions D23 (1, 2), D41, D58). With `readLink`
+ * handed in (the wiring reads the link of the STORED camera interface through row 101's read-only seam
+ * `createCameraLinkSource`), the sweeper also polls the link every `CAMERA_LINK_POLL_INTERVAL_MS`:
+ *   - link-up (an earlier reading that was not UP, then UP): ONE immediate sweep - D62 point 1 "on PoE link-up";
+ *     a sweep that finds the store busy is retried at the next poll; the 60 s timer stays as the fallback;
+ *   - DOWN: the sweep does not run and writes NO audit row (`SweepSkip` 'LINK_DOWN', no log line either);
+ *   - one `CAMERA_LINK_DOWN` row (WARNING, details `{ previous }`) when the link goes DOWN, and one
+ *     `CAMERA_LINK_UP` row (INFO, details `{ previous, downMs }`) when it comes back - per EDGE, never per poll;
+ *   - UNKNOWN is never DOWN (D41): an unreadable link keeps the 60 s sweep and writes no row; ABSENT (no
+ *     interface of that name) likewise keeps the sweep - the neighbour table is not read per interface.
+ * Without `readLink` everything is exactly as before (60 s timer only).
  */
 import { networkInterfaces } from 'node:os';
 import {
@@ -71,7 +91,7 @@ import {
 } from '@dems/shared/api';
 import { SessionState, VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain';
 import { sourceClassOf, type CameraCandidate, type CaptureAdapterKind } from '../../capture/adapters';
-import type { HostCommandRunner } from '../../capture';
+import type { CameraLinkSource, CameraLinkState, HostCommandRunner } from '../../capture';
 import type { AuditEntry } from '../../core';
 import type { CandidateStore, FoundCandidate } from './store';
 
@@ -79,6 +99,11 @@ import type { CandidateStore, FoundCandidate } from './store';
 
 /** D62: the sweep period. One timer, started at module registration only while `DEMS_CAMERA_AUTOATTACH=1`. */
 export const AUTOATTACH_SWEEP_INTERVAL_MS = 60_000;
+/** Row 102 (DF-24, D23 (1)): how often the sweeper reads the camera link (two small sysfs files, read-only) while its timer runs. */
+export const CAMERA_LINK_POLL_INTERVAL_MS = 5_000;
+/** Row 102 (A6 of the W1 register): the message of the two link rows, the same text as the fixture rows. */
+export const CAMERA_LINK_DOWN_MESSAGE = 'Camera network link down';
+export const CAMERA_LINK_UP_MESSAGE = 'Camera network link up';
 /** D62: at most four devices are auto-adopted per sweep; the rest wait for the next one. */
 export const AUTOATTACH_MAX_ADOPTS_PER_SWEEP = 4;
 /**
@@ -116,7 +141,7 @@ export interface AddressProbe {
 }
 
 /** Why a sweep did not run. `FAILED` is any unexpected throw: logged at warn, never handed on. */
-export type SweepSkip = 'BUSY' | 'RECORDING' | 'SEARCH_RUNNING' | 'LIST_UNREADABLE' | 'FAILED';
+export type SweepSkip = 'BUSY' | 'RECORDING' | 'SEARCH_RUNNING' | 'LIST_UNREADABLE' | 'FAILED' | 'LINK_DOWN';
 
 /** What one sweep says when it ends. Counts and ids only - never an address, never a credential. */
 export interface SweepResult {
@@ -187,6 +212,19 @@ export interface SegmentSweepOptions {
   /** The listening window the merged search states; 0: the sweep's answers are complete when it begins it. */
   readonly windowMs?: number;
   readonly maxAdoptsPerSweep?: number;
+  /** Row 102 (DF-24, DF-25): the link of the stored camera interface. Absent: the 60 s timer only, as before. A throw counts as UNKNOWN. */
+  readonly readLink?: () => Promise<CameraLinkState>;
+  /** Row 102: the scheduler of the link poll; production polls every `CAMERA_LINK_POLL_INTERVAL_MS`. A test hands in its own. */
+  readonly scheduleLinkPoll?: (tick: () => void) => () => void;
+}
+
+/** Row 102: what one poll of the link did. `state` null: no link is watched (no `readLink`). */
+export interface LinkPollResult {
+  readonly state: CameraLinkState | null;
+  /** The link row this poll wrote, or null (unchanged state, UNKNOWN/ABSENT, or no edge that opens or closes a DOWN). */
+  readonly audited: 'CAMERA_LINK_DOWN' | 'CAMERA_LINK_UP' | null;
+  /** The link-up sweep this poll ran, or null when none was due. */
+  readonly sweep: SweepResult | null;
 }
 
 export interface SegmentSweeper {
@@ -195,6 +233,8 @@ export interface SegmentSweeper {
   /** Starts the 60 s timer (idempotent). The wiring calls it only while `DEMS_CAMERA_AUTOATTACH=1`. */
   start(): void;
   stop(): void;
+  /** Row 102: one poll of the camera link (the tick of the link timer). Never rejects. */
+  pollLink(): Promise<LinkPollResult>;
 }
 
 // ── The neighbour table: parsing and the fixed row ──────────────────────────────────────────────
@@ -387,10 +427,77 @@ export function autoSearchedEntry(search: CaptureDiscoverySearch): AuditEntry {
   };
 }
 
+/** Row 102 (A4, A6, A7 of the W1 register; D58): the row of the link going DOWN. Actor SYSTEM; no interface name, no address, no operation id. */
+export function cameraLinkDownEntry(previous: CameraLinkState): AuditEntry {
+  return { type: 'CAMERA_LINK_DOWN', message: CAMERA_LINK_DOWN_MESSAGE, severity: 'WARNING', actorId: null, deviceId: null, details: { previous } };
+}
+
+/** Row 102 (A4, A6, A8; D58): the row of the link coming back UP; `downMs` is how long the DOWN row stood open (omitted when unknown). */
+export function cameraLinkUpEntry(previous: CameraLinkState, downMs: number | null): AuditEntry {
+  return {
+    type: 'CAMERA_LINK_UP',
+    message: CAMERA_LINK_UP_MESSAGE,
+    severity: 'INFO',
+    actorId: null,
+    deviceId: null,
+    details: downMs === null || !Number.isFinite(downMs) ? { previous } : { previous, downMs: Math.max(0, Math.trunc(downMs)) },
+  };
+}
+
+const LINK_STATES: ReadonlySet<string> = new Set(['UP', 'DOWN', 'ABSENT', 'UNKNOWN']);
+
+/**
+ * Row 102: the production `readLink` over row 101's seam. The interface is the one the stored network
+ * configuration names (`capture_network_config.interface_name`, A13); it is re-read at most once per
+ * `refreshMs` (a changed configuration is followed within a minute) and the source is rebuilt only when
+ * the name changes. No interface stored, a name the seam refuses, or a failed read: `UNKNOWN` - never
+ * DOWN (D41), so the 60 s sweep keeps running. Never rejects.
+ */
+export function cameraLinkReaderOver(
+  readInterface: () => Promise<string | null>,
+  sourceOf: (interfaceName: string) => CameraLinkSource,
+  now: () => number,
+  refreshMs: number = AUTOATTACH_SWEEP_INTERVAL_MS,
+): () => Promise<CameraLinkState> {
+  let name: string | null = null;
+  let readAt: number | null = null;
+  let source: CameraLinkSource | null = null;
+  return async () => {
+    try {
+      const at = now();
+      if (readAt === null || at - readAt >= refreshMs) {
+        const stored = await readInterface().catch(() => undefined);
+        if (stored === undefined) {
+          readAt = null;
+          return 'UNKNOWN';
+        }
+        readAt = at;
+        if (stored !== name) {
+          name = stored;
+          source = null;
+          if (stored !== null) {
+            try {
+              source = sourceOf(stored);
+            } catch {
+              source = null;
+            }
+          }
+        }
+      }
+      if (source === null) return 'UNKNOWN';
+      return (await source.read()).state;
+    } catch {
+      return 'UNKNOWN';
+    }
+  };
+}
+
 export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweeper {
   const { store, log } = options;
   const windowMs = options.windowMs ?? 0;
   const maxAdopts = options.maxAdoptsPerSweep ?? AUTOATTACH_MAX_ADOPTS_PER_SWEEP;
+  // Row 103 (DF-26; D23 (3)): the ONE /24 of the configuration, parsed once; a text that is not the strict /24 attaches nothing.
+  const segmentOctets = segmentCidrOctets(options.segmentCidr);
   let busy = false;
   let stopSchedule: (() => void) | null = null;
   // D62b (2026-11-05): the retry bookkeeping of the attach, per HOST (candidate ids are re-minted by the store on every sweep).
@@ -402,6 +509,16 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
   const gaveUpUntil = new Map<string, number>();
   // D62b: hosts whose attach SUCCEEDED in the running sweep - never carried again whatever the store's view still says (the boundary doubles of the sweep tests do not mark the store).
   let adoptedHosts = new Set<string>();
+  // Row 102 (DF-24, DF-25; D23 (1, 2), D41): the camera link as last read (null: not read yet), the start of the open
+  // DOWN row (null: none open), a link-up sweep still owed (the store was busy), the link timer, and the queue that
+  // keeps two readings (the poll and a sweep) from judging one edge twice.
+  let link: CameraLinkState | null = null;
+  let downSince: number | null = null;
+  let linkUpSweepPending = false;
+  let stopLinkPoll: (() => void) | null = null;
+  let linkQueue: Promise<unknown> = Promise.resolve();
+  /** Row 103 (DF-26; D23 (3)): the scope of the bench credential - a strict quad INSIDE the configured /24 that answered as ONVIF. */
+  const inCredentialScope = (candidate: CaptureCandidate): boolean => segmentOctets !== null && candidate.adapter === 'ONVIF_RTSP' && ipInSegment(candidate.host, segmentOctets);
   /** The refusal reason of a failed attach as a code word (CPB1-2: words only, never a value). */
   const refusalWord = (error: unknown): string | undefined => {
     const reason = (error as { details?: { reason?: unknown } } | null)?.details?.reason;
@@ -422,6 +539,11 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
       }
       // D62b: a host parked by the attempt cap is not attempted again (the rebuild below closed it out); an attempt is counted BEFORE the step runs, so a step that dies still spends one.
       if (gaveUpUntil.has(candidate.host)) continue;
+      // Row 103 (DF-26; D23 (3)): outside the credential's scope nothing is attempted and no attempt is spent; the candidate id only, never an address.
+      if (!inCredentialScope(candidate)) {
+        log.warn({ code: 'CAPTURE_AUTOATTACH_OUT_OF_SCOPE', source: SOURCE, candidateId: candidate.candidateId }, 'the SMART ATTACH credential is offered only to an ONVIF responder inside the configured camera segment; this candidate is not attempted');
+        continue;
+      }
       const attempts = attachAttempts.get(candidate.host) ?? 0;
       if (attempts >= AUTOATTACH_MAX_ATTACH_ATTEMPTS) continue;
       attachAttempts.set(candidate.host, attempts + 1);
@@ -475,7 +597,7 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
         // D62b: adopted in this very sweep - done, whatever the store's view still says.
         attachAttempts.delete(candidate.host);
         pendingRetry.delete(candidate.host);
-      } else if (candidate.status === CaptureCandidateStatus.NEW && candidate.testable) {
+      } else if (candidate.status === CaptureCandidateStatus.NEW && candidate.testable && inCredentialScope(candidate)) {
         if (attempts >= AUTOATTACH_MAX_ATTACH_ATTEMPTS) {
           gaveUpUntil.set(candidate.host, at + CAPTURE_DISCOVERY_RESULT_TTL_MS);
           attachAttempts.delete(candidate.host);
@@ -495,7 +617,63 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
     return pendingRetry.size;
   };
 
+  /** Row 102: one audit row of a link edge. A failed write is one warn line; the edge still counts (no retry every poll). */
+  const writeLinkRow = async (entry: AuditEntry): Promise<void> => {
+    try {
+      await options.audit(entry);
+    } catch {
+      log.warn({ code: 'CAMERA_LINK_AUDIT_FAILED', source: SOURCE, type: entry.type }, 'the audit row of a camera link change could not be written');
+    }
+  };
+
+  /**
+   * Row 102: read the link once and judge the EDGE against the last reading. Rows: one CAMERA_LINK_DOWN when a
+   * DOWN opens (the first reading of the sweeper included - `previous` UNKNOWN then), one CAMERA_LINK_UP when
+   * the link is UP again while a DOWN row stands open. UNKNOWN and ABSENT neither open nor close a DOWN row (D41),
+   * so DOWN -> UNKNOWN -> DOWN writes one row and the flapping of an unreadable link writes none. `rose`: the
+   * link-up edge (an earlier reading that was not UP); the first reading of the sweeper is no edge.
+   */
+  const observeLinkNow = async (): Promise<{ readonly state: CameraLinkState; readonly rose: boolean; readonly audited: LinkPollResult['audited'] }> => {
+    const readLink = options.readLink;
+    let state: CameraLinkState = 'UNKNOWN';
+    if (readLink !== undefined) {
+      try {
+        const read = await readLink();
+        state = LINK_STATES.has(read) ? read : 'UNKNOWN';
+      } catch {
+        state = 'UNKNOWN';
+      }
+    }
+    const previous = link;
+    link = state;
+    if (previous === state) return { state, rose: false, audited: null };
+    let audited: LinkPollResult['audited'] = null;
+    if (state === 'DOWN' && downSince === null) {
+      downSince = options.now();
+      await writeLinkRow(cameraLinkDownEntry(previous ?? 'UNKNOWN'));
+      audited = 'CAMERA_LINK_DOWN';
+      log.info({ code: 'CAMERA_LINK_DOWN', source: SOURCE, previous: previous ?? 'UNKNOWN' }, 'the camera link is down; the segment sweep rests until it is up');
+    } else if (state === 'UP' && downSince !== null) {
+      const downMs = options.now() - downSince;
+      downSince = null;
+      await writeLinkRow(cameraLinkUpEntry(previous ?? 'UNKNOWN', downMs));
+      audited = 'CAMERA_LINK_UP';
+      log.info({ code: 'CAMERA_LINK_UP', source: SOURCE, previous: previous ?? 'UNKNOWN', downMs }, 'the camera link is up; the segment sweep runs at once');
+    } else if (state === 'UNKNOWN' || state === 'ABSENT') {
+      // Said once per edge, never per poll: the 60 s sweep keeps running (D41).
+      log.warn({ code: state === 'UNKNOWN' ? 'CAMERA_LINK_UNKNOWN' : 'CAMERA_LINK_ABSENT', source: SOURCE, previous: previous ?? 'UNKNOWN' }, 'the camera link cannot be judged; the 60 s segment sweep keeps running');
+    }
+    return { state, rose: state === 'UP' && previous !== null, audited };
+  };
+  const observeLink = (): Promise<{ readonly state: CameraLinkState; readonly rose: boolean; readonly audited: LinkPollResult['audited'] }> => {
+    const next = linkQueue.then(observeLinkNow, observeLinkNow);
+    linkQueue = next.catch(() => undefined);
+    return next;
+  };
+
   const sweep = async (): Promise<SweepResult> => {
+    // Row 102 (D23 (2)): while the camera link is DOWN the sweep does not run and writes no audit row. UNKNOWN and ABSENT sweep (D41).
+    if (options.readLink !== undefined && (await observeLink()).state === 'DOWN') return skipped('LINK_DOWN');
     // Single-flight, in both directions: no second sweep while one runs, and none while ANY search - operator, pre-check or sweep - holds the one socket-place of the store.
     if (busy) return skipped('BUSY');
     if (!options.duringRecordingEnabled && options.openSession()?.state === SessionState.RECORDING) {
@@ -541,6 +719,8 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
       await attachFresh(adopted);
       const carriedNext = rebuildRetry(listedByHost);
       log.info({ code: 'CAPTURE_AUTOATTACH_SWEEP', source: SOURCE, searchId, probed: probes.length, found: found.length, carried: carried.length, adopted: adopted.length, waiting: carriedNext, durationMs: options.now() - startedAt }, SWEEP_CLOSED);
+      // Row 102: a sweep that ran pays any link-up sweep still owed.
+      linkUpSweepPending = false;
       return { ran: true, skipped: null, probed: probes.length, found: found.length, carried: carried.length, adopted };
     } catch (error) {
       const code = typeof (error as { code?: unknown } | null)?.code === 'string' ? String((error as { code: string }).code) : 'UNKNOWN';
@@ -551,8 +731,29 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
     }
   };
 
+  /**
+   * Row 102: the tick of the link timer. A link-up edge owes ONE sweep at once; a sweep that met a busy store
+   * (BUSY, SEARCH_RUNNING) stays owed and is tried at the next poll, any other outcome pays it. A DOWN link
+   * cancels what is owed (the next link-up owes a new one).
+   */
+  const pollLink = async (): Promise<LinkPollResult> => {
+    if (options.readLink === undefined) return { state: null, audited: null, sweep: null };
+    try {
+      const observed = await observeLink();
+      if (observed.rose) linkUpSweepPending = true;
+      if (observed.state === 'DOWN') linkUpSweepPending = false;
+      if (!linkUpSweepPending || observed.state !== 'UP') return { state: observed.state, audited: observed.audited, sweep: null };
+      const result = await sweep();
+      if (result.skipped !== 'BUSY' && result.skipped !== 'SEARCH_RUNNING') linkUpSweepPending = false;
+      return { state: observed.state, audited: observed.audited, sweep: result };
+    } catch {
+      return { state: link, audited: null, sweep: null };
+    }
+  };
+
   return {
     sweep,
+    pollLink,
     start() {
       if (stopSchedule !== null) return;
       const tick = (): void => {
@@ -567,10 +768,28 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
           return () => clearInterval(handle);
         });
       stopSchedule = schedule(tick);
+      // Row 102: the link timer, only when a link is watched. The first reading is taken at once, so a link that is
+      // already down is said (one CAMERA_LINK_DOWN row) and silences the sweep from the start.
+      if (options.readLink !== undefined) {
+        const linkTick = (): void => {
+          void pollLink().catch(() => undefined);
+        };
+        const scheduleLink =
+          options.scheduleLinkPoll ??
+          ((run: () => void) => {
+            const handle = setInterval(run, CAMERA_LINK_POLL_INTERVAL_MS);
+            handle.unref();
+            return () => clearInterval(handle);
+          });
+        stopLinkPoll = scheduleLink(linkTick);
+        linkTick();
+      }
     },
     stop() {
       stopSchedule?.();
       stopSchedule = null;
+      stopLinkPoll?.();
+      stopLinkPoll = null;
     },
   };
 }

@@ -51,7 +51,10 @@
 #define CAPTURE_MEDIA_PORT_MIN 8554
 #define CAPTURE_MEDIA_PORT_MAX 8564
 #define MAX_FRAME_CHARS 65536
-#define WORKER_VERSION "capture-worker/0.6.0"
+/* 0.7.0 (audit 2026-11-05 row 87, DF-02): raised so that a worker built before the 4+4 plan change (D60/D61) cannot
+ * pass for this one; the protocol stays 5 (D29 Q7). Every release build writes build/capture-worker.stamp beside the
+ * program (stamp.sh; the Core checks it at boot). The Core's CAPTURE_WORKER_VERSION moves with this word. */
+#define WORKER_VERSION "capture-worker/0.7.0"
 
 /* A PROOF BUILD IS ANY BUILD WITH ONE OF ITS SWITCHES (review R63-06; pair-58 F-10). Until fix pass
  * F-M3 the mark of HELLO hung on ONE macro (DEMS_PROOF_MUX_EXTRA): a build with any of the other

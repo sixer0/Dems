@@ -14,14 +14,19 @@ import { bytesToHex, concatBytes, hexToBytes, utf8ToBytes } from '@noble/hashes/
 import { z } from 'zod';
 import { canonicalJson, canonicalJsonBytes } from './canonical';
 import { EvidencePackageError, EvidencePackageRefusal } from './errors';
-import { isSealedTrackList } from './layout';
-import { ManifestFileSchema, type ManifestFile } from './manifest';
+import { isSealedAudioTrackList, isSealedTrackList } from './layout';
+import { ManifestAudioFileSchema, ManifestFileSchema, type ManifestAudioFile, type ManifestFile } from './manifest';
 
 export const FRAGMENTS_JSON_SCHEMA_ID = 'dems.fragments/1';
 
+/**
+ * D5 (spec S5 §5.2): the file list carries the audio files of the pairs AFTER the camera files, with
+ * the same entry shape and the audio track id (`audioFiles[]` of the manifest). A package without
+ * audio files serialises byte-identically to before.
+ */
 export const FragmentsJsonSchema = z.strictObject({
   schema: z.literal(FRAGMENTS_JSON_SCHEMA_ID),
-  files: z.array(ManifestFileSchema),
+  files: z.array(z.union([ManifestFileSchema, ManifestAudioFileSchema])),
 });
 export type FragmentsJson = z.output<typeof FragmentsJsonSchema>;
 
@@ -44,9 +49,28 @@ export function manifestFilesFromFragmentTable(table: FragmentTableInput): Manif
   return files;
 }
 
-/** The bytes of `fragments/fragments.json` for the manifest's `files[]` value. */
-export function serializeFragmentsJson(files: readonly ManifestFile[]): Uint8Array {
-  return canonicalJsonBytes({ schema: FRAGMENTS_JSON_SCHEMA_ID, files: manifestFilesFromFragmentTable(files) });
+/** D5: validates the audio fragment table and returns the manifest's `audioFiles[]` value (one to four, ascending AUDIO order). */
+export function manifestAudioFilesFromFragmentTable(table: readonly ManifestAudioFile[]): ManifestAudioFile[] {
+  const parsed = z.array(ManifestAudioFileSchema).safeParse(table);
+  if (!parsed.success) throw new EvidencePackageError(EvidencePackageRefusal.FRAGMENTS_INVALID, members(parsed.error));
+  if (!isSealedAudioTrackList(parsed.data.map((file) => file.trackId))) {
+    throw new EvidencePackageError(EvidencePackageRefusal.FRAGMENTS_INVALID, ['audioFiles']);
+  }
+  return parsed.data;
+}
+
+/**
+ * The records `fragments.json` holds for a manifest, in order: `files[]`, then `audioFiles[]` (D5).
+ * The comparison of verify V-02 (`fragmentsJsonMatchesManifest`) is over this list.
+ */
+export function fragmentsJsonFilesOf(manifest: { readonly files: readonly ManifestFile[]; readonly audioFiles?: readonly ManifestAudioFile[] | undefined }): (ManifestFile | ManifestAudioFile)[] {
+  return [...manifest.files, ...(manifest.audioFiles ?? [])];
+}
+
+/** The bytes of `fragments/fragments.json` for the manifest's `files[]` value, and since D5 its `audioFiles[]` value after it. */
+export function serializeFragmentsJson(files: readonly ManifestFile[], audioFiles?: readonly ManifestAudioFile[]): Uint8Array {
+  const audio = audioFiles === undefined || audioFiles.length === 0 ? [] : manifestAudioFilesFromFragmentTable(audioFiles);
+  return canonicalJsonBytes({ schema: FRAGMENTS_JSON_SCHEMA_ID, files: [...manifestFilesFromFragmentTable(files), ...audio] });
 }
 
 /** Parses `fragments.json` text strictly. */

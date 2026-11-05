@@ -77,13 +77,13 @@ describe('allowed transitions (§14.7 table)', () => {
     expect(h.state().meta.counters.session).toBe(25);
   });
 
-  it('CREATE → beginPrecheck → PRECHECK: 8 checks resolve one at a time, 300-700 ms each, all within 5 s (AC-62)', () => {
+  it('CREATE → beginPrecheck → PRECHECK: 12 checks resolve one at a time, 300-700 ms each, all within 5 s (AC-62; audit fix row 83, DF-03)', () => {
     const h = harness();
     h.sim.actions.createSession(INPUT);
     h.sim.actions.beginPrecheck();
     const precheck = h.state().session?.precheck;
     expect(sessionState(h.state())).toBe('PRECHECK');
-    expect(precheck?.items.map((item) => item.status)).toEqual(['RUNNING', 'PENDING', 'PENDING', 'PENDING', 'PENDING', 'PENDING', 'PENDING', 'PENDING']);
+    expect(precheck?.items.map((item) => item.status)).toEqual(['RUNNING', ...Array.from({ length: 11 }, () => 'PENDING')]); // row 83: twelve items
     const times = [START, ...(precheck?.items.map((item) => item.resolvesAt ?? 0) ?? [])];
     for (let index = 1; index < times.length; index += 1) {
       const gap = (times[index] ?? 0) - (times[index - 1] ?? 0);

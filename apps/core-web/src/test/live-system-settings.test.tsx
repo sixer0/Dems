@@ -173,7 +173,9 @@ describe('JW-26: one version per component (operation 64 `components`)', () => {
     for (const model of [SOFTWARE_VERSION, UPDATE_VERSION]) {
       for (const element of holders(model)) expect(chipped(element), `"${element.textContent}" shows ${model} outside a chipped block`).toBe(true)
     }
-    expect(screen.getByTestId('synthetic-values-system-banner')).toBeInTheDocument()
+    // Audit fix row 104 (DF-21, D25 N3): the banner counts the model's services - it says "Not reported" (S7), with no chip and no version.
+    expect(screen.getByTestId('no-producer-system-banner')).toHaveTextContent(en.system.noProducer)
+    expect(screen.queryByTestId('synthetic-values-system-banner')).toBeNull()
     expect(getMissingI18nKeys()).toEqual([])
   })
 

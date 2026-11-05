@@ -17,6 +17,7 @@ import type { Pool } from 'pg';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
 import { readEvents, readHead, readTrail } from '../../../../test/support/core';
+import { PURGE_KEPT_AUDIT_TYPES } from '../statements';
 import { webSignIn, type Headers } from '../../../../test/support/identity';
 import {
   INVESTIGATOR,
@@ -263,6 +264,15 @@ describe('operation 17 deleteUser: the purge and the re-sealed chain (migration 
     const before = await belongingTo(INVESTIGATOR.id);
     expect(before.audit).toBeGreaterThan(0);
     expect(before.credentials).toBe(1);
+    // Row 95 (migration 0043; D22(4), D38 DR-1): the seeded investigator wrote evidence-chain rows of
+    // the seeded sessions (measured 2026-11-05 on the idle seed state: 31 of OPR-001's rows are of the
+    // kept types). Those stay, and so does the account row, disabled; only the rest is removed.
+    const keptBefore = Number(
+      (await owner.query('SELECT count(*)::int AS n FROM public.audit_log WHERE actor_id = $1 AND type = ANY($2::text[])', [INVESTIGATOR.id, PURGE_KEPT_AUDIT_TYPES])).rows[0]?.n ?? 0,
+    );
+    expect(keptBefore).toBeGreaterThan(0);
+    const removed = before.audit - keptBefore;
+    expect(removed).toBeGreaterThan(0);
     // New rows are found by sequence ABOVE the head taken now, not by an index slice: the purge
     // removes rows from the middle of the trail and shifts every index below the new ones.
     const seqBefore = (await readHead(owner)).seq;
@@ -277,9 +287,9 @@ describe('operation 17 deleteUser: the purge and the re-sealed chain (migration 
       expect(deleted).toMatchObject({ operatorId: INVESTIGATOR.id, username: INVESTIGATOR.username, credentialsRemoved: 1 });
       expect(deleted.sessionsEnded).toBeGreaterThanOrEqual(2);
 
-      // What belonged to the account is gone.
-      expect(await belongingTo(INVESTIGATOR.id)).toEqual({ audit: 0, signIns: 0, credentials: 0, openSessions: 0 });
-      expect((await storedOperators(owner)).some((operator) => operator.id === INVESTIGATOR.id)).toBe(false);
+      // What belonged to the account is gone; its evidence-chain rows stay, and its row stays disabled (D38 DR-1).
+      expect(await belongingTo(INVESTIGATOR.id)).toEqual({ audit: keptBefore, signIns: 0, credentials: 0, openSessions: 0 });
+      expect((await storedOperators(owner)).find((operator) => operator.id === INVESTIGATOR.id)).toMatchObject({ enabled: false });
 
       // The announcement names the erasure, and the ledger records it with the same counts.
       const rows = (await readTrail(owner)).filter((row) => row.seq > seqBefore);
@@ -287,18 +297,19 @@ describe('operation 17 deleteUser: the purge and the re-sealed chain (migration 
       expect(announced).toHaveLength(1);
       expect(announced[0]).toMatchObject({
         actorId: SUPERVISOR.id,
-        details: { targetOperatorId: INVESTIGATOR.id, auditRowsRemoved: before.audit, signInRowsRemoved: before.signIns, credentialsRemoved: 1 },
+        details: { targetOperatorId: INVESTIGATOR.id, auditRowsRemoved: removed, signInRowsRemoved: before.signIns, credentialsRemoved: 1, recordsLeftUnattributed: 0 },
       });
+      expect(announced[0]?.message).toMatch(/; evidence-chain rows kept, account kept disabled$/);
       const ledger = (await owner.query('SELECT operator_id, actor_id, first_seq, last_seq, rows_removed FROM public.audit_purge_log')).rows;
       expect(ledger).toHaveLength(1);
-      expect(ledger[0]).toMatchObject({ operator_id: INVESTIGATOR.id, actor_id: SUPERVISOR.id, rows_removed: before.audit });
+      expect(ledger[0]).toMatchObject({ operator_id: INVESTIGATOR.id, actor_id: SUPERVISOR.id, rows_removed: removed });
 
       // The chain over what survives: links continuous, digests right, the hole covered by the
       // ledger alone — the judgement of boot check B-8, recomputed here.
       const trail = await readTrail(owner);
       const head = await readHead(owner);
       const purged: PurgedRange[] = ledger.map((row) => ({ from: Number(row.first_seq), to: Number(row.last_seq) }));
-      expect(trail).toHaveLength(trailBefore + 1 - before.audit);
+      expect(trail).toHaveLength(trailBefore + 1 - removed);
       expect(verifyAuditChain({ rows: [...trail], head: head.hash, total: head.seq, dropped: 0 }, purged).ok).toBe(true);
 
       // The sessions ended and the list moved.
@@ -310,8 +321,9 @@ describe('operation 17 deleteUser: the purge and the re-sealed chain (migration 
     // audit rows stay purged — every assertion of this file counts relative to its own start.
     // A failure of the test itself outranks a failure of the restore in the report.
     try {
-      // The parent first: the credential rides its operator_id foreign key.
-      await restore('operators', capturedOperators);
+      // The parent first: the credential rides its operator_id foreign key. Row 95: the row is still
+      // there (kept, disabled); `afterEach` enables it again, so only a missing row is put back.
+      if (!(await storedOperators(owner)).some((operator) => operator.id === INVESTIGATOR.id)) await restore('operators', capturedOperators);
       await restore('operator_credentials', capturedCredentials);
       await admin.app.engine.mirrorOperators();
     } catch (error) {

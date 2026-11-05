@@ -66,6 +66,11 @@ export { captureBootControl, captureHostOfProcess } from './boot';
 // address helper's interface file by the FIXED row below. One export line: nothing is built here, the row itself stays
 // in `boot/program-checks.ts`, and the door behind the runner does not leave the unit.
 export { INTERFACE_FILE_COMMAND, captureHostRunnerOf, type HostCommandRunner } from './boot';
+// Audit 2026-11-05 row 101 (DF-24, decision D23 (1)): the read-only source of the camera interface's carrier. A caller
+// gets readings of ONE interface (named by the interface form), not the means to read a file; row 102 wires the sweep to it.
+export { CameraLinkState, createCameraLinkSource, type CameraLinkReading, type CameraLinkSource } from './boot';
+// Audit 2026-11-05 row 102: the stored camera interface (the boot's own one-row read) for the sweep's link watch. Read only.
+export { storedCameraInterface } from './boot';
 export { createProcessLauncher, unconfiguredLauncher, type ProcessLauncherOptions } from './ipc';
 export { MAX_SESSION_ID_CHARS, OUTPUT_EXISTS, captureDownReasonOf, createCaptureSupervisor } from './supervisor';
 // The arguments of a worker process: one set for a session start and for the boot probe (wave H driver F; gate 64 C7).

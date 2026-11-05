@@ -1,10 +1,12 @@
 import { useMemo } from 'react'
 import type { AudioTrackId } from '@dems/shared/domain' // D61 (2026-11-04): the four microphone channels
+import { Chip } from '@heroui/react'
 import { Mic, Volume2 } from 'lucide-react'
 import { useSelfCaptureCore } from '@/lib/own-capture'
 import { useTranslation } from 'react-i18next'
-import { captureMicLines, meterInputOfChannel, noLiveLevelsOf, useSim } from '@dems/shared/sim'
+import { captureMicLines, meterInputOfChannel, micChannelOfTrack, noLiveLevelsOf, useSim } from '@dems/shared/sim'
 import { DbfsMeter } from '@/components/composed'
+import { micTrackChannelChip } from '@/features/devices/capture-selector'
 import { MicSourceMarks } from '@/features/devices/source-badge'
 import { cn } from '@/lib/utils'
 import { useAudioSource, useAudioSourceIntervals, useAudioSourceSwitch } from './audio-source'
@@ -65,6 +67,10 @@ export function AudioPanel({ paused }: { paused: boolean }) {
         // selector holds no complete microphone pair. An absent input is the half's empty state: it is neither
         // the active source nor the standby, and it carries no role chip and no source marks.
         const inputId = meterInputOfChannel(micLines, mic.id)
+        // Row 108 (DF-17, U-20): a half with an input that is neither the active source nor the standby (channels 3
+        // and 4 always, D61) still names its channel; the role chip, when it applies, says the same channel in the pair words.
+        const role = inputId !== null && (source.activeInputId === inputId || source.standbyInputId === inputId)
+        const chip = inputId === null || role ? null : micTrackChannelChip(micChannelOfTrack(mic.id))
         return (
           <div
             key={mic.id}
@@ -79,6 +85,11 @@ export function AudioPanel({ paused }: { paused: boolean }) {
               <span className={cn('sm-dot', `sm-dot-${micTone(mic)}`)} aria-hidden="true" />
               <span className="sm-audio-name-text" data-testid={`sm-track-label-${mic.id}`}>{name}</span>
               {inputId === null ? null : <AudioSourceRoleChip inputId={inputId} view={source} />}
+              {chip === null ? null : (
+                <Chip size="sm" variant="soft" color="default" className="sm-audio-role" data-testid={`sm-audio-channel-${mic.id}`} data-channel={micChannelOfTrack(mic.id)}>
+                  <Chip.Label>{'values' in chip ? t(chip.key, chip.values) : t(chip.key)}</Chip.Label>
+                </Chip>
+              )}
               {/* Pass D2 (ux §8f.2, WB-01): the one badge of the microphone behind this meter; nothing unless the Core sent the development class. */}
               {inputId === null ? null : <MicSourceMarks inputId={inputId} place={`monitor-${mic.id}`} />}
             </p>

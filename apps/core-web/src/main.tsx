@@ -67,7 +67,10 @@ async function start(root: HTMLElement): Promise<void> {
     createRoot(root).render(
       <StrictMode>
         <I18nextProvider i18n={i18n}>
-          <LiveHostRefusalScreen refusal={runtime.refusal} onUseSimulated={runtime.useSimulated} />
+          <LiveHostRefusalScreen
+            refusal={runtime.refusal}
+            onUseSimulated={runtime.resolution.selectable ? runtime.useSimulated : undefined}
+          />
         </I18nextProvider>
       </StrictMode>,
     )

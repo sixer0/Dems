@@ -42,6 +42,7 @@
  */
 import { OPERATOR_ID_PATTERN, SHA256_HEX_PATTERN } from '@dems/shared/api';
 import {
+  AUDIT_RING_SIZE,
   AUDIT_TYPE_CATEGORY,
   AuditType,
   Severity,
@@ -61,7 +62,7 @@ import { detailRulesOf, fixedSeverityOf, openDetailRulesOf } from './audit-detai
 import { stampOf, type Clock } from './clock';
 import { CoreError, PipelineFailure, PipelineRefusal, SqlState, driverErrorOf, sqlStateOf } from './errors';
 import { checkMessage, checkPayload, checkReference, type PayloadCodes, type RowOrigin } from './payload-rules';
-import type { AuditEntry, ChainHead, UnitAuditWriter } from './types';
+import type { AuditEntry, ChainHead, ResealedChain, UnitAuditWriter } from './types';
 import type { UnitState } from './unit-of-work';
 
 /** The 53 shared audit types and the four severities. */
@@ -207,6 +208,9 @@ export function auditInputOf(entry: AuditEntry): AuditInput {
 
 const invalidRow = (what: string): CoreError => new CoreError('AUDIT_ROW_INVALID', `an audit row cannot be stored: ${what}`);
 
+/** Row 94: what a unit read back after a re-seal cannot be its head. Names the rule, never a value. */
+const resealInvalid = (what: string): CoreError => new CoreError('AUDIT_RESEAL_ANSWER_INVALID', `the re-sealed chain cannot be taken: ${what}`);
+
 /**
  * Everything the table's CHECKs ask of a row, and the digest, which the database does not check
  * (GD-01). For a prepared row this is the whole validation; for a native row it confirms what
@@ -346,6 +350,36 @@ export function createUnitAuditWriter(state: UnitState, dependencies: AuditWrite
     for (const [index, row] of rows.entries()) await insert(row, stored[index] as AuditLogRow);
   }
 
+  /**
+   * Row 94 (DF-27, decision D21(3)): the unit re-sealed the chain. What the unit read back after the
+   * seal becomes its head, and the commit hands it to the listeners, so the engine's ring takes the
+   * new hashes instead of failing its next write on the old ones (`audit head diverged`).
+   */
+  async function resealed(chain: ResealedChain): Promise<void> {
+    state.assertOpen();
+    try {
+      if (typeof chain !== 'object' || chain === null || !Array.isArray(chain.rows)) throw resealInvalid('it is not a head and a list of rows');
+      const { head, rows } = chain;
+      if (typeof head !== 'object' || head === null || !Number.isSafeInteger(head.seq) || head.seq < 0 || typeof head.hash !== 'string' || !SHA256_HEX_PATTERN.test(head.hash)) {
+        throw resealInvalid('its head is not a sequence and a 64-digit hash');
+      }
+      if (rows.length > AUDIT_RING_SIZE) throw resealInvalid(`it holds more rows than the ring (${AUDIT_RING_SIZE})`);
+      for (let index = 1; index < rows.length; index += 1) {
+        if ((rows[index] as AuditRow).seq <= (rows[index - 1] as AuditRow).seq) throw resealInvalid('its rows are not in ascending sequence');
+      }
+      const newest = rows[rows.length - 1];
+      if (newest === undefined ? head.seq !== 0 : newest.seq !== head.seq || newest.hash !== head.hash) {
+        throw resealInvalid('its newest row is not its head');
+      }
+    } catch (error) {
+      return refused(error);
+    }
+    // The transaction is open: a re-seal is never the first statement of a unit (AP-2, AP-7).
+    await state.chainHead();
+    state.recordReseal({ head: { seq: chain.head.seq, hash: chain.head.hash }, rows: [...chain.rows] });
+    log.debug({ ...where, seq: chain.head.seq, rows: chain.rows.length }, 'audit chain re-sealed');
+  }
+
   return {
     append: (entry) =>
       state.serial(async () => {
@@ -357,5 +391,6 @@ export function createUnitAuditWriter(state: UnitState, dependencies: AuditWrite
     appendPrepared: (rows) => state.serial(() => appendPrepared(rows)),
     head: () => state.serial(() => state.chainHead()),
     appended: () => [...state.auditRows],
+    resealed: (chain) => state.serial(() => resealed(chain)),
   };
 }

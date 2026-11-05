@@ -186,6 +186,8 @@ export function createPipeline(dependencies: PipelineDependencies): Pipeline {
         auditRows: Object.freeze([...state.auditRows]),
         events: Object.freeze([...state.events]),
         head,
+        // Row 94 (DF-27): a unit that re-sealed the chain says so, with the chain as stored after it.
+        ...(state.resealed === null ? {} : { resealed: Object.freeze({ head: state.resealed.head, rows: Object.freeze([...state.resealed.rows]) }) }),
       });
       for (const listener of commitListeners) {
         try {

@@ -1,22 +1,38 @@
-import { Chip } from '@heroui/react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSelfCaptureCore } from '@/lib/own-capture'
 
 /**
- * Fix wave L (G75d-07, ruling D224 (3) / D228 (3)): THE MARK OF A BLOCK THAT STILL SHOWS MODEL VALUES
- * on a Core in its own capture. Such a Core replicates the simulator's appliance model for the
- * blocks it has no reading for (PoE switch, relay lamp, port map, front panel, network interfaces,
- * volumes and SMART, services, health, update slots). Those values are not facts of this Core, so
- * every such block carries this chip - the same words as System > About. On the simulated lane the
- * chip is not drawn (`useSelfCaptureCore` is false): its pages are unchanged.
+ * Fix wave L (G75d-07, ruling D224 (3) / D228 (3)) drew a "Synthetic demo values" chip over every block that
+ * still showed the simulator's appliance model on a Core in its own capture.
+ *
+ * Audit fix row 104 (DF-21, ruling D25 N3): a Core in its own capture (the REAL_PRODUCTION console) never
+ * renders a synthetic slice. A block without a producer draws `NoProducerNotice` ("Not reported", register
+ * S7 `system.noProducer`) in place of the model's values: a whole block through its page's panel shell
+ * (`NO_PRODUCER_BLOCKS` with `useSelfCaptureCore` of `@/lib/own-capture`), a part of a block through
+ * `NoProducerGate`. The chip is gone from the web console; the simulated lane is unchanged (no notice).
+ * The file keeps its name (no rename without the user's word).
  */
-export function SyntheticValuesChip({ block, className }: { block: string; className?: string }) {
+/**
+ * The "Not reported" state of a block without a producer (register S7 `system.noProducer`; the same honest
+ * pattern as Security / Network / TPM "Not reported", U-08). `data-no-producer-block` names the block.
+ */
+export function NoProducerNotice({ block, className }: { block: string; className?: string }) {
   const { t } = useTranslation()
-  const ownCore = useSelfCaptureCore()
-  if (!ownCore) return null
   return (
-    <Chip size="sm" variant="soft" color="warning" className={className} data-testid={`synthetic-values-${block}`} data-synthetic-block={block}>
-      <Chip.Label title={t('web.waveL.syntheticHint')}>{t('web.waveL.syntheticChip')}</Chip.Label>
-    </Chip>
+    <p className={className ?? 'text-caption text-foreground-2'} data-testid={`no-producer-${block}`} data-no-producer-block={block}>
+      {t('system.noProducer')}
+    </p>
   )
+}
+
+/**
+ * Draws `children` (the model's values) on the simulated lane and `NoProducerNotice` on a Core in its own
+ * capture: a REAL_PRODUCTION console never renders a synthetic slice.
+ */
+export function NoProducerGate({ block, className, children }: { block: string; className?: string; children: ReactNode }) {
+  // Audit fix row 104 (DF-21, D25 N3): no producer here when the Core runs its own capture (`useSelfCaptureCore`, the one rule).
+  const noProducer = useSelfCaptureCore()
+  if (noProducer) return <NoProducerNotice block={block} className={className} />
+  return <>{children}</>
 }

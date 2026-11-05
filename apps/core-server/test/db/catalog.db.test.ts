@@ -468,9 +468,11 @@ describe('functions and triggers (contract §6.3, §8.3)', () => {
       // The purge trio of 0036: the erasure and the re-seal are the only paths this database lets
       // an audit row disappear or change (SECURITY DEFINER, EXECUTE revoked from PUBLIC, granted to
       // the runtime role); the ticket probe only reads its own transaction id and is PUBLIC-safe.
-      { name: 'audit_purge_operator', arguments: 'p_operator_id text, p_actor_id text, p_reason text', result: 'jsonb', language: 'plpgsql', security_definer: true, volatility: 'v', parallel: 'u', settings: purgePinned, owner: 'dems_owner', body: bodyOf('0036_operator_purge', 'audit_purge_operator') },
-      // D56b (2026-11-03, 0038) corrected the re-seal in place: the live body is the one of that file.
-      { name: 'audit_purge_reseal', arguments: 'p_operator_id text, p_rows jsonb', result: 'jsonb', language: 'plpgsql', security_definer: true, volatility: 'v', parallel: 'u', settings: purgePinned, owner: 'dems_owner', body: bodyOf('0038_operator_purge_reseal_correction', 'audit_purge_reseal') },
+      // Row 95 (DF-28, D22(4), D38 DR-1, D43; 2026-11-05) replaced the purge in place: the live body is the one of 0043.
+      { name: 'audit_purge_operator', arguments: 'p_operator_id text, p_actor_id text, p_reason text', result: 'jsonb', language: 'plpgsql', security_definer: true, volatility: 'v', parallel: 'u', settings: purgePinned, owner: 'dems_owner', body: bodyOf('0043_operator_purge_scope', 'audit_purge_operator') },
+      // D56b (2026-11-03, 0038) corrected the re-seal in place; row 95 cycle 3 (D67, 2026-11-05) replaced
+      // it again in 0043 (the empty-tail head branch): the live body is the one of 0043.
+      { name: 'audit_purge_reseal', arguments: 'p_operator_id text, p_rows jsonb', result: 'jsonb', language: 'plpgsql', security_definer: true, volatility: 'v', parallel: 'u', settings: purgePinned, owner: 'dems_owner', body: bodyOf('0043_operator_purge_scope', 'audit_purge_reseal') },
       { name: 'audit_purge_ticket_open', arguments: '', result: 'boolean', language: 'sql', security_definer: true, volatility: 's', parallel: 'u', settings: purgePinned, owner: 'dems_owner', body: bodyOf('0036_operator_purge', 'audit_purge_ticket_open') },
       // The two write-only secret reveal functions of dbc-3 §B.3/§B.13 (SEC35-02, Q-SEC-3 default).
       // Set 16 (dbc-16, design 07): the destroy path of a retired device's credential, the mirror of the reveal.

@@ -22,8 +22,9 @@ import {
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { createAppRouter } from '@/router'
 import { createTestSim, withProviders } from '@/components/composed/__tests__/test-utils'
+import { realCore } from '@/test/real-core-bed'
 import { selectBanner, selectStatusMap, selectSummary } from '../model'
-import { OtherDevices } from '../other-devices'
+import { OtherDevices, tabletOfflineBodyKey } from '../other-devices'
 import {
   auditRowDevice,
   bookPoe,
@@ -281,10 +282,14 @@ describe('Fault states render calmly (P7) and follow the simulator', () => {
     expect(sim.store.getState().mics.find((mic) => mic.id === 'AUDIO-02')?.clipLatched).toBe(false)
   })
 
-  it('slides in the "recording continues" Alert when the tablet goes OFFLINE (S9)', async () => {
+  // DF-22 / U-11 (register S10, S13): with nothing recording the Alert no longer claims "Recording continues on the Core".
+  it('slides in the operator-device-offline Alert when the tablet goes OFFLINE (S9), with no recording claim while idle', async () => {
     const { sim } = await mountDevices()
     act(() => sim.actions.setTabletLink('OFFLINE'))
-    expect(await screen.findByTestId('tablet-offline-alert')).toHaveTextContent('Recording continues on the Core')
+    const alert = await screen.findByTestId('tablet-offline-alert')
+    expect(alert).toHaveTextContent('Operator device offline. Nothing is recording on the Core. Reconnect the device to regain control.')
+    expect(alert).not.toHaveTextContent('Recording continues')
+    expect(alert).toHaveAttribute('data-recording', 'false')
     expect(screen.getByTestId('other-status-TABLET')).toHaveTextContent('OFFLINE')
     expect(screen.getByTestId('led-NETWORK')).toHaveAttribute('data-state', 'warn')
     act(() => sim.actions.setTabletLink('CONNECTED'))
@@ -293,6 +298,15 @@ describe('Fault states render calmly (P7) and follow the simulator', () => {
 })
 
 describe('Recording scenario', () => {
+  // DF-22 (register S13): the "Recording continues on the Core" body is shown only while a session is RECORDING.
+  it('keeps the "recording continues" body on the operator-device-offline Alert while a session is RECORDING', async () => {
+    const { sim } = await mountDevices('recording')
+    act(() => sim.actions.setTabletLink('OFFLINE'))
+    const alert = await screen.findByTestId('tablet-offline-alert')
+    expect(alert).toHaveTextContent('Recording continues on the Core. Reconnect the device to regain control.')
+    expect(alert).toHaveAttribute('data-recording', 'true')
+  })
+
   it('lights the SEDANG MEREKAM lamp and the RECORD LED, and shows REC on both tracks', async () => {
     await mountDevices('recording')
     expect(screen.getByTestId('recording-lamp')).toHaveAttribute('data-lit', 'true')
@@ -461,6 +475,19 @@ describe('Simulator device views (W48-1..4, step 54)', () => {
     expect(auditRowDevice(boot)).toBe('FRONT-PANEL')
   })
 
+  // DF-22 (register S13): the banner condition - "recording" wording only while a session is RECORDING.
+  it('picks the recording claim only while a session is RECORDING (banner condition)', () => {
+    expect(tabletOfflineBodyKey(true)).toBe('devices.other.tabletOfflineBody')
+    expect(tabletOfflineBodyKey(false)).toBe('devices.other.tabletOfflineIdleBody')
+    const idle = newSim()
+    idle.actions.setTabletLink('OFFLINE')
+    expect(idle.store.getState().session?.state).not.toBe('RECORDING')
+    expect(selectBanner(idle.store.getState()).kind).not.toBe('RECORDING')
+    const recording = newSim('recording')
+    expect(recording.store.getState().session?.state).toBe('RECORDING')
+    expect(selectBanner(recording.store.getState()).kind).toBe('RECORDING')
+  })
+
   // D60 (2026-11-04): the four built-in cameras join the tally; D61 (2026-11-04): and so do the
   // two further microphones - the banner counts thirteen.
   it('counts 13 devices and summarises faults for the banner and the metric cards', () => {
@@ -481,5 +508,24 @@ describe('Simulator device views (W48-1..4, step 54)', () => {
       </SimProvider>,
     )
     expect(screen.getByTestId('other-TPM')).toBeInTheDocument()
+  })
+
+  // Audit fix rows 104/107 (DF-21, U-10, register S7): on a Core in its own capture the PoE switch and the relay lamp have
+  // no producer - "Not reported", no book view, no lamp; the operator-device row stays the Core's own link state.
+  it('reads "Not reported" for the PoE switch and the relay lamp on a Core in its own capture (U-10)', () => {
+    const sim = newSim('idle')
+    realCore(sim)
+    render(
+      <SimProvider sim={sim} autoStart={false}>
+        <OtherDevices />
+      </SimProvider>,
+    )
+    for (const id of ['POE-SWITCH', 'REC-INDICATOR']) {
+      expect(screen.getByTestId(`other-${id}`)).toHaveAttribute('data-reported', 'false')
+      expect(screen.getByTestId(`other-status-${id}`)).toHaveTextContent('Not reported')
+    }
+    expect(screen.getByTestId('other-POE-SWITCH')).not.toHaveTextContent('active ·')
+    expect(screen.queryByTestId('recording-lamp')).toBeNull()
+    expect(screen.getByTestId('other-TABLET')).not.toHaveAttribute('data-reported')
   })
 })

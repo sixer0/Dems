@@ -9,13 +9,16 @@
 // | MD-6: the folder loads neither the typed client nor the Live source as a value | "static rules of the folder" |
 // | SR-16: the folder never reads the cookie and writes nothing about a session to web storage | "static rules of the folder" |
 // | AC-C-42, AC-C-104, WS-14, §6.4: the sentences are the specification's | "the words" |
+// | DF-23 / D25 N3 / D29 Q6 (audit row 106): with `VITE_DEMS_PRODUCTION_LOCK=1` the Login offers no "Data mode" selector; unset, a dev build still does (the one render of this file) | "the production console lock" |
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { I18nextProvider } from 'react-i18next'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { expectScanCovers } from './static-scan'
 import { ApiErrorCode } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
-import { CoreRefusalError, LiveTransportError, LiveTransportReason } from '@dems/shared/live'
+import { CORE_MODES, CoreRefusalError, LiveTransportError, LiveTransportReason } from '@dems/shared/live'
 import { SimErrorCode, SimNotFoundError, SimPermissionError, SimTransitionError } from '@dems/shared/sim'
 import {
   isCoreStarting,
@@ -26,7 +29,10 @@ import {
   type LiveSessionEnd,
 } from '@/features/login/login-live-model'
 import { alertStatusFor, displayStateFor, isArrivalNotice, noticeFor, validateCredentials } from '@/features/login/login-model'
+import { ModeSelector } from '@/features/login/mode-selector'
+import { i18n } from '@/i18n'
 import { describeCoreError } from '@/lib/core-errors'
+import { resolveCoreMode } from '@/runtime/core-mode'
 
 const end = (over: Partial<LiveSessionEnd>): LiveSessionEnd => ({
   kind: 'SESSION_ENDED',
@@ -289,5 +295,35 @@ describe('static rules of the folder', () => {
     const card = production.find((file) => file.name === 'auth-card.tsx')?.text ?? ''
     expect(card.match(/data-testid="login-security-key"/g)).toHaveLength(1)
     expect(card).toMatch(/\{isLive \? null : \(\s*<>\s*<div className="dems-login-divider"/)
+  })
+})
+
+describe('the production console lock (audit row 106; DF-23, D25 N3, D29 Q6)', () => {
+  afterEach(() => cleanup())
+
+  /** The Login selector as the card renders it, fed by the resolution of a dev page load. */
+  const selectorFor = (lock: string | undefined) => {
+    const resolution = resolveCoreMode({ dev: true, packaged: false, stored: 'SIMULATED', env: 'live', lock })
+    render(
+      <I18nextProvider i18n={i18n}>
+        <ModeSelector
+          modeSwitch={{ selectable: resolution.selectable, mode: resolution.mode, switching: false, request: vi.fn(), dialog: null }}
+          disabled={false}
+        />
+      </I18nextProvider>,
+    )
+    return resolution
+  }
+
+  it('set: the page load is LIVE and the Login shows no "Data mode: Simulated | Live" selector', () => {
+    expect(selectorFor('1')).toMatchObject({ mode: 'LIVE', selectable: false })
+    expect(screen.queryByTestId('login-mode-selector')).toBeNull()
+    for (const mode of CORE_MODES) expect(screen.queryByTestId(`login-mode-${mode}`)).toBeNull()
+  })
+
+  it('unset: a dev page load keeps the selector with both modes', () => {
+    expect(selectorFor(undefined)).toMatchObject({ mode: 'SIMULATED', selectable: true })
+    expect(screen.getByTestId('login-mode-selector')).toHaveAttribute('data-mode', 'SIMULATED')
+    for (const mode of CORE_MODES) expect(screen.getByTestId(`login-mode-${mode}`)).toBeInTheDocument()
   })
 })

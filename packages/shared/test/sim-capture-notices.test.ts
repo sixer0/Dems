@@ -28,7 +28,7 @@ import {
   unassignedSlotOfPrecheckItem,
   unassignedSlotsOf,
 } from '../src/sim';
-import { CAPTURE_SELECTOR_SLOTS } from '../src/api';
+import { CAPTURE_SELECTOR_SLOTS, PrecheckItemSchema } from '../src/api';
 import { en } from '../src/i18n';
 import * as ownCaptureBed from './support/own-capture-bed';
 import * as selectorBed from './support/selector-category-bed';
@@ -245,8 +245,60 @@ describe('the start rule of the pre-check (M4-PRECHK-RULE-1; D80(6), D83)', () =
     return { session, item };
   };
 
-  it('the order is the role-keyed pair, eight checks (D101(2))', () => {
-    expect(PRECHECK_ORDER).toEqual(['CORE', 'LENS_1', 'LENS_2', 'MIC_PRIMARY', 'MIC_STANDBY', 'STORAGE', 'TIME', 'SECURITY']);
+  it('the order is twelve checks: four lenses, the role-keyed pair plus channels 3 and 4 (D101(2); audit fix row 83, DF-03)', () => {
+    expect(PRECHECK_ORDER).toEqual(['CORE', 'LENS_1', 'LENS_2', 'LENS_3', 'LENS_4', 'MIC_PRIMARY', 'MIC_STANDBY', 'MIC_3', 'MIC_4', 'STORAGE', 'TIME', 'SECURITY']);
+    // A whole run holds one item per check, in that order.
+    const h = harness();
+    const { session } = precheck(h);
+    expect(session?.precheck.items.map((item) => item.id)).toEqual([...PRECHECK_ORDER]);
+  });
+
+  it('a third or fourth camera unreachable now reaches the gate on its own row (DF-03); CONTROL: the first two rows pass', () => {
+    for (const [deviceId, id] of [['CAM-03', 'LENS_3'], ['CAM-04', 'LENS_4']] as const) {
+      const h = harness();
+      offline(h, deviceId);
+      const { session, item } = precheck(h);
+      expect(session?.precheck.outcome, deviceId).toBe('WARN');
+      expect(item(id), deviceId).toMatchObject({ status: 'WARN', value: 'UNREACHABLE', params: { deviceId, deviceKind: 'CAMERA', rule: CaptureStartRule.ONE_CAMERA } });
+      expect(item('LENS_1'), deviceId).toMatchObject({ status: 'PASS' });
+      expect(item('LENS_2'), deviceId).toMatchObject({ status: 'PASS' });
+    }
+  });
+
+  it('a lens 3/4 that is offline in the registry BLOCKs as a lens fault, the rule of lens 1/2', () => {
+    const h = harness();
+    h.sim.store.setState({ cameras: h.state().cameras.map((camera) => (camera.id === 'VIDEO-04' ? { ...camera, online: false } : camera)) });
+    expect(evaluatePrecheck(h.state(), 'LENS_4')).toMatchObject({ status: 'BLOCK', value: 'FAULT', reasonCode: 'LENS_FAULT', params: { track: 'VIDEO-04' } });
+    expect(evaluatePrecheck(h.state(), 'LENS_3')).toMatchObject({ status: 'PASS', value: 'READY' });
+  });
+
+  it('channels 3 and 4: unreachable takes the per-slot status of the reachability rows; a signal warning names the track (DF-03)', () => {
+    for (const [deviceId, id] of [['MIC-03', 'MIC_3'], ['MIC-04', 'MIC_4']] as const) {
+      const h = harness();
+      offline(h, deviceId);
+      const row = captureReachabilityOf(h.state()).find((candidate) => candidate.deviceId === deviceId);
+      expect(row?.status, deviceId).not.toBe('PASS');
+      expect(evaluatePrecheck(h.state(), id), deviceId).toMatchObject({ status: row?.status, value: 'UNREACHABLE', params: { deviceId, deviceKind: 'MIC' } });
+      expect(evaluatePrecheck(h.state(), 'MIC_PRIMARY'), deviceId).toMatchObject({ status: 'PASS' });
+    }
+    const h = harness();
+    h.sim.actions.inject('MIC_CLIP', { channel: 'AUDIO-03' });
+    expect(evaluatePrecheck(h.state(), 'MIC_3')).toMatchObject({ status: 'WARN', value: 'CLIP', reasonCode: 'MIC_CLIP', params: { track: 'AUDIO-03' } });
+    expect(evaluatePrecheck(h.state(), 'MIC_4')).toMatchObject({ status: 'PASS', value: 'READY' });
+    h.sim.store.setState({ mics: h.state().mics.map((m) => (m.id === 'AUDIO-04' ? { ...m, state: 'NO_SIGNAL' } : m)) });
+    expect(evaluatePrecheck(h.state(), 'MIC_4')).toMatchObject({ status: 'WARN', value: 'NO_SIGNAL', reasonCode: 'MIC_NO_SIGNAL', params: { track: 'AUDIO-04' } });
+  });
+
+  it('a stored eight-item pre-check (before row 83) still parses item by item: the IDs were only added', () => {
+    const h = harness();
+    const { session } = precheck(h);
+    const OLD_EIGHT: readonly string[] = ['CORE', 'LENS_1', 'LENS_2', 'MIC_PRIMARY', 'MIC_STANDBY', 'STORAGE', 'TIME', 'SECURITY'];
+    const stored = (session?.precheck.items ?? []).filter((item) => OLD_EIGHT.includes(item.id));
+    expect(stored).toHaveLength(8);
+    expect(stored.every((item) => PrecheckItemSchema.safeParse(item).success)).toBe(true);
+    // The older channel-keyed IDs too (stored items of task-3 runs name them). CONTROL: an unknown ID is refused.
+    expect(PrecheckItemSchema.safeParse({ ...stored[3], id: 'MIC_1' }).success).toBe(true);
+    expect(PrecheckItemSchema.safeParse({ ...stored[3], id: 'LENS_5' }).success).toBe(false);
   });
 
   it('everything reachable: every source row passes and the session arms (the control of the cases below)', () => {
@@ -380,8 +432,9 @@ describe('D48: the tablet link at the pre-check of a Core in its own capture', (
     const own: SimState = { ...offline, time: { ...offline.time, hostClock: true } };
     expect(isOwnCaptureCoreState(offline)).toBe(false);
     expect(isOwnCaptureCoreState(own)).toBe(true);
-    expect(evaluatePrecheck(own, 'CORE')).toEqual({ status: 'WARN', value: 'OFFLINE', reason: 'Core link offline', reasonCode: 'CORE_OFFLINE', params: {} });
-    expect(evaluatePrecheck(offline, 'CORE')).toMatchObject({ status: 'BLOCK', value: 'OFFLINE', reasonCode: 'CORE_OFFLINE' });
+    // Audit fix row 83 (D29 Q2): status, value and code unchanged; the reason says it is the operator tablet.
+    expect(evaluatePrecheck(own, 'CORE')).toEqual({ status: 'WARN', value: 'OFFLINE', reason: 'Operator tablet offline. This Core runs the session from its console.', reasonCode: 'CORE_OFFLINE', params: {} });
+    expect(evaluatePrecheck(offline, 'CORE')).toEqual({ status: 'BLOCK', value: 'OFFLINE', reason: 'Core link offline', reasonCode: 'CORE_OFFLINE', params: {} });
     expect(evaluatePrecheck({ ...own, tabletLink: base.tabletLink }, 'CORE')).toMatchObject({ status: 'PASS', value: 'ONLINE' });
     expect(evaluatePrecheck(base, 'CORE')).toMatchObject({ status: 'PASS', value: 'ONLINE' });
   });
@@ -390,10 +443,19 @@ describe('D48: the tablet link at the pre-check of a Core in its own capture', (
 describe('a selector slot without a source: the pre-check item (task 4 row 163)', () => {
   const { CATEGORIES, SLOTS, SEEDED_CATEGORY, emptySlotsOf, selectorPatch, cam, mic } = selectorBed;
   // D61 (2026-11-04): the stored check IDs MIC_PRIMARY/MIC_STANDBY read channels 1 and 2.
-  const CHECK_OF = { 'VIDEO-01': 'LENS_1', 'VIDEO-02': 'LENS_2', 'MIC-01': 'MIC_PRIMARY', 'MIC-02': 'MIC_STANDBY' } as const;
-  // D60 (2026-11-04): the eight §5.3 checks did NOT grow - only these four slots have an item of their own.
+  // Audit fix row 83 (DF-03; D15(c)): every one of the eight required slots now has a check item of its own.
+  const CHECK_OF = {
+    'VIDEO-01': 'LENS_1',
+    'VIDEO-02': 'LENS_2',
+    'VIDEO-03': 'LENS_3',
+    'VIDEO-04': 'LENS_4',
+    'MIC-01': 'MIC_PRIMARY',
+    'MIC-02': 'MIC_STANDBY',
+    'MIC-03': 'MIC_3',
+    'MIC-04': 'MIC_4',
+  } as const;
   type CheckedSlot = keyof typeof CHECK_OF;
-  const CHECKED: readonly CheckedSlot[] = ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02'];
+  const CHECKED: readonly CheckedSlot[] = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'];
   /** A simulator in the capture given, holding the lines given (its registry and meters agree with them). */
   const bedOn = (capture: 'simulated' | 'external', lines: selectorBed.SelectorLines) => {
     const h = ownCaptureBed.bed({ capture });
@@ -442,8 +504,9 @@ describe('a selector slot without a source: the pre-check item (task 4 row 163)'
     const empty = emptySlotsOf(lines);
     const real = bedOn('external', lines);
     expect(isOwnCaptureCoreState(real.state()), name).toBe(true);
-    // D60 (2026-11-04): the eight §5.3 checks did NOT grow - an unassigned VIDEO-03/VIDEO-04 has no
-    // item of its own; it blocks the start through the required-slot rule (`sim-capture-start`).
+    // Audit fix row 83 (DF-03): an unassigned VIDEO-03/VIDEO-04 or MIC-03/MIC-04 has its own BLOCK item too
+    // (it also still blocks the start through the required-slot rule, `sim-capture-start`).
+    expect([...CHECKED]).toEqual([...CAPTURE_START_REQUIRED_SLOTS]);
     for (const slot of CHECKED) {
       const item = evaluatePrecheck(real.state(), CHECK_OF[slot]);
       if (empty.includes(slot)) {
@@ -465,14 +528,14 @@ describe('a selector slot without a source: the pre-check item (task 4 row 163)'
       const item = evaluatePrecheck(simulated.state(), CHECK_OF[slot]);
       expect(unassignedSlotOfPrecheckItem(item), `${name} / ${slot}`).toBeNull();
       if (!empty.includes(slot)) continue;
-      if (slot === 'VIDEO-01' || slot === 'VIDEO-02') expect(item, `${name} / ${slot}`).toMatchObject({ status: 'PASS', value: 'READY' });
+      if (slot.startsWith('VIDEO-')) expect(item, `${name} / ${slot}`).toMatchObject({ status: 'PASS', value: 'READY' });
       else expect(item, `${name} / ${slot}`).toMatchObject({ status: 'WARN', value: 'NO_SIGNAL', reasonCode: 'MIC_NO_SIGNAL' });
     }
   });
 
   it('all eight slots unassigned: every check item of a checked slot BLOCKS - every channel too (C25, D61) - and 0 on the seeded selector', () => {
     const none = bedOn('external', CATEGORIES['1. all eight U']!); // D61: the eight-slot bed
-    expect(CHECKED.map((slot) => evaluatePrecheck(none.state(), CHECK_OF[slot]).status)).toEqual(['BLOCK', 'BLOCK', 'BLOCK', 'BLOCK']);
+    expect(CHECKED.map((slot) => evaluatePrecheck(none.state(), CHECK_OF[slot]).status)).toEqual(['BLOCK', 'BLOCK', 'BLOCK', 'BLOCK', 'BLOCK', 'BLOCK', 'BLOCK', 'BLOCK']); // row 83: eight items
     // Only channel 2 empty: it is a BLOCK item, not a warning an operator could acknowledge.
     const seededLines = CATEGORIES[SEEDED_CATEGORY]!;
     const noStandby = bedOn('external', { cameras: seededLines.cameras, mics: seededLines.mics.filter((line) => line.channel !== 'MIC-02') });
@@ -494,7 +557,7 @@ describe('a selector slot without a source: the pre-check item (task 4 row 163)'
     simulated.sim.store.setState({ cameras: simulated.state().cameras.map((camera) => ({ ...camera, online: false })) });
     expect(evaluatePrecheck(simulated.state(), 'LENS_1')).toMatchObject({ status: 'BLOCK', value: 'FAULT', reasonCode: 'LENS_FAULT' });
 
-    // A whole pre-check run of a Core in its own capture on the empty selector: BLOCK, four items, not ARMED.
+    // A whole pre-check run of a Core in its own capture on the empty selector: BLOCK, eight items (row 83), not ARMED.
     const h = bedOn('external', CATEGORIES['1. all eight U']!); // D61 (2026-11-04): eight slots
     h.armed();
     const session = h.state().session;
@@ -504,8 +567,12 @@ describe('a selector slot without a source: the pre-check item (task 4 row 163)'
     expect(items.map((item) => [item.id, item.status, item.params?.['slot']])).toEqual([
       ['LENS_1', 'BLOCK', 'VIDEO-01'],
       ['LENS_2', 'BLOCK', 'VIDEO-02'],
+      ['LENS_3', 'BLOCK', 'VIDEO-03'], // audit fix row 83 (DF-03)
+      ['LENS_4', 'BLOCK', 'VIDEO-04'],
       ['MIC_PRIMARY', 'BLOCK', 'MIC-01'], // D61 (2026-11-04): the stored check IDs read channels 1 and 2; the slot param is the channel
       ['MIC_STANDBY', 'BLOCK', 'MIC-02'], // D61: the role words PRIMARY/STANDBY are gone from the slot params
+      ['MIC_3', 'BLOCK', 'MIC-03'], // audit fix row 83
+      ['MIC_4', 'BLOCK', 'MIC-04'],
     ]);
     expect(h.state().audit.rows.filter((row) => row.type === 'PRECHECK_BLOCKED')).toHaveLength(1);
     expect(() => h.sim.actions.startRecording()).toThrow(SimTransitionError);

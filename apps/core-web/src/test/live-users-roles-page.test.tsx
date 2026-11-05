@@ -166,6 +166,21 @@ describe('AC-C-86: the page renders the test IDs of §10.2 from the fake transpo
   })
 })
 
+describe('DF-29 / F-1-08: the system account OPR-000', () => {
+  it('is marked System and offers no menu (no edit, delete, reset); real operators keep theirs', async () => {
+    await openUsersRoles({
+      script: (bed) =>
+        bed.fake.answer('listUsers', () => list([{ ...seededUsers(bed)[0]!, id: 'OPR-000', username: 'system', name: 'System', displayName: 'System', initials: 'SY', activeSessions: 0, lastSignInAt: null }, ...seededUsers(bed)])),
+    })
+    expect(screen.getByTestId('ur-system-OPR-000')).toHaveTextContent(U.users.system)
+    expect(screen.getByTestId('ur-system-note-OPR-000')).toHaveTextContent(U.users.systemNoActions)
+    expect(screen.queryByTestId('ur-actions-OPR-000')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('ur-system-OPR-001')).not.toBeInTheDocument()
+    expect(screen.getByTestId('ur-actions-OPR-001')).toBeInTheDocument()
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+})
+
 describe('AC-C-90: `admin.changed` USERS reads the list again without a reload', () => {
   it('a change made elsewhere appears, the changed row is highlighted, and nothing is loaded again', async () => {
     const { bed, page } = await openUsersRoles()

@@ -5,6 +5,8 @@ import {
   GENESIS_HASH,
   appendAudit,
   appendEvent,
+  auditBody,
+  chainHash,
   verifyAuditChain,
   type AuditRow,
   type SimEvent,
@@ -12,7 +14,7 @@ import {
 } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { createHost } from '../../../test/support/seed';
-import { TrailMismatch, hasTrail, mergeTrail, type TrailSlices } from '../ring';
+import { TrailMismatch, hasTrail, mergeTrail, resealedAudit, type TrailSlices } from '../ring';
 
 const AT = Date.UTC(2031, 0, 1);
 
@@ -127,5 +129,85 @@ describe('mergeTrail', () => {
     expect(() => mergeTrail(state, [forged], [])).toThrow(TrailMismatch);
     // The error says where, never what: no part of a row is in its text.
     expect(new TrailMismatch(1, 3).message).toBe('the rows do not continue the engine ring');
+  });
+});
+
+// Row 94 (DF-27, decision D21(3)): an operator purge re-seals the chain in the database. The unit
+// that did it hands the chain as stored after the seal to the engine, which must take it instead of
+// merging its own row (whose hash the seal replaced) and failing its next write on the old head.
+describe('resealedAudit (row 94, DF-27)', () => {
+  const TARGET = 'OPR-009';
+
+  /** Rows appended on `log` by `actorId`, as the core's writers build them. */
+  function rowsBy(log: SimState['audit'], actorId: string, count: number, at: number): { rows: AuditRow[]; log: SimState['audit'] } {
+    const rows: AuditRow[] = [];
+    let current = log;
+    for (let index = 0; index < count; index += 1) {
+      const appended = appendAudit(current, { type: 'AUTH_SUCCESS', message: 'Signed in.', actorId, details: { method: 'PASSWORD' } }, at + index);
+      rows.push(appended.row);
+      current = appended.log;
+    }
+    return { rows, log: current };
+  }
+
+  /** What `audit_purge_operator` plus `audit_purge_reseal` leave: the target's rows gone, the tail re-chained from the row before them. */
+  function purgeAndReseal(ring: readonly AuditRow[], target: string): AuditRow[] {
+    const first = ring.findIndex((row) => row.actorId === target);
+    let prev = first === 0 ? GENESIS_HASH : (ring[first - 1] as AuditRow).hash;
+    const out: AuditRow[] = ring.slice(0, first);
+    for (const row of ring.slice(first)) {
+      if (row.actorId === target) continue;
+      const hash = chainHash(prev, auditBody(row));
+      out.push({ ...row, prevHash: prev, hash });
+      prev = hash;
+    }
+    return out;
+  }
+
+  /** A state whose ring holds two rows of the target, two of others, and the purge unit's own announcement. */
+  async function purgeScene() {
+    const idle = await idleState();
+    const target = rowsBy(idle.audit, TARGET, 2, AT);
+    const others = rowsBy(target.log, 'OPR-001', 2, AT + 10);
+    const before: SimState = { ...idle, audit: others.log };
+    // The purge unit's own row (USER_DELETED in production), appended BEFORE the erasure.
+    const announced = rowsBy(others.log, 'OPR-002', 1, AT + 20);
+    const stored = purgeAndReseal(announced.log.rows, TARGET);
+    const newest = stored[stored.length - 1] as AuditRow;
+    const chain = { head: { seq: newest.seq, hash: newest.hash }, rows: stored };
+    const purged = [{ from: (target.rows[0] as AuditRow).seq, to: (target.rows[1] as AuditRow).seq }];
+    return { before, unitRows: announced.rows, chain, purged };
+  }
+
+  it('the old path: merging the unit\'s own row leaves a head the stored chain no longer has (the DF-27 mechanism)', async () => {
+    const { before, unitRows, chain } = await purgeScene();
+    const merged = mergeTrail(before, unitRows, []);
+    // The merge itself passes: the row continued the ring when it was written.
+    expect(merged.audit?.total).toBe(chain.head.seq);
+    // But its hash is not the stored head any more: the next write of the engine finds the head foreign.
+    expect(merged.audit?.head).not.toBe(chain.head.hash);
+  });
+
+  it('takes the stored chain: head, total and dropped as a rehydration builds them, the erased rows gone, the ring verifying with the ledger', async () => {
+    const { before, unitRows, chain, purged } = await purgeScene();
+    const audit = resealedAudit(chain);
+    expect(audit).toEqual({ rows: chain.rows, head: chain.head.hash, total: chain.head.seq, dropped: chain.head.seq - chain.rows.length });
+    expect(audit.rows.some((row) => row.actorId === TARGET)).toBe(false);
+    expect(verifyAuditChain(audit, purged)).toMatchObject({ ok: true });
+    // The unit's rows are at or below the new head: merging them afterwards adds nothing.
+    expect(mergeTrail({ ...before, audit }, unitRows, [])).toEqual({});
+    // And the engine's next row continues the stored head (AP-6).
+    const next = appendAudit(audit, { type: 'AUTH_SUCCESS', message: 'Signed in.', actorId: 'OPR-001', details: { method: 'PASSWORD' } }, AT + 30).row;
+    expect(next).toMatchObject({ seq: chain.head.seq + 1, prevHash: chain.head.hash });
+  });
+
+  it('a chain longer than the ring keeps the newest AUDIT_RING_SIZE rows; dropped counts the rest', () => {
+    const empty: SimState['audit'] = { rows: [], head: GENESIS_HASH, total: 0, dropped: 0 };
+    const { rows } = rowsBy(empty, 'OPR-001', AUDIT_RING_SIZE + 5, AT);
+    const newest = rows[rows.length - 1] as AuditRow;
+    const audit = resealedAudit({ head: { seq: newest.seq, hash: newest.hash }, rows });
+    expect(audit.rows).toHaveLength(AUDIT_RING_SIZE);
+    expect(audit.rows[audit.rows.length - 1]).toBe(newest);
+    expect(audit).toMatchObject({ head: newest.hash, total: AUDIT_RING_SIZE + 5, dropped: 5 });
   });
 });

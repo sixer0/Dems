@@ -52,6 +52,7 @@ import {
   type UsbAudioStream,
 } from '../usb-audio-production';
 import { STORED_CARD_IDENTITY_CASES } from '../../../../../test/support/stored-card-identity-cases';
+import { audioCardStatementOf, micSourceFactsOf } from '../../../fence/sources';
 
 // ── The host: fixed texts in the forms of a Linux host ────────────────────────────────────────
 
@@ -926,7 +927,7 @@ describe('pre-check, level, enumerate, source facts', () => {
     expect((await r.adapter.enumerate()).map((entry) => [entry.present, entry.errorCode])).toEqual([[false, 'OPEN_FAILED'], [false, 'OPEN_FAILED'], [false, 'OPEN_FAILED']]);
   });
 
-  it('level: the telemetry reading at most 0 dBFS, null for none; source facts: of an open input only, from what the open found', async () => {
+  it('level: the telemetry reading at most 0 dBFS, null for none; source facts: of an open input from what the open found - none before any identification, none after the close', async () => {
     const readings = new Map<string, number | null>([['MIC-01', -23.5]]);
     const r = rig([DUO], [row('MIC-01', DUO, 2)], undefined, { level: (inputId) => readings.get(inputId) ?? null });
     expect(await r.adapter.level('MIC-01')).toBe(-23.5);
@@ -945,6 +946,52 @@ describe('pre-check, level, enumerate, source facts', () => {
     expect(r.adapter.sourceFacts('MIC-01')).toEqual({ product: 'DEMS Test Duo', usbId: '1a2b:0001', usbSerial: null, usbPort: '0000:00:14.0-2', cardId: 'Duo', cardDevice: 0, inputNumber: 2, nativeChannels: 2, sampleRateHz: 48_000, sampleBits: 24 });
     expect(r.host.lists()).toBe(lists);
     await stream.close();
+    expect(r.adapter.sourceFacts('MIC-01')).toBeNull();
+  });
+
+  // Audit 2026-11-05 row 96 (DF-33; decision D21(6)): the session start writes its source rows BEFORE it opens the
+  // microphones, and every start follows a pre-check run whose probe enumerates this adapter. Stating the open's card
+  // only left every production row `{}` (CAPTURE_SOURCE_FACTS_NOT_STATED at every start).
+  it('row 96 (DF-33): BEFORE the open the card of the last identification - enumeration or pre-check - is stated, and reaches the fence as non-empty facts; a failed identification and the close forget it', async () => {
+    const DUO_FACTS = { product: 'DEMS Test Duo', usbId: '1a2b:0001', usbSerial: null, usbPort: '0000:00:14.0-2', cardId: 'Duo', cardDevice: 0, inputNumber: 2, nativeChannels: 2, sampleRateHz: 48_000, sampleBits: 24 };
+    const r = rig([DUO], [row('MIC-01', DUO, 2)], () => ({ ends: { exitCode: 0 } }));
+    expect(r.adapter.sourceFacts('MIC-01')).toBeNull();
+    // The enumeration of the pre-check run identifies the card: stated from then on, with no listing and no process of its own.
+    await r.adapter.enumerate();
+    const lists = r.host.lists();
+    expect(r.adapter.sourceFacts('MIC-01')).toEqual(DUO_FACTS);
+    expect([r.host.lists(), r.door.calls, r.adapter.openSources()]).toEqual([lists, [], []]);
+    // What the session start reads through the fence: the closed keys, not `{}`.
+    expect(micSourceFactsOf(audioCardStatementOf(r.adapter, 'MIC-01'))).toEqual({ model: 'DEMS Test Duo', usbId: '1a2b:0001', cardId: 'Duo', cardDevice: 0, inputNumber: 2, nativeChannels: 2, sampleRate: 48_000, sampleBits: 24, usbPort: '0000:00:14.0-2' });
+    // The open states its own card - the same one - and the close forgets both.
+    const stream = await r.adapter.open('MIC-01', target());
+    expect(r.adapter.sourceFacts('MIC-01')).toEqual(DUO_FACTS);
+    await stream.close();
+    expect(r.adapter.sourceFacts('MIC-01')).toBeNull();
+    // The pre-check identifies too; a card moved since is stated where it is NOW.
+    const MOVED = '0000:00:14.0-4';
+    r.host.cards = [{ ...DUO, index: 3, port: MOVED }];
+    expect(await r.adapter.precheck('MIC-01')).toBeNull();
+    expect(r.adapter.sourceFacts('MIC-01')).toEqual({ ...DUO_FACTS, usbPort: MOVED });
+    // Every identification that fails forgets the card: a pre-check of an unplugged card, an unreadable listing, an input beyond the card, an open that finds no card.
+    r.host.cards = [];
+    expect(((await r.adapter.precheck('MIC-01')) as UsbAudioError).code).toBe(UsbAudioRefusal.CARD_ABSENT);
+    expect(r.adapter.sourceFacts('MIC-01')).toBeNull();
+    r.host.cards = [DUO];
+    await r.adapter.enumerate();
+    expect(r.adapter.sourceFacts('MIC-01')).toEqual(DUO_FACTS);
+    r.host.failing = true;
+    await r.adapter.enumerate();
+    expect(r.adapter.sourceFacts('MIC-01')).toBeNull();
+    r.host.failing = false;
+    await r.adapter.enumerate();
+    r.host.cards = [{ ...DUO, channels: 1 }];
+    expect(await r.adapter.enumerate()).toEqual([{ inputId: 'MIC-01', present: false, errorCode: AudioInputErrorCode.OPEN_FAILED }]);
+    expect(r.adapter.sourceFacts('MIC-01')).toBeNull();
+    r.host.cards = [DUO];
+    await r.adapter.enumerate();
+    r.host.cards = [];
+    expect((await refusalOf(r.adapter.open('MIC-01', target()))).code).toBe(UsbAudioRefusal.CARD_ABSENT);
     expect(r.adapter.sourceFacts('MIC-01')).toBeNull();
   });
 });

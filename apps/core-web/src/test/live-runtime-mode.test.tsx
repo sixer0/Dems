@@ -9,6 +9,7 @@
 // | AC-C-22 `VITE_DEMS_CORE_MODE=live` selects Live; a stored SIMULATED wins over it | "the resolver" |
 // | AC-C-23 (the runtime's half) a switch signs out, stores the key and reloads to /login | "changing the mode" |
 // | WT-2a a Live page under `localhost` is refused with the cause named; Simulated works there | "a page under localhost" |
+// | DF-23 / D25 N3 / D29 Q6 (audit row 106): `VITE_DEMS_PRODUCTION_LOCK=1` is LIVE with no Simulated choice anywhere; unset keeps the choice | "the production console lock" |
 //
 // The confirmation dialog of AC-C-23 is the Login page's and the shell's (rows W54, W55).
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -30,6 +31,7 @@ import { CORE_ORIGIN_ENV_KEY, SAME_ORIGIN_CORE } from '@/lib/packaged-csp'
 import { bootCoreRuntime, createCoreModeControl, type BootCoreRuntimeOptions } from '@/runtime/boot'
 import {
   CORE_MODE_ENV_KEY,
+  CORE_MODE_LOCK_ENV_KEY,
   CORE_MODE_STORAGE_KEY,
   CoreModeSource,
   parseCoreModeEnv,
@@ -384,6 +386,103 @@ describe('a page under localhost (WT-2a): Live mode does not start, and says why
     )
     fireEvent.click(screen.getByTestId('live-host-refusal-simulated'))
     expect(screen.getByTestId('live-host-refusal-not-stored')).toBeInTheDocument()
+  })
+})
+
+describe('the production console lock (audit row 106; DF-23, D25 N3, D29 Q6; register S1-S5)', () => {
+  it('S1/S2: the variable has the pinned name, and only the exact value `1` turns it on', () => {
+    expect(CORE_MODE_LOCK_ENV_KEY).toBe('VITE_DEMS_PRODUCTION_LOCK')
+    expect(CoreModeSource.PRODUCTION_LOCK).toBe('PRODUCTION_LOCK')
+    for (const lock of [undefined, '', '0', 'true', 'TRUE', ' 1', '1 ', '01', 'yes', 'on']) {
+      // Off: a dev run or a lane keeps rules 2 to 4 and the choice.
+      expect(resolveCoreMode({ ...DEV, lock }), `lock ${JSON.stringify(lock)}`).toEqual({
+        mode: 'SIMULATED',
+        selectable: true,
+        source: CoreModeSource.DEFAULT,
+      })
+      expect(resolveCoreMode({ ...DEV, env: 'live', lock })).toEqual({ mode: 'LIVE', selectable: true, source: CoreModeSource.ENV })
+    }
+  })
+
+  it('S4: set, a dev build is LIVE with no choice, whatever is stored or preselected', () => {
+    for (const stored of [null, 'LIVE', 'SIMULATED', 'nonsense']) {
+      for (const env of [undefined, 'live', 'simulated']) {
+        expect(resolveCoreMode({ ...DEV, stored, env, lock: '1' })).toEqual({
+          mode: 'LIVE',
+          selectable: false,
+          source: CoreModeSource.PRODUCTION_LOCK,
+        })
+      }
+    }
+  })
+
+  it('S4: rule 1 still answers first: a packaged or production build is SIMULATED with the lock set', () => {
+    for (const build of [
+      { dev: true, packaged: true },
+      { dev: false, packaged: false },
+    ]) {
+      expect(resolveCoreMode({ ...build, stored: 'LIVE', env: 'live', lock: '1' })).toEqual({
+        mode: 'SIMULATED',
+        selectable: false,
+        source: CoreModeSource.BUILD,
+      })
+    }
+  })
+
+  it('the entry: the unit\'s variable (`vi.stubEnv`) builds the Live source over a stored SIMULATED, offers no switch, and still hands the storage to the start-up', async () => {
+    vi.stubEnv(CORE_MODE_LOCK_ENV_KEY, '1')
+    const storage = createMemoryStorage({ [CORE_MODE_STORAGE_KEY]: 'SIMULATED' })
+    // `lock` is left to its default: the unit's environment decides.
+    const parts = entry({ storage, lock: undefined })
+    const booting = bootCoreRuntime(parts.options)
+    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve()
+    parts.resolveReady()
+    const runtime = await booting
+    expect(runtime.kind).toBe('LIVE')
+    expect(runtime.resolution).toEqual({ mode: 'LIVE', selectable: false, source: 'PRODUCTION_LOCK' })
+    expect(parts.loadSimulator).not.toHaveBeenCalled()
+    expect(parts.startLiveRuntime.mock.calls[0]).toEqual([expect.objectContaining({ storage })])
+    if (runtime.kind !== 'LIVE') throw new Error('unreachable')
+    expect(runtime.coreMode).toMatchObject({ mode: 'LIVE', selectable: false })
+    // No Simulated choice: a switch changes nothing and loads nothing.
+    await expect(runtime.coreMode.switchTo(CoreMode.SIMULATED)).resolves.toBe(false)
+    expect(storage.getItem(CORE_MODE_STORAGE_KEY)).toBe('SIMULATED')
+    expect(parts.location.assigned).toEqual([])
+    runtime.stop()
+  })
+
+  it('the entry: unset, the same stored SIMULATED is Simulated with the choice (the lanes and dev runs keep it)', async () => {
+    const parts = entry({ storage: createMemoryStorage({ [CORE_MODE_STORAGE_KEY]: 'SIMULATED' }), env: 'live' })
+    const runtime = await bootCoreRuntime(parts.options)
+    expect(runtime.kind).toBe('SIMULATED')
+    expect(runtime.resolution).toEqual({ mode: 'SIMULATED', selectable: true, source: 'STORED' })
+  })
+
+  it('a locked page under localhost is refused, and its way out is NOT Simulated mode', async () => {
+    const storage = createMemoryStorage()
+    const location = createTestLocation('http://localhost:5178/login')
+    const parts = entry({ storage, location, lock: '1' })
+    const runtime = await bootCoreRuntime(parts.options)
+    expect(runtime.kind).toBe('REFUSED')
+    if (runtime.kind !== 'REFUSED') throw new Error('unreachable')
+    expect(runtime.resolution.selectable).toBe(false)
+    expect(runtime.useSimulated()).toBe(false)
+    expect(storage.getItem(CORE_MODE_STORAGE_KEY)).toBeNull()
+    expect(location.reloads).toBe(0)
+    expect(parts.loadSimulator).not.toHaveBeenCalled()
+  })
+
+  it('the refusal screen without a Simulated way out shows the cause and the address only', () => {
+    const refusal = liveHostRefusal(createTestLocation('http://localhost:5178/login'))
+    if (refusal === null) throw new Error('unreachable')
+    render(
+      <I18nextProvider i18n={i18n}>
+        <LiveHostRefusalScreen refusal={refusal} />
+      </I18nextProvider>,
+    )
+    expect(screen.getByTestId('live-host-refusal-open')).toHaveAttribute('href', 'http://127.0.0.1:5178/login')
+    expect(screen.queryByTestId('live-host-refusal-simulated')).toBeNull()
+    expect(screen.getByTestId('live-host-refusal').textContent).not.toContain(en.common.liveHost.simulatedNote)
   })
 })
 

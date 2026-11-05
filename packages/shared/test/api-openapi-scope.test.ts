@@ -179,7 +179,10 @@ const OFFLINE_SCHEMA_NAMES = [
   'CaptureDeviceRetireRequest', 'CaptureDeviceRetirement',
 ];
 /** Baseline operations whose OpenAPI object C3 §3 modified in M2 (op 42 QUEUED, op 44 device-health v2, audio re-key). */
-const OPS_CHANGED_BY_M2 = ['getDeviceHealth', 'getAudioStatus', 'getVideoStatus', 'exportEvidence'];
+// Audit fix row 83 (DF-03; register P17): getCurrentSession's inline recording example holds the twelve
+// pre-check items, so it diverges from acaff20 by design too (four remain after row 112 added startSession).
+// Row 112 (CL-1; R83-D4 pin owner): startSession's description says 'twelve checks' (row 83), so it diverges by design as well.
+const OPS_CHANGED_BY_M2 = ['getDeviceHealth', 'getAudioStatus', 'getVideoStatus', 'exportEvidence', 'getCurrentSession', 'startSession'];
 /** Baseline components whose zod schema C3 §3 modified in M2 (audio re-key, device-health v2, export composite options). */
 const SCHEMAS_CHANGED_BY_M2 = [
   'VideoTrackStatus', 'AudioChannelStatus', 'AudioStatusResponse', 'DeviceHealthResponse',
@@ -230,7 +233,7 @@ describe('scope offline: the default, and the document of the baseline', () => {
     expect(OPENAPI_DOCUMENT_VERSION).toBe('0.2.0');
   });
 
-  it('keeps the six untouched baseline operations byte-equal to acaff20; the four M2-modified ones, the thirteen capture operations, the three STT ones and the five of the camera search are new content', () => {
+  it('keeps the four untouched baseline operations byte-equal to acaff20; the four M2-modified ones, getCurrentSession (row 83), startSession (row 83, twelve checks), the thirteen capture operations, the three STT ones and the five of the camera search are new content', () => {
     const now = Object.fromEntries(listOpenApiOperations(offline).map((entry) => [entry.operation.operationId, sha256(entry.operation)]));
     expect(Object.keys(now)).toEqual(OFFLINE_OP_IDS);
     for (const [id, hash] of Object.entries(BASELINE.operations)) {

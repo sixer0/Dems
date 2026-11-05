@@ -256,3 +256,48 @@ export const readFileHead: FileHeadReader = (path, bytes) => {
     }
   }
 };
+
+/**
+ * THE WHOLE OF A FILE, BOUNDED (audit 2026-11-05 row 88, C-P0-1b, DF-02): what the boot needs to compare the worker
+ * program in place with the hash its build stamp names (`boot/worker-stamp.ts`). Read here because this file is the
+ * one file-system door of the local helpers (static rule G-R2): the boot folder imports no file system of its own.
+ *
+ * Every byte of a REGULAR file at an absolute path, when the file holds at most `maxBytes` bytes (bounded by
+ * `FILE_WHOLE_MAX_BYTES`). `null` when the path is not absolute, is no regular file, is larger than the bound, changed
+ * its size while it was read, or cannot be opened or read - never a throw, and nothing of the content is logged. The
+ * caller applies the path rule (`helperProgramRefusal`) FIRST: this function reads whatever it is pointed at.
+ */
+export type WholeFileReader = (path: string, maxBytes: number) => Uint8Array | null;
+
+/** 64 MiB: the worker program is about 0.35 MiB (2026-11-05); the bound keeps a wrong path from filling the memory. */
+export const FILE_WHOLE_MAX_BYTES = 64 * 1024 * 1024;
+
+export const readWholeFile: WholeFileReader = (path, maxBytes) => {
+  if (!isAbsolute(path) || !Number.isSafeInteger(maxBytes) || maxBytes < 0) return null;
+  const bound = Math.min(maxBytes, FILE_WHOLE_MAX_BYTES);
+  let descriptor: number | null = null;
+  try {
+    descriptor = openSync(path, 'r');
+    const status = fstatSync(descriptor);
+    if (!status.isFile() || status.size > bound) return null;
+    // One byte more than the size: a file that grew while it was read is seen, not cut.
+    const buffer = new Uint8Array(status.size + 1);
+    let filled = 0;
+    while (filled < buffer.length) {
+      const read = readSync(descriptor, buffer, filled, buffer.length - filled, filled);
+      if (read === 0) break;
+      filled += read;
+    }
+    return filled === status.size ? buffer.subarray(0, filled) : null;
+  } catch {
+    return null;
+  } finally {
+    if (descriptor !== null) {
+      try {
+        closeSync(descriptor);
+      } catch {
+        // Nothing to do for a descriptor that would not close: the read already has its answer.
+      }
+    }
+  }
+};

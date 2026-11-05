@@ -1,6 +1,7 @@
 import { DemoMark } from '@/components/demo-mark'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
+import { NoProducerNotice } from '@/components/synthetic-values-chip'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { Button, Card } from '@heroui/react'
 import { motion } from 'motion/react'
 import type { LucideIcon } from 'lucide-react'
@@ -21,16 +22,18 @@ export interface SystemPanelProps {
   /** DOM id for in-page links (Settings → maintenance / identity). */
   anchorId?: string
   children: ReactNode
-  /** Fix wave J (JW-06): false when the panel draws none of the appliance model's values (the update card of a Core without an updater): no "Synthetic demo values" chip then. */
+  /** Fix wave J (JW-06): false when the panel draws none of the appliance model's values (the update card of a Core without an updater): its body stays then (row 104). */
   shownValues?: boolean
 }
 
 /**
- * Fix wave L (G75d-07): the blocks of this page whose values a Core in its own capture replicates from the
- * appliance model and does not report. Each carries the "Synthetic demo values" chip on such a Core; the
- * simulated lane draws none (`SyntheticValuesChip`).
+ * Fix wave L (G75d-07) -> audit fix row 104 (DF-21, D25 N3): the blocks of this page whose values a Core in its own
+ * capture replicates from the appliance model and does not report. On such a Core each draws "Not reported"
+ * (`NoProducerNotice`, register S7) in place of its header figure and its body - never the model's values. The
+ * simulated lane is unchanged. Diagnostics & Maintenance is not here: its actions and its run are the Core's
+ * (operations A8, A10, A11), and a check the Core does not read already says "Not reported by this Core" (JW-04).
  */
-const SYNTHETIC_BLOCKS: ReadonlySet<string> = new Set(['services', 'health', 'update', 'maintenance'])
+const NO_PRODUCER_BLOCKS: ReadonlySet<string> = new Set(['services', 'health', 'update'])
 
 /**
  * One System panel: a kit `Card` (the bronze-edged L2 surface) with the mockup's panel header
@@ -39,6 +42,7 @@ const SYNTHETIC_BLOCKS: ReadonlySet<string> = new Set(['services', 'health', 'up
  */
 export function SystemPanel({ id, icon: Icon, title, action, className, bodyClassName, anchorId, children, shownValues = true }: SystemPanelProps) {
   const variants = usePanelVariants(PANEL_BEAT_MS[id])
+  const noProducer = useSelfCaptureCore() && NO_PRODUCER_BLOCKS.has(id) && shownValues
   return (
     <motion.section
       id={anchorId}
@@ -53,13 +57,12 @@ export function SystemPanel({ id, icon: Icon, title, action, className, bodyClas
         <div className="sys-card-header">
           <Icon className="sys-card-icon" aria-hidden="true" strokeWidth={1.75} />
           <h2 className="sys-card-title">{title}</h2>
-          {SYNTHETIC_BLOCKS.has(id) && shownValues ? <SyntheticValuesChip block={id} /> : null}
           {/* Fix wave J (JW-07): the demonstration Core's values are marked on every panel. */}
           <DemoMark block={`system-${id}`} />
-          {action ? <div className="sys-card-action">{action}</div> : null}
+          {action && !noProducer ? <div className="sys-card-action">{action}</div> : null}
         </div>
         <div className={cn('sys-card-body', bodyClassName)}>
-          <SystemPanelBoundary panel={id}>{children}</SystemPanelBoundary>
+          {noProducer ? <NoProducerNotice block={id} className="sys-muted sys-small" /> : <SystemPanelBoundary panel={id}>{children}</SystemPanelBoundary>}
         </div>
       </Card>
     </motion.section>

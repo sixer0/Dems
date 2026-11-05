@@ -43,6 +43,7 @@ import { settle, useCoreActions } from '@dems/shared/live'
 import { DeviceCommand } from '@dems/shared/sim'
 import { useRealCaptureCore } from './source-class'
 import { PageHeader } from '@/components/shell/page-header'
+import { NoProducerGate } from '@/components/synthetic-values-chip'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useMotionPolicy } from '@/motion'
 import { useWebLive } from '@/runtime'
@@ -297,7 +298,10 @@ export function DevicesPage() {
               <CaptureSelectorPanel />
 
               <DevicesPanel id="front" icon={MonitorCog} title={t('devices.front.title')} subtitle={t('devices.front.subtitle')}>
-                <FrontPanel />
+                {/* Audit fix row 104 (DF-21): the LEDs and LCD pages are the appliance model's; a Core in its own capture says "Not reported". The LCD connection is the Core's fact. */}
+                <NoProducerGate block="front">
+                  <FrontPanel />
+                </NoProducerGate>
                 <LcdConnection />
               </DevicesPanel>
 

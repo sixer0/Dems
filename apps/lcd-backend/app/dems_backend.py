@@ -1251,6 +1251,8 @@ def serial_worker():
                 log("[usb] PULIH OTOMATIS setelah %d dtk tanpa panel (buka ke-%d di %s, cara %s)"
                     % (gap, G["opens"], path, cara))
             down_since, retry, last_report, G["down_s"] = 0.0, RETRY_S, 0.0, 0
+            # DF-34 (D20f): tautan hidup lagi -> galat lama tidak boleh tetap tampil di /status.
+            G["last_err"] = ""
             log("USB terbuka di %s (sesi #%d, cara %s) — %d kanal: %s"
                 % (path, G["opens"], cara, N, ", ".join(NAMES)))
             for _gid in LOGO_IDS:                      # alat baru belum punya logo: dorong state kita
@@ -1305,13 +1307,21 @@ def serial_worker():
 class H(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json", extra=None):
         raw = body.encode() if isinstance(body, str) else json.dumps(body).encode()
-        self.send_response(code)
-        for k, v in (extra or []):
-            self.send_header(k, v)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
+        # DF-38 (D20g, D25 N4): klien (jembatan Core, batas 1 dtk) bisa menutup sambungan
+        # sebelum balasan selesai. Itu satu baris log, bukan traceback dari handle_error.
+        try:
+            self.send_response(code)
+            for k, v in (extra or []):
+                self.send_header(k, v)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+        except ConnectionError as e:          # BrokenPipe / ConnectionReset / ConnectionAborted
+            self.close_connection = True
+            log("[http] klien menutup sambungan sebelum balasan %s selesai (%s %s): %s"
+                % (code, getattr(self, "command", "?"), str(getattr(self, "path", "?"))[:60],
+                   type(e).__name__))
 
     def _body(self):
         try:
@@ -1733,10 +1743,11 @@ Tautan panel: kirim {tx} · terima {rx} &nbsp;|&nbsp; dir {REKAM_DIR}</p>
                 simpan_identitas()
             logo_out = {}
             if body.get("logo_base64"):
-                pilih = str(body.get("logo_target") or "client").lower()
-                target = list(LOGO_IDS) if pilih in ("both", "semua", "") else [pilih]
-                if any(g not in LOGO_IDS for g in target):
-                    return self._send(400, {"error": "logo_target harus client|splash|both", "dapat": pilih})
+                # DF-36 (D20c, D57e, D29 Q3): satu slot per permintaan; "both" ditolak.
+                pilih = str(body.get("logo_target") or "client").strip().lower()
+                if pilih not in LOGO_IDS:
+                    return self._send(400, {"error": "logo_target harus client|splash", "dapat": pilih})
+                target = [pilih]
                 try:
                     import base64 as _b64
                     isi = _b64.b64decode(str(body["logo_base64"]), validate=True)
@@ -1766,11 +1777,15 @@ Tautan panel: kirim {tx} · terima {rx} &nbsp;|&nbsp; dir {REKAM_DIR}</p>
                 ok, pesan, info, _tok = gerbang_teknisi(medan, self._sesi(medan), self.headers.get("Cookie"))
                 if not ok:
                     return self._send(403, {"error": "BUKAN_TEKNISI", "alasan": pesan})
-                pilih = str(medan.get("id", "both")).lower()
-                target = list(LOGO_IDS) if pilih in ("both", "", "none", "semua") else [pilih]
+                # DF-36 (D20c, D29 Q3): "both" ditolak di pintu ini juga, dan id diperiksa SEBELUM
+                # apa pun diantrekan. Tanpa id = dorong ulang setiap slot tersimpan (jalur pulih
+                # yang disebut log gagal_berturut; sama dengan tombol push halaman /setup).
+                pilih = str(medan.get("id") or "").strip().lower()
+                if pilih and pilih not in LOGO_IDS:
+                    return self._send(400, {"error": "id harus client|splash (atau tanpa id = semua slot)",
+                                            "dapat": pilih})
+                target = [pilih] if pilih else list(LOGO_IDS)
                 hasil = {g: logo_antre(g, "POST /api/dems/logo/push") for g in target}
-                if pilih not in ("both", "", "none", "semua") and pilih not in LOGO_IDS:
-                    return self._send(400, {"error": "id harus client|splash|both", "dapat": pilih})
                 return self._send(200, {"ok": any(v.startswith(("jalan", "antre")) for v in hasil.values()),
                                         "push": hasil})
             kode, out = self.proses_unggah(medan, berkas, src0)

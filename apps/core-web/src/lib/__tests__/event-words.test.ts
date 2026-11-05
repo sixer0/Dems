@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { AuditType, FaultKind, SEAL_BLOCKED_DETAILS, SEAL_BLOCKED_DETAIL_SENTENCE, SimEventType } from '@dems/shared/sim'
+import { en } from '@dems/shared/i18n'
 import { getMissingI18nKeys, i18n, resetMissingI18nKeys } from '@/i18n'
 import {
   auditTypeWords,
@@ -24,9 +25,11 @@ import {
   eventTitle,
   eventTypeWords,
   faultKindWords,
+  faultClearedStillInFault,
   isKnownCause,
   isKnownCode,
   readableCode,
+  selectFaultSessionId,
   sealCauseLine,
   severityWords,
 } from '../event-words'
@@ -147,5 +150,38 @@ describe('a code no vocabulary holds reads in its readable form', () => {
     // CONTROL: the lookup the row made before records the key - this is the warning the confirmation saw once.
     t('common.enums.lensState.UNREACHABLE' as never, { defaultValue: 'UNREACHABLE' })
     expect(getMissingI18nKeys()).toEqual(['translation:common.enums.lensState.UNREACHABLE'])
+  })
+})
+
+// Audit fix row 110b (DF-19 web half, R110-1; D60): a FAULT_CLEARED whose session is the open session and
+// still in FAULT is titled by common.faultCleared.sessionStillInFault in every activity list.
+describe('row 110b (DF-19): a FAULT_CLEARED whose session is still in FAULT', () => {
+  beforeEach(() => resetMissingI18nKeys())
+  const cleared = { type: 'FAULT_CLEARED' as const, params: { kind: 'CAPTURE_FAULT', target: null }, sessionId: 'SES-110B' }
+  const still = (kind: string) => en.common.faultCleared.sessionStillInFault.replace('{{kind}}', kind)
+
+  it('the rule: only FAULT_CLEARED, only the open session while it is in FAULT, never the Core-not-running clear', () => {
+    expect(faultClearedStillInFault(cleared, 'SES-110B')).toBe(true)
+    expect(faultClearedStillInFault(cleared, null)).toBe(false)
+    expect(faultClearedStillInFault(cleared, 'SES-OTHER')).toBe(false)
+    expect(faultClearedStillInFault({ ...cleared, sessionId: null }, 'SES-110B')).toBe(false)
+    expect(faultClearedStillInFault({ ...cleared, type: 'FAULT_RAISED' }, 'SES-110B')).toBe(false)
+    expect(faultClearedStillInFault({ ...cleared, params: { ...cleared.params, coreNotRunning: true } }, 'SES-110B')).toBe(false)
+  })
+
+  it('the selector: the open session id only while that session is in FAULT', () => {
+    const session = { id: 'SES-110B', state: 'FAULT' }
+    expect(selectFaultSessionId({ session } as never)).toBe('SES-110B')
+    expect(selectFaultSessionId({ session: { ...session, state: 'RECOVERY' } } as never)).toBeNull()
+    expect(selectFaultSessionId({ session: { ...session, state: 'RECORDING' } } as never)).toBeNull()
+    expect(selectFaultSessionId({ session: null } as never)).toBeNull()
+  })
+
+  it("the title: the label with the fault kind's words (no raw code, no missing key); without a FAULT session, the type's own title", () => {
+    expect(eventTitle(t, cleared, 'SES-110B')).toBe(still(en.common.faultKind.CAPTURE_FAULT))
+    expect(eventTitle(t, cleared, 'SES-110B')).not.toMatch(/CAPTURE_FAULT/)
+    expect(eventTitle(t, cleared, null)).toBe(en.common.eventType.FAULT_CLEARED)
+    expect(eventTitle(t, cleared)).toBe(en.common.eventType.FAULT_CLEARED)
+    expect(getMissingI18nKeys()).toEqual([])
   })
 })

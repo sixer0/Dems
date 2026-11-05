@@ -99,22 +99,30 @@ export const SessionOutcome = { SEALED: 'SEALED', INCOMPLETE: 'INCOMPLETE' } as 
 export type SessionOutcome = ValueOf<typeof SessionOutcome>;
 
 /**
- * The 8 §5.3 gate checks, in display order, plus the first-two-channel mic pair of the v2 track
+ * The §5.3 gate checks, in display order, plus the first-two-channel mic pair of the v2 track
  * model (register SH-03; OD-01 T1; D61 of 2026-11-04). `MIC_PRIMARY`/`MIC_STANDBY` are kept as the
  * IDs of stored pre-check items — the data migration renames what they CHECK: the input on channel
  * `MIC-01` (the transcribed channel, once PRIMARY) and the input on channel `MIC-02` (once STANDBY).
- * Since blueprint row 133 (decision D101(2)) `PRECHECK_ORDER` — still eight checks — holds the pair;
+ * Since blueprint row 133 (decision D101(2)) `PRECHECK_ORDER` holds the pair;
  * `MIC_1`/`MIC_2` stay in the ID set because stored pre-check items and older clients name them,
  * and `evaluatePrecheck` still answers them.
+ * Audit fix row 83 (DF-03; D15(c), D22(5)): the gate covers the four lenses and the four mic channels
+ * of the plane (D60/D61) - `LENS_3`/`LENS_4` read tracks `VIDEO-03`/`VIDEO-04`, `MIC_3`/`MIC_4` read
+ * channels `MIC-03`/`MIC-04` - so `PRECHECK_ORDER` holds twelve checks. A stored eight-item pre-check
+ * still parses: the IDs are only added.
  */
 export const PrecheckCheckId = {
   CORE: 'CORE',
   LENS_1: 'LENS_1',
   LENS_2: 'LENS_2',
+  LENS_3: 'LENS_3',
+  LENS_4: 'LENS_4',
   MIC_1: 'MIC_1',
   MIC_2: 'MIC_2',
   MIC_PRIMARY: 'MIC_PRIMARY',
   MIC_STANDBY: 'MIC_STANDBY',
+  MIC_3: 'MIC_3',
+  MIC_4: 'MIC_4',
   STORAGE: 'STORAGE',
   TIME: 'TIME',
   SECURITY: 'SECURITY',
@@ -124,9 +132,13 @@ export const PRECHECK_ORDER = [
   PrecheckCheckId.CORE,
   PrecheckCheckId.LENS_1,
   PrecheckCheckId.LENS_2,
+  PrecheckCheckId.LENS_3, // audit fix row 83 (DF-03)
+  PrecheckCheckId.LENS_4, // audit fix row 83
   // Role-keyed since task 3 row 133 (decision D101(2)): web and mobile moved together. `MIC_1` / `MIC_2` stay valid IDs of stored items.
   PrecheckCheckId.MIC_PRIMARY,
   PrecheckCheckId.MIC_STANDBY,
+  PrecheckCheckId.MIC_3, // audit fix row 83 (DF-03)
+  PrecheckCheckId.MIC_4, // audit fix row 83
   PrecheckCheckId.STORAGE,
   PrecheckCheckId.TIME,
   PrecheckCheckId.SECURITY,
@@ -562,6 +574,13 @@ export const AuditType = {
   // `apps/core-server/src/core/audit-details.ts`: the device id, the instant the token dies and the
   // operation - never the token, the URL, an address or a credential.
   CAMERA_PREVIEW_OPENED: 'CAMERA_PREVIEW_OPENED',
+  // Audit fix row 84 (DF-24, DF-25; decision D23(1,2)): two types, written by the Core's own timer
+  // (the capture-discovery sweep) when the camera network link of the stored interface goes down and
+  // when it comes back. Closed detail keys in `apps/core-server/src/core/audit-details.ts` (row 85):
+  // the previous link state, and on the up row the milliseconds the link was down - never an
+  // interface name or an address.
+  CAMERA_LINK_DOWN: 'CAMERA_LINK_DOWN',
+  CAMERA_LINK_UP: 'CAMERA_LINK_UP',
 } as const;
 export type AuditType = ValueOf<typeof AuditType>;
 
@@ -677,6 +696,9 @@ export const AUDIT_TYPE_CATEGORY = {
   CAPTURE_DEVICE_RETIRED: 'SECURITY',
   // Decisions D51 / D53: one entry, in an EXISTING category - DEVICE, as the other camera facts.
   CAMERA_PREVIEW_OPENED: 'DEVICE',
+  // Audit fix row 84 (DF-24, DF-25): two entries, in an EXISTING category - DEVICE, as the other camera facts.
+  CAMERA_LINK_DOWN: 'DEVICE',
+  CAMERA_LINK_UP: 'DEVICE',
 } as const satisfies Record<AuditType, AuditCategory>;
 
 // ── Operational events (Recent Events, bell, timeline sources) ──────────────────────────

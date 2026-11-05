@@ -11,6 +11,13 @@ interface ImportMetaEnv {
    * `http://127.0.0.1:4400`. Read through `src/lib/core-endpoint.ts`, never directly.
    */
   readonly VITE_DEMS_CORE_ORIGIN?: string
+  /**
+   * The production console lock (audit register S1/S5; D25 N3, D29 Q6): exactly `1` in the
+   * `dems-console` unit (`Environment=VITE_DEMS_PRODUCTION_LOCK=1`). The console then runs LIVE and
+   * offers no Simulated mode. Any other value, or absent (lanes, developer runs, tests), is off.
+   * Read through `src/runtime/boot.ts`, never directly.
+   */
+  readonly VITE_DEMS_PRODUCTION_LOCK?: string
 }
 
 interface ImportMeta {

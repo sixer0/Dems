@@ -5,6 +5,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  AUDIO_FILE_MEDIA_TYPE,
+  AUDIO_FILE_TRACK_IDS,
   CAPTURE_SOURCE_SLOTS,
   EXAMPLE_SOURCE_ROWS,
   EvidencePackageError,
@@ -25,11 +27,17 @@ import {
   MANIFEST_V2_FIELDS,
   MANIFEST_V2_OPTIONAL_FIELDS,
   MANIFEST_V2_SCHEMA_ID,
+  MANIFEST_V2_1_SCHEMA_ID,
+  MANIFEST_V2_SCHEMA_IDS,
+  MANIFEST_AUDIO_TRACK_MISSING_REASONS,
+  PAIR_MIC_CHANNELS,
   ManifestV2ExportBlockSchema,
   ManifestV2Schema,
   PackageFile,
   UnsignedManifestV2Schema,
   attachSignature,
+  audioFileName,
+  audioFilePath,
   buildUnsignedManifest,
   cameraFilePath,
   canonicalJson,
@@ -38,13 +46,18 @@ import {
   detachedSignatureOf,
   exampleManifestInput,
   fileTimeMsOfTapSample,
+  fragmentsJsonFilesOf,
   fragmentsJsonMatchesManifest,
+  isSealedAudioTrackList,
+  manifestSchemaIdOf,
   manifestCanonicalBody,
   manifestHashMatches,
   manifestSignedMessage,
   manifestSourceClassOfAdapterKind,
   nextFragmentChainHash,
   packageFolderName,
+  pairedMicChannelOfAudioTrack,
+  pairedVideoTrackOfAudioTrack,
   parseDetachedSignature,
   parseFragmentsJson,
   parseManifestV2,
@@ -52,9 +65,15 @@ import {
   serializeFragmentsJson,
   serializeManifest,
   sessionSourceClasses,
+  type ManifestAudioFile,
+  type ManifestAudioTrackInput,
+  type ManifestAudioTrackMissing,
+  type ManifestFile,
   type ManifestV2,
+  type ManifestV2Input,
   type SessionCaptureSourceRow,
 } from '../src/evidence-package';
+import { AUDIO_TRACK_IDS } from '../src/domain';
 import {
   AUDIO_ONE_CAPTURE_GROUP_REPORT,
   VERIFY_NOTICE,
@@ -66,7 +85,7 @@ import {
   verifyPackageV2,
 } from '../src/evidence-verify';
 import { TRANSCRIPT_AUDIO_DAY_SAMPLES, TRANSCRIPT_LISTED_RUNS_MAX, TranscriptDocumentSchema, TranscriptSegmentSchema } from '../src/api';
-import { AUDIO_INSERTED_SILENCE_SENTENCE } from '../src/sim';
+import { AUDIO_INSERTED_SILENCE_SENTENCE, MIC_CHANNEL_IDS } from '../src/sim';
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -149,6 +168,37 @@ describe('layout (spec §A.1, §A.2)', () => {
     ]);
     expect(declaredPackageFiles({ transcript: false }).some((file) => file.startsWith('transcript/'))).toBe(false);
   });
+
+  it('D5 (S5 §5.1, N-16..N-19): names the audio file of each pair; without `audioTracks` no audio file is declared, so every caller of before gets its list of before', () => {
+    expect(audioFileName('AUDIO-03')).toBe('AUDIO-03.m4a');
+    expect(audioFilePath('AUDIO-03')).toBe('fragments/AUDIO-03.m4a');
+    expect(AUDIO_FILE_MEDIA_TYPE).toBe('audio/mp4');
+    // The pair rule (N-04): VIDEO-0N <-> MIC-0N <-> AUDIO-0N, by number; the ids are the domain's.
+    expect([...AUDIO_FILE_TRACK_IDS]).toEqual([...AUDIO_TRACK_IDS]);
+    expect([...PAIR_MIC_CHANNELS]).toEqual([...MIC_CHANNEL_IDS]);
+    expect(AUDIO_FILE_TRACK_IDS.map((id) => [pairedMicChannelOfAudioTrack(id), pairedVideoTrackOfAudioTrack(id)])).toEqual([
+      ['MIC-01', 'VIDEO-01'],
+      ['MIC-02', 'VIDEO-02'],
+      ['MIC-03', 'VIDEO-03'],
+      ['MIC-04', 'VIDEO-04'],
+    ]);
+    expect(isSealedAudioTrackList(['AUDIO-01', 'AUDIO-03'])).toBe(true);
+    for (const list of [[], ['AUDIO-02', 'AUDIO-01'], ['AUDIO-01', 'AUDIO-01'], ['VIDEO-01'], ['AUDIO-05']]) expect(isSealedAudioTrackList(list), list.join()).toBe(false);
+    // The hinge: no option = the very list of before (legacy callers, legacy packages).
+    expect(declaredPackageFiles({ transcript: true, audioTracks: undefined })).toEqual(declaredPackageFiles({ transcript: true }));
+    expect(declaredPackageFiles({ transcript: true }).some((file) => file.includes('AUDIO'))).toBe(false);
+    expect(declaredPackageFiles({ transcript: false, tracks: ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'], audioTracks: [...AUDIO_FILE_TRACK_IDS] }).slice(3, 12)).toEqual([
+      'fragments/VIDEO-01.mp4',
+      'fragments/VIDEO-02.mp4',
+      'fragments/VIDEO-03.mp4',
+      'fragments/VIDEO-04.mp4',
+      'fragments/AUDIO-01.m4a',
+      'fragments/AUDIO-02.m4a',
+      'fragments/AUDIO-03.m4a',
+      'fragments/AUDIO-04.m4a',
+      'fragments/fragments.json',
+    ]);
+  });
 });
 
 describe('the 128 field definitions (spec §B, erratum PE-124-05)', () => {
@@ -227,6 +277,14 @@ describe('the schema is strict', () => {
     expect(ManifestV2Schema.safeParse({ ...manifest, schema: 'dems.evidence-manifest/1' }).success).toBe(false);
     expect(ManifestV2Schema.safeParse({ ...manifest, manifestVersion: 1 }).success).toBe(false);
     expect(MANIFEST_V2_SCHEMA_ID).toBe('dems.evidence-manifest/2');
+    // D5 (D30 K-2): THE VERSION STEP IS PINNED - field 1 steps to /2.1, field 5 stays 2; nothing else is a v2 id.
+    expect(MANIFEST_V2_1_SCHEMA_ID).toBe('dems.evidence-manifest/2.1');
+    expect([...MANIFEST_V2_SCHEMA_IDS]).toEqual(['dems.evidence-manifest/2', 'dems.evidence-manifest/2.1']);
+    expect(manifest.schema).toBe(MANIFEST_V2_SCHEMA_ID);
+    expect(manifest.manifestVersion).toBe(2);
+    expect(ManifestV2Schema.safeParse({ ...manifest, schema: 'dems.evidence-manifest/3' }).success).toBe(false);
+    // A manifest without a D5 member that names the stepped id is refused (and the other way round, in the D5 block below).
+    expect(ManifestV2Schema.safeParse({ ...manifest, schema: MANIFEST_V2_1_SCHEMA_ID }).success).toBe(false);
   });
 
   it('holds the rules between fields', () => {
@@ -709,6 +767,28 @@ describe('row V4: `audio.absentOnRestart`, the one optional member (fields 129-1
       [156, 'audio.samplesNotReceived[].openRunFromSample', 'sealed'],
       [157, 'audio.samplesNotReceived[].insertedRuns[].fromSample', 'sealed'],
       [158, 'audio.samplesNotReceived[].insertedRuns[].samples', 'sealed'],
+      // D5 (audit 2026-11-05 row 145; decisions D27, D28, D30; spec S5 §5.2): + the fifth, sixth and seventh optional members, 30 -> 51 optional fields.
+      [159, 'audioTracks[].trackId', 'sealed'],
+      [160, 'audioTracks[].micChannel', 'sealed'],
+      [161, 'audioTracks[].micDeviceId', 'sealed'],
+      [162, 'audioTracks[].containsIn', 'sealed'],
+      [163, 'audioTracks[].file', 'sealed'],
+      [164, 'audioTracks[].mediaType', 'sealed'],
+      [165, 'audioTracks[].codec', 'sealed'],
+      [166, 'audioTracks[].bytes', 'sealed'],
+      [167, 'audioTracks[].durationMs', 'sealed'],
+      [168, 'audioTracks[].sha256', 'sealed'],
+      [169, 'audioTracks[].sha256Plain', 'sealed'],
+      [170, 'audioTracks[].fragmentChainHead', 'sealed'],
+      [171, 'audioTracks[].fragmentCount', 'sealed'],
+      [172, 'audioTracks[].sourceClass', 'sealed'],
+      [173, 'audioFiles[].trackId', 'sealed'],
+      [174, 'audioFiles[].fragments', 'sealed'],
+      [175, 'audioTracksMissing[].trackId', 'sealed'],
+      [176, 'audioTracksMissing[].micChannel', 'sealed'],
+      [177, 'audioTracksMissing[].micDeviceId', 'sealed'],
+      [178, 'audioTracksMissing[].silentIn', 'sealed'],
+      [179, 'audioTracksMissing[].reason', 'sealed'],
     ]);
     const required = new Set(MANIFEST_V2_FIELDS.map((field) => field.path));
     for (const field of MANIFEST_V2_OPTIONAL_FIELDS) expect(required.has(field.path), field.path).toBe(false);
@@ -1413,5 +1493,247 @@ describe('row V4: `audio.absentOnRestart`, the one optional member (fields 129-1
     // The bounds are the manifest's, and the description of the statement holds THE FIXED SENTENCE word for word.
     expect([TRANSCRIPT_AUDIO_DAY_SAMPLES, TRANSCRIPT_LISTED_RUNS_MAX]).toEqual([MANIFEST_AUDIO_DAY_SAMPLES, MANIFEST_AUDIO_INSERTED_RUNS_MAX]);
     expect(TranscriptDocumentSchema.shape.audioNotSampleContinuous.description).toContain(AUDIO_INSERTED_SILENCE_SENTENCE);
+  });
+});
+
+// Audit 2026-11-05 row 145 (D5; decisions D27, D28, D30 K-2 / K-3; spec S5 §5.1-5.2): the evidence
+// contract of the camera-microphone pairs - `audioTracks` / `audioFiles` (fields 159-174), the
+// missing-microphone statement `audioTracksMissing` (fields 175-179) and the schema version step
+// `/2.1`. Packages sealed before D5 parse, digest and serialise unchanged.
+describe('row 145 (D5): the audio file of each pair, the missing-microphone statement, the version step', () => {
+  /** The digests of the legacy example as they were BEFORE row 145 (measured on the worktree at 53513b0c before the edit). */
+  const LEGACY = {
+    manifestSha256: 'aa3df19995ab230da9efa8e96c06cad4e34508108a4a56375fcf3da7034f64f1',
+    bytesSha256: '25ab389c0c76c5a2ca3d2031d27ba1d16e63f264758459d7fc888f328d8dd825',
+    fragmentsJsonSha256: '4345eaa30feb81f12316c9f5faa8bf6970aff14e2db1c760f05435cce7f419be',
+    restartGapManifestSha256: '4441a01893a9a443d77bf72fcf3a97db76e785ff90ca28be9f9a5c1c8f19bb8f',
+  };
+  const sha = async (bytes: Uint8Array): Promise<string> => {
+    const { sha256 } = await import('@noble/hashes/sha2.js');
+    const { bytesToHex } = await import('@noble/hashes/utils.js');
+    return bytesToHex(sha256(bytes));
+  };
+  /** The four pairs of the production baseline (N-10): channel N holds a registry microphone of another number. */
+  const MIC_OF_CHANNEL = { 'MIC-01': 'MIC-03', 'MIC-02': 'MIC-04', 'MIC-03': 'MIC-05', 'MIC-04': 'MIC-06' } as const;
+  const ROWS_4X4: readonly SessionCaptureSourceRow[] = [
+    ...(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const).map((slot, index) => ({ slot, deviceId: `CAM-0${index + 3}`, adapterKind: 'FAKE' })),
+    ...(Object.entries(MIC_OF_CHANNEL) as [string, string][]).map(([slot, deviceId]) => ({ slot, deviceId, adapterKind: 'FAKE' })),
+  ];
+  type VideoId = 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04';
+  type AudioId = (typeof AUDIO_FILE_TRACK_IDS)[number];
+  const audioFile = (trackId: AudioId, from: ManifestFile): ManifestAudioFile => ({ trackId, fragments: from.fragments.map((fragment) => ({ ...fragment, keyframe: false })) });
+  const audioTrack = (trackId: AudioId, file: ManifestAudioFile, videos: readonly VideoId[]): ManifestAudioTrackInput => ({
+    trackId,
+    micChannel: pairedMicChannelOfAudioTrack(trackId),
+    micDeviceId: MIC_OF_CHANNEL[pairedMicChannelOfAudioTrack(trackId)],
+    containsIn: videos.includes(pairedVideoTrackOfAudioTrack(trackId)) ? [pairedVideoTrackOfAudioTrack(trackId)] : [],
+    file: audioFileName(trackId),
+    mediaType: AUDIO_FILE_MEDIA_TYPE,
+    codec: 'AAC-LC mono 48 kHz',
+    bytes: 2 * 41_482,
+    durationMs: 4_000,
+    sha256: 'a'.repeat(63) + String(AUDIO_FILE_TRACK_IDS.indexOf(trackId)),
+    sha256Plain: 'b'.repeat(64),
+    fragmentChainHead: file.fragments[file.fragments.length - 1]?.chainHash ?? null,
+    fragmentCount: file.fragments.length,
+  });
+  /** A D5 input: the cameras of `videos`, the audio files of `audios`, the statements of `missing`. */
+  const d5Input = (videos: readonly VideoId[], audios: readonly AudioId[], missing: readonly ManifestAudioTrackMissing[] = []): ManifestV2Input => {
+    const base = exampleManifestInput();
+    const [track, file] = [base.tracks[0], base.files[0]] as [ManifestV2Input['tracks'][number], ManifestFile];
+    const tracks = videos.map((trackId, index) => ({ ...track, trackId, deviceId: `CAM-0${VIDEO_INDEX[trackId] + 3}`, file: `${trackId}.mp4`, sha256: `${'c'.repeat(63)}${index}` }));
+    const files = videos.map((trackId) => ({ ...file, trackId }));
+    const audioFiles = audios.map((trackId) => audioFile(trackId, file));
+    const members = {
+      ...(audios.length > 0 ? { audioTracks: audios.map((trackId, index) => audioTrack(trackId, audioFiles[index] as ManifestAudioFile, videos)), audioFiles } : {}),
+      ...(missing.length > 0 ? { audioTracksMissing: [...missing] } : {}),
+    };
+    const transcribed = audios.includes('AUDIO-01') && videos.includes('VIDEO-01') ? ['VIDEO-01' as const] : [];
+    return {
+      ...base,
+      schema: manifestSchemaIdOf(members),
+      tracks,
+      files,
+      audio: { ...base.audio, containsIn: transcribed, sourceIntervals: [{ seq: 1, micDeviceId: 'MIC-03', role: 'PRIMARY', fromMs: 21, toMs: 4_000, reason: 'START', switchedBy: null }] },
+      ...members,
+    };
+  };
+  const VIDEO_INDEX: Record<VideoId, number> = { 'VIDEO-01': 0, 'VIDEO-02': 1, 'VIDEO-03': 2, 'VIDEO-04': 3 };
+  const ALL_VIDEO: readonly VideoId[] = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'];
+  const seal = (input: ManifestV2Input): ManifestV2 => attachSignature(buildUnsignedManifest(input, ROWS_4X4), FILLER_SIGNATURE);
+  const refused = (input: unknown): readonly string[] => {
+    try {
+      seal(input as ManifestV2Input);
+    } catch (error) {
+      expect(error).toBeInstanceOf(EvidencePackageError);
+      return (error as EvidencePackageError).members;
+    }
+    return ['accepted'];
+  };
+  const MISSING_03: ManifestAudioTrackMissing = { trackId: 'AUDIO-03', micChannel: 'MIC-03', micDeviceId: 'MIC-05', silentIn: ['VIDEO-03'], reason: 'NOT_OPENED' };
+
+  it('A PACKAGE SEALED BEFORE D5 IS UNCHANGED: no D5 key, schema /2, the same digest, bytes and fragments.json as before row 145, V-01 PASS', async () => {
+    const sealed = sealedExample();
+    for (const key of ['audioTracks', 'audioFiles', 'audioTracksMissing']) expect(key in sealed, key).toBe(false);
+    expect(sealed.schema).toBe(MANIFEST_V2_SCHEMA_ID);
+    expect(manifestSchemaIdOf(sealed)).toBe(MANIFEST_V2_SCHEMA_ID);
+    expect(sealed.manifestSha256).toBe(LEGACY.manifestSha256);
+    expect(await sha(serializeManifest(sealed))).toBe(LEGACY.bytesSha256);
+    expect(await sha(serializeFragmentsJson(sealed.files))).toBe(LEGACY.fragmentsJsonSha256);
+    expect(await sha(serializeFragmentsJson(sealed.files, []))).toBe(LEGACY.fragmentsJsonSha256);
+    expect(fragmentsJsonFilesOf(sealed)).toEqual(sealed.files);
+    const input = exampleManifestInput();
+    const gap = attachSignature(
+      buildUnsignedManifest({ ...input, audio: { ...input.audio, absentOnRestart: [{ earlierAttempt: 1, laterAttempt: 2, absentAtLeastMs: 1, absentAtMostMs: 2 }] } }, EXAMPLE_SOURCE_ROWS),
+      FILLER_SIGNATURE,
+    );
+    expect(gap.manifestSha256).toBe(LEGACY.restartGapManifestSha256);
+    // `undefined` for each D5 member seals the SAME manifest as leaving it out.
+    const handedUndefined = { ...input, audioTracks: undefined, audioFiles: undefined, audioTracksMissing: undefined } as ManifestV2Input;
+    expect(attachSignature(buildUnsignedManifest(handedUndefined, EXAMPLE_SOURCE_ROWS), FILLER_SIGNATURE)).toEqual(sealed);
+    const text = JSON.stringify(sealed);
+    const v01 = await verifyPackageV2(
+      {
+        reader: {
+          entry: async (path) => (path === PackageFile.MANIFEST ? { kind: 'FILE', size: text.length } : { kind: 'ABSENT' }),
+          readText: async (path) => (path === PackageFile.MANIFEST ? text : Promise.reject(new Error('absent'))),
+          readRange: async () => Promise.reject(new Error('absent')),
+          list: async () => [],
+        },
+        opener: null,
+        readCertificate: () => null,
+        verifySignature: () => false,
+      },
+      { scope: 'MANIFEST' },
+    );
+    expect(v01.checks.find((check) => check.id === 'V-01')?.status).toBe('PASS');
+  });
+
+  it('a 4+4 package (AC-4.10 shape) is accepted under /2.1: four audio files, each in its own camera, AUDIO-01 = the transcribed track; the members are inside the digest', () => {
+    const sealed = seal(d5Input(ALL_VIDEO, AUDIO_FILE_TRACK_IDS));
+    expect(sealed.schema).toBe(MANIFEST_V2_1_SCHEMA_ID);
+    expect(sealed.manifestVersion).toBe(2);
+    expect(sealed.audioTracks?.map((record) => [record.trackId, record.micChannel, record.micDeviceId, record.containsIn, record.file, record.sourceClass])).toEqual([
+      ['AUDIO-01', 'MIC-01', 'MIC-03', ['VIDEO-01'], 'AUDIO-01.m4a', 'FAKE'],
+      ['AUDIO-02', 'MIC-02', 'MIC-04', ['VIDEO-02'], 'AUDIO-02.m4a', 'FAKE'],
+      ['AUDIO-03', 'MIC-03', 'MIC-05', ['VIDEO-03'], 'AUDIO-03.m4a', 'FAKE'],
+      ['AUDIO-04', 'MIC-04', 'MIC-06', ['VIDEO-04'], 'AUDIO-04.m4a', 'FAKE'],
+    ]);
+    expect(sealed.audio.containsIn).toEqual(['VIDEO-01']);
+    expect(parseManifestV2(JSON.parse(decode(serializeManifest(sealed))))).toEqual(sealed);
+    expect(manifestHashMatches(sealed)).toBe(true);
+    // Inside the digest: removing the files, or changing one audio hash, breaks the manifest's own hash.
+    const stripped: Record<string, unknown> = { ...sealed };
+    delete stripped.audioTracks;
+    delete stripped.audioFiles;
+    expect(computeManifestSha256(stripped)).not.toBe(sealed.manifestSha256);
+    const altered = clone(sealed);
+    (altered.audioTracks as { sha256: string }[])[2]!.sha256 = 'f'.repeat(64);
+    expect(manifestHashMatches(altered)).toBe(false);
+    // An audio track whose camera is not in the package is accepted with containsIn [] (AUDIO-04 without VIDEO-04).
+    expect(seal(d5Input(['VIDEO-01', 'VIDEO-02', 'VIDEO-03'], AUDIO_FILE_TRACK_IDS)).audioTracks?.[3]?.containsIn).toEqual([]);
+  });
+
+  it('fragments.json carries the audio files AFTER the camera files, and V-02 compares over files then audioFiles', () => {
+    const sealed = seal(d5Input(ALL_VIDEO, AUDIO_FILE_TRACK_IDS));
+    const bytes = serializeFragmentsJson(sealed.files, sealed.audioFiles);
+    const parsed = parseFragmentsJson(decode(bytes));
+    expect(parsed.files.map((file) => file.trackId)).toEqual([...ALL_VIDEO, ...AUDIO_FILE_TRACK_IDS]);
+    expect(fragmentsJsonMatchesManifest(decode(bytes), fragmentsJsonFilesOf(sealed))).toBe(true);
+    expect(fragmentsJsonMatchesManifest(decode(bytes), sealed.files)).toBe(false);
+    expect(fragmentsJsonMatchesManifest(decode(serializeFragmentsJson(sealed.files)), fragmentsJsonFilesOf(sealed))).toBe(false);
+    expect(() => serializeFragmentsJson(sealed.files, [...(sealed.audioFiles ?? [])].reverse())).toThrow(EvidencePackageError);
+  });
+
+  it('the class of a pair microphone comes from its start row: field 172 is computed, a microphone the session did not record is refused, and the class joins developmentSources', () => {
+    const input = d5Input(ALL_VIDEO, ['AUDIO-01', 'AUDIO-02']);
+    const foreign = { ...input, audioTracks: input.audioTracks?.map((record, index) => (index === 1 ? { ...record, micDeviceId: 'MIC-99' } : record)) };
+    expect(refused(foreign)).toEqual(['audioTracks.1.micDeviceId']);
+    const smuggled = { ...input, audioTracks: input.audioTracks?.map((record) => ({ ...record, sourceClass: 'PRODUCTION' })) };
+    expect(seal(smuggled as ManifestV2Input).audioTracks?.map((record) => record.sourceClass)).toEqual(['FAKE', 'FAKE']);
+    // A PRODUCTION session whose pair-2 microphone is a development source: the flag must say so.
+    const rows = ROWS_4X4.map((row) => ({ ...row, adapterKind: row.slot === 'MIC-02' ? 'FAKE' : 'ONVIF_RTSP' }));
+    const mixed = attachSignature(buildUnsignedManifest({ ...input, demo: false, integrity: 'REAL' }, rows), FILLER_SIGNATURE);
+    expect(mixed.audioTracks?.map((record) => record.sourceClass)).toEqual(['PRODUCTION', 'FAKE']);
+    expect(mixed.developmentSources).toBe(true);
+    expect(ManifestV2Schema.safeParse({ ...mixed, developmentSources: false }).success).toBe(false);
+  });
+
+  it('refuses what breaks the pair rules, the one-to-one order or the version step (S5 §5.2 rules 0-4)', () => {
+    const input = d5Input(ALL_VIDEO, AUDIO_FILE_TRACK_IDS);
+    const tracks = input.audioTracks as ManifestAudioTrackInput[];
+    const files = input.audioFiles as ManifestAudioFile[];
+    const withTrack = (index: number, patch: object): ManifestV2Input => ({ ...input, audioTracks: tracks.map((record, at) => (at === index ? { ...record, ...patch } : record)) });
+    const cases: readonly [string, unknown, readonly string[]][] = [
+      ['D5 members under the old id', { ...input, schema: MANIFEST_V2_SCHEMA_ID }, ['schema']],
+      ['audioTracks without audioFiles', { ...input, audioFiles: undefined }, ['audioFiles']],
+      ['audioFiles without audioTracks', { ...input, audioTracks: undefined, schema: MANIFEST_V2_SCHEMA_ID }, ['audioTracks']],
+      ['an empty list', { ...input, audioTracks: [], audioFiles: [] }, ['audioTracks', 'audioFiles']],
+      ['out of order', { ...input, audioTracks: [...tracks].reverse(), audioFiles: [...files].reverse() }, ['audioTracks']],
+      ['a track twice', { ...input, audioTracks: [tracks[0], tracks[0]], audioFiles: [files[0], files[0]] }, ['audioTracks', 'audioTracks.1.micDeviceId']],
+      ['a foreign channel', withTrack(2, { micChannel: 'MIC-01' }), ['audioTracks.2.micChannel']],
+      ['a foreign camera', withTrack(2, { containsIn: ['VIDEO-02'] }), ['audioTracks.2.containsIn']],
+      ['its camera left out', withTrack(2, { containsIn: [] }), ['audioTracks.2.containsIn']],
+      ['a foreign file name', withTrack(2, { file: 'MIC-03.m4a' }), ['audioTracks.2.file']],
+      ['one microphone on two channels', withTrack(2, { micDeviceId: 'MIC-04' }), ['audioTracks.2.micDeviceId']],
+      ['a video media type', withTrack(2, { mediaType: 'video/mp4' }), ['audioTracks.2.mediaType']],
+      ['a foreign member', withTrack(2, { channel: 3 }), ['audioTracks.2']],
+      ['files not following the tracks', { ...input, audioFiles: [files[0], files[2], files[1], files[3]] }, ['audioFiles.1.trackId', 'audioFiles.2.trackId']],
+      ['fewer file records', { ...input, audioFiles: files.slice(0, 3) }, ['audioFiles']],
+      ['a video file id in audioFiles', { ...input, audioFiles: [{ ...files[0], trackId: 'VIDEO-01' }, ...files.slice(1)] }, ['audioFiles.0.trackId']],
+      ['audio.containsIn other than AUDIO-01', { ...input, audio: { ...input.audio, containsIn: ['VIDEO-01', 'VIDEO-02'] } }, ['audio.containsIn']],
+    ];
+    for (const [name, value, members] of cases) expect(refused(value), name).toEqual(members);
+  });
+
+  it('THE MISSING-MICROPHONE STATEMENT (D30 K-3): a pair whose microphone did not record is stated, its camera holds the silent track, and the package is still sealed', () => {
+    // Pair 3's microphone did not open: three audio files, one statement, schema /2.1.
+    const sealed = seal(d5Input(ALL_VIDEO, ['AUDIO-01', 'AUDIO-02', 'AUDIO-04'], [MISSING_03]));
+    expect(sealed.schema).toBe(MANIFEST_V2_1_SCHEMA_ID);
+    expect(sealed.audioTracksMissing).toEqual([MISSING_03]);
+    expect(declaredPackageFiles({ transcript: false, tracks: ALL_VIDEO, audioTracks: sealed.audioTracks?.map((record) => record.trackId) }).filter((file) => file.includes('AUDIO'))).toEqual([
+      'fragments/AUDIO-01.m4a',
+      'fragments/AUDIO-02.m4a',
+      'fragments/AUDIO-04.m4a',
+    ]);
+    // No microphone sat on channel 2: NOT_ASSIGNED with no device.
+    expect(seal(d5Input(ALL_VIDEO, ['AUDIO-01', 'AUDIO-03', 'AUDIO-04'], [{ trackId: 'AUDIO-02', micChannel: 'MIC-02', micDeviceId: null, silentIn: ['VIDEO-02'], reason: 'NOT_ASSIGNED' }])).audioTracksMissing?.[0]?.reason).toBe('NOT_ASSIGNED');
+    // THE TRANSCRIBED MICROPHONE did not open: no AUDIO-01 file, audio.containsIn is [] (the silent track is not its sound), still /2.1.
+    const noPrimary = seal(d5Input(ALL_VIDEO, ['AUDIO-02', 'AUDIO-03', 'AUDIO-04'], [{ trackId: 'AUDIO-01', micChannel: 'MIC-01', micDeviceId: 'MIC-03', silentIn: ['VIDEO-01'], reason: 'NOT_OPENED' }]));
+    expect(noPrimary.audio.containsIn).toEqual([]);
+    // Every microphone failed: no audio file at all, four statements; the statement alone steps the schema.
+    const none = d5Input(ALL_VIDEO, [], AUDIO_FILE_TRACK_IDS.map((trackId, index) => ({ trackId, micChannel: PAIR_MIC_CHANNELS[index]!, micDeviceId: `MIC-0${index + 3}`, silentIn: [ALL_VIDEO[index]!], reason: 'NOT_OPENED' as const })));
+    expect(none.schema).toBe(MANIFEST_V2_1_SCHEMA_ID);
+    expect(seal(none).audioTracksMissing).toHaveLength(4);
+    expect([...MANIFEST_AUDIO_TRACK_MISSING_REASONS]).toEqual(['NOT_ASSIGNED', 'NOT_OPENED']);
+  });
+
+  it('refuses a statement that cannot be: stated missing AND filed, a foreign channel or camera, a device on NOT_ASSIGNED, none on NOT_OPENED, a foreign reason, out of order, the old id, sound claimed for a missing AUDIO-01', () => {
+    const three: readonly AudioId[] = ['AUDIO-01', 'AUDIO-02', 'AUDIO-04'];
+    const at = (patch: object): ManifestV2Input => d5Input(ALL_VIDEO, three, [{ ...MISSING_03, ...patch } as ManifestAudioTrackMissing]);
+    const cases: readonly [string, unknown, readonly string[]][] = [
+      ['also filed', d5Input(ALL_VIDEO, AUDIO_FILE_TRACK_IDS, [MISSING_03]), ['audioTracksMissing.0.trackId']],
+      ['a foreign channel', at({ micChannel: 'MIC-04' }), ['audioTracksMissing.0.micChannel']],
+      ['a foreign camera', at({ silentIn: ['VIDEO-04'] }), ['audioTracksMissing.0.silentIn']],
+      ['its camera left out', at({ silentIn: [] }), ['audioTracksMissing.0.silentIn']],
+      ['a device beside NOT_ASSIGNED', at({ reason: 'NOT_ASSIGNED' }), ['audioTracksMissing.0.micDeviceId']],
+      ['no device beside NOT_OPENED', at({ micDeviceId: null }), ['audioTracksMissing.0.micDeviceId']],
+      ['a foreign reason', at({ reason: 'UNPLUGGED' }), ['audioTracksMissing.0.reason']],
+      ['a foreign member', at({ note: 'x' }), ['audioTracksMissing.0']],
+      ['an empty list', { ...d5Input(ALL_VIDEO, three), audioTracksMissing: [] }, ['audioTracksMissing']],
+      // Under the old id the pre-D5 rule "AUDIO-01 lies in at least one camera file" applies again, and the step is refused.
+      ['the old id', { ...d5Input(ALL_VIDEO, [], [MISSING_03]), schema: MANIFEST_V2_SCHEMA_ID }, ['audio.containsIn', 'schema']],
+      [
+        'sound claimed for a missing AUDIO-01',
+        { ...d5Input(ALL_VIDEO, ['AUDIO-02'], [{ trackId: 'AUDIO-01', micChannel: 'MIC-01', micDeviceId: 'MIC-03', silentIn: ['VIDEO-01'], reason: 'NOT_OPENED' }]), audio: { ...d5Input(ALL_VIDEO, ['AUDIO-02']).audio, containsIn: ['VIDEO-01'] } },
+        ['audio.containsIn'],
+      ],
+      [
+        'out of order',
+        d5Input(ALL_VIDEO, ['AUDIO-01', 'AUDIO-02'], ([MISSING_03, { trackId: 'AUDIO-04', micChannel: 'MIC-04', micDeviceId: 'MIC-06', silentIn: ['VIDEO-04'], reason: 'NOT_OPENED' }] as ManifestAudioTrackMissing[]).reverse()),
+        ['audioTracksMissing'],
+      ],
+    ];
+    for (const [name, value, members] of cases) expect(refused(value), name).toEqual(members);
   });
 });

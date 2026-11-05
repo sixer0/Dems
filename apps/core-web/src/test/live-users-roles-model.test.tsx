@@ -25,6 +25,7 @@ import {
   blockedRolesFor,
   changedRowIds,
   isLastAdministrator,
+  isSystemAccount,
   matrixOf,
   permissionsOfRole,
   roleDiff,
@@ -40,6 +41,11 @@ const USERS = (CORE_API_EXAMPLES.listUsers!.responses[200] as Record<string, { v
 const user = (id: string, change: Partial<AdminUser> = {}): AdminUser => ({ ...USERS.find((entry) => entry.id === id)!, ...change })
 
 describe('the model', () => {
+  it('DF-29: only OPR-000 is a system account (the unattributed principal of auto-attach)', () => {
+    expect(isSystemAccount({ id: 'OPR-000' })).toBe(true)
+    for (const entry of USERS) expect(isSystemAccount(entry)).toBe(false)
+  })
+
   it('the stored matrix gives each role its permissions, as the seeded table does (AC-B-17)', () => {
     for (const role of [OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR, OperatorRole.TECHNICIAN]) {
       expect(new Set(permissionsOfRole(MATRIX, role))).toEqual(new Set(ROLE_PERMISSIONS[role]))

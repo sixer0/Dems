@@ -1,4 +1,4 @@
-import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { useState } from 'react'
 import { Card } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
@@ -37,7 +37,10 @@ const selectBanner = (s: SimState) => {
 export function SystemBanner() {
   const { t } = useTranslation()
   const view = useSim(selectBanner)
-  const tone = bannerTone(view)
+  // Audit fix row 104 (DF-21, D25 N3): on a Core in its own capture the services list, the version and the slot this
+  // banner counts are the appliance model's - it names the services and says "Not reported" (no count, no version).
+  const noProducer = useSelfCaptureCore()
+  const tone: Tone = noProducer ? 'default' : bannerTone(view)
   // R8: one pulse per escalation, derived during render (no effect).
   const [track, setTrack] = useState({ tone, pulses: 0 })
   if (track.tone !== tone) {
@@ -54,16 +57,21 @@ export function SystemBanner() {
     >
       <GlowLayer level={1} tone={GLOW[tone]} pulseKey={track.pulses} />
       <span className="sys-banner-dot" aria-hidden="true" />
-      <div className="sys-banner-text">
-        <p className="sys-banner-title">
-          {view.attention === 0 ? t('system.banner.ok') : t('system.banner.attention', { count: view.attention })}
-        </p>
-        {/* Fix wave L (G75d-07): the services list is the appliance model on a Core in its own capture - the banner that counts it says so. */}
-        <SyntheticValuesChip block="system-banner" />
-        <p className="sys-banner-detail">
-          {t('system.banner.detail', { running: view.running, total: view.total, version: view.version, slot: view.slot })}
-        </p>
-      </div>
+      {noProducer ? (
+        <div className="sys-banner-text" data-testid="no-producer-system-banner" data-no-producer-block="system-banner">
+          <p className="sys-banner-title">{t('system.services.title')}</p>
+          <p className="sys-banner-detail">{t('system.noProducer')}</p>
+        </div>
+      ) : (
+        <div className="sys-banner-text">
+          <p className="sys-banner-title">
+            {view.attention === 0 ? t('system.banner.ok') : t('system.banner.attention', { count: view.attention })}
+          </p>
+          <p className="sys-banner-detail">
+            {t('system.banner.detail', { running: view.running, total: view.total, version: view.version, slot: view.slot })}
+          </p>
+        </div>
+      )}
     </Card>
   )
 }

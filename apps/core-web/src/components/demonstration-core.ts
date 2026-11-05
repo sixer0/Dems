@@ -6,9 +6,10 @@ import { isOwnCaptureCoreState, useSim, useSimReady } from '@dems/shared/sim'
  * clock (`isOwnCaptureCoreState` of `@dems/shared/sim` is false) - the simulator's appliance model is what every page shows:
  * its room pictures, its recording, its TPM, its LAN address, its integrity checks.
  *
- * The other half of the rule is `SyntheticValuesChip` (wave L): on a Core in its OWN capture the
- * blocks that still show model values carry "Synthetic demo values". A block is therefore marked on
- * BOTH lanes or it shows a fact of the Core; nothing in between.
+ * The other half of the rule is `NoProducerNotice` / `NoProducerGate` (audit fix row 104, DF-21; it replaced
+ * wave L's "Synthetic demo values" chip): on a Core in its OWN capture a block without a producer reads
+ * "Not reported". A block therefore shows the demonstration (marked), a fact of the Core, or "Not reported";
+ * nothing in between.
  */
 export function useDemonstrationCore(): boolean {
   const ready = useSimReady()

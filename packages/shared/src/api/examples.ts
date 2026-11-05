@@ -103,8 +103,9 @@ const RECORDING_INPUT = {
   profileId: 'STANDARD_1080P25',
 } as const satisfies SessionCreateRequest;
 
-const CHECK_IDS = ['CORE', 'LENS_1', 'LENS_2', 'MIC_1', 'MIC_2', 'STORAGE', 'TIME', 'SECURITY'] as const;
-const CHECK_PASS_VALUES = ['ONLINE', 'READY', 'READY', 'READY', 'READY', 'READY', 'GNSS', 'READY'] as const;
+// Audit fix row 83 (DF-03): the twelve checks of `PRECHECK_ORDER`, in its order - four lenses, four mic channels.
+const CHECK_IDS = ['CORE', 'LENS_1', 'LENS_2', 'LENS_3', 'LENS_4', 'MIC_PRIMARY', 'MIC_STANDBY', 'MIC_3', 'MIC_4', 'STORAGE', 'TIME', 'SECURITY'] as const;
+const CHECK_PASS_VALUES = ['ONLINE', 'READY', 'READY', 'READY', 'READY', 'READY', 'READY', 'READY', 'READY', 'READY', 'GNSS', 'READY'] as const;
 
 const PRECHECK_PASSED: NonNullable<SessionResource['precheck']> = {
   outcome: 'PASS',

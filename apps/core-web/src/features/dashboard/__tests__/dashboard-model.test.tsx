@@ -62,6 +62,14 @@ describe("the Dashboard model", () => {
       expect(toGb(804_000_000_000)).toBe(804)
       expect(formatOneDecimal(3.25)).toBe('3.3')
     })
+
+    // Audit row 109 (DF-18): the bench Core had 384 861 581 312 B free. The formatter gives 0.4, as the card said;
+    // the headline's "0.0" was the count-up held on a hidden page, not the units.
+    it('turns 0.38 TB free into 0.4 TB (one decimal, half up), never 0.0', () => {
+      expect(toTb(384_861_581_312)).toBe(0.4)
+      expect(formatOneDecimal(toTb(384_861_581_312))).toBe('0.4')
+      expect(formatOneDecimal(toTb(380_000_000_000))).toBe('0.4')
+    })
   })
 
   describe('tones', () => {
@@ -399,6 +407,47 @@ describe("the Dashboard event of a start that recorded nothing (G75-11)", () => 
       expect(recordingStartOutcome({ session: null, sessionHistory: [{ ...entry, startedAt: 5 }] }, 'SES-Z2-CLOSED')).toBe('STARTED')
       expect(recordingStartOutcome({ session: null, sessionHistory: [] }, 'SES-UNKNOWN')).toBe('STARTED')
       expect(recordingStartOutcome(state, null)).toBe('STARTED')
+    })
+  })
+
+  // Audit fix row 110b (DF-19 web half, R110-1; D60; UI finding U-07): the Core's boot clears the capture
+  // fault of an earlier run (D84 R-4) and writes FAULT_CLEARED named after the open failed start, which stays
+  // in FAULT until recovery (operation 33). The row read "Fault cleared SES-..." with a green dot beside a
+  // session card that said FAULT. While that session is still in FAULT the row reads
+  // common.faultCleared.sessionStillInFault (the fault's words filled in) with a warning dot.
+  describe('row 110b (DF-19): a fault cleared while its session is still in FAULT', () => {
+    const STILL = (kind: string) => en.common.faultCleared.sessionStillInFault.replace('{{kind}}', kind)
+    function withFaultClearedEvent(sim: Sim): void {
+      const state = sim.store.getState()
+      const sessionId = state.session!.id
+      const last = state.events.at(-1)
+      const event: SimEvent = { id: 'EVT-110B-CLEARED', seq: (last?.seq ?? 0) + 1, at: state.clock.now, type: 'FAULT_CLEARED', severity: 'SUCCESS', message: 'Fault cleared · CAPTURE_FAULT', params: { kind: 'CAPTURE_FAULT', target: null }, sessionId, deviceId: null }
+      act(() => sim.store.setState({ events: [...state.events, event] }))
+    }
+    const clearedRow = async () => {
+      const list = await screen.findByTestId('recent-events', {}, { timeout: 15_000 })
+      return await waitFor(() => {
+        const found = list.querySelector('[data-event-id="EVT-110B-CLEARED"]') as HTMLElement | null
+        expect(found).not.toBeNull()
+        return found!
+      })
+    }
+
+    it('U-07: the row reads the still-in-FAULT label with a warning dot, never a green "Fault cleared"; once the session left FAULT it reads as before', async () => {
+      const sim = mount()
+      setSession(sim, { state: 'FAULT', captureDurable: false, startedAt: null })
+      withFaultClearedEvent(sim)
+      await waitFor(async () => expect(await clearedRow()).toHaveTextContent(STILL(en.common.faultKind.CAPTURE_FAULT)))
+      expect(await clearedRow()).toHaveAttribute('data-still-in-fault', 'true')
+      expect((await clearedRow()).querySelector('[data-tone]')).toHaveAttribute('data-tone', 'warning')
+      expect(await clearedRow()).not.toHaveTextContent('CAPTURE_FAULT')
+
+      // CONTROL: the session is no longer in FAULT (recovered, recording again): the type's own title, the green dot.
+      setSession(sim, { state: 'RECORDING', captureDurable: true })
+      await waitFor(async () => expect(await clearedRow()).not.toHaveTextContent(/still in FAULT/))
+      expect(await clearedRow()).toHaveTextContent(en.common.eventType.FAULT_CLEARED)
+      expect((await clearedRow()).querySelector('[data-tone]')).toHaveAttribute('data-tone', 'success')
+      expect(getMissingI18nKeys()).toEqual([])
     })
   })
 })

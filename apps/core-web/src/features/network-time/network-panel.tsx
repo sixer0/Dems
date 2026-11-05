@@ -2,8 +2,10 @@ import { lazy, Suspense, type ReactNode } from 'react'
 import { Alert, Chip, Skeleton } from '@heroui/react'
 import { Activity, ArrowDown, ArrowUp, EthernetPort, Network, PlugZap, TabletSmartphone, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { SessionState } from '@dems/shared/domain'
 import { useSim } from '@dems/shared/sim'
 import { toneChipProps, type StatusTone } from '@dems/shared/tokens'
+import { NoProducerGate } from '@/components/synthetic-values-chip'
 import { fixed1 } from './model'
 import { NetworkTimePanel } from './panel'
 
@@ -35,6 +37,9 @@ export function NetworkPanel() {
   const lanTone: StatusTone = net.linkUp ? 'success' : 'danger'
   return (
     <NetworkTimePanel id="network" icon={Network} title={t('networkTime.network.title')} bodyClassName="nt-network-body">
+      {/* Audit fix rows 104/107 (DF-21, U-10, register S7): a Core in its own capture has no producer for the LAN,
+          PoE and bandwidth model rows - each reads "Not reported". The operator-device row is the Core's own link state. */}
+      <NoProducerGate block="network-lan">
       <NetRow
         id="lan"
         icon={EthernetPort}
@@ -45,6 +50,8 @@ export function NetworkPanel() {
           {t('networkTime.network.lanDetail', { ip: net.ip, name: net.name, speed: net.speedGbps, gateway: net.gateway })}
         </p>
       </NetRow>
+      </NoProducerGate>
+      <NoProducerGate block="network-poe">
       <NetRow
         id="poe"
         icon={PlugZap}
@@ -73,7 +80,10 @@ export function NetworkPanel() {
           <span className="nt-row-detail">{t('networkTime.network.poeBudget', { draw: fixed1(net.drawW), budget: net.budgetW })}</span>
         </div>
       </NetRow>
-      <BandwidthRow />
+      </NoProducerGate>
+      <NoProducerGate block="network-bandwidth">
+        <BandwidthRow />
+      </NoProducerGate>
       <TabletRow />
     </NetworkTimePanel>
   )
@@ -165,6 +175,8 @@ function BandwidthRow() {
 function TabletRow() {
   const { t } = useTranslation()
   const link = useSim((s) => s.tabletLink.state)
+  // DF-22 (register S11, S13): "Recording continues on the Core" only while a session is RECORDING.
+  const recording = useSim((s) => s.session?.state === SessionState.RECORDING)
   const offline = link === 'OFFLINE'
   return (
     <NetRow
@@ -178,10 +190,10 @@ function TabletRow() {
       }
     >
       {offline ? (
-        <Alert status="warning" className="nt-alert" data-testid="network-time-tablet-alert">
+        <Alert status="warning" className="nt-alert" data-testid="network-time-tablet-alert" data-recording={recording ? 'true' : 'false'}>
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Description>{t('networkTime.network.tabletOffline')}</Alert.Description>
+            <Alert.Description>{t(recording ? 'networkTime.network.tabletOffline' : 'networkTime.network.tabletOfflineIdle')}</Alert.Description>
           </Alert.Content>
         </Alert>
       ) : (

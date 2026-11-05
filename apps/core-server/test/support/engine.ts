@@ -29,6 +29,8 @@ import { captureLog, unitTestConfig, type CapturedLog } from './config';
 import { createRuntimePool } from '../../src/plugins/db';
 import type { Publication } from '../../src/realtime';
 import { engineControl, type EngineControl, type EngineHost, type EngineTimer } from '../../src/engine';
+import { seedDatabase } from '../../src/db/seed/seed';
+import type { ScenarioName } from '@dems/shared/sim';
 
 /** The fixed instant the shared suites use: 2026-10-01 10:00:00 WIB (ENG-20). */
 export const FIXED_NOW = Date.UTC(2026, 9, 1, 3, 0, 0);
@@ -276,4 +278,17 @@ export function countChanges(before: Record<string, number>, after: Record<strin
     if (difference !== 0) changes[table] = difference;
   }
   return changes;
+}
+
+// ── Seeding a scenario (row 95 cycle 2, W91-9) ────────────────────────────────────────────────
+// The same helper `src/engine/__tests__/support.ts` keeps for its own folder; a test of another
+// folder takes it from here (test/static/test-support-imports.test.ts).
+
+export interface SeedTarget {
+  ownerPool(): Pool;
+}
+
+/** Seeds a schema-only clone with a scenario at `now`, as the reset routine would leave it. */
+export async function seedScenario(target: SeedTarget, scenario: ScenarioName, now: number = FIXED_NOW): Promise<void> {
+  await seedDatabase(target.ownerPool(), { now, scenario, target: 'test' });
 }

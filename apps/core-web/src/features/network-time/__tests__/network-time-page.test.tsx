@@ -22,6 +22,7 @@ import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { REDUCED_MOTION_MEDIA_QUERY } from '@/motion'
 import { createAppRouter } from '@/router'
+import { realCore } from '@/test/real-core-bed'
 
 /** Cold route-tree import on a loaded machine can exceed testing-library's 1 s default (P11). */
 const PAGE_WAIT = { timeout: 10_000 }
@@ -209,10 +210,14 @@ describe('Network & Time page (01_specs §14.5.6)', { timeout: 30_000 }, () => {
 
     act(() => sim.actions.setTabletLink('OFFLINE'))
     await waitFor(() => expect(screen.getByTestId('network-time-tablet-state')).toHaveTextContent('Offline'))
-    expect(screen.getByTestId('network-time-tablet-alert')).toHaveTextContent('Recording continues on the Core')
+    // DF-22 (register S11, S12, S13): idle - no "Recording continues" claim on the alert or in the toast.
+    expect(screen.getByTestId('network-time-tablet-alert')).toHaveTextContent(en.networkTime.network.tabletOfflineIdle)
+    expect(screen.getByTestId('network-time-tablet-alert')).not.toHaveTextContent('Recording continues')
     expect(screen.getByTestId('network-time-domain-MANAGEMENT')).toHaveTextContent('Degraded')
     // Wave J (J-S, contract J-S 12): the shared sentence names the operator device, not "the tablet" (a phone may be paired).
     expect(await screen.findByText(en.networkTime.toast.tabletOffline)).toBeInTheDocument()
+    expect(await screen.findByText(en.networkTime.toast.tabletOfflineDetailIdle)).toBeInTheDocument()
+    expect(screen.queryByText(en.networkTime.toast.tabletOfflineDetail)).toBeNull()
 
     act(() => sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' }))
     await waitFor(() => expect(screen.getByTestId('network-time-domain-CAMERA')).toHaveTextContent('Degraded'))
@@ -226,6 +231,31 @@ describe('Network & Time page (01_specs §14.5.6)', { timeout: 30_000 }, () => {
     expect(screen.getByTestId('network-time-banner')).toHaveAttribute('data-network', 'DEGRADED')
     expect(screen.getByTestId('network-time-domain-CAMERA')).toHaveTextContent('Down')
     expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  // Placed after the idle test: the toast queue is module-global and outlives cleanup(), so the idle test's
+  // "Operator device link lost" title must not see a second one from this test.
+  it('keeps the "recording continues" alert and toast detail while a session is RECORDING (DF-22, S13)', async () => {
+    const sim = mount('recording')
+    await screen.findByTestId('page-network-time', {}, PAGE_WAIT)
+    act(() => sim.actions.setTabletLink('OFFLINE'))
+    await waitFor(() => expect(screen.getByTestId('network-time-tablet-alert')).toHaveTextContent(en.networkTime.network.tabletOffline))
+    expect(screen.getByTestId('network-time-tablet-alert')).toHaveAttribute('data-recording', 'true')
+    expect(await screen.findByText(en.networkTime.toast.tabletOfflineDetail)).toBeInTheDocument()
+  })
+
+  // Audit fix rows 104/107 (DF-21, U-10, register S7): Network status on a Core in its own capture - the LAN, PoE and
+  // bandwidth model rows read "Not reported"; the operator-device row stays (the Core's own link state).
+  it('Network status reads "Not reported" for the LAN, PoE and bandwidth rows on a Core in its own capture (U-10)', async () => {
+    const sim = mount()
+    await screen.findByTestId('page-network-time', {}, PAGE_WAIT)
+    expect(screen.getByTestId('network-time-row-lan')).toBeInTheDocument()
+    act(() => realCore(sim))
+    for (const block of ['network-lan', 'network-poe', 'network-bandwidth']) {
+      expect(await screen.findByTestId(`no-producer-${block}`)).toHaveTextContent(en.system.noProducer)
+    }
+    for (const row of ['lan', 'poe', 'bandwidth']) expect(screen.queryByTestId(`network-time-row-${row}`)).toBeNull()
+    expect(screen.getByTestId('network-time-row-tablet')).toBeInTheDocument()
   })
 
   it('under reduced motion the clock digits are plain and the offset chart renders from history (§8, §9.3)', async () => {
@@ -264,6 +294,25 @@ describe('Network & Time page (01_specs §14.5.6)', { timeout: 30_000 }, () => {
     expect(chart).toHaveAccessibleName('Clock offset over the last 3 samples, now +3.0 ms from GNSS')
     expect(await screen.findByTestId('network-time-bandwidth-chart', {}, PAGE_WAIT)).toHaveAttribute('data-points', '2')
     expect(screen.getByTestId('network-time-bandwidth')).toHaveTextContent('12.4 Mbps')
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('row 110b (DF-19): a GNSS fault cleared while the open session is still in FAULT reads the still-in-FAULT label with a warning dot', async () => {
+    stubMatchMedia(true)
+    const sim = mount('recording')
+    await screen.findByTestId('page-network-time', {}, PAGE_WAIT)
+    act(() => {
+      const state = sim.store.getState()
+      const sessionId = state.session!.id
+      const event = { id: 'EVT-110B-NT', seq: (state.events.at(-1)?.seq ?? 0) + 1, at: state.clock.now, type: 'FAULT_CLEARED', severity: 'SUCCESS', message: 'Fault cleared · GNSS_LOSS', params: { kind: 'GNSS_LOSS', target: null }, sessionId, deviceId: null }
+      sim.store.setState({ session: { ...state.session!, state: 'FAULT' } as never, events: [...state.events, event] as never })
+    })
+    await waitFor(() => expect(screen.getAllByTestId('network-time-log-row')[0]).toHaveTextContent('still in FAULT'))
+    const row = screen.getAllByTestId('network-time-log-row')[0]!
+    expect(row).toHaveTextContent(en.common.faultCleared.sessionStillInFault.replace('{{kind}}', en.common.faultKind.GNSS_LOSS))
+    // The fault's words are in the label already: no second " · GNSS signal lost" detail.
+    expect(row.textContent?.split(en.common.faultKind.GNSS_LOSS).length).toBe(2)
+    expect(row.querySelector('.nt-log-event')).toHaveAttribute('data-severity', 'WARNING')
     expect(getMissingI18nKeys()).toEqual([])
   })
 })

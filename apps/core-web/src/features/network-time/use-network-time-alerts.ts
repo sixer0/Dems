@@ -3,12 +3,14 @@
  *
  * On GNSS loss the page raises one warning toast (the simulator writes the audit row), a further
  * fall to the RTC raises a second one, and a return to GNSS says so quietly. A tablet link loss
- * reminds the operator that recording continues on the Core (FMEA §23.1). Nothing fires on mount,
+ * reminds the operator that recording continues on the Core (FMEA §23.1) - only while a session is RECORDING; with
+ * nothing recording it says so (DF-22, register S12, S13). Nothing fires on mount,
  * only on changes seen while the page is open.
  */
 import { useEffect, useRef, useState } from 'react'
 import { toast } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
+import { SessionState } from '@dems/shared/domain'
 import { useSim } from '@dems/shared/sim'
 import { isOwnCaptureCore } from '@/lib/own-capture'
 import { isTimeEscalation, timeLevel, type TimeLevel } from './model'
@@ -33,6 +35,7 @@ export function useNetworkTimeAlerts(): void {
     hostClock: isOwnCaptureCore(s),
     server: s.time.ntp.server,
     tablet: s.tabletLink.state,
+    recording: s.session?.state === SessionState.RECORDING,
   }))
   const previousLevel = useRef<TimeLevel>(view.level)
   const previousTablet = useRef(view.tablet)
@@ -56,7 +59,9 @@ export function useNetworkTimeAlerts(): void {
     const from = previousTablet.current
     previousTablet.current = view.tablet
     if (from !== 'OFFLINE' && view.tablet === 'OFFLINE') {
-      toast.warning(t('networkTime.toast.tabletOffline'), { description: t('networkTime.toast.tabletOfflineDetail') })
+      toast.warning(t('networkTime.toast.tabletOffline'), {
+        description: t(view.recording ? 'networkTime.toast.tabletOfflineDetail' : 'networkTime.toast.tabletOfflineDetailIdle'),
+      })
     }
-  }, [view.tablet, t])
+  }, [view.tablet, view.recording, t])
 }

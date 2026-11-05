@@ -458,3 +458,66 @@ describe('wave J: the demonstration is marked, a real-capture Core is not, and t
     expect(document.querySelector('.dems-dash-ring-cell')).toHaveAttribute('data-statement', 'ALERT_ACTIVE')
   })
 })
+
+// Audit 2026-11-05 row 109 (DF-18, U-04/U-19): the bench Core's evidence volume had 384 861 581 312 B free of about
+// 0.5 TB. The card said "Free 0.4 TB" while the status-strip headline said "0.0 TB Free": both headline numbers are
+// AnimatedNumber springs from 0, and a hidden page (a background tab or pane) runs no animation frames, so they held 0.0.
+describe('row 109 (DF-18): the storage headline says the same free space as the storage card', () => {
+  const FREE_BYTES = 384_861_581_312 // 0.38 TB, measured on the bench Core (triage DF-18, ch7 F-7-14)
+  const TOTAL_BYTES = 502_900_000_000 // "of 0.5 TB" (U-04), "502.9 GB" (U-19)
+  const setBenchVolume = (sim: Sim) =>
+    act(() => {
+      sim.store.setState((state) => ({
+        storage: {
+          ...state.storage,
+          volumes: state.storage.volumes.map((volume) =>
+            volume.kind === 'EVIDENCE' ? { ...volume, totalBytes: TOTAL_BYTES, usedBytes: TOTAL_BYTES - FREE_BYTES } : volume,
+          ),
+        },
+      }))
+    })
+  const headlineNumber = (element: HTMLElement) => /(\d+\.\d) TB Free/.exec(element.textContent ?? '')?.[1]
+
+  it('at 0.38 TB free the strip reads "0.4 TB Free", the same number as the card and its legend', { timeout: 15_000 }, async () => {
+    const { sim } = mount()
+    setBenchVolume(sim)
+    const strip = await findPanel('c')
+    const cell = within(strip).getByTestId('strip-storage')
+    expect(cell).toHaveAccessibleName(/Storage: 0\.4 TB Free/)
+    await waitFor(() => expect(cell).toHaveTextContent('0.4 TB Free'), HELD_BEAT_WAIT)
+    const card = await findPanel('f')
+    await waitFor(() => expect(within(card).getByTestId('storage-free')).toHaveTextContent('0.4 TB Free'), HELD_BEAT_WAIT)
+    expect(within(card).getByTestId('storage-free')).toHaveTextContent('of 0.5 TB')
+    expect(within(card).getByTestId('storage-legend-free')).toHaveTextContent('0.4 TB')
+    expect(headlineNumber(cell)).toBe(headlineNumber(within(card).getByTestId('storage-free')))
+  })
+
+  it('on a hidden page (no animation frames) the headline lands on 0.4 at once and never shows a count in progress', { timeout: 15_000 }, async () => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+    const seen = { strip: new Set<string>(), card: new Set<string>() }
+    const observer = new MutationObserver(() => {
+      const cell = document.querySelector<HTMLElement>('[data-testid="strip-storage"]')
+      const card = document.querySelector<HTMLElement>('[data-testid="storage-free"]')
+      const stripNumber = cell ? headlineNumber(cell) : undefined
+      const cardNumber = card ? headlineNumber(card) : undefined
+      if (stripNumber) seen.strip.add(stripNumber)
+      if (cardNumber) seen.card.add(cardNumber)
+    })
+    observer.observe(document.body, { subtree: true, childList: true, characterData: true })
+    try {
+      const { sim } = mount()
+      setBenchVolume(sim)
+      const strip = await findPanel('c')
+      await waitFor(() => expect(within(strip).getByTestId('strip-storage')).toHaveTextContent('0.4 TB Free'), HELD_BEAT_WAIT)
+      const card = await findPanel('f')
+      await waitFor(() => expect(within(card).getByTestId('storage-free')).toHaveTextContent('0.4 TB Free'), HELD_BEAT_WAIT)
+      // Before the held beat the value is 0 (and transparent); after it, the final value. No spring step in between:
+      // a spring needs frames, and a hidden page paints none (the bench read stayed at "0.0").
+      expect([...seen.strip].filter((n) => n !== '0.0' && n !== '0.4')).toEqual([])
+      expect([...seen.card].filter((n) => n !== '0.0' && n !== '0.4')).toEqual([])
+    } finally {
+      observer.disconnect()
+      Reflect.deleteProperty(document, 'visibilityState')
+    }
+  })
+})

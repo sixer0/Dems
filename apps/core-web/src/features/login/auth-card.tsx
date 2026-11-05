@@ -2,9 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type Keyb
 import {
   Button,
   Card,
-  Chip,
   Description,
-  Disclosure,
   FieldError,
   Form,
   InputGroup,
@@ -15,10 +13,10 @@ import {
   Tooltip,
 } from '@heroui/react'
 import { animate, AnimatePresence, motion, type Variants } from 'motion/react'
-import { Eye, EyeOff, KeyRound, Lock, ShieldAlert, ShieldCheck, User, Users } from 'lucide-react'
+import { Eye, EyeOff, KeyRound, Lock, ShieldAlert, ShieldCheck, User } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CoreMode } from '@dems/shared/live'
-import { DEMO_OPERATOR_PASSWORD, useSim, type SimOperator, type SimState } from '@dems/shared/sim'
+import { useSim, type SimState } from '@dems/shared/sim'
 import { palette } from '@dems/shared/tokens'
 import type { ModeSwitch } from '@/components/shell/mode-switch'
 import { BorderBeam } from '@/components/ui/border-beam'
@@ -36,8 +34,6 @@ export interface AuthCardProps {
   /** The hand-off started (M-APP-01): the card plays its exit, then `onExitComplete` navigates. */
   leaving: boolean
   onExitComplete: () => void
-  /** Presentation mode hides the "Demo operators" Disclosure (§14.8, D28/Q14; ruling M8). */
-  presentation: boolean
   /** The data mode of this page load and its confirmed change; no control unless the build offers the choice (MD-4). */
   modeSwitch: ModeSwitch
   /** The M-C-22 shake target (the page owns the shake so the controller can trigger it). */
@@ -54,29 +50,30 @@ const selectDeviceId = (s: SimState) => s.device.id
  * toggle, a gold Sign In with dark text per D28/Q5, and the simulated alternative sign-in).
  *
  * Kit only (D6): `Card`, `Form`, `TextField` + `InputGroup`, `FieldError`, `Description`,
- * `Button` (+ `Spinner`), `Separator`, `Disclosure`, `Chip`, `Tooltip`, `Alert` (in LoginAlert),
+ * `Button` (+ `Spinner`), `Separator`, `Tooltip`, `Alert` (in LoginAlert),
  * plus MU BorderBeam (one lap) and the motion kit's GlowLayer.
  *
  * Credentials: inputs have no `name` and the form posts nowhere (submission is intercepted), so a
  * password can never reach a URL even if a native submit fired (AC-50).
  *
+ * No "Demo operators" disclosure (D58, 2026-11-03): the card names no seeded identity and no
+ * password, in either mode. The controller's `operators` and `fill` remain for the demo harness;
+ * the card reads neither (DF-52, audit row 106: the imports the removal left behind are gone).
+ *
  * Live mode (backend task 04_client_integration_spec §5.5; plan row W55), the same card on the
  * Core server:
  * - no security-key button and no "or" divider: the server has no such operation (WS-8, Q11);
- * - the demo operators are the three seeded ones of the shared constant, without a role chip or
- *   any other server data, under one plain sentence that says what the disclosure is (WS-9, C1,
- *   C2); hidden in presentation mode as before (C3);
  * - the trust line says what is true: the console signs in to the Core server and does not pair
  *   (WS-7, Q13);
  * - the offline Alert offers "Use Simulated mode" in a build that offers the choice (§3.5).
- * In a dev build the card also carries the mode selector (§3.2), in both modes.
+ * In a build that offers the choice the card also carries the mode selector (§3.2), in both
+ * modes; a console started with `VITE_DEMS_PRODUCTION_LOCK=1` offers none (D25 N3, D29 Q6).
  */
 export function AuthCard({
   controller,
   choreography,
   leaving,
   onExitComplete,
-  presentation,
   modeSwitch,
   shakeRef,
   usernameRef,
@@ -112,7 +109,6 @@ export function AuthCard({
     blur,
     submit,
     signInWithSecurityKey,
-    fill,
     pending,
     accepted,
     notice,
@@ -123,7 +119,6 @@ export function AuthCard({
     lockKey,
     coreRetry,
     submitDisabled,
-    operators,
     paired,
   } = controller
   const formDisabled = pending !== null || accepted !== null || lockout.locked
@@ -473,10 +468,4 @@ function LiveTrustLine({ coreLink }: { coreLink: CoreLinkView }) {
       </Tooltip.Content>
     </Tooltip>
   )
-}
-
-function roleColor(role: SimOperator['role']): 'accent' | 'success' | 'default' {
-  if (role === 'SUPERVISOR') return 'accent'
-  if (role === 'INVESTIGATOR') return 'success'
-  return 'default'
 }

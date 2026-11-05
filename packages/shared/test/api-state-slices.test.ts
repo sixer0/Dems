@@ -515,7 +515,7 @@ describe('the recording scenario is the recording session of the examples', () =
     const session = REPLICATED_SLICE_SCHEMAS.session.parse(state.session);
     expect(session?.state).toBe('RECORDING');
     expect(session?.id).toBe('SES-20261001-0024');
-    expect(session?.precheck.items).toHaveLength(8);
+    expect(session?.precheck.items).toHaveLength(12); // audit fix row 83 (DF-03): twelve checks
     expect(session?.timeline.length).toBeGreaterThan(5);
     // A client verifies server rows with the shared check (CL-14): the parse keeps every hashed member.
     const audit = REPLICATED_SLICE_SCHEMAS.audit.parse(state.audit);

@@ -68,7 +68,7 @@ export const PANEL_LOGO_BASE64_MAX_LENGTH = 60_000;
 export const PANEL_LOGO_PNG_MAX_BYTES = (PANEL_LOGO_BASE64_MAX_LENGTH / 4) * 3;
 
 /** Which of the panel's two logo slots a queued logo goes to. */
-export const PanelLogoTarget = z.enum(['client', 'splash', 'both']);
+export const PanelLogoTarget = z.enum(['client', 'splash']);
 export type PanelLogoTarget = z.output<typeof PanelLogoTarget>;
 
 /**
@@ -134,7 +134,7 @@ export const PANEL_SETUP_OPERATIONS = [
       '**A missing panel backend answers the global 503** `NOT_READY` with `details.reason: LCD_BACKEND_UNREACHABLE`, never an empty lie: an answer claiming the panel holds nothing when nothing was asked would be a false statement about the device.',
       `${CORE_SERVER_NOTE}`,
     ].join('\n\n'),
-    source: 'Decision D57 (principal, 2026-11-03): operation 118 and operation 119, the pre-delivery setup moved into the console, gated to the vendor identities',
+    source: 'Decision D57 (principal, 2026-11-03): operation 115 and operation 116, the pre-delivery setup moved into the console, gated to the vendor identities',
     responses: {
       200: { description: 'The panel setup as its backend holds it.', schema: 'PanelSetupResponse' },
       401: NOT_SIGNED_IN,
@@ -152,14 +152,14 @@ export const PANEL_SETUP_OPERATIONS = [
     mode: CoreApiMode.LIVE,
     summary: 'Change the pre-delivery panel setup',
     description: [
-      'Sets the unit word, the client word, and queues a PNG logo (base64) for one or both logo slots of the LCD front panel. Absent members change nothing; the answer is the setup as it stands after the change. The values live in the panel backend — the Core forwards and repeats, it stores nothing.',
+      'Sets the unit word, the client word, and queues a PNG logo (base64) for one logo slot (client or splash) of the LCD front panel. Absent members change nothing; the answer is the setup as it stands after the change. The values live in the panel backend — the Core forwards and repeats, it stores nothing.',
       'Writes PANEL_SETUP_CHANGED naming which fields changed and whether a logo was queued; the image bytes are never in the audit row.',
       '**Vendor accounts only** (D57): the session username must be `root` or `gsp.teknisi`; any other operator is 403 `NOT_PERMITTED` with no audit row and nothing forwarded. **Web console sessions only.**',
       'An empty request answers 422 INVALID_INPUT; a body the backend refuses (an image it cannot decode) answers 422 too, with the backend\'s reason carried in `details.reason`.',
       '**A missing panel backend answers the global 503** `NOT_READY` (`details.reason: LCD_BACKEND_UNREACHABLE`) and nothing is changed.',
       `${CORE_SERVER_NOTE}`,
     ].join('\n\n'),
-    source: 'Decision D57 (principal, 2026-11-03): operation 118 and operation 119, the pre-delivery setup moved into the console, gated to the vendor identities',
+    source: 'Decision D57 (principal, 2026-11-03): operation 115 and operation 116, the pre-delivery setup moved into the console, gated to the vendor identities',
     requestBody: { schema: 'SetPanelSetupRequest', required: true },
     responses: {
       200: { description: 'The setup after the change.', schema: 'PanelSetupResponse' },
@@ -231,9 +231,9 @@ export const PANEL_SETUP_EXAMPLES: Readonly<Record<string, OperationExamples>> =
         value: { satker: 'DITRESKRIMUM POLDA METRO JAYA', client: 'PT GSP', reason: 'Commissioning for handover' } satisfies SetPanelSetupRequest,
       },
       logoOnly: {
-        summary: 'Queue a logo for both slots',
+        summary: 'Queue a logo for the client slot',
         description: 'The words stay. The base64 body is elided in this example; the real one is the whole PNG file, within the console path bound (a PNG of 45,000 bytes).',
-        value: { logoBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', logoTarget: 'both', reason: 'Client branding approved' } satisfies SetPanelSetupRequest,
+        value: { logoBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', logoTarget: 'client', reason: 'Client branding approved' } satisfies SetPanelSetupRequest,
       },
     },
     responses: {

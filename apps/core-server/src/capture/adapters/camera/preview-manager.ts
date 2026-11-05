@@ -38,6 +38,7 @@
  * IT LOGS NOTHING ITSELF (static rule G-R4). What the composition may log comes through `report`:
  * a code, the device and a code word.
  */
+import { CAMERA_PREVIEW_LIMITS } from '@dems/shared/api';
 import type { CaptureTimers } from '../../types';
 import { CameraOpenRefusal } from './onvif-relay';
 import type { PreviewOpener, PreviewPipeline } from './preview-pipeline';
@@ -57,14 +58,14 @@ export const PREVIEW_FRAME_MAX_BYTES = 2 * 1024 * 1024;
 /** The longest header block of one part. */
 export const PREVIEW_PART_HEADER_MAX_BYTES = 1_024;
 
-/** The bounds of the shared contract (`CAMERA_PREVIEW_LIMITS`), as numbers this file holds itself. */
+/** The bounds of the shared contract (`CAMERA_PREVIEW_LIMITS`); `PREVIEW_LIMITS` is derived from it, not a copy (DF-14). */
 export interface PreviewLimits {
   readonly pipelinesPerCamera: 1;
   readonly pipelines: number;
   readonly viewersPerCamera: number;
   readonly viewers: number;
 }
-export const PREVIEW_LIMITS: PreviewLimits = Object.freeze({ pipelinesPerCamera: 1, pipelines: 4, viewersPerCamera: 4, viewers: 16 });
+export const PREVIEW_LIMITS: PreviewLimits = Object.freeze({ ...CAMERA_PREVIEW_LIMITS });
 
 export const PreviewState = {
   CONNECTING: 'CONNECTING',

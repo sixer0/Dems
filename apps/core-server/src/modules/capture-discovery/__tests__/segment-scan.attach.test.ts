@@ -23,9 +23,11 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { inspect } from 'node:util';
 import { ApiErrorCode, CAPTURE_DISCOVERY_RESULT_TTL_MS, CaptureConnectionOutcome, CaptureDiscoveryReason, CaptureDiscoveryTrigger } from '@dems/shared/api';
 import { afterAll, describe, expect, it } from 'vitest';
-import type { CameraCandidate, SealedCredential } from '../../../capture/adapters';
+import { CREDENTIAL_MARK, sealCredential, type CameraCandidate, type SealedCredential } from '../../../capture/adapters';
+import { Secret } from '../../../config';
 import type { AuditEntry, UnitContext } from '../../../core';
 import { ApiFailure } from '../../../plugins/error-envelope';
 import { createCredentialStore } from '../../../credential-store';
@@ -59,6 +61,8 @@ interface AttachWorld {
   readonly waits: number[];
   readonly testerCalls: { host: string; credential: boolean }[];
   readonly audit: AuditEntry[];
+  /** Row 103: every app log line and error-log row of the world, as handed to the logger. */
+  readonly lines: unknown[];
   readonly connect: CaptureConnectControl;
   readonly store: CandidateStore;
   advance(ms: number): void;
@@ -70,8 +74,8 @@ interface AttachWorld {
  * fake registrar), and the limits are the REAL ones on this world's manual clock. The capture operation reads
  * REAL_DEVELOPMENT (`captureDevSources`), so no destination rule binds the fake tester.
  */
-function world(): AttachWorld {
-  const state: Mutable<Omit<AttachWorld, 'connect' | 'store' | 'advance'>> = { nowMs: T0, waits: [], testerCalls: [], audit: [] };
+function world(segmentCidr: string | null = SEGMENT): AttachWorld {
+  const state: Mutable<Omit<AttachWorld, 'connect' | 'store' | 'advance'>> = { nowMs: T0, waits: [], testerCalls: [], audit: [], lines: [] };
   const store = createCandidateStore({ randomBytes: counterBytes() });
   const slices = () => ({
     session: null,
@@ -89,10 +93,10 @@ function world(): AttachWorld {
   const app = {
     stages: {},
     clock: { now: () => state.nowMs },
-    config: { captureMode: 'real', captureDevSources: true, host: '127.0.0.1', demoControls: false },
+    config: { captureMode: 'real', captureDevSources: true, host: '127.0.0.1', demoControls: false, cameraSegmentCidr: segmentCidr },
     addHook: () => undefined,
-    log: { info: () => undefined, error: () => undefined },
-    errorLog: { append: () => undefined },
+    log: { info: (fields: unknown, message: unknown) => void state.lines.push({ fields, message }), warn: (fields: unknown, message: unknown) => void state.lines.push({ fields, message }), error: (fields: unknown, message: unknown) => void state.lines.push({ fields, message }) },
+    errorLog: { append: (entry: unknown) => void state.lines.push(entry) },
     engine: {
       state: () => slices() as never,
       run: async (_label: string, work: (scope: unknown) => Promise<unknown>) => ({ value: await work({ pending: () => slices(), unit, command: async () => undefined }), epoch: 1, revision: 1 }),
@@ -398,5 +402,172 @@ describe('D62b retry: an unadopted SEGMENT candidate is re-attempted on later sw
     expect(await sweeper.sweep()).toMatchObject({ probed: 0, found: 0, carried: 0 });
     h.setNow(T0 + 120_000);
     expect(await sweeper.sweep()).toMatchObject({ probed: 1, found: 1, carried: 0 });
+  });
+});
+
+// ── C. Row 103 (audit 2026-11-05; DF-26; decision D23 (3)): the hardening of the default credential ─────
+//
+// The bench pair is KEPT (D23 (3), principal ruling D62); what stands here is its hardening: (1) it is never in a
+// log line, an error-log row or an audit row - wherever it is printed it reads as the redaction mark; (2) it is spent
+// only on a candidate INSIDE `DEMS_CAMERA_SEGMENT_CIDR` that answered as ONVIF - held by the sweep (no attempt) and
+// again by the `systemFlow` door (refused before anything is sent); (3) the retry cap is pinned at five.
+
+const OUTSIDE = '198.51.100.7';
+
+/** Lists ONE hand-made row in the SYSTEM store, as a sweep would; returns its candidate id. */
+function seedFound(store: CandidateStore, at: number, found: ReturnType<typeof foundOfProbe>): string {
+  store.begin({ sessionId: SYSTEM_OWNER_SESSION_ID, searchId: autoSearchIdOf(at, 2), trigger: CaptureDiscoveryTrigger.AUTO, startedAt: at, windowMs: 0, interfaceCount: 1 });
+  store.complete(autoSearchIdOf(at, 2), [found], { responderCount: 1, interfaceCount: 1, truncated: false, completedAt: at });
+  const candidate = store.stateOf(SYSTEM_OWNER_SESSION_ID, at).candidates[0];
+  if (candidate === undefined) throw new Error('the seed left no candidate');
+  return candidate.candidateId;
+}
+
+describe('row 103 (DF-26, D23 (3)): the default camera credential is never logged, is spent only inside the segment on ONVIF, and its retry cap is pinned', () => {
+  it('the retry cap is pinned: five attach attempts per host, no more', () => {
+    expect(AUTOATTACH_MAX_ATTACH_ATTEMPTS).toBe(5);
+  });
+
+  it('the pair reads as the redaction mark wherever it is printed: the configured Secret as [redacted], the sealed pair as [credential]', () => {
+    const secret = new Secret(ACCOUNT.secret);
+    for (const printed of [String(secret), JSON.stringify(secret), inspect(secret), JSON.stringify({ secret })]) {
+      expect(printed).toContain('[redacted]');
+      expect(printed).not.toContain(ACCOUNT.secret);
+    }
+    const sealed = sealCredential(ACCOUNT);
+    for (const printed of [String(sealed), JSON.stringify(sealed), inspect(sealed), JSON.stringify({ sealed })]) {
+      expect(printed).toContain(CREDENTIAL_MARK);
+      expect(printed).not.toContain(ACCOUNT.secret);
+      expect(printed).not.toContain(ACCOUNT.username);
+    }
+  });
+
+  it('a whole sweep over the REAL door - one adoption, one refused attach - leaves the pair in no log line, no error-log row and no audit row', async () => {
+    const w = world();
+    const refusing = '192.0.2.118';
+    w.connect.replaceForTest({
+      tester: {
+        test: async (camera: CameraCandidate, credential: SealedCredential | null) => {
+          w.testerCalls.push({ host: camera.host, credential: credential !== null });
+          if (camera.host === refusing) throw new Error('the device refused the session');
+          return { outcome: CaptureConnectionOutcome.REACHABLE, authenticated: credential !== null, usableProfiles: ['main'], rejectedCredentialRequests: 0 };
+        },
+      },
+    });
+    const flow = w.connect.systemFlow(ACCOUNT, { wait: async (ms) => void w.advance(ms) });
+    const logs: { fields: Record<string, unknown>; message: string }[] = [];
+    const sweeper = createSegmentSweeper({
+      segmentCidr: SEGMENT,
+      now: () => w.nowMs,
+      listNeighbours: async () => [{ ip: HOST, mac: '00:11:22:33:44:55' }, { ip: refusing, mac: '00:11:22:33:44:66' }],
+      probeAddress: async () => ({ onvif: true, rtsp: true }),
+      ownAddresses: () => ['192.0.2.5'],
+      registeredAddresses: async () => [],
+      store: w.store,
+      nextSearchId: () => autoSearchIdOf(w.nowMs, 1),
+      audit: async (entry) => void w.audit.push(entry),
+      log: { info: (fields, message) => void logs.push({ fields, message }), warn: (fields, message) => void logs.push({ fields, message }) },
+      openSession: () => null,
+      duringRecordingEnabled: false,
+      attach: {
+        testCandidate: async (candidateId) => (await flow.testCandidate(candidateId)).outcome,
+        adoptCandidate: async (candidateId) => (await flow.adoptCandidate(candidateId)).deviceId,
+        assignFirstEmptyTrack: async () => ({ assigned: true, trackId: 'VIDEO-01', reason: null }),
+      },
+    });
+    const result = await sweeper.sweep();
+    expect(result.adopted).toHaveLength(1);
+    expect(logs.some((entry) => entry.fields.code === 'CAPTURE_AUTOATTACH_FAILED' || entry.fields.code === 'CAPTURE_AUTOATTACH_NOT_REACHABLE')).toBe(true);
+    expect(w.audit.some((entry) => entry.type === 'CAPTURE_CREDENTIAL_SET')).toBe(true);
+    // Every line and row, as a log transport would write it (JSON) and as an inspection would print it.
+    const lines = [...logs, ...w.lines];
+    const printedLines = [JSON.stringify(lines), inspect(lines, { depth: 8 })].join('\n');
+    expect(printedLines).not.toContain(ACCOUNT.secret);
+    expect(printedLines).not.toContain(ACCOUNT.username);
+    const printedRows = [JSON.stringify(w.audit), inspect(w.audit, { depth: 8 })].join('\n');
+    expect(printedRows).not.toContain(ACCOUNT.secret);
+  });
+
+  it('the sweep never attempts a candidate outside the configured /24: no attempt spent, never carried, the warn line names the candidate id only', async () => {
+    const tested: string[] = [];
+    const h = sweepHarness({
+      async testCandidate(candidateId: string) {
+        tested.push(candidateId);
+        return CaptureConnectionOutcome.UNREACHABLE;
+      },
+      async adoptCandidate() {
+        throw new Error('must not run');
+      },
+      async assignFirstEmptyTrack() {
+        return { assigned: false as const, trackId: null, reason: 'REFUSED' as const };
+      },
+    });
+    // A neighbour list that is NOT filtered to the segment (production's `listNeighboursOver` filters; this seam does not).
+    h.options.listNeighbours = async () => [{ ip: HOST, mac: '00:11:22:33:44:55' }, { ip: OUTSIDE, mac: '00:11:22:33:44:77' }];
+    const sweeper = createSegmentSweeper(h.options);
+    const first = await sweeper.sweep();
+    expect(first).toMatchObject({ ran: true, probed: 2, found: 2 });
+    const hostOf = (id: string) => h.store.stateOf(SYSTEM_OWNER_SESSION_ID, T0).candidates.find((candidate) => candidate.candidateId === id)?.host;
+    expect(tested.map(hostOf)).toEqual([HOST]);
+    const scoped = h.logs.filter((entry) => entry.fields.code === 'CAPTURE_AUTOATTACH_OUT_OF_SCOPE');
+    expect(scoped).toHaveLength(1);
+    expect(Object.keys(scoped[0]?.fields ?? {}).sort()).toEqual(['candidateId', 'code', 'source']);
+    expect(JSON.stringify(scoped)).not.toContain(OUTSIDE);
+    // The next sweep carries the in-scope host only: the outside one is never carried for a retry.
+    h.setNow(T0 + 60_000);
+    expect(await sweeper.sweep()).toMatchObject({ carried: 1 });
+    expect(tested).toHaveLength(2);
+  });
+
+  it('a segment text that is not the strict /24 attaches nothing at all', async () => {
+    let tested = 0;
+    const h = sweepHarness({
+      async testCandidate() {
+        tested += 1;
+        return CaptureConnectionOutcome.REACHABLE;
+      },
+      async adoptCandidate() {
+        return 'CAM-09';
+      },
+      async assignFirstEmptyTrack() {
+        return { assigned: false as const, trackId: null, reason: 'REFUSED' as const };
+      },
+    });
+    h.options.segmentCidr = '192.0.2.0/23';
+    expect(await createSegmentSweeper(h.options).sweep()).toMatchObject({ ran: true, found: 1, adopted: [] });
+    expect(tested).toBe(0);
+  });
+
+  it('the systemFlow door refuses BEFORE anything is sent: a host outside the segment, a service address outside it, a non-ONVIF answer, no segment configured', async () => {
+    const refusedAtDoor = async (w: AttachWorld, candidateId: string): Promise<void> => {
+      const flow = w.connect.systemFlow(ACCOUNT, { wait: async () => undefined });
+      for (const step of [() => flow.testCandidate(candidateId), () => flow.adoptCandidate(candidateId)]) {
+        const failure = await failureOf(step());
+        expect(failure.statusCode).toBe(409);
+        expect(failure.code).toBe(ApiErrorCode.INVALID_STATE);
+        expect(failure.details?.['reason']).toBe(CaptureDiscoveryReason.CANDIDATE_NOT_TESTABLE);
+        expect(JSON.stringify({ message: failure.message, details: failure.details })).not.toContain(ACCOUNT.secret);
+      }
+      expect(w.testerCalls).toEqual([]);
+    };
+    // A host outside DEMS_CAMERA_SEGMENT_CIDR.
+    const outside = world();
+    await refusedAtDoor(outside, seedFound(outside.store, outside.nowMs, foundOfProbe(OUTSIDE, { onvif: true, rtsp: false })));
+    // A host inside whose service address points outside.
+    const steered = world();
+    const inside = foundOfProbe(HOST, { onvif: true, rtsp: false });
+    const away = `http://${OUTSIDE}:80/onvif/device_service`;
+    await refusedAtDoor(steered, seedFound(steered.store, steered.nowMs, { ...inside, connectionTarget: away, camera: { ...inside.camera, serviceAddress: away } }));
+    // An answer inside that is not ONVIF.
+    const notOnvif = world();
+    await refusedAtDoor(notOnvif, seedFound(notOnvif.store, notOnvif.nowMs, { ...inside, adapter: 'LOCAL_DEVICE', camera: { ...inside.camera, adapterKind: 'LOCAL_DEVICE' } }));
+    // No segment configured: every candidate is refused.
+    const unset = world(null);
+    await refusedAtDoor(unset, seedCandidate(unset.store, unset.nowMs));
+    // And the in-scope candidate of the same world shape IS tested (the guard is not a blanket refusal).
+    const ok = world();
+    const flow = ok.connect.systemFlow(ACCOUNT, { wait: async () => undefined });
+    expect((await flow.testCandidate(seedCandidate(ok.store, ok.nowMs))).outcome).toBe(CaptureConnectionOutcome.REACHABLE);
+    expect(ok.testerCalls).toEqual([{ host: HOST, credential: true }]);
   });
 });

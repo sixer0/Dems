@@ -296,6 +296,22 @@ export function micChannelChipKey(channel: MicChannel): 'devices.selector.role.P
   return channel === 'MIC-03' ? 'common.captureSlot.MIC-03' : 'common.captureSlot.MIC-04'
 }
 
+/**
+ * Row 108 (DF-17; D38 DR-7, 2026-11-05): the channel chip of a meter TRACK - the dashboard microphone
+ * tile and the Session Monitor audio half. The channel is the one of the track (D61: `MIC-0N` feeds
+ * `AUDIO-0N`), never looked up by a device id. Channels 1 and 2 keep the transcription-pair words of
+ * `micChannelChipKey`; channels 3 and 4 read "Channel 3" / "Channel 4" (the existing
+ * `devices.drawer.value.channel`), not the selector's slot name "Microphone 3", which sits beside the
+ * tile name "MIC 3". The selector's own slot chip (`micChannelChipKey`) is unchanged.
+ */
+export function micTrackChannelChip(
+  channel: MicChannel,
+): { readonly key: 'devices.selector.role.PRIMARY' | 'devices.selector.role.STANDBY' } | { readonly key: 'devices.drawer.value.channel'; readonly values: { readonly channel: number } } {
+  if (channel === PRIMARY_MIC_CHANNEL) return { key: 'devices.selector.role.PRIMARY' }
+  if (channel === SECOND_MIC_CHANNEL) return { key: 'devices.selector.role.STANDBY' }
+  return { key: 'devices.drawer.value.channel', values: { channel: Number(channel.slice(-2)) } }
+}
+
 /** A command that was refused or not answered: the status and the code, never the answer's text. */
 export interface SelectorFailure {
   readonly ok: false

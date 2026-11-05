@@ -4,7 +4,7 @@
 // test's subject (`last-admin.db.test.ts`).
 import { OperatorRole, Permission, ROLE_PERMISSIONS } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
-import { administratorsOf, applyChange, leavesNoAdministrator, type OperatorChange } from '../rule';
+import { administratorsOf, applyChange, leavesNoAdministrator, partyOfActiveSession, type OperatorChange } from '../rule';
 import type { LockedOperator } from '../statements';
 
 /** The roles that hold USER_ADMIN in the shared table: SUPERVISOR alone. */
@@ -115,5 +115,26 @@ describe('leavesNoAdministrator (RB-8)', () => {
     // The functions take no actor at all.
     expect(leavesNoAdministrator.length).toBe(3);
     expect(leavesNoAdministrator(TWO, ADMIN_ROLES, disable('OPR-002'))).toBe(false);
+  });
+});
+
+// Decision D43 (row 95): a purge whose target takes part in the active session is refused before
+// any write. The rule is arithmetic on the one row of `active_session`; the refusal itself and its
+// place before the first write are `vendor-root.test.ts` and the static test of this folder.
+describe('D43: a party of the active session', () => {
+  const session = { sessionId: 'SES-20261105-0001', investigatorId: 'OPR-003', createdBy: 'OPR-004', startedBy: 'OPR-005', stoppedBy: null };
+
+  it('names every column that holds the operator, in column order', () => {
+    expect(partyOfActiveSession(session, 'OPR-003')).toEqual(['INVESTIGATOR']);
+    expect(partyOfActiveSession(session, 'OPR-004')).toEqual(['CREATED_BY']);
+    expect(partyOfActiveSession(session, 'OPR-005')).toEqual(['STARTED_BY']);
+    expect(partyOfActiveSession({ ...session, stoppedBy: 'OPR-003', createdBy: 'OPR-003' }, 'OPR-003')).toEqual(['INVESTIGATOR', 'CREATED_BY', 'STOPPED_BY']);
+  });
+
+  it('is empty for an operator the session does not name, and when no session is active', () => {
+    expect(partyOfActiveSession(session, 'OPR-006')).toEqual([]);
+    expect(partyOfActiveSession(null, 'OPR-003')).toEqual([]);
+    // An empty column never matches anything.
+    expect(partyOfActiveSession({ ...session, createdBy: null, startedBy: null }, 'OPR-004')).toEqual([]);
   });
 });

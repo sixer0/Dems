@@ -15,7 +15,7 @@
 // stand-ins of the real-boot fixture and are never asked to capture (no session is started).
 // A stored unassigned slot is NULL written into a clone of the seed by the owner, before the boot
 // (operation 78 `unassign` is row 29's subject and is held there).
-import { CAPTURE_START_REQUIRED_SLOTS, CAPTURE_SOURCE_NOT_ASSIGNED_REASON, CaptureStartRule, SOURCE_NOT_ASSIGNED_PRECHECK_VALUE, unassignedSlotOfPrecheckItem, type PrecheckItem } from '@dems/shared/sim';
+import { CAPTURE_START_REQUIRED_SLOTS, CaptureStartRule, PRECHECK_ORDER, SOURCE_NOT_ASSIGNED_PRECHECK_VALUE, unassignedSlotOfPrecheckItem, type PrecheckItem } from '@dems/shared/sim';
 import type { Pool } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../test/helpers/db';
@@ -31,16 +31,18 @@ fixture.provisionKey();
 afterAll(() => fixture.remove());
 
 // D61 (2026-11-04): the selector is EIGHT slots and the seed assigns every one of them (four
-// video tracks, four numbered channels). The pre-check answer keeps its CLOSED item list
-// (`PRECHECK_ORDER`): the four slots that ever had an item keep it (VIDEO-03/04 and MIC-03/04
-// have none of their own); the eight-slot rule bites at the START (`startRecordingTransition`).
-// This unit therefore walks the four item-carrying slots for the BLOCK item, walks all eight for
-// the held selector, and names the four item-less slots in the start-refusal case below.
-const SLOTS = ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02'] as const;
+// video tracks, four numbered channels). Audit fix rows 83/90 (DF-03; D15(c), D22(5)): the
+// pre-check covers all eight - `PRECHECK_ORDER` holds twelve checks, LENS_3/LENS_4 speak for
+// VIDEO-03/04 and MIC_3/MIC_4 for MIC-03/04 - so EVERY slot has an item of its own, and an
+// unassigned slot is a BLOCK item at the pre-check (before row 83 four of them were only refused
+// at the START by `startRecordingTransition`). This unit walks all eight slots for the BLOCK item.
+const SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const;
 type Slot = (typeof SLOTS)[number];
 const ALL_SLOTS = [...CAPTURE_START_REQUIRED_SLOTS] as const;
-/** The slots WITHOUT an item of their own since the closed check list was written - the eight-slot rule still refuses a start for them (C25, D61). */
-const ITEM_LESS_SLOTS = ['VIDEO-03', 'VIDEO-04', 'MIC-03', 'MIC-04'] as const;
+/** The four slots of the first item set (row 30). */
+const FIRST_FOUR_SLOTS = ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02'] as const;
+/** The four slots WITHOUT an item of their own until audit fix row 83 (C25, D61); since row 83 each carries one (DF-03). */
+const LATER_FOUR_SLOTS = ['VIDEO-03', 'VIDEO-04', 'MIC-03', 'MIC-04'] as const;
 const COLUMNS_OF: Readonly<Record<string, readonly string[]>> = {
   'VIDEO-01': ['video_01_device_id', 'video_01_profile'],
   'VIDEO-02': ['video_02_device_id', 'video_02_profile'],
@@ -52,7 +54,16 @@ const COLUMNS_OF: Readonly<Record<string, readonly string[]>> = {
   'MIC-04': ['mic_04_id'], // D61
 };
 /** The pre-check item that speaks for a slot (the stored check IDs keep the role names), and the device the seed assigns to it. */
-const ITEM_OF: Readonly<Record<Slot, PrecheckItem['id']>> = { 'VIDEO-01': 'LENS_1', 'VIDEO-02': 'LENS_2', 'MIC-01': 'MIC_PRIMARY', 'MIC-02': 'MIC_STANDBY' };
+const ITEM_OF: Readonly<Record<Slot, PrecheckItem['id']>> = {
+  'VIDEO-01': 'LENS_1',
+  'VIDEO-02': 'LENS_2',
+  'VIDEO-03': 'LENS_3', // audit fix rows 83/90 (DF-03)
+  'VIDEO-04': 'LENS_4', // audit fix rows 83/90
+  'MIC-01': 'MIC_PRIMARY',
+  'MIC-02': 'MIC_STANDBY',
+  'MIC-03': 'MIC_3', // audit fix rows 83/90
+  'MIC-04': 'MIC_4', // audit fix rows 83/90
+};
 const SESSION_INPUT = { caseNumber: 'LP/2026/1001-0030', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } as const;
 
 const DEVELOPMENT = (slug: string) =>
@@ -147,7 +158,7 @@ describe('task 4 row 30 (C18, C25): in real capture an unassigned selector slot 
     expect(Object.keys(ran.unassigned[0]?.params ?? {}).sort()).toEqual(['rule', 'slot']);
     // Nothing else blocks on generated sources: the one BLOCK item of the answer is this one.
     expect(ran.blocked.map((item) => item.id)).toEqual([ITEM_OF[slot]]);
-    // The items of the three assigned slots are decided as before.
+    // The items of the seven assigned slots are decided as before (audit fix row 90: all eight slots carry an item).
     for (const other of SLOTS.filter((candidate) => candidate !== slot)) expect(ran.items.find((item) => item.id === ITEM_OF[other])?.value, other).not.toBe(SOURCE_NOT_ASSIGNED_PRECHECK_VALUE);
     // DOES NOT END PASSED: the outcome is BLOCK, the session stays in PRECHECK, one PRECHECK_BLOCKED row and no PRECHECK_PASSED row.
     expect([ran.outcome, ran.state]).toEqual(['BLOCK', 'PRECHECK']);
@@ -162,37 +173,42 @@ describe('task 4 row 30 (C18, C25): in real capture an unassigned selector slot 
     expect(await ran.rows(UNREACHABLE_ROWS)).toEqual([]);
   });
 
-  it('all four unassigned: FOUR BLOCK items, one per slot, in the order of the checks; the gate has no source to ask and still does not let the run pass', async () => {
-    const ran = await precheckOn('r30-all-four', SLOTS);
-    expect(ran.unassigned.map((item) => [item.id, item.status, item.params?.['slot']])).toEqual(SLOTS.map((slot) => [ITEM_OF[slot], 'BLOCK', slot]));
-    expect(ran.blocked.map((item) => item.id)).toEqual(SLOTS.map((slot) => ITEM_OF[slot]));
+  it('the first four unassigned: FOUR BLOCK items, one per slot, in the order of the checks; the gate has no source to ask and still does not let the run pass', async () => {
+    const ran = await precheckOn('r30-all-four', FIRST_FOUR_SLOTS);
+    expect(ran.unassigned.map((item) => [item.id, item.status, item.params?.['slot']])).toEqual(FIRST_FOUR_SLOTS.map((slot) => [ITEM_OF[slot], 'BLOCK', slot]));
+    expect(ran.blocked.map((item) => item.id)).toEqual(FIRST_FOUR_SLOTS.map((slot) => ITEM_OF[slot]));
     expect([ran.outcome, ran.state]).toEqual(['BLOCK', 'PRECHECK']);
     expect(ran.gate).toEqual({ asked: true, unreachable: [], search: 'NOT_NEEDED' });
     expect(await ran.rows(UNREACHABLE_ROWS)).toEqual([]);
     expect(await ran.start()).toBeInstanceOf(Error);
   });
 
-  // D61 (2026-11-04): the eight-slot rule keeps its teeth on the four slots the CLOSED check list
-  // never carried an item for (`PRECHECK_ORDER` is fixed; only LENS_1/LENS_2/MIC_PRIMARY/MIC_STANDBY
-  // speak for a source). Emptying VIDEO-03 .. MIC-04 therefore shows no item and can end the
-  // pre-check passed - and the start rule of the shared session machine still refuses the start
-  // with `CAPTURE_SOURCE_NOT_ASSIGNED` (`startRecordingTransition`, row 163).
-  it('the four slots WITHOUT an item of their own (VIDEO-03 .. MIC-04): no item says it, and the eight-slot start rule refuses anyway (C25, D61)', async () => {
-    const ran = await precheckOn('r30-item-less', [...ITEM_LESS_SLOTS]);
-    expect(ran.unassigned).toEqual([]);
-    expect(ran.items.filter((item) => item.value === SOURCE_NOT_ASSIGNED_PRECHECK_VALUE || item.params?.['rule'] === CaptureStartRule.SOURCE_NOT_ASSIGNED)).toEqual([]);
-    expect(ran.blocked).toEqual([]);
+  // Audit fix rows 83/90 (DF-03; D15(c)): until row 83 the four slots VIDEO-03 .. MIC-04 had no
+  // item of their own - emptying them showed nothing at the pre-check and only the start rule
+  // (`CAPTURE_SOURCE_NOT_ASSIGNED`, `startRecordingTransition`, row 163) refused. Now LENS_3, LENS_4,
+  // MIC_3 and MIC_4 speak for them: the pre-check itself ends BLOCK, before any start is asked.
+  it('the four LATER slots unassigned (VIDEO-03 .. MIC-04): FOUR BLOCK items LENS_3, LENS_4, MIC_3, MIC_4 in the order of the checks; the pre-check ends BLOCK and no start passes (DF-03, C25)', async () => {
+    const ran = await precheckOn('r30-later-four', [...LATER_FOUR_SLOTS]);
+    expect(ran.unassigned.map((item) => [item.id, item.status, item.value, item.reason, item.params])).toEqual(
+      LATER_FOUR_SLOTS.map((slot) => [ITEM_OF[slot], 'BLOCK', SOURCE_NOT_ASSIGNED_PRECHECK_VALUE, `${slot}: source not assigned`, { rule: CaptureStartRule.SOURCE_NOT_ASSIGNED, slot }]),
+    );
+    expect(ran.unassigned.map((item) => unassignedSlotOfPrecheckItem(item))).toEqual([...LATER_FOUR_SLOTS]);
+    expect(ran.blocked.map((item) => item.id)).toEqual(['LENS_3', 'LENS_4', 'MIC_3', 'MIC_4']);
+    // The items of the four first slots stay as before: none says "source not assigned".
+    for (const other of FIRST_FOUR_SLOTS) expect(ran.items.find((item) => item.id === ITEM_OF[other])?.value, other).not.toBe(SOURCE_NOT_ASSIGNED_PRECHECK_VALUE);
+    expect([ran.outcome, ran.state]).toEqual(['BLOCK', 'PRECHECK']);
+    expect((await ran.rows<{ type: string }>(ENDINGS)).map((row) => row.type)).toEqual(['PRECHECK_BLOCKED']);
     expect(ran.gate).toEqual({ asked: true, unreachable: [], search: 'NOT_NEEDED' });
-    expect(['PASS', 'WARN']).toContain(ran.outcome);
-    if (ran.outcome === 'WARN') expect(await ran.acknowledge()).not.toBeInstanceOf(Error);
-    const refusal = await ran.start();
-    // The engine's door words the transition's refusal as an ApiFailure: the reason travels in its `details` member.
-    expect(refusal).toBeInstanceOf(Error);
-    expect((refusal as Error & { details?: { reason?: string } }).details?.reason).toBe(CAPTURE_SOURCE_NOT_ASSIGNED_REASON);
+    expect(await ran.rows(UNREACHABLE_ROWS)).toEqual([]);
+    expect(await ran.acknowledge()).toBeInstanceOf(Error);
+    expect(await ran.start()).toBeInstanceOf(Error);
   });
 
   it('CONTROL - the assigned selector of the seed: 0 such items, 0 BLOCK items, and the pre-check ends passed', async () => {
     const ran = await precheckOn('r30-assigned', []);
+    // Audit fix rows 83/90 (DF-03): the answer holds the TWELVE checks, in their order (four lenses, four channels).
+    expect(ran.items.map((item) => item.id)).toEqual([...PRECHECK_ORDER]);
+    expect(ran.items).toHaveLength(12);
     expect(ran.unassigned).toEqual([]);
     expect(ran.items.filter((item) => item.value === SOURCE_NOT_ASSIGNED_PRECHECK_VALUE)).toEqual([]);
     expect(ran.blocked).toEqual([]);
@@ -204,12 +220,14 @@ describe('task 4 row 30 (C18, C25): in real capture an unassigned selector slot 
   });
 
   it('Simulated mode is unchanged (C21 (6)): with all four slots unassigned the gate asks nothing at all and no item says "source not assigned"', async () => {
-    const ran = await precheckOn('r30-simulated', SLOTS, 'SIMULATED');
+    const ran = await precheckOn('r30-simulated', FIRST_FOUR_SLOTS, 'SIMULATED');
     expect(ran.gate).toEqual({ asked: false, unreachable: [], search: 'NOT_NEEDED' });
     expect(ran.unassigned).toEqual([]);
     expect(ran.items.filter((item) => item.value === SOURCE_NOT_ASSIGNED_PRECHECK_VALUE || item.params?.['rule'] === CaptureStartRule.SOURCE_NOT_ASSIGNED)).toEqual([]);
     // What it said before WP-13a (research/027 section 4): two lens items PASS, two microphone items WARN.
-    expect(SLOTS.map((slot) => ran.items.find((item) => item.id === ITEM_OF[slot])?.status)).toEqual(['PASS', 'PASS', 'WARN', 'WARN']);
+    expect(FIRST_FOUR_SLOTS.map((slot) => ran.items.find((item) => item.id === ITEM_OF[slot])?.status)).toEqual(['PASS', 'PASS', 'WARN', 'WARN']);
+    // Audit fix rows 83/90 (DF-03): Simulated mode answers the twelve checks too, none of them "source not assigned".
+    expect(ran.items.map((item) => item.id)).toEqual([...PRECHECK_ORDER]);
     expect(ran.blocked).toEqual([]);
     expect(await ran.rows(UNREACHABLE_ROWS)).toEqual([]);
   });

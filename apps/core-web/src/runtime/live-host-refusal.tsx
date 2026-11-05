@@ -5,8 +5,11 @@ import type { LiveHostRefusal } from './live-host'
 
 export interface LiveHostRefusalScreenProps {
   readonly refusal: LiveHostRefusal
-  /** Stores SIMULATED for this origin and loads the page again. False: the choice could not be stored. */
-  readonly onUseSimulated: () => boolean
+  /**
+   * Stores SIMULATED for this origin and loads the page again. False: the choice could not be stored.
+   * Absent when the page offers no choice (the production lock, audit row 106): no Simulated way out is shown.
+   */
+  readonly onUseSimulated?: () => boolean
 }
 
 /**
@@ -42,24 +45,26 @@ export function LiveHostRefusalScreen({ refusal, onUseSimulated }: LiveHostRefus
           >
             {t('common.liveHost.open', { address: refusal.href })}
           </a>
-          <p className="text-sm text-muted">{t('common.liveHost.simulatedNote')}</p>
+          {onUseSimulated ? <p className="text-sm text-muted">{t('common.liveHost.simulatedNote')}</p> : null}
           {notStored ? (
             <p className="text-sm text-danger" data-testid="live-host-refusal-not-stored">
               {t('common.coreMode.switchFailed')}
             </p>
           ) : null}
         </Card.Content>
-        <Card.Footer>
-          <Button
-            variant="outline"
-            data-testid="live-host-refusal-simulated"
-            onPress={() => {
-              if (!onUseSimulated()) setNotStored(true)
-            }}
-          >
-            {t('common.coreMode.useSimulated')}
-          </Button>
-        </Card.Footer>
+        {onUseSimulated ? (
+          <Card.Footer>
+            <Button
+              variant="outline"
+              data-testid="live-host-refusal-simulated"
+              onPress={() => {
+                if (!onUseSimulated()) setNotStored(true)
+              }}
+            >
+              {t('common.coreMode.useSimulated')}
+            </Button>
+          </Card.Footer>
+        ) : null}
       </Card>
     </Surface>
   )

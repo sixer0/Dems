@@ -72,7 +72,7 @@ export const sessionNew = {
     title: 'Session Preview',
     empty: 'Not set',
     readiness: 'Device Readiness',
-    readinessHint: 'Live state of the eight pre-recording checks. The gate runs them again on the next step.',
+    readinessHint: 'Live state of the twelve pre-recording checks. The gate runs them again on the next step.',
     readyCount: '{{ready}} of {{total}} ready',
   },
 
@@ -84,12 +84,16 @@ export const sessionNew = {
       CORE: 'Core Machine',
       LENS_1: 'Video Lens 1',
       LENS_2: 'Video Lens 2',
+      LENS_3: 'Video Lens 3', // audit fix row 83 (DF-03)
+      LENS_4: 'Video Lens 4', // audit fix row 83
       MIC_1: 'MIC 1',
       MIC_2: 'MIC 2',
       // Schema v2 (SH-03): the stored check IDs of the transcription pair — D61 of 2026-11-04:
       // the roles became the numbered channels; these checks read channels 1 and 2.
       MIC_PRIMARY: 'MIC (channel 1, transcribed)',
       MIC_STANDBY: 'MIC (channel 2)',
+      MIC_3: 'MIC (channel 3)', // audit fix row 83 (DF-03)
+      MIC_4: 'MIC (channel 4)', // audit fix row 83
       STORAGE: 'Storage',
       TIME: 'Time Sync',
       SECURITY: 'Security',

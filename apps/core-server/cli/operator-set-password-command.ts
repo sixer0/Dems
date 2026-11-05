@@ -41,7 +41,11 @@
  *   4. the database: the role in force, the schema version, the two CHECK constraints that must
  *      hold `CREDENTIAL_REPLACED` (SX-12: one path, no second meaning for another reason), and
  *      "no other session on this database" (SX-01)
- *   5. the operators: the named one, or the walk's list by the predicate of boot check 4c
+ *   5. the operators: the named one, or the walk's list by the predicate of boot check 4c; a
+ *      SYSTEM PRINCIPAL among them (`isSystemPrincipal`: the reserved id `OPR-000` the auto-attach
+ *      path acts as, or the username `system`) is refused here, whole command, nothing asked
+ *      (DF-29, decision D20(d), 2026-11-05: that row stands for the Core itself and must never be
+ *      able to sign in, so no credential of it is ever written - neither replaced nor created by D56)
  *   6. the summary - database, data directory, the connection file's full path, operators, and what "the Core is stopped" can and
  *      cannot mean here - and the word `SET`
  *
@@ -75,7 +79,7 @@ import { join, isAbsolute, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Pool } from 'pg';
-import { AuditType } from '@dems/shared/sim';
+import { AuditType, UNATTRIBUTED_OPERATOR_ID } from '@dems/shared/sim';
 import { SELECT_STORED_HASH_SETS, demoPasswordHashSetsAmong, storedHashSetIsDemoPassword, type StoredHashSetRow } from '../src/capture/boot';
 import { CONNECTION_FILE_NAME, ConfigError, DATABASE_HOST, RUNTIME_ROLE, type DatabaseConnection } from '../src/config';
 import { fixedSeverityOf } from '../src/core/audit-details';
@@ -127,6 +131,8 @@ export const SetPasswordRefusal = {
   /** Another session is connected to this database. */
   DATABASE_IN_USE: 'DATABASE_IN_USE',
   OPERATOR_NOT_FOUND: 'OPERATOR_NOT_FOUND',
+  /** The operator is a system principal (DF-29, D20(d)): it stands for the Core and never signs in, so it gets no password. */
+  SYSTEM_PRINCIPAL: 'SYSTEM_PRINCIPAL',
   OPERATORS_UNREADABLE: 'OPERATORS_UNREADABLE',
   NOT_CONFIRMED: 'NOT_CONFIRMED',
   /** The repeat check of the run could not be prepared. */
@@ -181,6 +187,22 @@ export function connectionFileProblem(file: string, uid: number, inspect: (path:
   if (uid >= 0 && entry.ownerUid !== uid) return ConnectionFileProblem.OWNER;
   if ((entry.mode & 0o077) !== 0) return ConnectionFileProblem.MODE;
   return null;
+}
+
+/**
+ * THE SYSTEM PRINCIPALS (DF-29, decision D20(d), 2026-11-05). `OPR-000` is the operator id the
+ * auto-attach path acts as (`SYSTEM_OPERATOR_ID` of `capture-discovery/connect`, the same value as
+ * the shared `UNATTRIBUTED_OPERATOR_ID`; the sequence of real operators starts at OPR-001). The D62
+ * installer provisions its row as `system` WITHOUT a credential: "it can never sign in". Before
+ * this, the D56 create path of this command would have written its first credential and made it a
+ * TECHNICIAN that can sign in. A row is a system principal by its reserved id OR by the reserved
+ * username (any case), so a row provisioned under another id is held as well. The row itself is
+ * never touched: adoption needs it as its actor key.
+ */
+export const SYSTEM_PRINCIPAL_OPERATOR_IDS: readonly string[] = Object.freeze([UNATTRIBUTED_OPERATOR_ID]);
+export const SYSTEM_PRINCIPAL_USERNAMES: readonly string[] = Object.freeze(['system']);
+export function isSystemPrincipal(operator: { readonly operatorId: string; readonly username: string }): boolean {
+  return SYSTEM_PRINCIPAL_OPERATOR_IDS.includes(operator.operatorId) || SYSTEM_PRINCIPAL_USERNAMES.includes(operator.username.toLowerCase());
 }
 
 /**
@@ -433,6 +455,10 @@ export async function runSetPasswordCommand(argv: readonly string[], ports: SetP
         const found = (await pool.query<OperatorRow & { has_credential: boolean }>(SELECT_OPERATOR_BY_USERNAME, [args.target.username])).rows;
         const row = found[0];
         if (row === undefined || found.length !== 1) return refuse(SetPasswordRefusal.OPERATOR_NOT_FOUND, 'no operator has that username. This command creates no operator.');
+        // DF-29 / D20(d): BEFORE the D56 create path and before any derivation - a system principal gets no credential.
+        if (isSystemPrincipal({ operatorId: row.operator_id, username: row.username })) {
+          return refuse(SetPasswordRefusal.SYSTEM_PRINCIPAL, `${row.username} (${row.operator_id}) is a system principal: it stands for the Core itself and never signs in, so this command sets no password of it. Nothing was changed.`);
+        }
         // D56 (2026-11-03): an account with no credential row is not refused - a factory seed deliberately
         // leaves the vendor accounts without one, and this command is the only writer of a credential, so
         // here it CREATES the row. Still no operator is created (R-X2-10): the person must exist first.
@@ -440,9 +466,16 @@ export async function runSetPasswordCommand(argv: readonly string[], ports: SetP
         targets = [{ operatorId: row.operator_id, username: row.username, role: row.role, earlierWasDemo: create ? false : await storedHashSetIsDemoPassword(row), create }];
       } else {
         targets = [];
+        const systemPrincipals: string[] = [];
         for (const row of (await pool.query<OperatorRow>(SELECT_OPERATOR_CREDENTIALS)).rows) {
           // The predicate of boot check 4c (R-X2-11), one derivation after another.
-          if (await storedHashSetIsDemoPassword(row)) targets.push({ operatorId: row.operator_id, username: row.username, role: row.role, earlierWasDemo: true, create: false });
+          if (!(await storedHashSetIsDemoPassword(row))) continue;
+          // DF-29 / D20(d): a system principal that holds the demo password is not walked past in silence.
+          if (isSystemPrincipal({ operatorId: row.operator_id, username: row.username })) systemPrincipals.push(`${row.username} (${row.operator_id})`);
+          else targets.push({ operatorId: row.operator_id, username: row.username, role: row.role, earlierWasDemo: true, create: false });
+        }
+        if (systemPrincipals.length > 0) {
+          return refuse(SetPasswordRefusal.SYSTEM_PRINCIPAL, `${systemPrincipals.join(', ')}: a system principal holds the published demo password. It never signs in and this command sets no password of it; its stored credential must be removed by the security procedure, not replaced. Nothing was changed.`);
         }
       }
     } catch (error) {

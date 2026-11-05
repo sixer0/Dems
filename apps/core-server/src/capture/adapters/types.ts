@@ -308,7 +308,9 @@ export interface AudioInputAdapter {
   /**
    * The card behind an input the adapter holds OPEN, or null when it states nothing for that
    * input (task 4 row 71; the production adapter `audio/usb-audio-production.ts` implements it
-   * since row 67). OPTIONAL, as `start` of a handle is: the fakes, the generated and the local
+   * since row 67). The session start reads it BEFORE it opens the microphones, so an adapter may
+   * also state the card its last identification of a not-yet-open input found (the production
+   * adapter does since audit row 96, DF-33: the enumeration of the pre-check run). OPTIONAL, as `start` of a handle is: the fakes, the generated and the local
    * sources have none, and their session rows store `{}`. It answers from what the adapter
    * already holds - no listing, no process, no file - because the session start calls it inside
    * its unit of work.

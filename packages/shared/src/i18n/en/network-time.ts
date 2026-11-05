@@ -131,6 +131,7 @@ export const networkTime = {
     },
     tabletDetail: 'Management domain · paired operator device',
     tabletOffline: 'Recording continues on the Core. The device resyncs when it reconnects.',
+    tabletOfflineIdle: 'Nothing is recording on the Core. The device resyncs when it reconnects.',
     ports: {
       POE_CAM_1: 'CAM 1',
       POE_CAM_2_AUX: 'CAM 2 / AUX',
@@ -228,5 +229,6 @@ export const networkTime = {
     restoredDetail: 'The time source is back to GNSS stratum 1.',
     tabletOffline: 'Operator device link lost',
     tabletOfflineDetail: 'Recording continues on the Core.',
+    tabletOfflineDetailIdle: 'Nothing is recording on the Core.',
   },
 } as const satisfies ResourceTree;

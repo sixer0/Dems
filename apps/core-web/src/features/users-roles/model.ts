@@ -15,7 +15,7 @@
  * | Which rows changed between two answers (the gold highlight, M-C-07) | `changedRowIds` | §10.2 "Live update" |
  */
 import type { AdminUser, AdminUserList, RoleMatrix } from '@dems/shared/api'
-import { OperatorRole, Permission } from '@dems/shared/sim'
+import { OperatorRole, Permission, UNATTRIBUTED_OPERATOR_ID } from '@dems/shared/sim'
 
 /**
  * RB-9 as amended 02-11-2026: `createUser`, `updateUser` and `deleteUser` need the vendor account on
@@ -28,6 +28,16 @@ export const VENDOR_ROOT_USERNAME = 'root'
 /** Whether this username is the vendor `root` account (the comparison the server makes, mirrored). */
 export function isVendorRoot(username: string | null | undefined): boolean {
   return typeof username === 'string' && username.trim().toLowerCase() === VENDOR_ROOT_USERNAME
+}
+
+/**
+ * DF-29 / F-1-08 (D20(d)): `OPR-000` is the system principal of auto-attach, not a person. It never
+ * signs in, so the page shows it as a system account with no row menu. Cosmetic: the Core refuses
+ * edit, delete, purge and set-password for it (rows 132-133). The contract has no flag, so the id
+ * is the fact (`UNATTRIBUTED_OPERATOR_ID`).
+ */
+export function isSystemAccount(user: Pick<AdminUser, 'id'>): boolean {
+  return user.id === UNATTRIBUTED_OPERATOR_ID
 }
 
 /** The three roles in the order of the Core's matrix when it gives none (least privileged first, as the presenter orders them). */

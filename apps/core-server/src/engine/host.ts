@@ -33,7 +33,9 @@
  *
  * ONE CHAIN. The engine keeps a ring of the trail; the tables keep every row. Rows that a
  * server-native unit appended are taken into the ring when that unit commits (`onCommit` of the
- * pipeline), so the engine's next row continues the stored head (AP-6). Before a unit of the
+ * pipeline), so the engine's next row continues the stored head (AP-6); a unit that re-sealed the
+ * chain (an operator purge) hands over the chain as stored after its seal, and the ring takes that
+ * (row 94, DF-27). Before a unit of the
  * engine writes anything, the head the unit locked must be the head the engine holds. If it is
  * not, another writer exists or an earlier commit had an unknown outcome: nothing is stored, the
  * state is set back, the caller gets 503, and the host reloads from the database with a new
@@ -150,7 +152,7 @@ import {
   type RestartEffects,
   type TabletLink,
 } from './rehydrate';
-import { TrailMismatch, hasTrail, mergeTrail } from './ring';
+import { TrailMismatch, hasTrail, mergeTrail, resealedAudit } from './ring';
 import { createScheduler, type Scheduler } from './scheduler';
 import { createSystemTimer, type EngineTimer } from './timer';
 import type {
@@ -1006,13 +1008,25 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     if (ownUnits.has(unit.id)) return;
     const current = live;
     if (current === null || committed === null) return;
+    // Row 94 (DF-27, decision D21(3)): a unit that re-sealed the chain (an operator purge) replaced
+    // hashes the ring holds and erased rows it may hold. The ring takes the chain as the tables hold
+    // it after the seal, the way a rehydration would read it, and then the unit's rows and events
+    // are merged as for any unit (its rows up to the new head are already in it). Without this the
+    // next write of the engine found the stored head foreign: AUDIT_HEAD_DIVERGED, not ready, and a
+    // reload that ended the live run.
+    const resealed = unit.resealed === undefined ? null : resealedAudit(unit.resealed);
+    const base = resealed === null ? current.sim.store.getState() : { ...current.sim.store.getState(), audit: resealed };
     let merged;
     try {
-      merged = mergeTrail(current.sim.store.getState(), unit.auditRows, unit.events);
+      merged = mergeTrail(base, unit.auditRows, unit.events);
     } catch (error) {
       if (!(error instanceof TrailMismatch)) throw error;
       requestReload(PipelineRefusal.AUDIT_HEAD_DIVERGED, { unit: unit.id, engineSeq: error.engineSeq, rowSeq: error.rowSeq });
       return;
+    }
+    if (resealed !== null) {
+      merged = { audit: resealed, ...merged };
+      log.info({ unit: unit.id, label: unit.label, headSeq: resealed.total, rows: resealed.rows.length }, 'the engine took the re-sealed audit chain');
     }
     if (!hasTrail(merged)) return;
     counters.nativeRowsMerged += unit.auditRows.length;

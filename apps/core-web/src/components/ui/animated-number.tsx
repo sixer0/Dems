@@ -17,13 +17,25 @@
  *      unchanged value, so Motion emits no change and a MotionValue child would stay stale.
  *   4. Two optional props: `format` (default: upstream integer `toLocaleString()`) and `from`, a
  *      mount start value. When `from` is set, the first tick waits for the held beat (R4, 120 ms).
+ *   5. A hidden page (`document.visibilityState === 'hidden'`) runs no animation frames, so a spring
+ *      started there never paints: the text stayed at `from` (audit DF-18, the dashboard headline
+ *      "0.0 TB Free" beside the card's "0.4 TB"). While the page is hidden the final value is rendered
+ *      as text and the spring is jumped, as under reduced motion; back on screen nothing replays.
  */
 'use client';
 import { cn } from '@/lib/utils';
 import { motion, useSpring, useTransform } from 'motion/react';
 import type { SpringOptions } from 'motion/react'; // DEMS: 1
-import { useEffect, useMemo, useRef } from 'react'; // DEMS: 2
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'; // DEMS: 2, 5
 import { useMotionPolicy } from '@/motion'; // DEMS: 3
+
+// DEMS: 5. Page visibility as an external store (no animation frames run while the page is hidden).
+function subscribeVisibility(onChange: () => void): () => void {
+  document.addEventListener('visibilitychange', onChange);
+  return () => document.removeEventListener('visibilitychange', onChange);
+}
+const isPageHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
+const serverPageHidden = () => false;
 
 export type AnimatedNumberProps = {
   value: number;
@@ -62,10 +74,12 @@ export function AnimatedNumber({
   // DEMS: 4. Only the first update after a `from` mount waits for the held beat.
   const heldBeatPending = useRef(from !== undefined);
   const heldBeat = m.delays.heldBeat;
-  const animateNumbers = m.flags.animateNumbers;
+  // DEMS: 5. A hidden page counts as "no animation": its frames never run, so a spring would hold `from`.
+  const pageHidden = useSyncExternalStore(subscribeVisibility, isPageHidden, serverPageHidden);
+  const animateNumbers = m.flags.animateNumbers && !pageHidden;
 
   useEffect(() => {
-    // DEMS: 3. Reduced motion: numbers jump to their final value (§8 "Number tickers").
+    // DEMS: 3, 5. Reduced motion or a hidden page: numbers jump to their final value (§8 "Number tickers").
     if (!animateNumbers) {
       heldBeatPending.current = false;
       spring.jump(value);
@@ -84,7 +98,7 @@ export function AnimatedNumber({
 
   return (
     <MotionComponent className={cn('tabular-nums', className)}>
-      {/* DEMS: 3. Reduced motion renders the final value as text (robust under StrictMode). */}
+      {/* DEMS: 3, 5. Reduced motion or a hidden page renders the final value as text (robust under StrictMode; no frames needed). */}
       {animateNumbers ? display : formatValue(value)}
     </MotionComponent>
   );

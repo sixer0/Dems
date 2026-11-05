@@ -42,7 +42,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED, CaptureDiscoveryState, CaptureDiscoveryTrigger } from '@dems/shared/api';
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { avcDeclaredFrameRate, captureHostRunnerOf, createSystemTimers } from '../../capture';
+import { avcDeclaredFrameRate, captureHostRunnerOf, createCameraLinkSource, createSystemTimers, storedCameraInterface } from '../../capture';
 // Decision D62 (2026-11-05): the two raw segment probes, dialed by the file of no unit beside host-alias-socket.ts.
 import { probeSegmentAddress } from '../../segment-probe-socket';
 import {
@@ -70,6 +70,7 @@ import { registerCaptureDiscoveryRoutes } from './routes';
 import { readLastSearchNumber } from './search-ids';
 import { createSearchRunner, openSessionOf, type SearchClosed, type SearchRunner } from './search';
 import {
+  cameraLinkReaderOver,
   createSegmentSweeper,
   firstEmptyVideoTrack,
   holdsAlready,
@@ -413,6 +414,10 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
       openSession: engineOpenSession,
       // The lift of D86 C-4 is the ONE pinned constant of the contract: the sweep obeys it exactly as operation 93 does.
       duringRecordingEnabled: CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED,
+      // Audit 2026-11-05 row 102 (DF-24, DF-25; D23 (1, 2), D41): the sweep watches the link of the STORED camera interface
+      // through row 101's read-only seam - one sweep at once on link-up, no sweep and no audit row while it is DOWN, one
+      // CAMERA_LINK_DOWN / CAMERA_LINK_UP row per edge. No interface stored or an unreadable link: UNKNOWN, the 60 s sweep runs.
+      readLink: cameraLinkReaderOver(() => storedCameraInterface(app), createCameraLinkSource, now),
       ...(attach === null ? {} : { attach }),
     });
     sweeper.start();

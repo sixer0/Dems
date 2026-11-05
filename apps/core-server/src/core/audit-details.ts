@@ -1033,6 +1033,17 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     operationId: oneOf(['createCameraPreviewSession'], 'createCameraPreviewSession')(REQUIRED),
     permission: code(OPTIONAL),
   },
+  // ── Row 85 (W1 register A7, A8; decision D23 (1, 2); the writer is the camera-link sweep, row 102): the
+  // camera network link went down / came back. Written by a timer, so no `operationId`, no interface
+  // name and no address: the earlier state of the link only (UP, DOWN, ABSENT, UNKNOWN), and on the
+  // return how long it was down.
+  [AuditType.CAMERA_LINK_DOWN]: {
+    previous: oneOf(['UP', 'DOWN', 'ABSENT', 'UNKNOWN'], 'one of UP, DOWN, ABSENT, UNKNOWN')(REQUIRED),
+  },
+  [AuditType.CAMERA_LINK_UP]: {
+    previous: oneOf(['UP', 'DOWN', 'ABSENT', 'UNKNOWN'], 'one of UP, DOWN, ABSENT, UNKNOWN')(REQUIRED),
+    downMs: count(OPTIONAL),
+  },
 } as const satisfies Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>;
 
 /**
@@ -1043,7 +1054,7 @@ export const SERVER_AUDIT_DETAIL_RULES = {
  */
 export type ServerAuditType = keyof typeof SERVER_AUDIT_DETAIL_RULES;
 
-/** The list of `type`, or undefined for one of the simulator's 44 types (87 minus the 43 listed here). */
+/** The list of `type`, or undefined for one of the simulator's 44 types (93 minus the 49 listed here, row 85). */
 export function detailRulesOf(type: AuditType): Readonly<Record<string, DetailRule>> | undefined {
   return (SERVER_AUDIT_DETAIL_RULES as Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>)[type];
 }

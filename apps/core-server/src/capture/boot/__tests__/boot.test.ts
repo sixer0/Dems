@@ -39,6 +39,9 @@ import { SYSTEM_LISTING_PROGRAMS } from '../index';
 import { workerProgramProblemOf } from '../checks';
 import { inspectProgram, type ProgramFacts } from '../../adapters/local';
 import { MACOS_SYSTEM_AUDIO_PROGRAM, MACOS_USB_TREE_PROGRAM } from '../../adapters/local/mic-helper-args';
+// Audit 2026-11-05 row 88 (DF-02): the build stamp of the worker (check 5b), its reader and the fixture's stamp writer.
+import { CAPTURE_WORKER_STAMP_SUFFIX, WORKER_STAMP_MAX_BYTES, WorkerBuildStampProblem, workerBuildStampOf, workerBuildStampProblemOf } from '../index';
+import { fileSha256, workerStampText, writeWorkerStamp } from './support';
 
 /**
  * Task 4 row 228b: THE INSTALLATION OF THIS SUITE - a synthetic id of its own, NOT one of the reserved ids, so that a
@@ -289,11 +292,12 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
     rmSync(scratch, { recursive: true, force: true });
   });
 
-  function mounted(overrides: Partial<ConfigInput>) {
+  // Row 88: `seams` - members of the mount a case replaces (the stamp cases hand in an inspector; see there).
+  function mounted(overrides: Partial<ConfigInput>, seams: Partial<CaptureBootMount> = {}) {
     const recorded = recordedSinks();
     const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
     const app = { config: unitTestConfig({ dataDir: fixture.dataDir, captureMode: 'real', ...TEST_HOST_PROGRAMS, ...overrides }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
-    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...TEST_HOST, ...TEST_INSTALLATION, ...NO_DEMO_PASSWORD });
+    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...TEST_HOST, ...TEST_INSTALLATION, ...NO_DEMO_PASSWORD, ...seams });
     return {
       control,
       recorded,
@@ -315,6 +319,8 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
     const path = `${fixture.programsDir}/${name}`;
     writeFileSync(path, `#!/bin/sh\n${body}\n`, { mode: 0o700 });
     chmodSync(path, 0o700);
+    // Row 88 (DF-02, check 5b): with the build stamp a build of this tree writes beside its program.
+    writeWorkerStamp(path);
     return path;
   }
   const helloLine = (workerVersion: string): string => JSON.stringify({ v: CAPTURE_PROTOCOL_VERSION, type: 'HELLO', protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion });
@@ -336,7 +342,7 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
       const built = mounted({ captureWorkerPath: fixture.workerSaying('worker-built', CAPTURE_WORKER_VERSION) });
       await built.boot();
       expect(built.control.outcome()).toMatchObject({ workerVersion: CAPTURE_WORKER_VERSION });
-      expect((await mounted({ captureWorkerPath: fixture.workerSaying('worker-newer', 'capture-worker/0.7.0') }).refusal()).code).toBe(CaptureBootRefusal.WORKER_VERSION_MISMATCH);
+      expect((await mounted({ captureWorkerPath: fixture.workerSaying('worker-newer', 'capture-worker/9.0.0') }).refusal()).code).toBe(CaptureBootRefusal.WORKER_VERSION_MISMATCH);
     });
 
     it('BR-06: a worker that states exactly capture-worker/0.5.0 (the version before the rise to 0.6.0) is refused at boot by name, with expected and found; nothing passes', async () => {
@@ -376,6 +382,109 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
       expect(await answer(hello('capture-worker/0.4.0'))).toBe(CaptureBootRefusal.WORKER_VERSION_MISMATCH);
       // Item 5: the worker's own statement that its media library is not the verified one is still named.
       expect(await answer({ outcome: 'NONE', failure: 'MEDIA_LIBRARY_MISMATCH' })).toBe(CaptureBootRefusal.WORKER_MEDIA_LIBRARY_MISMATCH);
+    });
+  });
+
+  // ── Audit 2026-11-05 row 88 (C-P0-1b, DF-02; D15(b), D38 DR-5/DR-6; register W5-W14) ─────────────────────────────
+  // The mounted step reads `<DEMS_CAPTURE_WORKER>.stamp` (check 5b) with its DEFAULT reader on real files. The inspector
+  // is the real one with ONE change: the directories on the way are reported as the server's own, owner-only. Reason:
+  // on the audit host the directories above the fixture (the toolchain path) are group-writable, which fails the path
+  // rule for EVERY stand-in of this file before any stamp is read (pre-existing, environmental: the cases of the
+  // version rule above fail there with DIRECTORY_WRITABLE at HEAD too). The file facts - present, regular file, owner,
+  // mode - stay the real ones, so a missing stamp IS missing and a stamp file is judged by the path rule as it is.
+  describe('row 88: the build stamp beside the worker (check 5b), as mounted, on real files', () => {
+    const ownDirectories = (path: string): ProgramFacts => {
+      const facts = inspectProgram(path);
+      const own = { ownerUid: facts.serverUid, mode: 0o700 };
+      return facts.exists ? { ...facts, directoriesAsWritten: facts.directoriesAsWritten.map(() => own), directoriesResolved: facts.directoriesResolved.map(() => own) } : facts;
+    };
+    const SEAMS = { inspect: ownDirectories };
+    const stale = async (program: string): Promise<CaptureBootError> => mounted({ captureWorkerPath: program }, SEAMS).refusal();
+
+    it('the OLDER worker capture-worker/0.6.0 is refused at boot by its version, with expected and found - before its stamp is read (W14)', async () => {
+      const older = fixture.workerSaying('worker-row88-0-6-0', 'capture-worker/0.6.0');
+      // Its stamp names 0.6.0 as the stamp of that build would: the version rule refuses first, by name.
+      writeWorkerStamp(older, workerStampText({ workerVersion: 'capture-worker/0.6.0', binarySha256: fileSha256(older) }));
+      const app = mounted({ captureWorkerPath: older }, SEAMS);
+      const failure = await app.refusal();
+      expect([failure.code, failure.reason]).toEqual(['CAPTURE_WORKER_VERSION_MISMATCH', 'expected capture-worker/0.7.0, found capture-worker/0.6.0']);
+      expect(app.control.outcome()).toBeNull();
+    });
+
+    it('CONTROL: THE version with the stamp its build wrote boots REAL_PRODUCTION; the same program without a stamp boots REAL_DEVELOPMENT (DR-6: production only)', async () => {
+      const built = fixture.worker('worker-row88-built');
+      expect(workerBuildStampProblemOf(built, SEAMS)).toBeNull();
+      const production = mounted({ captureWorkerPath: built }, SEAMS);
+      await production.boot();
+      expect(production.control.outcome()).toMatchObject({ operation: CaptureOperation.REAL_PRODUCTION, workerVersion: CAPTURE_WORKER_VERSION });
+      const unstamped = fixture.worker('worker-row88-dev');
+      rmSync(`${unstamped}${CAPTURE_WORKER_STAMP_SUFFIX}`);
+      const development = mounted({ captureWorkerPath: unstamped, captureDevSources: true }, SEAMS);
+      await development.boot();
+      expect(development.control.outcome()).toMatchObject({ operation: CaptureOperation.REAL_DEVELOPMENT, workerVersion: CAPTURE_WORKER_VERSION });
+    });
+
+    it('a STALE stamp is refused at boot by CAPTURE_WORKER_BUILD_STAMP_STALE, one word per case; logged and persisted; no path, byte of the stamp or hash is said', async () => {
+      const cases: Array<readonly [string, WorkerBuildStampProblem, (program: string) => void]> = [
+        ['no stamp', WorkerBuildStampProblem.MISSING, (program) => rmSync(`${program}.stamp`)],
+        ['the program replaced after its stamp (same version word, other bytes)', WorkerBuildStampProblem.BINARY_MISMATCH, (program) => writeFileSync(program, `${readFileSync(program, 'utf8')}# another build\n`)],
+        ['a stamp of the older version beside THE version', WorkerBuildStampProblem.VERSION_MISMATCH, (program) => writeWorkerStamp(program, workerStampText({ workerVersion: 'capture-worker/0.6.0', binarySha256: fileSha256(program) }))],
+        ['a stamp of another protocol', WorkerBuildStampProblem.PROTOCOL_MISMATCH, (program) => writeWorkerStamp(program, workerStampText({ protocolVersion: CAPTURE_PROTOCOL_VERSION + 1, binarySha256: fileSha256(program) }))],
+        ['a stamp with CR LF line ends', WorkerBuildStampProblem.UNREADABLE, (program) => writeWorkerStamp(program, workerStampText({ binarySha256: fileSha256(program) }).replaceAll('\n', '\r\n'))],
+        ['a stamp the group may write', WorkerBuildStampProblem.UNREADABLE, (program) => chmodSync(`${program}.stamp`, 0o620)],
+      ];
+      for (const [title, word, spoil] of cases) {
+        const program = fixture.worker(`worker-row88-${word.toLowerCase()}-${cases.findIndex(([named]) => named === title)}`);
+        spoil(program);
+        const app = mounted({ captureWorkerPath: program }, SEAMS);
+        const failure = await app.refusal();
+        expect([failure.code, failure.reason], title).toEqual(['CAPTURE_WORKER_BUILD_STAMP_STALE', word]);
+        expect(app.control.outcome(), title).toBeNull();
+        expect(app.recorded.persisted.at(-1), title).toEqual({ level: 'error', source: 'capture.boot', code: 'CAPTURE_WORKER_BUILD_STAMP_STALE' });
+        expect(app.recorded.lines.find((line) => line.level === 'error')?.fields, title).toEqual({ code: 'CAPTURE_WORKER_BUILD_STAMP_STALE', operation: CaptureOperation.REAL_PRODUCTION, reason: word });
+        expect(failure.message, title).toContain('does not match its build stamp (<program>.stamp)');
+        expect(failure.message, title).not.toContain(fixture.programsDir);
+        expect(failure.message, title).not.toMatch(/[0-9a-f]{64}/);
+      }
+      // The same programs boot REAL_DEVELOPMENT: the check is the production boot's (D38 DR-6).
+      const development = fixture.worker('worker-row88-dev-missing');
+      rmSync(`${development}.stamp`);
+      await mounted({ captureWorkerPath: development, captureDevSources: true }, SEAMS).boot();
+      expect(await stale(development).then((failure) => failure.reason)).toBe(WorkerBuildStampProblem.MISSING);
+    });
+
+    it('the reader (W8): exactly four key=value lines in order, ASCII, LF ends, 64 lowercase hex; anything else is UNREADABLE; the bound is one byte past the stamp', () => {
+      const good = workerStampText({ binarySha256: 'a'.repeat(64) });
+      const bytes = (text: string) => new TextEncoder().encode(text);
+      expect(workerBuildStampOf(bytes(good))).toEqual({ workerVersion: CAPTURE_WORKER_VERSION, protocolVersion: CAPTURE_PROTOCOL_VERSION, sourceSha256: '0'.repeat(64), binarySha256: 'a'.repeat(64) });
+      for (const [title, text] of [
+        ['no final LF', good.slice(0, -1)],
+        ['CR LF', good.replaceAll('\n', '\r\n')],
+        ['a fifth line', `${good}extra=1\n`],
+        ['the keys out of order', good.split('\n').slice(0, 4).reverse().join('\n') + '\n'],
+        ['an upper-case hash', good.replace('a'.repeat(64), 'A'.repeat(64))],
+        ['a short hash', good.replace('a'.repeat(64), 'a'.repeat(63))],
+        ['protocol 05', good.replace(`protocolVersion=${CAPTURE_PROTOCOL_VERSION}`, `protocolVersion=0${CAPTURE_PROTOCOL_VERSION}`)],
+        ['a key with a space', good.replace('workerVersion=', 'workerVersion =')],
+        ['a non-ASCII byte', good.replace('capture-worker', 'capture\u00e9worker')],
+        ['empty', ''],
+        ['too long', `${good}${'#'.repeat(WORKER_STAMP_MAX_BYTES)}`],
+      ] as const) {
+        expect(workerBuildStampOf(bytes(text)), title).toBeNull();
+      }
+    });
+
+    it('the reader on real files: MISSING, then the path rule, then the words, then the program; a program that cannot be read whole is a BINARY_MISMATCH (fail closed)', () => {
+      const program = fixture.worker('worker-row88-reader');
+      expect(workerBuildStampProblemOf(program, SEAMS)).toBeNull();
+      expect(workerBuildStampProblemOf(program, { ...SEAMS, readWhole: () => null })).toBe(WorkerBuildStampProblem.BINARY_MISMATCH);
+      expect(workerBuildStampProblemOf(program, { ...SEAMS, readHead: () => null })).toBe(WorkerBuildStampProblem.UNREADABLE);
+      expect(workerBuildStampProblemOf(`${program}-absent`, SEAMS)).toBe(WorkerBuildStampProblem.MISSING);
+      // A stamp that is a directory is no stamp file: the path rule refuses it.
+      const folder = fixture.worker('worker-row88-folder');
+      rmSync(`${folder}.stamp`);
+      mkdirSync(`${folder}.stamp`, { mode: 0o700 });
+      expect(workerBuildStampProblemOf(folder, SEAMS)).toBe(WorkerBuildStampProblem.UNREADABLE);
     });
   });
 

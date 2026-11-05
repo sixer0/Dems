@@ -102,6 +102,8 @@ export const INITIAL_MIGRATION_TAGS = [
   '0039_four_video_tracks', // D60 (2026-11-04): four simultaneous video tracks
   '0040_four_audio_channels', // D61 (2026-11-04): four simultaneous microphone channels
   '0041_capture_widening_privileges', // D60/D61 follow-up (2026-11-05): the column UPDATE of the six new selector columns, missing from the widening
+  '0042_capture_config_constraint_repair', // KD-46 / DF-30 (2026-11-05, D22(1)): idempotent repair of the selector key names an edit of applied 0039/0040 left behind
+  '0043_operator_purge_scope', // DF-28 (2026-11-05, D22(4), D38 DR-1, D43; row 95): the purge keeps the evidence-chain audit types and a disabled account row when they name it
 ] as const;
 
 export interface MigrationFile {

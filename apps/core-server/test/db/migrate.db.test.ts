@@ -4,6 +4,7 @@
 // The file gets an EMPTY clone (the private template `x_empty`: `template0`, UTF8, locale C, no
 // hook), so the migrations are applied here, by the function `db:migrate` uses, not by the
 // template hook.
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   INITIAL_MIGRATION_TAGS,
@@ -35,8 +36,12 @@ describe('AC-B-01: the migration set on an empty database', () => {
   // four simultaneous video tracks), `0040_four_audio_channels` (the four numbered microphone
   // channels) and `0041_capture_widening_privileges` (the column UPDATE of the six new selector
   // columns, the companion privilege file the widening itself left out).
-  it('the set is the forty-two files of dbc-3 §A.1, §B.13, dbc-4 §N.8, errata PE-129a-01, PE-129b-01, PE-0013-01, task 4 schema sets A, B and C, task 4 package X-C, the profile-code CHECK, the alias removal reasons (two steps), the allowed ONVIF ports, the retirement of a capture device, the supervisor revocation (0034), the RB-9 add-user privileges (0035), the audit purge amendment (0036), the credential creation (0037), the purge reseal correction (0038), the four video tracks (0039, D60), the four audio channels (0040, D61) and the widening privileges (0041), in order, with rising journal times', () => {
-    expect(INITIAL_MIGRATION_TAGS).toHaveLength(42);
+  // REVISED 2026-11-05 (KD-46 / DF-30, D22(1), row 91): 42 -> 43 — `0042_capture_config_constraint_repair`
+  // (the idempotent repair of the selector key names that an edit of applied 0039/0040 left behind).
+  // REVISED 2026-11-05 (DF-28, D22(4), D38 DR-1, D43, row 95): 43 -> 44 — `0043_operator_purge_scope`
+  // (the purge keeps the evidence-chain audit types, and the account row, disabled, while they name it).
+  it('the set is the forty-four files of dbc-3 §A.1, §B.13, dbc-4 §N.8, errata PE-129a-01, PE-129b-01, PE-0013-01, task 4 schema sets A, B and C, task 4 package X-C, the profile-code CHECK, the alias removal reasons (two steps), the allowed ONVIF ports, the retirement of a capture device, the supervisor revocation (0034), the RB-9 add-user privileges (0035), the audit purge amendment (0036), the credential creation (0037), the purge reseal correction (0038), the four video tracks (0039, D60), the four audio channels (0040, D61), the widening privileges (0041), the KD-46 constraint repair (0042) and the purge scope (0043), in order, with rising journal times', () => {
+    expect(INITIAL_MIGRATION_TAGS).toHaveLength(44);
     const files = readMigrationSet();
     expect(files.map((file) => file.tag)).toEqual([...INITIAL_MIGRATION_TAGS]);
     expect(files.map((file) => file.idx)).toEqual(Array.from({ length: INITIAL_MIGRATION_TAGS.length }, (_, index) => index));
@@ -59,7 +64,7 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(ledger.ok).toBe(true);
   });
 
-  it('first run, as dems_owner: applies the forty-two files and sets schema version 15 (dbc-16)', async () => { // D60/D61 (2026-11-04/05): 39 -> 42 files (0039, 0040, 0041)
+  it('first run, as dems_owner: applies the forty-four files and sets schema version 15 (dbc-16)', async () => { // D60/D61 (2026-11-04/05): 39 -> 42 files (0039, 0040, 0041); KD-46 (2026-11-05): 42 -> 43 (0042, no version step); DF-28 (2026-11-05, row 95): 43 -> 44 (0043, no version step)
     const who = await db.ownerPool().query<{ role: string; superuser: boolean }>(
       'SELECT current_user::text AS role, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS superuser',
     );
@@ -140,5 +145,63 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(rows).toEqual([
       { schema: 'drizzle', name: '__drizzle_migrations', owner: 'dems_owner', schema_owner: 'dems_owner', app_usage: false, app_select: false },
     ]);
+  });
+
+  // KD-46 / DF-30 (2026-11-05, row 91; D22(1)): the production database was migrated through 0039
+  // and 0040 BEFORE commit c7cd3679 appended two keys and two renames to them, so it lacks
+  // capture_config_video_03/04_device_id_fkey and keeps the mic_primary/standby key names. This case
+  // rebuilds that shape on the migrated clone (the 0042 ledger row removed, the four constraints put
+  // back to their pre-c7cd3679 state), proves 0042 brings it to the fresh-install names and
+  // definitions, and then runs the file's own text again to prove it changes nothing.
+  it('KD-46: a database applied before c7cd3679 is repaired by 0042 to the fresh-install key names, and 0042 is idempotent', async () => {
+    const pool = db.ownerPool();
+    const keysOf = async (): Promise<{ name: string; definition: string; validated: boolean }[]> =>
+      (
+        await pool.query<{ name: string; definition: string; validated: boolean }>(
+          `SELECT conname::text AS name, pg_get_constraintdef(oid) AS definition, convalidated AS validated
+             FROM pg_constraint WHERE conrelid = 'public.capture_config'::regclass AND contype = 'f' ORDER BY conname`,
+        )
+      ).rows;
+    const fresh = await keysOf();
+    expect(fresh.map((key) => key.name)).toEqual(
+      expect.arrayContaining([
+        'capture_config_mic_01_id_fkey',
+        'capture_config_mic_02_id_fkey',
+        'capture_config_mic_03_id_fkey',
+        'capture_config_mic_04_id_fkey',
+        'capture_config_video_03_device_id_fkey',
+        'capture_config_video_04_device_id_fkey',
+      ]),
+    );
+
+    const repair = readMigrationSet().find((file) => file.tag === '0042_capture_config_constraint_repair');
+    if (repair === undefined) throw new Error('0042_capture_config_constraint_repair is not in the migration set');
+    // The production shape (research/12_d5_db_impact.md section 2.2): ledger at 0041, two old names, two keys absent.
+    // REVISED 2026-11-05 (row 95): the ledger row of every file from 0042 on goes, not 0042's alone. With
+    // 0043 left applied the migrator would SKIP 0042 (its journal time is older than the newest applied
+    // row) - and production stands at 0041, so both files are pending there, in this order.
+    await pool.query('DELETE FROM drizzle.__drizzle_migrations WHERE created_at >= $1', [String(repair.when)]);
+    await pool.query(
+      'ALTER TABLE capture_config DROP CONSTRAINT capture_config_video_03_device_id_fkey, DROP CONSTRAINT capture_config_video_04_device_id_fkey',
+    );
+    await pool.query('ALTER TABLE capture_config RENAME CONSTRAINT capture_config_mic_01_id_fkey TO capture_config_mic_primary_id_fkey');
+    await pool.query('ALTER TABLE capture_config RENAME CONSTRAINT capture_config_mic_02_id_fkey TO capture_config_mic_standby_id_fkey');
+    const broken = (await keysOf()).map((key) => key.name);
+    expect(broken).toEqual(expect.arrayContaining(['capture_config_mic_primary_id_fkey', 'capture_config_mic_standby_id_fkey']));
+    expect(broken).not.toContain('capture_config_video_03_device_id_fkey');
+    expect(broken).not.toContain('capture_config_video_04_device_id_fkey');
+    expect((await inspectLedger(pool)).pending).toEqual(['0042_capture_config_constraint_repair', '0043_operator_purge_scope']);
+
+    const result = await applyMigrations(pool);
+    // 0043 applied a second time over its own function replaces it with the same body: a no-op.
+    expect(result.applied).toEqual(['0042_capture_config_constraint_repair', '0043_operator_purge_scope']);
+    expect(result.versionAfter).toEqual({ schemaVersion: 15, contractRevision: 'dbc-16' });
+    expect(await keysOf()).toEqual(fresh);
+
+    // Idempotent: the file's own text over the repaired database is a no-op, and the ledger is current.
+    await pool.query(readFileSync(repair.file, 'utf8'));
+    expect(await keysOf()).toEqual(fresh);
+    expect((await applyMigrations(pool)).applied).toEqual([]);
+    console.info(`[kd46] repaired keys: ${fresh.map((key) => key.name).join(', ')}`);
   });
 });

@@ -1,4 +1,4 @@
-import { eventTitle, faultKindWords } from '@/lib/event-words'
+import { eventTitle, faultClearedStillInFault, faultKindWords, selectFaultSessionId } from '@/lib/event-words'
 import { Table } from '@heroui/react'
 import { ScrollText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -25,6 +25,8 @@ export function EventsPanel() {
   const events = useSim(selectLog)
   // A string that changes once per WIB day, so the 10 Hz clock never re-renders the log (R8).
   const today = useSim((s) => formatDate(s.clock.now, DATE_PATTERNS.dayKey))
+  // Row 110b (DF-19): the open session's id while it is in FAULT.
+  const faultSessionId = useSim(selectFaultSessionId)
   return (
     <NetworkTimePanel id="log" icon={ScrollText} title={t('networkTime.log.title')}>
       {events.length === 0 ? (
@@ -41,7 +43,11 @@ export function EventsPanel() {
                 <Table.Column id="source">{t('networkTime.log.columns.source')}</Table.Column>
               </Table.Header>
               <Table.Body>
-                {events.map((event) => (
+                {events.map((event) => {
+                  // Row 110b (DF-19): a fault cleared while its session is still in FAULT - its own label (the fault's
+                  // words inside it, so no second fault detail) and an amber dot, not green.
+                  const stillInFault = faultClearedStillInFault(event, faultSessionId)
+                  return (
                   <Table.Row key={event.id} id={event.id} data-testid="network-time-log-row" data-type={event.type}>
                     <Table.Cell>
                       <span className="nt-log-time nt-mono">
@@ -49,17 +55,18 @@ export function EventsPanel() {
                       </span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="nt-log-event" data-severity={event.severity}>
+                      <span className="nt-log-event" data-severity={stillInFault ? 'WARNING' : event.severity}>
                         <span className="nt-log-dot" aria-hidden="true" />
-                        <span className="nt-log-title">{eventTitle(t, event)}</span>
-                        <EventDetail event={event} />
+                        <span className="nt-log-title">{eventTitle(t, event, faultSessionId)}</span>
+                        {stillInFault ? null : <EventDetail event={event} />}
                       </span>
                     </Table.Cell>
                     <Table.Cell>
                       <span className="nt-log-source">{t(`networkTime.log.source.${eventSource(event) ?? 'SYSTEM'}`)}</span>
                     </Table.Cell>
                   </Table.Row>
-                ))}
+                  )
+                })}
               </Table.Body>
             </Table.Content>
           </Table.ScrollContainer>

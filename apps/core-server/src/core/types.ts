@@ -130,6 +130,24 @@ export interface UnitAuditWriter {
   head(): Promise<ChainHead>;
   /** The rows this unit has appended so far, in chain order. They are not committed yet. */
   appended(): readonly AuditRow[];
+  /**
+   * Row 94 (DF-27, decision D21(3)): the unit re-sealed the chain (an operator purge,
+   * `audit_purge_reseal`). `chain` is what the tables hold AFTER the seal, read inside this unit:
+   * the head and the newest rows up to the ring size, oldest first. It becomes the unit's head (so
+   * the commit reports the head as stored), and the commit hands it to the listeners as
+   * `CommittedUnit.resealed`, so the engine takes the new head instead of a hash the seal replaced.
+   * Refused (`AUDIT_RESEAL_ANSWER_INVALID`) when the newest row is not the head or the rows are not in
+   * ascending order.
+   */
+  resealed(chain: ResealedChain): Promise<void>;
+}
+
+/** The chain after a re-seal, as the unit that sealed it read it (row 94; DF-27). */
+export interface ResealedChain {
+  /** The stored head after the seal. */
+  readonly head: ChainHead;
+  /** The newest stored rows, oldest first, at most the ring size; the last one is the head. */
+  readonly rows: readonly AuditRow[];
 }
 
 /**
@@ -186,6 +204,12 @@ export interface CommittedUnit {
   readonly events: readonly SimEvent[];
   /** The head of the chain after this commit. */
   readonly head: ChainHead;
+  /**
+   * Present only when the unit re-sealed the chain (row 94; DF-27): the stored chain after the
+   * seal. `auditRows` then still hold the hashes the unit appended BEFORE the seal; a listener that
+   * keeps a ring takes these rows instead.
+   */
+  readonly resealed?: ResealedChain;
 }
 
 export interface PipelineSnapshot {

@@ -8,7 +8,7 @@ import type { OperatorRole } from '@dems/shared/sim'
 import { DATE_PATTERNS, formatDate, useRetryCooldown } from '@dems/shared/realtime'
 import { HIGHLIGHT_FADE_MS } from '@/components/ui/animated-list'
 import { useMotionPolicy } from '@/motion'
-import { changedRowIds, isLastAdministrator, roleTone } from './model'
+import { changedRowIds, isLastAdministrator, isSystemAccount, roleTone } from './model'
 import { Panel } from './panel'
 
 export type UserAction = 'role' | 'disable' | 'enable' | 'edit' | 'delete'
@@ -127,6 +127,11 @@ export function UsersPanel({ users, matrix, failed, selfId, linkUp, onRetry, onA
                                 {t('usersRoles.users.you')}
                               </Chip>
                             ) : null}
+                            {isSystemAccount(user) ? (
+                              <Chip size="sm" variant="soft" color="default" className="ur-system" data-testid={`ur-system-${user.id}`}>
+                                {t('usersRoles.users.system')}
+                              </Chip>
+                            ) : null}
                           </span>
                           <span className="ur-mono ur-muted">{user.username}</span>
                         </span>
@@ -154,7 +159,13 @@ export function UsersPanel({ users, matrix, failed, selfId, linkUp, onRetry, onA
                       </span>
                     </Table.Cell>
                     <Table.Cell className="ur-col-actions">
-                      <RowMenu user={user} lastAdministrator={isLastAdministrator(user, users, matrix)} linkUp={linkUp} manageAccounts={manageAccounts} onAction={onAction} />
+                      {isSystemAccount(user) ? (
+                        <span className="ur-muted" title={t('usersRoles.users.systemHint')} data-testid={`ur-system-note-${user.id}`}>
+                          {t('usersRoles.users.systemNoActions')}
+                        </span>
+                      ) : (
+                        <RowMenu user={user} lastAdministrator={isLastAdministrator(user, users, matrix)} linkUp={linkUp} manageAccounts={manageAccounts} onAction={onAction} />
+                      )}
                     </Table.Cell>
                   </Table.Row>
                 ))}
