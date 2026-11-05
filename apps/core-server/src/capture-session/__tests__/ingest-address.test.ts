@@ -165,8 +165,18 @@ describe('row 47, AD-05 (1) and BR-07 (4): where an ingest address is built, and
 
   it('ONE function builds an ingest address: one source of the server composes a loopback RTSP address, once, and that function is called at one place', () => {
     // No source writes an RTSP address as a text (the capture folder may not hold one at all: static rule G-R4).
-    const written = productionSources().filter((path) => codeLines(read(path)).some((line) => /rtsp:\/\/127\.0\.0\.1|rtsp:\/\/\$\{|'rtsp:\/\/'|"rtsp:\/\/"|`rtsp:\/\//.test(line)));
+    // Decision D62 (2026-11-05) admits ONE named exception below: the RTSP OPTIONS probe of SMART ATTACH writes the
+    // request-line target of ITS OWN fixed question in `segment-probe-socket.ts`. It is a question, not an ingest
+    // address: it reaches no plan, no worker, no session and no log. The G-R4 ban stands everywhere else.
+    const PROBE_EXCEPTION = 'segment-probe-socket.ts';
+    const written = productionSources().filter((path) => path !== PROBE_EXCEPTION && codeLines(read(path)).some((line) => /rtsp:\/\/127\.0\.0\.1|rtsp:\/\/\$\{|'rtsp:\/\/'|"rtsp:\/\/"|`rtsp:\/\//.test(line)));
     expect(written).toEqual([]);
+    // The exception holds its proof: ONE code line names an rtsp address, the literal OPTIONS request line of the
+    // probe; the file never names the loopback ingest host.
+    const probeLines = codeLines(read(PROBE_EXCEPTION)).filter((line) => /rtsp:\/\//.test(line));
+    expect(probeLines).toHaveLength(1);
+    expect(probeLines[0]).toContain('OPTIONS rtsp://${ip}');
+    expect(codeLines(read(PROBE_EXCEPTION)).filter((line) => /127\.0\.0\.1/.test(line))).toEqual([]);
     // An address is COMPOSED from a scheme constant in two sources: the injection point (a camera's locator, from a
     // parsed camera address: never the loopback listener) and the unit of the ingest address. No third one.
     const FROM_SCHEME = /\$\{\w*SCHEME\w*\}\/\//;

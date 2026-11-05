@@ -41,8 +41,10 @@
  */
 import { randomBytes, randomUUID } from 'node:crypto';
 import { CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED, CaptureDiscoveryState, CaptureDiscoveryTrigger } from '@dems/shared/api';
-import type { FastifyPluginAsync } from 'fastify';
-import { avcDeclaredFrameRate, createSystemTimers } from '../../capture';
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import { avcDeclaredFrameRate, captureHostRunnerOf, createSystemTimers } from '../../capture';
+// Decision D62 (2026-11-05): the two raw segment probes, dialed by the file of no unit beside host-alias-socket.ts.
+import { probeSegmentAddress } from '../../segment-probe-socket';
 import {
   createOnvifConnectionTester,
   createOnvifDiscoveryAdapter,
@@ -60,13 +62,24 @@ import { streamProfileOf } from '../../sealing-host';
 import { registerAdoptedCameraTest } from './adopted-test';
 import { registerAdoptedCameraTestRoute } from './adopted-test-route';
 import { registerAdoptedCamera, type AdoptedCamera } from './adoption';
-import { candidateDirectoryOf, registerCaptureConnectRoutes } from './connect';
+import { candidateDirectoryOf, registerCaptureConnectRoutes, SYSTEM_OPERATOR_PRINCIPAL, type CaptureConnectControl } from './connect';
 import { createSearchLimiter, type SearchLimiter } from './limits';
 import { registerCaptureReaddressRoute } from './readdress-route';
 import { readRegisteredCameras } from './registered';
 import { registerCaptureDiscoveryRoutes } from './routes';
 import { readLastSearchNumber } from './search-ids';
 import { createSearchRunner, openSessionOf, type SearchClosed, type SearchRunner } from './search';
+import {
+  createSegmentSweeper,
+  firstEmptyVideoTrack,
+  holdsAlready,
+  listNeighboursOver,
+  ownInterfaceAddresses,
+  autoSearchIdOf,
+  type SegmentAttach,
+  type SegmentSweeper,
+  type SegmentTrackAssignment,
+} from './segment-scan';
 import { createSessionExpiryWatch, readEndedSessions } from './session-expiry';
 import { createCandidateStore, type CandidateStore, type HeldCandidate, type TestRecord } from './store';
 
@@ -167,6 +180,10 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
   const own: DiscoveryAdapterFactory = (registered) => createOnvifDiscoveryAdapter({ timers, newMessageId: randomUUID, registered });
   const factory = (): DiscoveryAdapterFactory | null => provided ?? (realCapture ? own : null);
 
+  // Fix wave L (re-check 70 note G70c-05): a SEALED session is not open - `openSessionOf`, the ONE rule, read at ONE place.
+  // Decision D62 (2026-11-05): the SMART ATTACH sweep reads the engine's session through THIS helper too - the door stays single.
+  const engineOpenSession = (): ReturnType<typeof openSessionOf> => (app.engine.running ? openSessionOf(app.engine.state().session) : null);
+
   const runner = createSearchRunner({
     store,
     limiter,
@@ -176,11 +193,7 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
     registeredCameras: () => app.db.read(`${SOURCE}.registeredCameras`, (pool) => readRegisteredCameras({ query: (text) => pool.query(text) })),
     // Fix wave I (G70b-07): the search IDs go on from the highest number the stored audit chain holds, so a restart repeats none.
     lastStoredSearchNumber: () => app.db.read(`${SOURCE}.lastSearchNumber`, (pool) => readLastSearchNumber({ query: (text) => pool.query(text) })),
-    openSession: () => {
-      if (!app.engine.running) return null;
-      // Fix wave L (re-check 70 note G70c-05): a SEALED session is not open - `openSessionOf`, the ONE rule.
-      return openSessionOf(app.engine.state().session);
-    },
+    openSession: engineOpenSession,
     // The lift of D86 C-4 is the ONE pinned constant of the contract: nothing here can switch it.
     duringRecordingEnabled: CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED,
     audit: async (entry) => {
@@ -202,7 +215,8 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
       if (!outcome.started || !outcome.created) return null;
       const closed = await outcome.closed;
       if (closed === null) return null;
-      return { searchId: closed.searchId, trigger: closed.trigger, outcome: closed.state === CaptureDiscoveryState.FAILED ? 'FAILED' : 'COMPLETE', responderCount: closed.responderCount };
+      // Decision D62 (2026-11-05): the enum now holds AUTO too; THIS search is the pre-check's own and its trigger is PRECHECK by construction.
+      return { searchId: closed.searchId, trigger: CaptureDiscoveryTrigger.PRECHECK, outcome: closed.state === CaptureDiscoveryState.FAILED ? 'FAILED' : 'COMPLETE', responderCount: closed.responderCount };
     },
   };
 
@@ -260,6 +274,10 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
   // logged and persisted by the runner; the search stands.
   const notices = captureNotices(app);
   runner.onClosed(async ({ search }) => {
+    // Decision D62 (2026-11-05): the AUTO sweep never runs through this runner (it enters the store by its own door),
+    // so this listener only ever sees the two operator triggers. The narrowing states it, and holds the rule with it:
+    // an empty segment must NEVER raise situation A on a timer - the alert belongs to an operator's or a pre-check's search.
+    if (search.trigger === CaptureDiscoveryTrigger.AUTO) return;
     await notices.notifier.searchClosed({
       searchId: search.searchId,
       trigger: search.trigger,
@@ -362,6 +380,45 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
     return registered;
   });
 
+  // ── DECISION D62 (2026-11-05): SMART ATTACH. The segment sweep lives behind DEMS_CAMERA_AUTOATTACH ──
+  // Off by default: no sweeper is built and NO TIMER IS STARTED, and every other environment is exactly as it was.
+  // On, the sweep reads the host's own neighbour table over the boot's host-command seam (the door stays inside the
+  // capture unit: this module gets a RUNNER from `captureHostRunnerOf`, the third caller of that maker, pinned by
+  // name in `src/capture/__tests__/static.test.ts`), probes the live addresses of DEMS_CAMERA_SEGMENT_CIDR with the
+  // ONVIF HTTP handshake and an RTSP OPTIONS, and merges what answers into the store as ONE AUTO search per sweep -
+  // operations 94 to 96 read and adopt it unchanged. With the bench pair configured it then tests, adopts and puts
+  // each fresh probe-backed camera on the FIRST EMPTY video track (actor SYSTEM everywhere); without the pair the
+  // candidates are listed and nothing else happens. Failures are warn lines; the timer never dies.
+  let autoAttachSweeper: SegmentSweeper | null = null;
+  if (app.config.cameraAutoattach && app.config.cameraSegmentCidr !== null) {
+    const sweepRunner = captureHostRunnerOf(timers);
+    let sweeps = 0;
+    const attach = autoAttachOf(app, connect);
+    const sweeper: SegmentSweeper = createSegmentSweeper({
+      segmentCidr: app.config.cameraSegmentCidr,
+      now,
+      listNeighbours: listNeighboursOver(sweepRunner, app.config.cameraSegmentCidr),
+      // D62: the two raw probes live in `src/segment-probe-socket.ts`, the file of no unit that is the D62 named entry of the outbound-module rule (no socket and no global fetch in the host units).
+      probeAddress: (ip) => probeSegmentAddress(ip),
+      ownAddresses: ownInterfaceAddresses,
+      registeredAddresses: async () => (await app.db.read(`${SOURCE}.autoAttachRegistered`, (pool) => readRegisteredCameras({ query: (text) => pool.query(text) }))).flatMap((camera) => (camera.address === null ? [] : [camera.address])),
+      store,
+      nextSearchId: () => autoSearchIdOf(now(), (sweeps += 1)),
+      audit: async (entry) => {
+        await app.pipeline.run(AUDIT_UNIT_LABEL, async (unit) => {
+          await unit.audit.append(entry);
+        });
+      },
+      log: { info: (fields, message) => app.log.info(fields, message), warn: (fields, message) => app.log.warn(fields, message) },
+      openSession: engineOpenSession,
+      // The lift of D86 C-4 is the ONE pinned constant of the contract: the sweep obeys it exactly as operation 93 does.
+      duringRecordingEnabled: CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED,
+      ...(attach === null ? {} : { attach }),
+    });
+    sweeper.start();
+    autoAttachSweeper = sweeper;
+  }
+
   // SIGN-OUT (C3 §3.1 "signOut and session expiry"; R-9 AC-4): the list of the session that signed
   // out is discarded with the answer. The principal is the one stage 4 resolved for this request.
   app.addHook('onResponse', async (request, reply) => {
@@ -378,10 +435,60 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
     stopWatching = app.pipeline.onCommit((unit) => expiryWatch.committed(unit));
   });
 
-  // The server stops: a search that is running is ended (the adapter closes its socket) and every list is gone.
+  // The server stops: a search that is running is ended (the adapter closes its socket), the SMART ATTACH timer
+  // (D62) is stopped, and every list is gone.
   app.addHook('onClose', async () => {
     stopWatching?.();
+    autoAttachSweeper?.stop();
     runner.abort();
     store.clear();
   });
 };
+
+// ── DECISION D62 (2026-11-05): SMART ATTACH, the attach steps of the sweep ─────────────────────
+
+/**
+ * The attach steps of D62 point 4, made from the EXISTING flows: the connection test of operation
+ * 95 and the adoption of operation 96 run through the connect flow's own `systemFlow` door (same
+ * checks, same bounds, same audit rows - written by the services, under the SYSTEM caller), and
+ * the credential is stored by nothing else than the adoption's own transaction (`op 96` path,
+ * `capture_device_credentials`). Absent WITHOUT the bench pair: then the sweep lists what answers
+ * and attaches nothing. The secret is read from its `Secret` exactly once here and goes into the
+ * sealed credential and nowhere else: no log line, no audit row, no error text.
+ */
+function autoAttachOf(app: FastifyInstance, connect: CaptureConnectControl): SegmentAttach | null {
+  const user = app.config.cameraDefaultUser;
+  const password = app.config.cameraDefaultPassword;
+  if (user === null || password === null) return null;
+  const flow = connect.systemFlow({ username: user, secret: password.reveal() });
+  return {
+    testCandidate: async (candidateId) => (await flow.testCandidate(candidateId)).outcome,
+    adoptCandidate: async (candidateId) => (await flow.adoptCandidate(candidateId)).deviceId,
+    assignFirstEmptyTrack: (deviceId) => assignFirstEmptyVideoTrack(app, deviceId),
+  };
+}
+
+/**
+ * Assign a freshly adopted camera to the FIRST EMPTY video track through the hosted action of
+ * operation 78 (`setCaptureConfig`, kind `UPDATE`, one camera line), under the SYSTEM principal.
+ * A filled track is never moved: the empty one is chosen from the committed selector and the edit
+ * names that one track only. Pairwise (C93): a camera that already holds a line is skipped with a
+ * reason word, never given a second slot. A locked or refusing selector answers `LOCKED`/`REFUSED`
+ * and the sweep says it at warn; the adoption itself stands (D62: the camera is registered, the
+ * operator can move it).
+ */
+async function assignFirstEmptyVideoTrack(app: FastifyInstance, deviceId: string): Promise<SegmentTrackAssignment> {
+  const cameras = app.engine.state().captureConfig.cameras;
+  const empty = firstEmptyVideoTrack(cameras);
+  if (empty === null) return { assigned: false, trackId: null, reason: 'NO_EMPTY_TRACK' };
+  if (holdsAlready(cameras, deviceId)) return { assigned: false, trackId: null, reason: 'PAIRWISE' };
+  try {
+    await app.engine.run(`${SOURCE}.autoAttachAssign`, async (scope) => {
+      // The hosted action holds its own rules (lock, retirement, the selector's shape); the SYSTEM principal is the Core's own identity (D62), never a request's.
+      await scope.command(SYSTEM_OPERATOR_PRINCIPAL, 'setCaptureConfig', { kind: 'UPDATE', cameras: [{ trackId: empty, deviceId }] });
+    });
+  } catch {
+    return { assigned: false, trackId: null, reason: 'REFUSED' };
+  }
+  return { assigned: true, trackId: empty, reason: null };
+}

@@ -552,14 +552,28 @@ describe('G-R9: one datagram socket, in one file, closed on every way out, to on
   });
 });
 
-describe('G-R13: a search is started by the search operation and the pre-check, and by nothing else', () => {
+describe('G-R13: a search is started by the search operation, the pre-check and the SMART ATTACH sweep, and by nothing else', () => {
   /**
    * The production files that call `discover` (R-9 AC-1). Row 132 wired the adapter: ONE file holds
-   * the one call, and both triggers come through it - the search operation (`routes.ts`, op 93) and
-   * the pre-check's search (`index.ts`, `runPrecheckSearch`). Another entry is a decision, not a habit.
+   * the one call, and the two triggers that PROBE come through it - the search operation
+   * (`routes.ts`, op 93) and the pre-check's search (`index.ts`, `runPrecheckSearch`). Another
+   * entry is a decision, not a habit.
+   *
+   * DECISION D62 (ratified 2026-11-05) added the THIRD trigger, `AUTO`, and the rule keeps its
+   * teeth BY THIS VERY PIN: the sweep sends NO WS-Discovery probe. It reads the host's own
+   * neighbour table over the injected host-command seam and probes what lives there; its targets
+   * are the Core's OWN ARP observations and no caller supplies one (R-9 AC-10 stands). What the
+   * sweep may do is bounded below: it enters the store through `begin` like every search, it names
+   * `AUTO` and no other trigger, `search.ts` does not name `AUTO` at all, and its timer exists only
+   * behind the configuration flag.
    */
   const DISCOVER_CALL_SITES: readonly string[] = ['src/modules/capture-discovery/search.ts'];
   const DISCOVER_CALL = /\.\s*discover\s*\(/g;
+  /** D62: the files that START a search in the store. `search.ts` for the two operator triggers, `segment-scan.ts` for the sweep - and nobody else. */
+  const BEGIN_CALL_SITES: readonly string[] = ['src/modules/capture-discovery/search.ts', 'src/modules/capture-discovery/segment-scan.ts'];
+  const BEGIN_CALL = /\bstore\.begin\s*\(/g;
+  const AUTO_TRIGGER = /\bCaptureDiscoveryTrigger\.AUTO\b/g;
+  const SEGMENT_SCAN = 'src/modules/capture-discovery/segment-scan.ts';
 
   it('finds a call from a boot hook, a timer or a read operation (control)', () => {
     const planted: SourceFile[] = [
@@ -573,6 +587,27 @@ describe('G-R13: a search is started by the search operation and the pre-check, 
 
   it('no production file calls discover but the pinned call sites', () => {
     expect(places(production, DISCOVER_CALL)).toEqual(DISCOVER_CALL_SITES);
+  });
+
+  it('D62: the sweep starts its store search through begin, names no probe call and no other trigger; search.ts never names AUTO (control)', () => {
+    expect(places(production, BEGIN_CALL)).toEqual(BEGIN_CALL_SITES);
+    const sweep = production.find((file) => file.path === SEGMENT_SCAN)?.text ?? '';
+    expect(sweep.length).toBeGreaterThan(1_000);
+    // The sweep sends no WS-Discovery probe and names no operator trigger; the two probe triggers stay in `search.ts`.
+    expect([...sweep.matchAll(DISCOVER_CALL)]).toHaveLength(0);
+    expect([...sweep.matchAll(AUTO_TRIGGER)].length).toBeGreaterThanOrEqual(2);
+    expect(sweep).not.toMatch(/\bCaptureDiscoveryTrigger\.(?:MANUAL|PRECHECK)\b/);
+    const search = production.find((file) => file.path === 'src/modules/capture-discovery/search.ts')?.text ?? '';
+    expect([...search.matchAll(AUTO_TRIGGER)]).toHaveLength(0);
+    // Control: a third begin-caller, a probe call in the sweep and an AUTO in `search.ts` are each seen by the pins above.
+    const planted: SourceFile[] = [
+      { path: 'src/modules/capture-session/tick.ts', text: 'const s = store.begin({ sessionId, searchId, trigger, startedAt, windowMs, interfaceCount: 0 });' },
+      { path: SEGMENT_SCAN, text: 'const found = await adapter.discover({ windowMs });\nstore.begin(o);\nbegin(o); // a definition line is not a call' },
+      { path: 'src/modules/capture-discovery/search.ts', text: 'if (request.trigger === CaptureDiscoveryTrigger.AUTO) return refuse;' },
+    ];
+    expect(places(planted, BEGIN_CALL)).toEqual(['src/modules/capture-session/tick.ts', SEGMENT_SCAN]);
+    expect(places(planted, DISCOVER_CALL)).toEqual([SEGMENT_SCAN]);
+    expect(places([planted[2] as SourceFile], AUTO_TRIGGER)).toEqual(['src/modules/capture-discovery/search.ts']);
   });
 });
 
@@ -971,6 +1006,18 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       // LCD integration (user request 2026-10-19; the key joined config.ts with the task-4
       // checkpoint f85e9c01 of 2026-11-03, outside the capture family - same category of OD-14):
       // the backend URL of the panel bridge, five places in the file.
+      // Decision D62 (ratified 2026-11-05; the category of OD-14): the four keys of SMART ATTACH - the flag,
+      // the segment /24, and the optional bench pair - in the same places as every key before them, plus their
+      // parsers, their refusal of a sweep without its segment, and the fields the auto-attach reads. Every line
+      // below is one added line of `src/config.ts` as the decision wrote it, in the order the file holds them.
+      " * WAIVED EDITS (decision D62, ratified 2026-11-05; the category of OD-14): the four keys of SMART",
+      " * ATTACH. `DEMS_CAMERA_AUTOATTACH` (`1` turns the segment sweep on; unset, empty or `0` leaves it",
+      " * off, and every other environment is exactly as it was), `DEMS_CAMERA_SEGMENT_CIDR` (one IPv4 `/24`",
+      " * literal, required while the sweep is on: a start that turns it on without its segment stops the",
+      " * boot here), and the optional pair `DEMS_CAMERA_DEFAULT_USER` with `DEMS_CAMERA_DEFAULT_PASSWORD`",
+      " * (the bench camera credential, read ONLY to test and store an auto-adopted camera; the secret is a",
+      " * `Secret` and prints as `[redacted]`). Without the pair the sweep still lists what answers: nothing",
+      " * is tested, adopted or assigned.",
       "export const ENV_LCD_BACKEND_URL = 'DEMS_LCD_BACKEND_URL';",
       "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
       "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
@@ -984,6 +1031,11 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       "export const ENV_CAPTURE_GUARD = 'DEMS_CAPTURE_GUARD';",
       "export const ENV_CAPTURE_ALIAS_SOCKET = 'DEMS_CAPTURE_ALIAS_SOCKET';",
       "export const ENV_CAPTURE_AUDIO_HELPER = 'DEMS_CAPTURE_AUDIO_HELPER';",
+      "// Decision D62 (2026-11-05): the four keys of SMART ATTACH (segment sweep, its /24, the bench pair).",
+      "export const ENV_CAMERA_AUTOATTACH = 'DEMS_CAMERA_AUTOATTACH';",
+      "export const ENV_CAMERA_SEGMENT_CIDR = 'DEMS_CAMERA_SEGMENT_CIDR';",
+      "export const ENV_CAMERA_DEFAULT_USER = 'DEMS_CAMERA_DEFAULT_USER';",
+      "export const ENV_CAMERA_DEFAULT_PASSWORD = 'DEMS_CAMERA_DEFAULT_PASSWORD';",
       "export const CAPTURE_MODES = ['simulated', 'real'] as const;",
       'export type CaptureMode = (typeof CAPTURE_MODES)[number];',
       "export const DEFAULT_CAPTURE_MODE: CaptureMode = 'simulated';",
@@ -1018,6 +1070,14 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  readonly captureAliasSocketPath: string | null;',
       '  /** Absolute path of the audio helper of production capture, or null when none is configured. Started by the guard of production capture only. */',
       '  readonly captureAudioHelperPath: string | null;',
+      "  /** Decision D62 (2026-11-05) SMART ATTACH: true only when `DEMS_CAMERA_AUTOATTACH=1`. Off by default: no sweep, no timer, nothing changes. */",
+      "  readonly cameraAutoattach: boolean;",
+      "  /** Decision D62: the one IPv4 `/24` literal of the camera segment the sweep reads, or null when unset. Required while the sweep is on: `createConfig` refuses the pair otherwise. */",
+      "  readonly cameraSegmentCidr: string | null;",
+      "  /** Decision D62: the bench camera user name, or null. Read ONLY for the auto connect-test and the stored credential; without it nothing is auto-adopted. */",
+      "  readonly cameraDefaultUser: string | null;",
+      "  /** Decision D62: its password as a `Secret` (prints `[redacted]`, reaches no log line), or null. */",
+      "  readonly cameraDefaultPassword: Secret | null;",
       '/** Unset means `simulated`. Any other value than the two modes stops the boot. */',
       'export function parseCaptureMode(raw: string | undefined): CaptureMode {',
       "  if (raw === undefined || raw === '') return DEFAULT_CAPTURE_MODE;",
@@ -1062,6 +1122,43 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  return raw;',
       '}',
       '',
+      "// ── Decision D62 (2026-11-05): SMART ATTACH ─────────────────────────────────────────────────────",
+      "",
+      "/** `1` turns the SMART ATTACH segment sweep on; unset, empty or `0` leaves it off. Any other value stops the boot. */",
+      "export function parseCameraAutoattach(raw: string | undefined): boolean {",
+      "  if (raw === undefined || raw === '' || raw === '0') return false;",
+      "  if (raw === '1') return true;",
+      "  throw new ConfigError('CAMERA_AUTOATTACH_INVALID', `${ENV_CAMERA_AUTOATTACH} must be 1 or 0.`);",
+      "}",
+      "",
+      "/**",
+      " * The one form of `DEMS_CAMERA_SEGMENT_CIDR` (decision D62): a strict dotted IPv4 quad — four",
+      " * decimal parts from 0 to 255 without a leading zero — and the literal prefix length `/24`. No",
+      " * other prefix, no host name, no port, no blank: the sweep reads exactly one /24 of the host.",
+      " */",
+      "export const CAMERA_SEGMENT_CIDR_PATTERN = /^(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)){3}\\/24$/;",
+      "",
+      "/** One IPv4 `/24` literal, or null when the variable is unset. Any other text stops the boot. */",
+      "export function parseCameraSegmentCidr(raw: string | undefined): string | null {",
+      "  if (raw === undefined || raw === '') return null;",
+      "  if (!CAMERA_SEGMENT_CIDR_PATTERN.test(raw)) throw new ConfigError('CAMERA_SEGMENT_CIDR_INVALID', `${ENV_CAMERA_SEGMENT_CIDR} must be one IPv4 /24 literal, e.g. 192.168.7.0/24.`);",
+      "  return raw;",
+      "}",
+      "",
+      "/** The bench camera user name of decision D62: 1 to 120 printable characters without surrounding space, or null when unset. */",
+      "export function parseCameraDefaultUser(raw: string | undefined): string | null {",
+      "  if (raw === undefined || raw === '') return null;",
+      "  if (raw.length > 120 || raw !== raw.trim() || [...raw].some((character) => (character.codePointAt(0) ?? 0) < 32 || character.codePointAt(0) === 127)) throw new ConfigError('CAMERA_DEFAULT_USER_INVALID', `${ENV_CAMERA_DEFAULT_USER} must be 1 to 120 printable characters without a leading or trailing space.`);",
+      "  return raw;",
+      "}",
+      "",
+      "/** The bench camera password of decision D62, sealed in a `Secret`: it prints as `[redacted]` and reaches no log line. Null when unset. */",
+      "export function parseCameraDefaultPassword(raw: string | undefined): Secret | null {",
+      "  if (raw === undefined || raw === '') return null;",
+      "  if (raw.length > 256 || [...raw].some((character) => (character.codePointAt(0) ?? 0) < 32 || character.codePointAt(0) === 127)) throw new ConfigError('CAMERA_DEFAULT_PASSWORD_INVALID', `${ENV_CAMERA_DEFAULT_PASSWORD} must be 1 to 256 printable characters.`);",
+      "  return new Secret(raw);",
+      "}",
+      "",
       '  readonly lcdBackendUrl?: string | null;',
       '  /** Default: `simulated`. */',
       '  readonly captureMode?: CaptureMode;',
@@ -1087,9 +1184,24 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  readonly captureAliasSocketPath?: string | null;',
       '  /** Default: null (no audio helper of production capture). */',
       '  readonly captureAudioHelperPath?: string | null;',
+      "  /** Decision D62 (2026-11-05). Default: false (no SMART ATTACH sweep, no timer). */",
+      "  readonly cameraAutoattach?: boolean;",
+      "  /** Decision D62: one IPv4 `/24` literal, or null. Required when `cameraAutoattach` is on. */",
+      "  readonly cameraSegmentCidr?: string | null;",
+      "  /** Decision D62. Default: null (no bench camera user: nothing is auto-adopted). */",
+      "  readonly cameraDefaultUser?: string | null;",
+      "  /** Decision D62. Default: null (no bench camera password). */",
+      "  readonly cameraDefaultPassword?: Secret | null;",
       '  const captureWorkerPath = parseCapturePath(ENV_CAPTURE_WORKER, input.captureWorkerPath ?? undefined);',
       '  const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, input.mediaStoreDir ?? undefined) ?? `${input.dataDir}/${MEDIA_STORE_SUBPATH}`;',
       '  const captureHelperFfmpegPath = parseCapturePath(ENV_CAPTURE_HELPER_FFMPEG, input.captureHelperFfmpegPath ?? undefined);',
+      "  // Decision D62 (2026-11-05): a sweep that is on without its segment is refused HERE, at the one",
+      "  // place that builds a configuration: no half-wired timer can start. Off is always whole: no CIDR needed.",
+      "  const cameraAutoattach = input.cameraAutoattach ?? false;",
+      "  const cameraSegmentCidr = parseCameraSegmentCidr(input.cameraSegmentCidr ?? undefined);",
+      "  if (cameraAutoattach && cameraSegmentCidr === null) {",
+      "    throw new ConfigError('CAMERA_SEGMENT_CIDR_REQUIRED', `${ENV_CAMERA_SEGMENT_CIDR} must hold one IPv4 /24 literal while ${ENV_CAMERA_AUTOATTACH} is on.`);",
+      "  }",
       '    lcdBackendUrl: parseLcdBackendUrl(input.lcdBackendUrl ?? undefined),',
       '    captureMode: input.captureMode ?? DEFAULT_CAPTURE_MODE,',
       '    captureWorkerPath,',
@@ -1103,6 +1215,11 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '    captureGuardPath: parseCapturePath(ENV_CAPTURE_GUARD, input.captureGuardPath ?? undefined),',
       '    captureAliasSocketPath: parseCapturePath(ENV_CAPTURE_ALIAS_SOCKET, input.captureAliasSocketPath ?? undefined),',
       '    captureAudioHelperPath: parseCapturePath(ENV_CAPTURE_AUDIO_HELPER, input.captureAudioHelperPath ?? undefined),',
+      "    // Decision D62 (2026-11-05): SMART ATTACH. Off by default; the segment is re-read through its pattern here, so no caller can smuggle another form in.",
+      "    cameraAutoattach,",
+      "    cameraSegmentCidr,",
+      "    cameraDefaultUser: parseCameraDefaultUser(input.cameraDefaultUser ?? undefined),",
+      "    cameraDefaultPassword: input.cameraDefaultPassword ?? null,",
       '/** LCD integration, user request 2026-10-19: host-only HTTP service, no redirects or remote hosts. */',
       'export function parseLcdBackendUrl(raw: string | undefined): string | null {',
       "  if (raw === undefined || raw === '') return null;",
@@ -1132,7 +1249,7 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
     // Every line of the file that mentions capture or the media root is a waived one: nothing else names them.
     expect(current.filter((line) => /capture|media/i.test(line)).filter((line) => !WAIVED_CONFIG.includes(line))).toEqual([]);
     // The three keys, by name (edit 7), and the three fields of the configuration (edit 8).
-    expect(current.filter((line) => line.startsWith('export const ENV_')).slice(-12)).toEqual([
+    expect(current.filter((line) => line.startsWith('export const ENV_')).slice(-16)).toEqual([
       "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
       "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
       "export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';",
@@ -1149,6 +1266,11 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       "export const ENV_CAPTURE_ALIAS_SOCKET = 'DEMS_CAPTURE_ALIAS_SOCKET';",
       // Task 4 row 85c (decision C60 (3)): the audio helper of production capture (pin 11 -> 12).
       "export const ENV_CAPTURE_AUDIO_HELPER = 'DEMS_CAPTURE_AUDIO_HELPER';",
+      // Decision D62 (2026-11-05): the four SMART ATTACH keys, last in the file, inside the widened window.
+"export const ENV_CAMERA_AUTOATTACH = 'DEMS_CAMERA_AUTOATTACH';",
+"export const ENV_CAMERA_SEGMENT_CIDR = 'DEMS_CAMERA_SEGMENT_CIDR';",
+"export const ENV_CAMERA_DEFAULT_USER = 'DEMS_CAMERA_DEFAULT_USER';",
+"export const ENV_CAMERA_DEFAULT_PASSWORD = 'DEMS_CAMERA_DEFAULT_PASSWORD';",
     ]);
     expect(current.filter((line) => /^ {2}readonly (captureMode|captureWorkerPath|mediaStoreDir|captureDevSources|captureHelperFfmpegPath): /.test(line))).toHaveLength(5);
     // The development flag has NO default but "off": a line that turned it on by default is not a waived one.
@@ -2210,9 +2332,12 @@ describe('row 80: the host checks ask the host through an injected runner; no li
     // above now stands in a maker of its own (`captureHostRunnerOf`), which the host facts use and which the entry point
     // calls ONCE MORE, as a member of the composition's statement, for the single purpose of reading the address helper's
     // interface file. The door did not leave the capture unit (rule A-5 of the adapter layer is untouched): the entry
-    // gets a runner, never the means to start a program. A third caller of the maker fails here.
+    // gets a runner, never the means to start a program. A fourth caller of the maker fails here (D62 took the third seat, 2026-11-05).
     const MAKER_CALL = /\bcaptureHostRunnerOf\s*\([^)]*\)/g;
-    expect(places(production, /\bcaptureHostRunnerOf\s*\(/g)).toEqual([HOST_FACTS, 'src/index.ts']);
+    // Decision D62 (2026-11-05) adds the THIRD caller: the capture-discovery module, for the ONE fixed neighbour row
+    // of the SMART ATTACH sweep (`segment-scan.ts`), behind the configuration flag. The door still did not leave the
+    // capture unit: the module gets a runner, never the means to start a program, and the row it runs is pinned in the G-R13 block.
+    expect(places(production, /\bcaptureHostRunnerOf\s*\(/g)).toEqual([HOST_FACTS, 'src/index.ts', 'src/modules/capture-discovery/index.ts']);
     expect(text(HOST_FACTS).match(MAKER_CALL)).toEqual(['captureHostRunnerOf(timers: CaptureTimers)', 'captureHostRunnerOf(timers)']);
     expect(text(HOST_FACTS)).toMatch(/export function captureHostRunnerOf\(timers: CaptureTimers\): OwnHostFacts\['run'\] \{\n {2}return hostCommandRunnerOver\(startHelperProcess, timers\);\n\}/);
     expect(text(HOST_FACTS)).toContain('    run: captureHostRunnerOf(timers),');
@@ -2644,9 +2769,14 @@ describe('row 157 / AD-08: no seam for the full-session test - mount members, no
   /**
    * (c) THE CLOSED LIST of the configuration keys: every `DEMS_*` name a production source of the server writes in its
    * code (declaration, parser, a sentence of a refusal), with the row that admitted it. As it stands at row 157: 22;
-   * +2 on 2026-11-04: the panel bridge URL and the installer's certificate fingerprint (checkpoint f85e9c01).
+   * +2 on 2026-11-04: the panel bridge URL and the installer's certificate fingerprint (checkpoint f85e9c01);
+   * +4 on 2026-11-05: the four keys of SMART ATTACH (decision D62).
    */
   const CONFIGURATION_KEYS: readonly (readonly [key: string, admittedBy: string])[] = [
+    ['DEMS_CAMERA_AUTOATTACH', 'decision D62 (ratified 2026-11-05): the flag of SMART ATTACH - `1` turns the segment sweep on, off everywhere else'],
+    ['DEMS_CAMERA_DEFAULT_PASSWORD', 'decision D62 (2026-11-05): the bench camera password as a `Secret`, read ONLY to test and store an auto-adopted camera'],
+    ['DEMS_CAMERA_DEFAULT_USER', 'decision D62 (2026-11-05): the bench camera user name of the auto-adopt connection test'],
+    ['DEMS_CAMERA_SEGMENT_CIDR', 'decision D62 (2026-11-05): the one IPv4 `/24` the sweep reads; required while the sweep is on'],
     ['DEMS_CAPTURE_ALIAS_SOCKET', 'task 4 row 105 (WP-19b): the socket of the address helper'],
     ['DEMS_CAPTURE_AUDIO_HELPER', 'task 4 row 85c (decisions C60 (3), C63 (c)): the audio helper of production capture'],
     ['DEMS_CAPTURE_DEV_FAKE_MIC', 'task 3 fix wave H (ruling D198): what the first generated development microphone plays'],
@@ -2699,7 +2829,7 @@ describe('row 157 / AD-08: no seam for the full-session test - mount members, no
     expect(keyViolations(production)).toEqual([]);
     const named = [...new Set(production.flatMap((file) => file.text.match(KEY_NAME) ?? []))].sort();
     expect(named).toEqual(CONFIGURATION_KEYS.map(([key]) => key));
-    expect(named).toHaveLength(24); // two keys joined with the task-4 checkpoint of 2026-11-03
+    expect(named).toHaveLength(28); // two keys joined with the task-4 checkpoint of 2026-11-03, four with decision D62 of 2026-11-05
     expect(named.filter((key) => SAYS_TEST.test(key))).toEqual([]);
     // The sources of src/ that are not TypeScript name no key either (a script, a JSON file, a statement file).
     expect(tree.filter((file) => isProductionSource(file.path) && !file.path.endsWith('.ts') && KEY_NAME.test(file.text)).map((file) => file.path)).toEqual([]);

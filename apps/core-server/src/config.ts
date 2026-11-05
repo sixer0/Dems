@@ -39,6 +39,14 @@
  * WAIVED EDIT (task 4 row 85c, decision C60 (3); the category of OD-14): the audio helper of production
  * capture. `DEMS_CAPTURE_AUDIO_HELPER` is an absolute path; unset, no production microphone can be
  * opened. It is started by the guard of production capture, never directly and never by a development door.
+ * WAIVED EDITS (decision D62, ratified 2026-11-05; the category of OD-14): the four keys of SMART
+ * ATTACH. `DEMS_CAMERA_AUTOATTACH` (`1` turns the segment sweep on; unset, empty or `0` leaves it
+ * off, and every other environment is exactly as it was), `DEMS_CAMERA_SEGMENT_CIDR` (one IPv4 `/24`
+ * literal, required while the sweep is on: a start that turns it on without its segment stops the
+ * boot here), and the optional pair `DEMS_CAMERA_DEFAULT_USER` with `DEMS_CAMERA_DEFAULT_PASSWORD`
+ * (the bench camera credential, read ONLY to test and store an auto-adopted camera; the secret is a
+ * `Secret` and prints as `[redacted]`). Without the pair the sweep still lists what answers: nothing
+ * is tested, adopted or assigned.
  */
 
 // ── Listener (SR-01, ADQ-5, ADQ-10) ────────────────────────────────────────────────────────────
@@ -74,6 +82,11 @@ export const ENV_CAPTURE_RELAY = 'DEMS_CAPTURE_RELAY';
 export const ENV_CAPTURE_GUARD = 'DEMS_CAPTURE_GUARD';
 export const ENV_CAPTURE_ALIAS_SOCKET = 'DEMS_CAPTURE_ALIAS_SOCKET';
 export const ENV_CAPTURE_AUDIO_HELPER = 'DEMS_CAPTURE_AUDIO_HELPER';
+// Decision D62 (2026-11-05): the four keys of SMART ATTACH (segment sweep, its /24, the bench pair).
+export const ENV_CAMERA_AUTOATTACH = 'DEMS_CAMERA_AUTOATTACH';
+export const ENV_CAMERA_SEGMENT_CIDR = 'DEMS_CAMERA_SEGMENT_CIDR';
+export const ENV_CAMERA_DEFAULT_USER = 'DEMS_CAMERA_DEFAULT_USER';
+export const ENV_CAMERA_DEFAULT_PASSWORD = 'DEMS_CAMERA_DEFAULT_PASSWORD';
 
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -232,6 +245,14 @@ export interface CoreServerConfig {
   readonly captureAliasSocketPath: string | null;
   /** Absolute path of the audio helper of production capture, or null when none is configured. Started by the guard of production capture only. */
   readonly captureAudioHelperPath: string | null;
+  /** Decision D62 (2026-11-05) SMART ATTACH: true only when `DEMS_CAMERA_AUTOATTACH=1`. Off by default: no sweep, no timer, nothing changes. */
+  readonly cameraAutoattach: boolean;
+  /** Decision D62: the one IPv4 `/24` literal of the camera segment the sweep reads, or null when unset. Required while the sweep is on: `createConfig` refuses the pair otherwise. */
+  readonly cameraSegmentCidr: string | null;
+  /** Decision D62: the bench camera user name, or null. Read ONLY for the auto connect-test and the stored credential; without it nothing is auto-adopted. */
+  readonly cameraDefaultUser: string | null;
+  /** Decision D62: its password as a `Secret` (prints `[redacted]`, reaches no log line), or null. */
+  readonly cameraDefaultPassword: Secret | null;
 }
 
 /** A configuration that must stop the boot. `code` is stable; `message` never holds a secret. */
@@ -327,6 +348,43 @@ export function parseInstallationName(raw: string | undefined): string | null {
   return raw;
 }
 
+// ── Decision D62 (2026-11-05): SMART ATTACH ─────────────────────────────────────────────────────
+
+/** `1` turns the SMART ATTACH segment sweep on; unset, empty or `0` leaves it off. Any other value stops the boot. */
+export function parseCameraAutoattach(raw: string | undefined): boolean {
+  if (raw === undefined || raw === '' || raw === '0') return false;
+  if (raw === '1') return true;
+  throw new ConfigError('CAMERA_AUTOATTACH_INVALID', `${ENV_CAMERA_AUTOATTACH} must be 1 or 0.`);
+}
+
+/**
+ * The one form of `DEMS_CAMERA_SEGMENT_CIDR` (decision D62): a strict dotted IPv4 quad — four
+ * decimal parts from 0 to 255 without a leading zero — and the literal prefix length `/24`. No
+ * other prefix, no host name, no port, no blank: the sweep reads exactly one /24 of the host.
+ */
+export const CAMERA_SEGMENT_CIDR_PATTERN = /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)){3}\/24$/;
+
+/** One IPv4 `/24` literal, or null when the variable is unset. Any other text stops the boot. */
+export function parseCameraSegmentCidr(raw: string | undefined): string | null {
+  if (raw === undefined || raw === '') return null;
+  if (!CAMERA_SEGMENT_CIDR_PATTERN.test(raw)) throw new ConfigError('CAMERA_SEGMENT_CIDR_INVALID', `${ENV_CAMERA_SEGMENT_CIDR} must be one IPv4 /24 literal, e.g. 192.168.7.0/24.`);
+  return raw;
+}
+
+/** The bench camera user name of decision D62: 1 to 120 printable characters without surrounding space, or null when unset. */
+export function parseCameraDefaultUser(raw: string | undefined): string | null {
+  if (raw === undefined || raw === '') return null;
+  if (raw.length > 120 || raw !== raw.trim() || [...raw].some((character) => (character.codePointAt(0) ?? 0) < 32 || character.codePointAt(0) === 127)) throw new ConfigError('CAMERA_DEFAULT_USER_INVALID', `${ENV_CAMERA_DEFAULT_USER} must be 1 to 120 printable characters without a leading or trailing space.`);
+  return raw;
+}
+
+/** The bench camera password of decision D62, sealed in a `Secret`: it prints as `[redacted]` and reaches no log line. Null when unset. */
+export function parseCameraDefaultPassword(raw: string | undefined): Secret | null {
+  if (raw === undefined || raw === '') return null;
+  if (raw.length > 256 || [...raw].some((character) => (character.codePointAt(0) ?? 0) < 32 || character.codePointAt(0) === 127)) throw new ConfigError('CAMERA_DEFAULT_PASSWORD_INVALID', `${ENV_CAMERA_DEFAULT_PASSWORD} must be 1 to 256 printable characters.`);
+  return new Secret(raw);
+}
+
 // ── Building the configuration object ──────────────────────────────────────────────────────────
 
 export interface ConfigInput {
@@ -366,6 +424,14 @@ export interface ConfigInput {
   readonly captureAliasSocketPath?: string | null;
   /** Default: null (no audio helper of production capture). */
   readonly captureAudioHelperPath?: string | null;
+  /** Decision D62 (2026-11-05). Default: false (no SMART ATTACH sweep, no timer). */
+  readonly cameraAutoattach?: boolean;
+  /** Decision D62: one IPv4 `/24` literal, or null. Required when `cameraAutoattach` is on. */
+  readonly cameraSegmentCidr?: string | null;
+  /** Decision D62. Default: null (no bench camera user: nothing is auto-adopted). */
+  readonly cameraDefaultUser?: string | null;
+  /** Decision D62. Default: null (no bench camera password). */
+  readonly cameraDefaultPassword?: Secret | null;
 }
 
 /**
@@ -395,6 +461,13 @@ export function createConfig(input: ConfigInput): CoreServerConfig {
   const captureWorkerPath = parseCapturePath(ENV_CAPTURE_WORKER, input.captureWorkerPath ?? undefined);
   const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, input.mediaStoreDir ?? undefined) ?? `${input.dataDir}/${MEDIA_STORE_SUBPATH}`;
   const captureHelperFfmpegPath = parseCapturePath(ENV_CAPTURE_HELPER_FFMPEG, input.captureHelperFfmpegPath ?? undefined);
+  // Decision D62 (2026-11-05): a sweep that is on without its segment is refused HERE, at the one
+  // place that builds a configuration: no half-wired timer can start. Off is always whole: no CIDR needed.
+  const cameraAutoattach = input.cameraAutoattach ?? false;
+  const cameraSegmentCidr = parseCameraSegmentCidr(input.cameraSegmentCidr ?? undefined);
+  if (cameraAutoattach && cameraSegmentCidr === null) {
+    throw new ConfigError('CAMERA_SEGMENT_CIDR_REQUIRED', `${ENV_CAMERA_SEGMENT_CIDR} must hold one IPv4 /24 literal while ${ENV_CAMERA_AUTOATTACH} is on.`);
+  }
   return Object.freeze({
     lcdBackendUrl: parseLcdBackendUrl(input.lcdBackendUrl ?? undefined),
     host: LISTEN_HOST,
@@ -424,6 +497,11 @@ export function createConfig(input: ConfigInput): CoreServerConfig {
     captureGuardPath: parseCapturePath(ENV_CAPTURE_GUARD, input.captureGuardPath ?? undefined),
     captureAliasSocketPath: parseCapturePath(ENV_CAPTURE_ALIAS_SOCKET, input.captureAliasSocketPath ?? undefined),
     captureAudioHelperPath: parseCapturePath(ENV_CAPTURE_AUDIO_HELPER, input.captureAudioHelperPath ?? undefined),
+    // Decision D62 (2026-11-05): SMART ATTACH. Off by default; the segment is re-read through its pattern here, so no caller can smuggle another form in.
+    cameraAutoattach,
+    cameraSegmentCidr,
+    cameraDefaultUser: parseCameraDefaultUser(input.cameraDefaultUser ?? undefined),
+    cameraDefaultPassword: input.cameraDefaultPassword ?? null,
   });
 }
 

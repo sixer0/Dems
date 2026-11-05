@@ -25,6 +25,11 @@ import {
   ENV_CAPTURE_MODE,
   ENV_CAPTURE_RELAY,
   ENV_CAPTURE_WORKER,
+  // Decision D62 (2026-11-05): the four keys of SMART ATTACH.
+  ENV_CAMERA_AUTOATTACH,
+  ENV_CAMERA_DEFAULT_PASSWORD,
+  ENV_CAMERA_DEFAULT_USER,
+  ENV_CAMERA_SEGMENT_CIDR,
   ENV_DEMO_CONTROLS,
   ENV_INSTALLATION_DEVICE_ID,
   ENV_INSTALLATION_NAME,
@@ -34,6 +39,11 @@ import {
   ENV_MEDIA_DIR,
   RUNTIME_ROLE,
   createConfig,
+  // Decision D62 (2026-11-05): the SMART ATTACH parsers.
+  parseCameraAutoattach,
+  parseCameraDefaultPassword,
+  parseCameraDefaultUser,
+  parseCameraSegmentCidr,
   parseCaptureDevFakeMic,
   parseCaptureDevSources,
   parseCaptureMode,
@@ -101,6 +111,13 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
   // The installation identity (fix wave H closing pass Z1, decision D207). Parsed here; whether a start without it is refused is the sealing host's.
   const installationDeviceId = parseInstallationDeviceId(options.env[ENV_INSTALLATION_DEVICE_ID]);
   const installationName = parseInstallationName(options.env[ENV_INSTALLATION_NAME]);
+  // The four keys of SMART ATTACH (decision D62, ratified 2026-11-05). Parsed here; the sweep itself lives in
+  // `modules/capture-discovery/segment-scan.ts` and starts nowhere else. Off by default: an unset pair of keys
+  // leaves every other environment exactly as it was. A sweep that is on without its /24 is refused by `createConfig`.
+  const cameraAutoattach = parseCameraAutoattach(options.env[ENV_CAMERA_AUTOATTACH]);
+  const cameraSegmentCidr = parseCameraSegmentCidr(options.env[ENV_CAMERA_SEGMENT_CIDR]);
+  const cameraDefaultUser = parseCameraDefaultUser(options.env[ENV_CAMERA_DEFAULT_USER]);
+  const cameraDefaultPassword = parseCameraDefaultPassword(options.env[ENV_CAMERA_DEFAULT_PASSWORD]);
 
   const dataDir = resolve(options.dataDir ?? DEFAULT_DATA_DIR);
   const file = join(dataDir, CONNECTION_FILE_NAME);
@@ -141,5 +158,10 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
     captureAudioHelperPath,
     installationDeviceId,
     installationName,
+    // Decision D62 (2026-11-05): SMART ATTACH.
+    cameraAutoattach,
+    cameraSegmentCidr,
+    cameraDefaultUser,
+    cameraDefaultPassword,
   });
 }

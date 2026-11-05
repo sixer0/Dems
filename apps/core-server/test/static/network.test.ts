@@ -160,6 +160,13 @@ describe('SR-03, P5, P21: nothing leaves the process, nothing comes from mock-co
     // `createConnection` with a PATH only; G-R1, G-R2 and G-R10 are unchanged (no socket module under the host units or
     // under `capture/`); the transport is handed into `capture/host-alias/caller.ts`.
     'src/host-alias-socket.ts': [['node:', 'n', 'et'].join('')],
+    // NAMED ENTRY D62 (decision D62, ratified 2026-11-05): `src/segment-probe-socket.ts`, a file of no unit beside it,
+    // is the SECOND pinned importer of the stream-socket module - the SMART ATTACH segment probes: two FIXED request
+    // lines (the ONVIF HTTP GET and the RTSP OPTIONS) to the two fixed ports of ONE address the Core's own neighbour
+    // table named, each bound to 2 s, connect-only, never a listener, no credential in reach. SR-6's "one" stands for
+    // the LOCAL-socket door; nothing else dials a network address on a raw socket. The sweep itself
+    // (`modules/capture-discovery/segment-scan.ts`) imports no socket module and calls no global fetch: G-R1 holds.
+    'src/segment-probe-socket.ts': [['node:', 'n', 'et'].join('')],
   };
 
   it('the server runtime calls no global fetch and imports no outbound client, except from the pinned files', () => {

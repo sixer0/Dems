@@ -26,7 +26,10 @@
  * NO CALLER-SUPPLIED TARGET, WITH ONE EXCEPTION. No request of this file has a host, a port, a
  * URL, a path, a subnet, an interface, a timeout or a filter member. A search always probes the
  * fixed WS-Discovery group; a test and an adoption name a candidate id, and the Core takes the
- * address from its own search state (R-9 AC-10).
+ * address from its own search state (R-9 AC-10). The third trigger `AUTO` (decision D62,
+ * ratified 2026-11-05) is the Core's own sweep: it is started by no caller at all and its targets
+ * are the Core's OWN ARP observations of its configured camera segment — the rule of this section
+ * is about requests and stands unchanged.
  *
  * THE EXCEPTION (task 4 row 94, work package WP-12; amendment AM-3 of ruling D80(10), adopted by
  * C17; decisions U12 A7, C10; security finding S13-11). The body of operation 93 is OPTIONAL and
@@ -87,8 +90,18 @@ export type CaptureSourceClass = (typeof CaptureSourceClass)[keyof typeof Captur
 export const CaptureDiscoveryScope = { CAMERA_NETWORK: 'CAMERA_NETWORK', MIC_LOCAL: 'MIC_LOCAL', AUDIO_CARDS: 'AUDIO_CARDS' } as const;
 export type CaptureDiscoveryScope = (typeof CaptureDiscoveryScope)[keyof typeof CaptureDiscoveryScope];
 
-/** Who started a search: an operator (93) or a pre-check run with an unreachable camera. Nothing else starts one. */
-export const CaptureDiscoveryTrigger = { MANUAL: 'MANUAL', PRECHECK: 'PRECHECK' } as const;
+/**
+ * Who started a search: an operator (93), a pre-check run with an unreachable camera, or the
+ * Core's own SMART ATTACH segment sweep. Nothing else starts one.
+ *
+ * DECISION D62 (ratified 2026-11-05) adds the THIRD trigger, `AUTO`: behind
+ * `DEMS_CAMERA_AUTOATTACH` the Core sweeps the neighbour table of its camera segment
+ * (`DEMS_CAMERA_SEGMENT_CIDR`) and merges what answers into the ordinary discovery state as one
+ * search per sweep. The rule keeps its teeth: `AUTO` sends NO WS-Discovery probe (the static rule
+ * G-R13 still pins the one call site of `discover`), no caller may supply a target to it — its
+ * targets are the Core's OWN ARP observations — and R-9 AC-10 stands unchanged.
+ */
+export const CaptureDiscoveryTrigger = { MANUAL: 'MANUAL', PRECHECK: 'PRECHECK', AUTO: 'AUTO' } as const;
 export type CaptureDiscoveryTrigger = (typeof CaptureDiscoveryTrigger)[keyof typeof CaptureDiscoveryTrigger];
 
 /** `FAILED` is "the search could not run"; it is never an empty list (`cap` DS-13). */
@@ -246,7 +259,7 @@ export const CaptureDiscoverySearchSchema = z
   .strictObject({
     searchId: searchId().describe('`DSC-NNNNNN`. It is in no path: operation 94 answers the caller\'s own search only.'),
     scope: z.literal(CaptureDiscoveryScope.CAMERA_NETWORK).describe('A search of operation 93 looks for cameras on the network.'),
-    trigger: z.enum(CaptureDiscoveryTrigger).describe('MANUAL: operation 93. PRECHECK: the one search of a pre-check run with an unreachable camera.'),
+    trigger: z.enum(CaptureDiscoveryTrigger).describe('MANUAL: operation 93. PRECHECK: the one search of a pre-check run with an unreachable camera. AUTO: the Core\'s own SMART ATTACH segment sweep, behind `DEMS_CAMERA_AUTOATTACH` (decision D62, 2026-11-05): its targets are the Core\'s ARP observations and no caller supplies one.'),
     state: z.enum(CaptureDiscoveryState).describe('RUNNING until the window closes; then COMPLETE, or FAILED when the search could not run.'),
     startedAt: epochMs(),
     windowMs: count().describe('How long the search listens (ms).'),

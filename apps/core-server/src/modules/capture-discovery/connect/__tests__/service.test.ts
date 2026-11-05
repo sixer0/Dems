@@ -225,7 +225,12 @@ describe('M4-CONN-NOCRED-1: no connection test without an operator-entered crede
     expect([...service.matchAll(/kind: 'OPERATOR_CREDENTIAL'/g)]).toHaveLength(2); // the type and the one maker
     // An `OperatorCredential` is made at the route edge and nowhere else.
     expect(sources.filter((file) => /\boperatorCredential\s*\(/.test(file.text)).map((file) => file.path).sort()).toEqual(['index.ts', 'service.ts']);
-    expect([...(sources.find((file) => file.path === 'index.ts')?.text ?? '').matchAll(/\boperatorCredential\s*\(/g)]).toHaveLength(1);
+    // Decision D62 (2026-11-05) admits the SECOND maker in `index.ts`: `systemFlow` seals the CONFIGURED bench pair
+    // (`DEMS_CAMERA_DEFAULT_USER`/`_PASSWORD`, read from the configuration as a `Secret`) for the auto-attach test
+    // and adoption of operations 95/96 under the SYSTEM caller. It is still made at the EDGE of the flow folder and
+    // never from a request body, never from the store, never a default: the NOCRED rule holds for every caller of
+    // flesh. A third maker fails here.
+    expect([...(sources.find((file) => file.path === 'index.ts')?.text ?? '').matchAll(/\boperatorCredential\s*\(/g)]).toHaveLength(2);
     // No way back from the store: nothing here opens, reveals or selects a credential, and no default exists.
     expect(all).not.toMatch(/\.\s*open\s*\(|reveal|\bSELECT\b|\bRETURNING\b|defaultCredential|admin/i);
     // Control: the same patterns do see a handler that falls back to a stored value.

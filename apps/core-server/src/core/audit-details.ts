@@ -664,7 +664,8 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     searchId: searchId(REQUIRED),
     // Task 4 (blueprint row 19; design addendum 04 section 4.2): the third scope, the sound-card listing.
     scope: oneOf(CAPTURE_DISCOVERY_AUDIT_SCOPES, `one of ${CAPTURE_DISCOVERY_AUDIT_SCOPES.join(', ')}`)(REQUIRED),
-    trigger: oneOf(Object.values(CaptureDiscoveryTrigger), 'one of MANUAL, PRECHECK')(REQUIRED),
+    // Decision D62 (2026-11-05): the third trigger, the SMART ATTACH segment sweep. The list is derived from the shared enum.
+    trigger: oneOf(Object.values(CaptureDiscoveryTrigger), 'one of MANUAL, PRECHECK, AUTO')(REQUIRED),
     outcome: oneOf(['COMPLETE', 'FAILED'], 'one of COMPLETE, FAILED')(REQUIRED),
     responderCount: count(REQUIRED),
     newCount: count(REQUIRED),

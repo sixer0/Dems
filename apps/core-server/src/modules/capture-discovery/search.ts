@@ -3,15 +3,24 @@
  * trigger", "Rate limits", §5.2 `CAPTURE_DISCOVERY_SEARCHED`; specs R-9 AC-1 to AC-4, AC-11, AC-13;
  * decisions D74 (1), D80, D86 C-4, D91; security review SEC35-28, SEC35-29, SEC35-39).
  *
- * THE ONE CALL SITE OF `discover` (static rule G-R13). A search is started by exactly two
- * triggers, and both come through `start` of this file:
+ * THE ONE CALL SITE OF `discover` (static rule G-R13). A search is started by exactly three
+ * triggers (decision D62, ratified 2026-11-05, added the third); the two that PROBE come through
+ * `start` of this file:
  *
  *   MANUAL     operation 93 (`routes.ts`)
  *   PRECHECK   the one search of a pre-check run with an unreachable camera (`precheckSearch` of
  *              the module's control; the pre-check hook of row 133 calls it)
  *
- * Nothing else starts one: no boot step, no timer, no read. Operation 94 reads the store and
- * sends nothing.
+ * The third one never comes through this file and sends NO WS-Discovery probe:
+ *
+ *   AUTO       the SMART ATTACH segment sweep (`segment-scan.ts`, behind `DEMS_CAMERA_AUTOATTACH`):
+ *              it reads the host's own neighbour table, probes what lives there, and merges the
+ *              answers into the store through the same `begin`/`complete` door of `store.ts`. Its
+ *              targets are the Core's OWN ARP observations - no caller supplies one (R-9 AC-10
+ *              stands) - and its timer runs only while the flag is on.
+ *
+ * Nothing else starts a search: no boot step beyond the flag-gated sweep, no read. Operation 94
+ * reads the store and sends nothing.
  *
  * WHAT `start` DECIDES, in this order, before a datagram is sent:
  *   1. no discovery adapter                         503 DISCOVERY_NOT_READY

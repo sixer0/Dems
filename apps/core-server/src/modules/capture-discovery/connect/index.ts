@@ -47,6 +47,7 @@ import {
   type CaptureConnectionTest,
   type CoreApiRegistryOperation,
 } from '@dems/shared/api';
+import { OperatorRole, Permission } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -54,9 +55,11 @@ import { createSystemTimers } from '../../../capture';
 import { sealCredential, type StoredCameraAddressRule } from '../../../capture/adapters';
 import { captureOperationOf, isProductionCaptureOperation } from '../../../capture/fence';
 import { coreCredentialStore, isStoreSealedSecret } from '../../../credential-store';
+import type { Principal } from '../../../plugins/authenticate';
 import { notSignedIn } from '../../../plugins/authenticate';
 import { ApiFailure } from '../../../plugins/error-envelope';
 import { routeOfOperation } from '../../../plugins/permission-guard';
+import { SYSTEM_OWNER_SESSION_ID } from '../segment-scan';
 import { createConnectionTestLimits, type ConnectionTestLimits } from './limits';
 import {
   adoptCandidate,
@@ -108,6 +111,18 @@ export interface CaptureConnectControl {
   provideTester(tester: ConnectionTester): void;
   provideSealer(sealer: CameraSecretSealer): void;
   provideRegistrar(registrar: DeviceRegistrar): void;
+  /**
+   * DECISION D62 (2026-11-05) SMART ATTACH: operations 95 and 96 as the segment sweep runs them.
+   * The flow is the routes' OWN (`service.ts`: same checks, same bounds, same lock-out guard, same
+   * audit rows); the caller is the Core's SYSTEM identity, not a request's principal, and the
+   * credential is the configured bench pair sealed exactly as a typed one is. The sweep owns the
+   * candidate list under the session key `SYSTEM`, so this is the only caller that reaches it.
+   * The credential is read once here and held sealed; it reaches no log line and no audit row.
+   */
+  systemFlow(credential: { readonly username: string; readonly secret: string }): {
+    testCandidate(candidateId: string): Promise<CaptureConnectionTest>;
+    adoptCandidate(candidateId: string): Promise<CaptureCandidateAdoption>;
+  };
   /**
    * Task 4 row 143c (decision C65): the destination rule on a camera address, bound to the host's
    * network facts - the ONE binding of the production composition, handed in ONCE. Under capture
@@ -186,6 +201,32 @@ function credentialOf(body: { readonly username: string; readonly secret: string
   return operatorCredential(sealCredential({ username: body.username, secret: body.secret }));
 }
 
+/**
+ * THE SYSTEM CALLER of the auto-attach path (decision D62, 2026-11-05). It is no session: it stands
+ * for the Core itself, so that the flows of operations 95 and 96 write their rows as they always
+ * do, with the actor `OPR-000` - the operator id the audit writer and the table take for a
+ * system-written row when a hosted flow demands an actor (the bare audit rows of the sweep itself
+ * carry none: `actorId: null`, the FAULT_CLEARED precedent). The D62 installer provisions that one
+ * row in `operators` (no credential: it can never sign in); without it the adoption transaction
+ * fails its actor key at the database, the sweep says so at warn and nothing else moves. Its role
+ * and permission state what the flows ask for and nothing more; no request ever resolves to this
+ * principal.
+ */
+export const SYSTEM_OPERATOR_ID = 'OPR-000';
+const SYSTEM_CALLER: ConnectCaller = Object.freeze({
+  principal: Object.freeze({
+    kind: 'OPERATOR',
+    operatorId: SYSTEM_OPERATOR_ID,
+    sessionId: SYSTEM_OWNER_SESSION_ID,
+    deviceId: null,
+    role: OperatorRole.TECHNICIAN,
+    permissions: [Permission.CAPTURE_CONFIG],
+  }) as Extract<Principal, { kind: 'OPERATOR' }>,
+});
+
+/** D62 (2026-11-05): the principal of the SYSTEM caller - the same one `systemFlow` runs operations 95 and 96 under, handed to the selector action of operation 78 by the sweep's wiring. */
+export const SYSTEM_OPERATOR_PRINCIPAL: Extract<Principal, { kind: 'OPERATOR' }> = SYSTEM_CALLER.principal;
+
 /** The candidate store of the search module (row 132), as far as the connect flow uses it: its three calls take the instant. */
 export interface TimedCandidateStore {
   find(sessionId: string, candidateId: string, now: number): ConnectCandidate | null;
@@ -226,6 +267,17 @@ export function registerCaptureConnectRoutes(app: FastifyInstance, options: Capt
     provideSealer: (sealer) => provide('sealer', sealer),
     provideRegistrar: (registrar) => provide('registrar', registrar),
     provideCandidateRule: (rule) => provide('candidateRule', rule),
+    // D62 (2026-11-05): the auto-attach door - the flows of operations 95 and 96, bound to the SYSTEM caller and to
+    // the sealed bench credential made HERE (the one caller of `operatorCredential` beside the route edge above). The
+    // seams are read at each call, so a test's `replaceForTest` parts hold, as they do for the routes.
+    systemFlow: (credential) => {
+      if (credential.username.length > CAPTURE_CREDENTIAL_USERNAME_MAX_CHARS) throw new Error('the SMART ATTACH bench user name is longer than the credential table takes');
+      const sealed = operatorCredential(sealCredential(credential));
+      return {
+        testCandidate: (candidateId) => testCandidate(seams, SYSTEM_CALLER, candidateId, sealed),
+        adoptCandidate: (candidateId) => adoptCandidate(seams, SYSTEM_CALLER, candidateId, sealed),
+      };
+    },
     replaceForTest: (parts) => {
       if (parts.candidates !== undefined) control.candidates = parts.candidates;
       if (parts.tester !== undefined) control.tester = parts.tester;

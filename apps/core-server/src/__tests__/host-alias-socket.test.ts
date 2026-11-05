@@ -456,8 +456,16 @@ describe('static: one local socket, in one file, by path only; no program is sta
   const stream = ['n', 'et'].join('');
 
   it('the stream-socket module is imported by this one file of the server, for one function', () => {
+    // Decision D62 (2026-11-05) adds the SECOND importer and it is no local socket: `segment-probe-socket.ts` is the
+    // file of no unit named by the decision - the ONE network sibling of this file, dialling the two FIXED probe
+    // questions (port 80 HTTP handshake, port 554 RTSP OPTIONS) of addresses the host's own neighbour table names.
+    // The rule of THIS file stands: it stays the only LOCAL-path socket client, and nothing else imports the module.
     const importers = production.filter((file) => new RegExp(`['"](?:node:)?${stream}['"]`).test(file.text)).map((file) => file.path);
-    expect(importers).toEqual(['host-alias-socket.ts']);
+    expect(importers).toEqual(['host-alias-socket.ts', 'segment-probe-socket.ts']);
+    // D62: the network sibling dials hosts, never a local path, and holds the two fixed ports of its header.
+    const probe = production.find((file) => file.path === 'segment-probe-socket.ts')?.text ?? '';
+    expect(probe).not.toMatch(/createConnection\s*\(\s*\{\s*path/);
+    expect([...probe.matchAll(/\bcreateConnection\s*\(/g)]).toHaveLength(1);
     expect([...client.matchAll(/from\s+'([^']+)'/g)].map((match) => match[1])).toEqual(['node:fs/promises', `node:${stream}`, 'node:path']);
     expect(client).toMatch(new RegExp(`^import \\{ createConnection \\} from 'node:${stream}';$`, 'm'));
     expect(client).toMatch(/^import \{ lstat \} from 'node:fs\/promises';$/m);

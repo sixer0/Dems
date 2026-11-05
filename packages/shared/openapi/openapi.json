@@ -44748,9 +44748,10 @@
             "type": "string",
             "enum": [
               "MANUAL",
-              "PRECHECK"
+              "PRECHECK",
+              "AUTO"
             ],
-            "description": "MANUAL: operation 93. PRECHECK: the one search of a pre-check run with an unreachable camera."
+            "description": "MANUAL: operation 93. PRECHECK: the one search of a pre-check run with an unreachable camera. AUTO: the Core's own SMART ATTACH segment sweep, behind `DEMS_CAMERA_AUTOATTACH` (decision D62, 2026-11-05): its targets are the Core's ARP observations and no caller supplies one."
           },
           "state": {
             "type": "string",
