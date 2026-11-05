@@ -98,8 +98,11 @@ describe('the slices', () => {
       settings: (s) => ({ ...s.settings, notifySound: !s.settings.notifySound }),
       tabletLink: (s) => ({ ...s.tabletLink, state: 'OFFLINE' as const }),
       activeCameraId: () => 'VIDEO-02',
-      cameras: (s) => s.cameras.slice(0, 1),
-      mics: (s) => s.mics.slice(0, 1),
+      // D64 (2026-11-05): the two hardware variants mutate a field instead of dropping rows — the boot-load
+      // widening appends any built-in row the store does not name, so a deleted row cannot survive a round trip
+      // by design; the point of this test (the slice reaches its column) stands untouched.
+      cameras: (s) => s.cameras.map((camera) => ({ ...camera, online: false })),
+      mics: (s) => s.mics.map((mic) => ({ ...mic, gainDb: 30 })),
       storage: (s) => ({ ...s.storage, writeBytesPerSec: 1 }),
       time: (s) => ({ ...s.time, stratum: 2 }),
       network: (s) => ({ ...s.network, linkUp: false }),

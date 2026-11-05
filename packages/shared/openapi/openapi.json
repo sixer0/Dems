@@ -35820,6 +35820,8 @@
         "description": "Slice `activeCameraId`: the camera the monitor shows."
       },
       "CamerasSlice": {
+        "minItems": 4,
+        "maxItems": 4,
         "type": "array",
         "items": {
           "type": "object",
@@ -35953,6 +35955,8 @@
         "description": "Slice `cameras`: one entry per video track (D60, 2026-11-04: the track domain is VIDEO-01 to VIDEO-04)."
       },
       "MicsSlice": {
+        "minItems": 4,
+        "maxItems": 4,
         "type": "array",
         "items": {
           "type": "object",

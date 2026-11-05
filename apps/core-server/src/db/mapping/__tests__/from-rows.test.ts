@@ -1,8 +1,8 @@
 // The way back of the rows this task changed (blueprint row 129b): the three sealed columns of an
 // evidence item (request of row 79) and the order of the two microphone lines of the selector
 // (request of row 66, decision D106 (1), AC-B-70). Pure: no database.
-import { DEFAULT_SEED, EVIDENCE_NOT_SEALED_DIGEST, EVIDENCE_NOT_SEALED_SIGNATURE, createIdleState, hasSealedValues, type EvidenceItem, type SimState } from '@dems/shared/sim';
-import { EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE, EvidenceItemSchema } from '@dems/shared/api';
+import { DEFAULT_SEED, EVIDENCE_NOT_SEALED_DIGEST, EVIDENCE_NOT_SEALED_SIGNATURE, createIdleState, hasSealedValues, type EvidenceItem, type SimState, defaultHardwareCameras, } from '@dems/shared/sim';
+import { CamerasSliceSchema, EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE, EvidenceItemSchema, MicsSliceSchema } from '@dems/shared/api';
 import { describe, expect, it } from 'vitest';
 import { FIXED_NOW, asStored } from '../../../../test/support/seed';
 import {
@@ -17,7 +17,7 @@ import {
   type RowContext,
   type SealedEvidenceItem,
 } from '..';
-import { captureConfigToRow, selectorDeviceIds } from '../rows';
+import { captureConfigToRow, hardwareSnapshotToRow, selectorDeviceIds, snapshotSlicesFromRow } from '../rows';
 
 const idle =(): SimState => createIdleState({ now: FIXED_NOW, seed: DEFAULT_SEED });
 const context: RowContext = { at: FIXED_NOW, seededAt: FIXED_NOW, lastResetAt: null };
@@ -515,5 +515,47 @@ describe('capture_config: a registered camera\'s line comes back NOT READ (row V
     expect(back.captureDevices.devices.find((device) => device.id === 'CAM-07')?.streamState).toBeNull();
     // CONTROL: the seeded selector of the built-in pair reads back LIVE, the demonstration model's value.
     expect(fromRows(asStored(toRows(base, context))).captureConfig.cameras.map((line) => line.streamState)).toEqual(['LIVE', 'LIVE', 'LIVE', 'LIVE']); // D60: four built-in lines
+  });
+});
+
+// D64 (2026-11-05): the boot-load widening of the persisted hardware slices. D60 / D61 widened the track and
+// channel domains INSIDE the same stored shape version; a snapshot written before them reads back with two rows
+// and the Core then fails its own op-44 / op-46 response contract (the live bench served 500s and the console
+// froze its status chips). The widening APPENDS the built-in rows the store never had and leaves stored rows stand.
+describe('D64: a hardware snapshot persisted before D60 / D61 widens at the boot-load (the 500s of the live bench)', () => {
+  const state = createIdleState({ now: FIXED_NOW, seed: DEFAULT_SEED });
+  const freshRow = () => hardwareSnapshotToRow({ ...state, meta: { ...state.meta, seededAt: FIXED_NOW } } as never, { at: FIXED_NOW, seededAt: FIXED_NOW, lastResetAt: null });
+
+  it('two stored camera rows come back as four: the stored rows stand first, the two built-in tracks are appended', () => {
+    const legacy = freshRow();
+    const stored = legacy.cameras.slice(0, 2);
+    const slices = snapshotSlicesFromRow({ ...legacy, cameras: stored });
+    expect(slices.cameras.map((camera) => camera.id)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']);
+    expect(slices.cameras.slice(0, 2)).toEqual(stored);
+    expect(slices.cameras[2]).toEqual(defaultHardwareCameras()[2]);
+  });
+
+  it('two stored microphone rows come back as four channels the same way', () => {
+    const legacy = freshRow();
+    const stored = legacy.mics.slice(0, 2);
+    const slices = snapshotSlicesFromRow({ ...legacy, mics: stored });
+    expect(slices.mics.map((mic) => mic.id)).toEqual(['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']);
+    expect(slices.mics.slice(0, 2)).toEqual(stored);
+  });
+
+  it('a current four-row snapshot passes the widening unchanged (the widening does not dirty what is already right)', () => {
+    const row = freshRow();
+    const slices = snapshotSlicesFromRow(row);
+    expect(slices.cameras).toEqual(row.cameras);
+    expect(slices.mics).toEqual(row.mics);
+  });
+
+  it('the widened slices pass the slice schemas of the contract (the boot teeth accept them)', () => {
+    const legacy = freshRow();
+    const slices = snapshotSlicesFromRow({ ...legacy, cameras: legacy.cameras.slice(0, 2), mics: legacy.mics.slice(0, 2) });
+    expect(CamerasSliceSchema.safeParse(slices.cameras).success).toBe(true);
+    expect(MicsSliceSchema.safeParse(slices.mics).success).toBe(true);
+    // and the two-row slice alone would now REFUSE the boot instead of poisoning every read
+    expect(CamerasSliceSchema.safeParse((legacy.cameras as unknown[]).slice(0, 2)).success).toBe(false);
   });
 });

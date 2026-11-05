@@ -33,7 +33,7 @@
  * behave alike; the table only decides which one a rehydrated state holds.
  */
 // UNATTRIBUTED_OPERATOR_ID is imported below with the other vocabulary constants.
-import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, TRACK_LABELS, TRACK_ORDER, UNATTRIBUTED_OPERATOR_ID, captureDeviceProfilesOf, eventCategory, neverSealedShape } from '@dems/shared/sim';
+import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, TRACK_LABELS, TRACK_ORDER, UNATTRIBUTED_OPERATOR_ID, captureDeviceProfilesOf, defaultHardwareCameras, defaultHardwareMics, eventCategory, neverSealedShape } from '@dems/shared/sim';
 import type {
   ActiveSession,
   AuditRow,
@@ -315,6 +315,18 @@ export function hardwareSnapshotToRow(state: Pick<MappableState, 'meta' | (typeo
   };
 }
 
+/**
+ * D64 (2026-11-05): the boot-load widening helper (see `snapshotSlicesFromRow`). Stored rows stand in their order;
+ * a built-in row the stored slice does not name is APPENDED in the default's own order. A complete slice is
+ * returned as a copy of the stored rows, so the widening never by itself changes a snapshot that is already current.
+ */
+function widenHardwareSlice<T extends { id: string }>(stored: readonly T[] | null | undefined, defaults: readonly T[]): T[] {
+  const rows = Array.isArray(stored) ? stored : [];
+  const known = new Set(rows.map((entry) => (entry as { id?: unknown } | null)?.id));
+  const missing = defaults.filter((entry) => !known.has(entry.id));
+  return missing.length === 0 ? [...rows] : [...rows, ...missing];
+}
+
 export function snapshotSlicesFromRow(row: HardwareSnapshotRow): Pick<DurableSlices, (typeof SNAPSHOT_SLICE_KEYS)[number]> {
   if (row.simSchemaVersion !== SIM_SNAPSHOT_VERSION) {
     throw new MappingError(
@@ -326,8 +338,13 @@ export function snapshotSlicesFromRow(row: HardwareSnapshotRow): Pick<DurableSli
   return {
     tabletLink: row.tabletLink,
     activeCameraId: row.activeCameraId,
-    cameras: row.cameras,
-    mics: row.mics,
+    // D64 (2026-11-05): the boot-load widening. D60 / D61 widened the track and channel domains INSIDE the same
+    // stored shape version, so a snapshot persisted before them reads back with two rows and the Core then fails
+    // its own contract on every op-44 / op-46 read (the response `.length(4)` refused serialization: the bench
+    // saw 500s and the console froze its status chips on the last good read). The stored rows stand untouched;
+    // only the built-in rows the widening added are APPENDED, from the shared defaults (ONE statement per fact).
+    cameras: widenHardwareSlice(row.cameras, defaultHardwareCameras()),
+    mics: widenHardwareSlice(row.mics, defaultHardwareMics()),
     storage: row.storage,
     time: row.timeStatus,
     network: row.network,

@@ -786,7 +786,9 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
       ]);
     }
     const [first, second] = state.cameras;
-    const withFacts = (facts: Record<string, unknown>) => [{ ...first, ...facts }, second];
+    // D64 (2026-11-05): the facts ride a FOUR-row slice — the slice schema now checks its length (the promise of
+    // D60 became a check), so a two-row example would be refused for the wrong reason.
+    const withFacts = (facts: Record<string, unknown>) => [{ ...first, ...facts }, second, ...state.cameras.slice(2)];
     // What the literals refused and a real camera delivers.
     for (const facts of [{ codec: 'HEVC' }, { resolution: '720p', fps: 30 }, { resolution: '2160p', fps: 60 }, { resolution: '2560x1920', fps: 20, codec: 'HEVC' }, { fps: 1 }, { fps: 240 }, { fps: null }, { codec: 'HEVC', fps: null }]) {
       expect(refuses('cameras', withFacts(facts)), JSON.stringify(facts)).toBe(false);

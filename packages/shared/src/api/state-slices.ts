@@ -574,6 +574,8 @@ export const CamerasSliceSchema = z
       firmware: text(),
     }),
   )
+  // D64 (2026-11-05): the promise becomes a check — a snapshot persisted before D60 held two rows and the Core served them until the RESPONSE schema (`.length(4)`) failed every op-44/46 read with a 500; drift now refuses the boot loudly instead.
+  .length(VIDEO_TRACK_IDS.length)
   .describe('Slice `cameras`: one entry per video track (D60, 2026-11-04: the track domain is VIDEO-01 to VIDEO-04).'); // D60
 export type CamerasSliceBody = z.output<typeof CamerasSliceSchema>;
 
@@ -593,6 +595,8 @@ export const MicsSliceSchema = z
       clipLatched: z.boolean().describe('CLIP latch; stays true until the clip is reset.'),
     }),
   )
+  // D64 (2026-11-05): the same teeth for the audio domain (D61 widened four channels inside the same stored shape version).
+  .length(AUDIO_TRACK_IDS.length)
   .describe('Slice `mics`: one entry per audio channel, `AUDIO-01` to `AUDIO-04` (D61, 2026-11-04: four simultaneous channels), never merged (SYS-003).');
 export type MicsSliceBody = z.output<typeof MicsSliceSchema>;
 

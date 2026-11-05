@@ -268,6 +268,93 @@ function round1(value: number): number {
 }
 
 /**
+ * D64 (2026-11-05): the four built-in camera rows of the hardware slice (the D60 topology) and the four
+ * microphone rows (D61), lifted verbatim out of `createIdleState` so that the boot-load widening of
+ * `db/mapping/rows.ts` can complete a snapshot persisted before D60 / D61 without repeating the facts
+ * (ONE statement per fact). A fresh copy per call: the simulator owns its rows.
+ */
+export function defaultHardwareCameras(): SimState['cameras'] {
+  return [
+      {
+        id: 'VIDEO-01',
+        deviceId: 'CAM-01',
+        name: 'Camera 1',
+        room: DEVICE_NAME,
+        lens: 'READY',
+        online: true,
+        recState: null,
+        resolution: '1080p',
+        fps: 25,
+        codec: 'H.264',
+        bitrateMbps: 9,
+        poePort: 'POE_CAM_1',
+        model: 'Dual-lens IP camera DL-2 (lens 1)',
+        firmware: '3.8.14',
+      },
+      {
+        id: 'VIDEO-02',
+        deviceId: 'CAM-02',
+        name: 'Camera 2',
+        room: DEVICE_NAME,
+        lens: 'READY',
+        online: true,
+        recState: null,
+        resolution: '1080p',
+        fps: 25,
+        codec: 'H.264',
+        bitrateMbps: 9,
+        // Both lenses of the one dual-lens camera share PoE CAM 1 (design book B.01, §4.2; D79).
+        poePort: 'POE_CAM_1',
+        model: 'Dual-lens IP camera DL-2 (lens 2)',
+        firmware: '3.8.14',
+      },
+      // D60 (2026-11-04): the two further built-in cameras of the four-track capture surface, each
+      // on its own PoE port (`CAMERA_PORT` of `derive.ts`).
+      {
+        id: 'VIDEO-03',
+        deviceId: 'CAM-03',
+        name: 'Camera 3',
+        room: DEVICE_NAME,
+        lens: 'READY',
+        online: true,
+        recState: null,
+        resolution: '1080p',
+        fps: 25,
+        codec: 'H.264',
+        bitrateMbps: 9,
+        poePort: 'POE_CAM_3',
+        model: 'IP camera IP-3',
+        firmware: '3.8.14',
+      },
+      {
+        id: 'VIDEO-04',
+        deviceId: 'CAM-04',
+        name: 'Camera 4',
+        room: DEVICE_NAME,
+        lens: 'READY',
+        online: true,
+        recState: null,
+        resolution: '1080p',
+        fps: 25,
+        codec: 'H.264',
+        bitrateMbps: 9,
+        poePort: 'POE_CAM_4',
+        model: 'IP camera IP-4',
+        firmware: '3.8.14',
+      },
+      ];
+}
+
+export function defaultHardwareMics(): SimState['mics'] {
+  return [
+      { id: 'AUDIO-01', deviceId: 'MIC-01', name: 'MIC 1 – Interviewer', role: 'Interviewer', channel: 'MIC-01', state: 'READY', recState: null, gainDb: 32, phantom: true, clipLatched: false },
+      { id: 'AUDIO-02', deviceId: 'MIC-02', name: 'MIC 2 – Subject', role: 'Subject', channel: 'MIC-02', state: 'READY', recState: null, gainDb: 32, phantom: true, clipLatched: false },
+      { id: 'AUDIO-03', deviceId: 'MIC-03', name: 'MIC 3 – Channel 3', role: null, channel: 'MIC-03', state: 'READY', recState: null, gainDb: 32, phantom: true, clipLatched: false },
+      { id: 'AUDIO-04', deviceId: 'MIC-04', name: 'MIC 4 – Channel 4', role: null, channel: 'MIC-04', state: 'READY', recState: null, gainDb: 32, phantom: true, clipLatched: false },
+      ];
+}
+
+/**
  * Series that would have accumulated since today's boot (step 54, SIM-GAP-W50-4): the rings hold
  * 120 points, so the newest 120 samples before `now` are back-filled; every live chart reads
  * full at load instead of "collecting samples". Idle values with seeded-looking jitter.
@@ -355,84 +442,11 @@ export function createIdleState(input: InitialStateInput): SimState {
     lastSealedAcknowledged: true,
     sessionHistory: history.sessionHistory,
     activeCameraId: DEFAULT_CAMERA_ID,
-    cameras: [
-      {
-        id: 'VIDEO-01',
-        deviceId: 'CAM-01',
-        name: 'Camera 1',
-        room: DEVICE_NAME,
-        lens: 'READY',
-        online: true,
-        recState: null,
-        resolution: '1080p',
-        fps: 25,
-        codec: 'H.264',
-        bitrateMbps: 9,
-        poePort: 'POE_CAM_1',
-        model: 'Dual-lens IP camera DL-2 (lens 1)',
-        firmware: '3.8.14',
-      },
-      {
-        id: 'VIDEO-02',
-        deviceId: 'CAM-02',
-        name: 'Camera 2',
-        room: DEVICE_NAME,
-        lens: 'READY',
-        online: true,
-        recState: null,
-        resolution: '1080p',
-        fps: 25,
-        codec: 'H.264',
-        bitrateMbps: 9,
-        // Both lenses of the one dual-lens camera share PoE CAM 1 (design book B.01, §4.2; D79).
-        poePort: 'POE_CAM_1',
-        model: 'Dual-lens IP camera DL-2 (lens 2)',
-        firmware: '3.8.14',
-      },
-      // D60 (2026-11-04): the two further built-in cameras of the four-track capture surface, each
-      // on its own PoE port (`CAMERA_PORT` of `derive.ts`).
-      {
-        id: 'VIDEO-03',
-        deviceId: 'CAM-03',
-        name: 'Camera 3',
-        room: DEVICE_NAME,
-        lens: 'READY',
-        online: true,
-        recState: null,
-        resolution: '1080p',
-        fps: 25,
-        codec: 'H.264',
-        bitrateMbps: 9,
-        poePort: 'POE_CAM_3',
-        model: 'IP camera IP-3',
-        firmware: '3.8.14',
-      },
-      {
-        id: 'VIDEO-04',
-        deviceId: 'CAM-04',
-        name: 'Camera 4',
-        room: DEVICE_NAME,
-        lens: 'READY',
-        online: true,
-        recState: null,
-        resolution: '1080p',
-        fps: 25,
-        codec: 'H.264',
-        bitrateMbps: 9,
-        poePort: 'POE_CAM_4',
-        model: 'IP camera IP-4',
-        firmware: '3.8.14',
-      },
-    ],
+    cameras: defaultHardwareCameras(),
     // D61 (2026-11-04): one entry per audio channel — four simultaneous channels; `channel` names
     // the selector slot feeding it (the `micRole` of the OD-01 era and the numeric meter index are
     // superseded; channel 1 keeps the transcription duty).
-    mics: [
-      { id: 'AUDIO-01', deviceId: 'MIC-01', name: 'MIC 1 – Interviewer', role: 'Interviewer', channel: 'MIC-01', state: 'READY', recState: null, gainDb: 32, phantom: true, clipLatched: false },
-      { id: 'AUDIO-02', deviceId: 'MIC-02', name: 'MIC 2 – Subject', role: 'Subject', channel: 'MIC-02', state: 'READY', recState: null, gainDb: 32, phantom: true, clipLatched: false },
-      { id: 'AUDIO-03', deviceId: 'MIC-03', name: 'MIC 3 – Channel 3', role: null, channel: 'MIC-03', state: 'READY', recState: null, gainDb: 32, phantom: true, clipLatched: false },
-      { id: 'AUDIO-04', deviceId: 'MIC-04', name: 'MIC 4 – Channel 4', role: null, channel: 'MIC-04', state: 'READY', recState: null, gainDb: 32, phantom: true, clipLatched: false },
-    ],
+    mics: defaultHardwareMics(),
     audio: { inputs: { 'MIC-01': silentFrame(now), 'MIC-02': silentFrame(now), 'MIC-03': silentFrame(now), 'MIC-04': silentFrame(now) }, activeInputId: 'MIC-01' },
     storage: {
       state: 'READY',
