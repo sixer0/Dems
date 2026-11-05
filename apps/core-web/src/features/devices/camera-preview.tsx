@@ -28,7 +28,8 @@ import { deferEffectStart } from '@/lib/effect-start'
  * Session Monitor (live session feed). The Dashboard and the inputs thumbnails keep the tile. (It is not
  * `live`: that prop of `CameraFeed` is the demo loop's decode switch, which the callers already set.)
  * D62 (2026-11-05) adds `autoPreview`, set only by the Devices tile: its session then opens by itself
- * while the track's selector line reads online (debounced ~1 s, at most 4 auto sessions, closed on
+ * while the track's selector line reads online (debounced ~1 s, at most the Core's global pipeline
+ * cap of `CAMERA_PREVIEW_LIMITS.pipelines` sessions, closed on
  * offline or a hidden tab) - see `AutoLivePreview` and the D62 section of `camera-live-preview.ts`.
  *
  * The tile says only what the Core knows: the track, the device the selector names for it, and that
@@ -41,7 +42,8 @@ export type CameraPreviewProps = CameraFeedProps & {
   livePreview?: boolean
   /**
    * D62 (2026-11-05): the Devices tile opens its preview BY ITSELF - gated on the selector line reading
-   * online, debounced ~1 s, at most 4 auto sessions at once, closed when the line goes offline or the
+   * online, debounced ~1 s, at most `CAMERA_PREVIEW_LIMITS.pipelines` auto sessions at once (the
+   * Core's global bound), closed when the line goes offline or the
    * tab hides. Only Devices & Inputs sets it; the other surfaces keep the plain mount rule.
    */
   autoPreview?: boolean

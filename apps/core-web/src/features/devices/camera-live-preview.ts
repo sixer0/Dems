@@ -12,14 +12,14 @@
  * | `409` with `details.cause: AUTH_REFUSED`: the camera refused the stored password; the Core refuses again for 5 min, so the console waits that long | `previewRefusalOf` |
  * | `409 PREVIEW_NOT_AVAILABLE` without a cause: asked again after a minute | `previewRefusalOf` |
  * | While a session is being started (CREATE, PRECHECK, ARMED) the Core yields the camera to the recording: the tile says the preview is paused | `isSessionStarting` |
- * | D62 (2026-11-05): on a Devices tile the session opens BY ITSELF when the track is assigned and its selector line reads online - debounced, at most 4 at once, closed when the line goes offline or the tab hides | `useAutoPreviewOpen` |
+ * | D62 (2026-11-05): on a Devices tile the session opens BY ITSELF when the track is assigned and its selector line reads online - debounced, at most as many as the Core's global pipeline cap (`CAMERA_PREVIEW_LIMITS.pipelines`), closed when the line goes offline or the tab hides | `useAutoPreviewOpen` |
  *
  * THE URL IS A BEARER VALUE: it is set on the `<img>` and nowhere else - never logged, never put in a
  * record, a storage or a test id.
  */
 import { useEffect, useState } from 'react'
 import { SessionState } from '@dems/shared/domain'
-import { CaptureSourceClass } from '@dems/shared/api'
+import { CAMERA_PREVIEW_LIMITS, CaptureSourceClass } from '@dems/shared/api'
 import { useDocumentVisible } from './idle-meter-lease'
 
 /** The first wait before a failed picture is asked for again. */
@@ -115,12 +115,19 @@ export function isLivePreviewDevice(device: { readonly kind?: string; readonly s
 // | Opens only while the selector line of the track reads online; offline closes the session at once | `AutoLivePreview` |
 // | Opens only while the tab is visible (`visibilitychange`); hidden closes, visible re-opens | `useAutoPreviewOpen` |
 // | ~1 s between the tile becoming eligible and the first token: an offline/online blip costs no request | `PREVIEW_AUTO_OPEN_DEBOUNCE_MS` |
-// | At most 4 auto sessions open across the console at once; the fifth takes the slot that frees next | `claimPreviewSlot` |
+// | At most `CAMERA_PREVIEW_LIMITS.pipelines` auto sessions across the console at once (the Core's
+// | global pipeline cap — a third tile would only collect its `429 PREVIEW_LIMIT`); the next tile
+// | takes the slot that frees first | `claimPreviewSlot` |
 
 /** D62: the wait between a tile becoming eligible and its first token being asked for. */
 export const PREVIEW_AUTO_OPEN_DEBOUNCE_MS = 1_000
-/** D62: how many auto preview sessions the console holds open at once. */
-export const PREVIEW_AUTO_MAX_CONCURRENT = 4
+/**
+ * D62: how many auto preview sessions the console holds open at once — the Core's OWN global
+ * pipeline bound (`CAMERA_PREVIEW_LIMITS.pipelines`, shared contract; correction 2026-11-05 after
+ * the live bench showed two tiles refusing "too many live previews" under a cap of four, which the
+ * Core answers 429 for by contract). A client may not open more pipelines than the Core has.
+ */
+export const PREVIEW_AUTO_MAX_CONCURRENT = CAMERA_PREVIEW_LIMITS.pipelines
 
 let previewSlotsTaken = 0
 const previewSlotWaiters = new Set<() => void>()

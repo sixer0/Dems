@@ -12,7 +12,7 @@
 // | An assigned, ONLINE production tile opens by itself ~1 s after mount (no click) | `auto-opens ... debounced` |
 // | An OFFLINE tile opens nothing and asks for no token; going offline CLOSES an open session, coming back re-opens it | `offline ... no auto-open` / `going offline closes` |
 // | A hidden tab closes the session; visible again it re-opens (debounced) | `hidden tab` |
-// | At most 4 auto sessions at once; a freed slot goes to a waiter | `caps the concurrent auto sessions at four` |
+// | At most the Core's global pipeline cap (`CAMERA_PREVIEW_LIMITS.pipelines`) auto sessions at once; a freed slot goes to a waiter | `caps the concurrent auto sessions at the Core's pipeline bound` |
 // | Simulated mode asks the Core for nothing (unchanged) | `Simulated mode` |
 // | The tile's click still opens the drawer (the manual path survives) | `click still opens the drawer` |
 //
@@ -23,6 +23,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FakeCommandOptions } from '@dems/shared/live/testing'
+import { CAMERA_PREVIEW_LIMITS } from '@dems/shared/api'
 import type { SocketLike } from '@dems/shared/realtime'
 import { ALWAYS_VISIBLE, createMemoryAuthStorage, createSim, OPERATOR_IDS, type Sim, type SimState } from '@dems/shared/sim'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
@@ -221,8 +222,10 @@ describe('D62: the Devices tile opens its live preview by itself', () => {
     await waitFor(() => expect(imageOf(previews(tile)[0]!)).not.toBeNull())
   })
 
-  it('caps the concurrent auto sessions at four: the fifth waits and takes the slot that frees next', () => {
-    // The registry rule of D62, pure (the Devices page itself carries at most four tracks).
+  it("caps the concurrent auto sessions at the Core's pipeline bound: the next tile waits and takes the slot that frees first", () => {
+    // The registry rule of D62, pure. The cap is the Core's OWN global pipeline bound (correction
+    // 2026-11-05: a cap of four made the live bench answer 429 PREVIEW_LIMIT on the third tile).
+    expect(PREVIEW_AUTO_MAX_CONCURRENT).toBe(CAMERA_PREVIEW_LIMITS.pipelines)
     let notified = 0
     const unsubscribe = subscribePreviewSlots(() => {
       notified += 1
