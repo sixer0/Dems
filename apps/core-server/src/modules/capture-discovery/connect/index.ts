@@ -42,6 +42,7 @@ import {
   CaptureConnectionTestRequestSchema,
   CaptureConnectionTestSchema,
   CaptureCredentialWriteRequestSchema,
+  CaptureDiscoveryReason,
   type CaptureCandidateAdoption,
   type CaptureConfigSliceBody,
   type CaptureConnectionTest,
@@ -105,6 +106,17 @@ export const CAPTURE_CREDENTIAL_USERNAME_MAX_CHARS = 120;
 const STORE_SOURCE = 'captureConnect.credentialStore';
 const STORE_REFUSED = 'the Core credential store refuses to work: a camera credential cannot be stored';
 
+/**
+ * D62b (2026-11-05): the LONGEST wait the SYSTEM flow accepts from the limiter's spacing ask
+ * before it lets the refusal stand (the sweep retries the attach on a later pass, D62b of
+ * `segment-scan.ts`). The spacing bucket can never ask for more than the contract's
+ * `CAPTURE_CONNECTION_TEST_MIN_INTERVAL_MS` (5 s); the per-minute bucket can ask up to a minute,
+ * and waiting a minute inside one sweep step would hold the single-flight sweep for half its
+ * period. So: waits up to this cap, refuses honestly above it. This raises NO bound - it is the
+ * limiter's own `retryAfterMs`, obeyed within a ceiling, never a widened `minIntervalMs`.
+ */
+export const AUTOATTACH_TEST_PACING_CAP_MS = 10_000;
+
 /** What this folder offers beside its routes: the providers of its seams, and its limits. */
 export interface CaptureConnectControl {
   provideCandidates(directory: CandidateDirectory): void;
@@ -118,8 +130,22 @@ export interface CaptureConnectControl {
    * credential is the configured bench pair sealed exactly as a typed one is. The sweep owns the
    * candidate list under the session key `SYSTEM`, so this is the only caller that reaches it.
    * The credential is read once here and held sealed; it reaches no log line and no audit row.
+   *
+   * D62b (2026-11-05): THE SYSTEM FLOW PACES ITSELF. An auto-attach spends TWO connection tests on
+   * one candidate by contract: operation 95's test and operation 96's re-verification, which run
+   * back to back here where an operator's hands would put seconds between them. The Core's own
+   * spacing bound (`CAPTURE_CONNECTION_TEST_MIN_INTERVAL_MS` per host AND per session key) refuses
+   * the second one inside the same 5 s window - a first-attempt `429 RATE_LIMITED`,
+   * `CONNECTION_TEST_RATE_LIMITED`. The fix is the limiter's own ask, not a raised bound: before
+   * each step this door reads `limits.refusal` for the candidate's host and the `SYSTEM` session
+   * key and, when the refusal is `CONNECTION_TEST_RATE_LIMITED` within
+   * `AUTOATTACH_TEST_PACING_CAP_MS`, waits exactly that long first. An in-progress test and the
+   * lock-out guard are NEVER waited out here (the guard protects the camera's own counter; the
+   * sweep retries later), and every bound of `limits.ts` stands untouched for this caller too.
+   * `pacing.wait` replaces the wait in a unit test (the manual clock of the limits advances with
+   * it); production uses the system timer.
    */
-  systemFlow(credential: { readonly username: string; readonly secret: string }): {
+  systemFlow(credential: { readonly username: string; readonly secret: string }, pacing?: { readonly wait?: (ms: number) => Promise<void> }): {
     testCandidate(candidateId: string): Promise<CaptureConnectionTest>;
     adoptCandidate(candidateId: string): Promise<CaptureCandidateAdoption>;
   };
@@ -270,12 +296,28 @@ export function registerCaptureConnectRoutes(app: FastifyInstance, options: Capt
     // D62 (2026-11-05): the auto-attach door - the flows of operations 95 and 96, bound to the SYSTEM caller and to
     // the sealed bench credential made HERE (the one caller of `operatorCredential` beside the route edge above). The
     // seams are read at each call, so a test's `replaceForTest` parts hold, as they do for the routes.
-    systemFlow: (credential) => {
+    // D62b (2026-11-05): each step first OBEYS the limiter's own spacing ask (see the interface's D62b note): the
+    // back-to-back test and re-verification of one attach otherwise collide with `minIntervalMs` on the host and on
+    // the `SYSTEM` session key - the true root of the bench's first-attempt `RATE_LIMITED`. Nothing is waited for an
+    // in-progress test or the lock-out guard, and no bound moves.
+    systemFlow: (credential, pacing) => {
       if (credential.username.length > CAPTURE_CREDENTIAL_USERNAME_MAX_CHARS) throw new Error('the SMART ATTACH bench user name is longer than the credential table takes');
       const sealed = operatorCredential(sealCredential(credential));
+      const wait = pacing?.wait ?? ((ms: number) => new Promise<void>((resolve) => void timers.after(ms, resolve)));
+      const paced = async <Value>(candidateId: string, step: () => Promise<Value>): Promise<Value> => {
+        const candidate = control.candidates?.find(SYSTEM_OWNER_SESSION_ID, candidateId) ?? null;
+        if (candidate !== null) {
+          const refusal = control.limits.refusal(candidate.camera.host, SYSTEM_OWNER_SESSION_ID);
+          if (refusal !== null && refusal.reason === CaptureDiscoveryReason.CONNECTION_TEST_RATE_LIMITED && refusal.retryAfterMs > 0 && refusal.retryAfterMs <= AUTOATTACH_TEST_PACING_CAP_MS) {
+            // One millisecond over the ask: the spacing rule refuses while the interval is NOT past, and a coarse clock must not re-refuse it.
+            await wait(refusal.retryAfterMs + 1);
+          }
+        }
+        return await step();
+      };
       return {
-        testCandidate: (candidateId) => testCandidate(seams, SYSTEM_CALLER, candidateId, sealed),
-        adoptCandidate: (candidateId) => adoptCandidate(seams, SYSTEM_CALLER, candidateId, sealed),
+        testCandidate: (candidateId) => paced(candidateId, () => testCandidate(seams, SYSTEM_CALLER, candidateId, sealed)),
+        adoptCandidate: (candidateId) => paced(candidateId, () => adoptCandidate(seams, SYSTEM_CALLER, candidateId, sealed)),
       };
     },
     replaceForTest: (parts) => {

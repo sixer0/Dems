@@ -36,7 +36,17 @@
  *
  * NOTHING HERE THROWS INTO A TIMER. Every failure - the neighbour table unreadable, a probe that
  * dies, a refused test, a locked selector - is a warn line with a code and counts only, never an
- * address, never a credential, and never an exception out of `sweep` or the tick.
+ * address, never a credential, and never an exception out of `sweep` or the tick. Since D62b the
+ * warn line of a failed attach carries the REFUSAL REASON WORD too (`refusalReason`, a code word
+ * like `CONNECTION_TEST_RATE_LIMITED`, never a value - CPB1-2 style).
+ *
+ * D62b (2026-11-05): THE FAILED ATTACH IS RETRIED. The live-list dedupe stays what stops the
+ * PROBING of a host, but it must not stop the ATTACH: a candidate that is in the store, unadopted
+ * and of SEGMENT origin is re-attempted after every later sweep (its row carried into the new
+ * list, the candidate id re-minted), up to `AUTOATTACH_MAX_ATTACH_ATTEMPTS` attempts per host. At
+ * the cap the sweep gives up on that host until the candidate's TTL has passed (the give-up map
+ * holds it out of probing and carrying meanwhile); after that a fresh sweep may find it again.
+ * Without the bench pair nothing is attempted and nothing is carried: the list replaces as before.
  *
  * TESTABILITY. Every outside world is a parameter: `listNeighbours`, `probeAddress`,
  * `ownAddresses`, `registeredAddresses`, `store`, `audit`, `attach`, `schedule`. The unit tests
@@ -47,6 +57,7 @@
  */
 import { networkInterfaces } from 'node:os';
 import {
+  CAPTURE_DISCOVERY_RESULT_TTL_MS,
   CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN,
   CaptureCandidateStatus,
   CaptureConnectionOutcome,
@@ -70,6 +81,16 @@ import type { CandidateStore, FoundCandidate } from './store';
 export const AUTOATTACH_SWEEP_INTERVAL_MS = 60_000;
 /** D62: at most four devices are auto-adopted per sweep; the rest wait for the next one. */
 export const AUTOATTACH_MAX_ADOPTS_PER_SWEEP = 4;
+/**
+ * D62b (2026-11-05): at most FIVE attach attempts (a test step that ran counts as one) per host
+ * across sweeps. The bench showed the old shape: one failure and the live-list dedupe made the
+ * host unprobed forever while its candidate sat unadopted - now the attach is retried, but a host
+ * that refuses five times is left alone until the candidate's TTL has passed
+ * (`CAPTURE_DISCOVERY_RESULT_TTL_MS`), so a dead credential or a hostile device cannot be knocked
+ * on every minute. The counter is per host, not per candidate id: a carried candidate is re-minted
+ * by the store on every sweep.
+ */
+export const AUTOATTACH_MAX_ATTACH_ATTEMPTS = 5;
 /** The owner key of the AUTO searches in the candidate store: no auth session is `SYSTEM`, so no read can reach it but the wiring's own. */
 export const SYSTEM_OWNER_SESSION_ID = 'SYSTEM';
 /** The model text a segment-probe candidate carries: says by itself how it was found; no device text is trusted. */
@@ -102,7 +123,10 @@ export interface SweepResult {
   readonly ran: boolean;
   readonly skipped: SweepSkip | null;
   readonly probed: number;
+  /** D62b (2026-11-05): the FRESH answers of this sweep; the carried retry rows are counted apart. */
   readonly found: number;
+  /** D62b: unadopted SEGMENT candidates of an earlier sweep carried into this sweep's list for another attach attempt. */
+  readonly carried: number;
   readonly adopted: readonly string[];
 }
 
@@ -334,7 +358,7 @@ const SWEEP_SKIPPED = 'segment sweep skipped';
 const SWEEP_CLOSED = 'segment sweep closed';
 const ATTACH_FAILED = 'the SMART ATTACH step failed; the candidate stays as it is';
 
-const skipped = (reason: SweepSkip): SweepResult => ({ ran: false, skipped: reason, probed: 0, found: 0, adopted: [] });
+const skipped = (reason: SweepSkip): SweepResult => ({ ran: false, skipped: reason, probed: 0, found: 0, carried: 0, adopted: [] });
 
 /** The ONE audit row of a sweep: `CAPTURE_DISCOVERY_SEARCHED`, trigger AUTO, actor SYSTEM (`actorId: null` - the FAULT_CLEARED precedent for system-written rows). Counts and codes, never an address. */
 export function autoSearchedEntry(search: CaptureDiscoverySearch): AuditEntry {
@@ -369,8 +393,22 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
   const maxAdopts = options.maxAdoptsPerSweep ?? AUTOATTACH_MAX_ADOPTS_PER_SWEEP;
   let busy = false;
   let stopSchedule: (() => void) | null = null;
+  // D62b (2026-11-05): the retry bookkeeping of the attach, per HOST (candidate ids are re-minted by the store on every sweep).
+  // `attachAttempts` counts the attach attempts made so far, `pendingRetry` holds the unadopted SEGMENT-origin rows to carry
+  // into the next sweep's list, and `gaveUpUntil` parks a host that hit the attempt cap until the candidate's TTL has passed.
+  // In memory of this sweeper only, like the limiter above it: a restart of the Core starts counting again.
+  const attachAttempts = new Map<string, number>();
+  const pendingRetry = new Map<string, FoundCandidate>();
+  const gaveUpUntil = new Map<string, number>();
+  // D62b: hosts whose attach SUCCEEDED in the running sweep - never carried again whatever the store's view still says (the boundary doubles of the sweep tests do not mark the store).
+  let adoptedHosts = new Set<string>();
+  /** The refusal reason of a failed attach as a code word (CPB1-2: words only, never a value). */
+  const refusalWord = (error: unknown): string | undefined => {
+    const reason = (error as { details?: { reason?: unknown } } | null)?.details?.reason;
+    return typeof reason === 'string' && /^[A-Z][A-Z0-9_]{2,63}$/.test(reason) ? reason : undefined;
+  };
 
-  /** D62 point 4, over the fresh testable candidates of THIS sweep's list, capped at four adopts. Every step may fail; none may stop the next or the timer. */
+  /** D62 point 4, over the testable candidates of THIS sweep's list - fresh answers and D62b carries alike, capped at four adopts. Every step may fail; none may stop the next or the timer. */
   const attachFresh = async (adopted: string[]): Promise<void> => {
     const attach = options.attach;
     if (attach === undefined) return;
@@ -382,6 +420,11 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
         log.warn({ code: 'CAPTURE_AUTOATTACH_CAP', source: SOURCE, left: fresh.length - adopted.length }, 'the SMART ATTACH cap of four adopts per sweep is reached; the rest wait for the next sweep');
         return;
       }
+      // D62b: a host parked by the attempt cap is not attempted again (the rebuild below closed it out); an attempt is counted BEFORE the step runs, so a step that dies still spends one.
+      if (gaveUpUntil.has(candidate.host)) continue;
+      const attempts = attachAttempts.get(candidate.host) ?? 0;
+      if (attempts >= AUTOATTACH_MAX_ATTACH_ATTEMPTS) continue;
+      attachAttempts.set(candidate.host, attempts + 1);
       try {
         const tested = await attach.testCandidate(candidate.candidateId);
         const outcome = typeof tested === 'string' ? tested : tested.outcome;
@@ -392,6 +435,9 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
         const deviceId = await attach.adoptCandidate(candidate.candidateId);
         if (deviceId === null) continue;
         adopted.push(deviceId);
+        adoptedHosts.add(candidate.host);
+        attachAttempts.delete(candidate.host);
+        pendingRetry.delete(candidate.host);
         const assignment = await attach.assignFirstEmptyTrack(deviceId);
         if (assignment.assigned && assignment.trackId !== null) {
           log.info({ code: 'CAPTURE_AUTOATTACH_ASSIGNED', source: SOURCE, deviceId, trackId: assignment.trackId }, 'a probe-backed camera was auto-adopted and put on its first empty video track');
@@ -400,9 +446,53 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
         }
       } catch (error) {
         const code = typeof (error as { code?: unknown } | null)?.code === 'string' ? String((error as { code: string }).code) : 'UNKNOWN';
-        log.warn({ code: 'CAPTURE_AUTOATTACH_FAILED', source: SOURCE, candidateId: candidate.candidateId, failureCode: code }, ATTACH_FAILED);
+        // D62b (2026-11-05): the refusal REASON word rides along when the failure carries one - the bench's single `RATE_LIMITED` line said nothing about WHICH bucket (D62b root cause). Codes only, never a value (CPB1-2).
+        const refusalReason = refusalWord(error);
+        log.warn({ code: 'CAPTURE_AUTOATTACH_FAILED', source: SOURCE, candidateId: candidate.candidateId, failureCode: code, ...(refusalReason === undefined ? {} : { refusalReason }) }, ATTACH_FAILED);
       }
     }
+  };
+
+  /**
+   * D62b (2026-11-05): the end-of-sweep retry bookkeeping. Every testable candidate still NEW in
+   * the list keeps its row for the next sweep (carried, re-minted); one that reached the attempt
+   * cap is given up on until the TTL of a candidate would have passed, and dropped from the carry
+   * so the host may be PROBED afresh then. Hosts that left the list (adopted elsewhere, expired)
+   * lose their counters. Without the bench pair nothing is carried: the list replaces as before.
+   */
+  const rebuildRetry = (listedByHost: ReadonlyMap<string, FoundCandidate>): number => {
+    if (options.attach === undefined) {
+      attachAttempts.clear();
+      pendingRetry.clear();
+      return 0;
+    }
+    const at = options.now();
+    const seen = new Set<string>();
+    for (const candidate of store.stateOf(SYSTEM_OWNER_SESSION_ID, at).candidates) {
+      seen.add(candidate.host);
+      const attempts = attachAttempts.get(candidate.host) ?? 0;
+      if (adoptedHosts.has(candidate.host)) {
+        // D62b: adopted in this very sweep - done, whatever the store's view still says.
+        attachAttempts.delete(candidate.host);
+        pendingRetry.delete(candidate.host);
+      } else if (candidate.status === CaptureCandidateStatus.NEW && candidate.testable) {
+        if (attempts >= AUTOATTACH_MAX_ATTACH_ATTEMPTS) {
+          gaveUpUntil.set(candidate.host, at + CAPTURE_DISCOVERY_RESULT_TTL_MS);
+          attachAttempts.delete(candidate.host);
+          pendingRetry.delete(candidate.host);
+          log.warn({ code: 'CAPTURE_AUTOATTACH_GIVE_UP', source: SOURCE, candidateId: candidate.candidateId, attempts }, 'the SMART ATTACH retry cap is reached for this candidate; the sweep leaves it alone until its list entry has expired');
+        } else {
+          const row = listedByHost.get(candidate.host);
+          if (row !== undefined) pendingRetry.set(candidate.host, row);
+        }
+      } else {
+        attachAttempts.delete(candidate.host);
+        pendingRetry.delete(candidate.host);
+      }
+    }
+    for (const host of [...attachAttempts.keys()]) if (!seen.has(host)) attachAttempts.delete(host);
+    for (const host of [...pendingRetry.keys()]) if (!seen.has(host)) pendingRetry.delete(host);
+    return pendingRetry.size;
   };
 
   const sweep = async (): Promise<SweepResult> => {
@@ -415,7 +505,10 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
     if (store.running() !== null) return skipped('SEARCH_RUNNING');
     busy = true;
     const startedAt = options.now();
+    adoptedHosts = new Set<string>();
     try {
+      // D62b (2026-11-05): a parked host whose give-up window has passed may be found afresh; its counters are gone with the parking.
+      for (const [host, until] of [...gaveUpUntil]) if (startedAt >= until) gaveUpUntil.delete(host);
       const neighbours = await options.listNeighbours();
       if (neighbours === null) {
         log.warn({ code: 'CAPTURE_AUTOATTACH_LIST_UNREADABLE', source: SOURCE }, 'the host\'s neighbour table could not be read; this sweep asks nothing');
@@ -424,14 +517,19 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
       const registered = new Set((await options.registeredAddresses()).map((address) => (address.includes(':') && !address.includes('::') ? address.slice(0, address.lastIndexOf(':')) : address)));
       const own = new Set(options.ownAddresses());
       const live = liveCandidateHosts(store, options.now());
-      const targets = neighbours.filter((entry) => !own.has(entry.ip) && !registered.has(entry.ip) && !live.has(entry.ip));
+      // D62b: the dedupe stops the PROBING of a host that is on a live list or carried for a retry or parked by the cap - it does not stop the ATTACH (the carry below).
+      const targets = neighbours.filter((entry) => !own.has(entry.ip) && !registered.has(entry.ip) && !live.has(entry.ip) && !pendingRetry.has(entry.ip) && !gaveUpUntil.has(entry.ip));
       // The probes run side by side; a probe that dies says nothing and fails to "no".
       const probes = await Promise.all(targets.map(async (entry): Promise<{ readonly ip: string; readonly probe: AddressProbe }> => ({ ip: entry.ip, probe: await options.probeAddress(entry.ip).catch(() => NO_PROBE) })));
       const found = probes.filter((entry) => entry.probe.onvif || entry.probe.rtsp).map((entry) => foundOfProbe(entry.ip, entry.probe));
-      // ONE AUTO search per sweep, through the store's own door: begin, complete, the row. The list replaces the sweep's previous one, as any new search replaces its owner's.
+      // D62b: the unadopted SEGMENT-origin rows of the previous sweep ride along - re-minted by the store, re-attempted by the attach below - unless this sweep found the host answering afresh.
+      const freshHosts = new Set(found.map((candidate) => candidate.host));
+      const carried = options.attach === undefined ? [] : [...pendingRetry.values()].filter((candidate) => !freshHosts.has(candidate.host) && !gaveUpUntil.has(candidate.host));
+      const listedByHost = new Map([...found, ...carried].map((candidate) => [candidate.host, candidate]));
+      // ONE AUTO search per sweep, through the store's own door: begin, complete, the row. The list replaces the sweep's previous one, as any new search replaces its owner's; D62b carries the unadopted rows into it so the ATTACH is retried while the PROBING is not.
       const searchId = options.nextSearchId();
       store.begin({ sessionId: SYSTEM_OWNER_SESSION_ID, searchId, trigger: CaptureDiscoveryTrigger.AUTO, startedAt, windowMs, interfaceCount: 1 });
-      const search = store.complete(searchId, found, { responderCount: found.length, interfaceCount: 1, truncated: false, completedAt: options.now() });
+      const search = store.complete(searchId, [...found, ...carried], { responderCount: found.length, interfaceCount: 1, truncated: false, completedAt: options.now() });
       if (search === null) return skipped('FAILED');
       try {
         await options.audit(autoSearchedEntry(search));
@@ -441,8 +539,9 @@ export function createSegmentSweeper(options: SegmentSweepOptions): SegmentSweep
       }
       const adopted: string[] = [];
       await attachFresh(adopted);
-      log.info({ code: 'CAPTURE_AUTOATTACH_SWEEP', source: SOURCE, searchId, probed: probes.length, found: found.length, adopted: adopted.length, durationMs: options.now() - startedAt }, SWEEP_CLOSED);
-      return { ran: true, skipped: null, probed: probes.length, found: found.length, adopted };
+      const carriedNext = rebuildRetry(listedByHost);
+      log.info({ code: 'CAPTURE_AUTOATTACH_SWEEP', source: SOURCE, searchId, probed: probes.length, found: found.length, carried: carried.length, adopted: adopted.length, waiting: carriedNext, durationMs: options.now() - startedAt }, SWEEP_CLOSED);
+      return { ran: true, skipped: null, probed: probes.length, found: found.length, carried: carried.length, adopted };
     } catch (error) {
       const code = typeof (error as { code?: unknown } | null)?.code === 'string' ? String((error as { code: string }).code) : 'UNKNOWN';
       log.warn({ code: 'CAPTURE_AUTOATTACH_SWEEP_FAILED', source: SOURCE, failureCode: code }, 'the segment sweep failed; the timer keeps its place');

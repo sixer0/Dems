@@ -197,7 +197,7 @@ describe('D62: one sweep', () => {
     const result = await createSegmentSweeper(h.options).sweep();
     // .5 is the Core itself and .12 is registered: never dialled. .13 is dialled and answers nothing: not listed.
     expect(h.probed).toEqual(['192.168.7.11', '192.168.7.13']);
-    expect(result).toMatchObject<SweepResult>({ ran: true, skipped: null, probed: 2, found: 1, adopted: [] });
+    expect(result).toMatchObject<SweepResult>({ ran: true, skipped: null, probed: 2, found: 1, carried: 0, adopted: [] });
     const listed = h.store.stateOf(SYSTEM_OWNER_SESSION_ID, T0).candidates;
     expect(listed.map((candidate) => candidate.host)).toEqual(['192.168.7.11']);
     // The second sweep dials only the silent .13 again: the live candidate .11 is on the list and excluded.
