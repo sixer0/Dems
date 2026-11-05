@@ -463,3 +463,58 @@ describe('a change the runtime role cannot write is refused, not skipped', () =>
     ]);
   });
 });
+
+// D62c (2026-11-05): the boot-load exception on the adapter guard. The stored registry of the
+// bench adopted cameras under ids that D60 / D61 later made built-ins; the state's placeholder
+// names no adapter and the loaded fact names the real one. That move is a LOAD, not a runtime
+// mutation of an immutable column; every runtime move on a NAMED adapter keeps throwing.
+describe('the adapter guard of the capture diff (D62c)', () => {
+  type SliceDevice = SimState['captureDevices']['devices'][number] & { adapter?: string };
+  const withAdapter = (state: SimState, id: string, adapter: string | undefined): SimState => ({
+    ...state,
+    captureDevices: {
+      ...state.captureDevices,
+      devices: state.captureDevices.devices.map((device) => {
+        if (device.id !== id) return device;
+        const copy: SliceDevice = { ...(device as SliceDevice) };
+        if (adapter === undefined) delete copy.adapter; else copy.adapter = adapter;
+        return copy as SimState['captureDevices']['devices'][number];
+      }),
+    },
+  });
+
+  it('lets the stored registry REPLACE a placeholder built-in (D62c)', () => {
+    const state = idle();
+    const placeholder = state.captureDevices.devices.find((device) => device.id === 'CAM-03');
+    expect(placeholder).toBeDefined();
+    expect((placeholder as SliceDevice).adapter).toBeUndefined();
+    const loaded = withAdapter(state, 'CAM-03', 'ONVIF_RTSP');
+    // The loaded fact is the stored row: it also names the camera the registry holds (the
+    // bench's real model and address), which is what the whole boot-load writes back.
+    const stored: SimState = {
+      ...loaded,
+      captureDevices: {
+        ...loaded.captureDevices,
+        devices: loaded.captureDevices.devices.map((device) =>
+          device.id === 'CAM-03'
+            ? { ...device, model: 'TC-C320N SPEC:I3/E/Y/2.8mm', host: '192.168.100.101' }
+            : device,
+        ),
+      },
+    };
+    const changes = diffSlices(state, stored, FIXED_NOW).filter((c) => c.table === 'captureDevices');
+    expect(changes.length).toBeGreaterThan(0); // the row is written, not refused
+    for (const change of changes) {
+      const set = (change as { set?: Record<string, unknown> }).set ?? {};
+      expect(Object.keys(set)).not.toContain('adapterKind'); // and the immutable column is never in it
+    }
+  });
+
+  it('still refuses a NAMED adapter that changes mid-run (M4-MT-12 keeps its teeth)', () => {
+    const named = withAdapter(idle(), 'CAM-03', 'ONVIF_RTSP');
+    const moved = withAdapter(named, 'CAM-03', 'LOCAL_DEVICE');
+    expect(() => diffSlices(named, moved, FIXED_NOW)).toThrow(/adapter kind of CAM-03/);
+    const dropped = withAdapter(named, 'CAM-03', undefined); // a device that lost its member
+    expect(() => diffSlices(named, dropped, FIXED_NOW)).toThrow(/adapter kind of CAM-03/);
+  });
+});

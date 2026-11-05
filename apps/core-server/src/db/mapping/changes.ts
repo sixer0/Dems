@@ -205,7 +205,20 @@ function diffCapture(previous: DurableSlices, next: DurableSlices, buckets: Buck
       // change anyway (the UPSERT keeps `adapter_kind` out of its SET list and `dems_app` holds no
       // UPDATE on it), so a slice that asks for it is refused here, loudly, instead of being
       // dropped silently (M4-MT-12).
-      if (old !== undefined && old.adapterKind !== row.adapterKind) {
+      const prior = previous.captureDevices.devices.find((device) => device.id === row.id);
+      // D62c (2026-11-05): the boot-load exception, in full. Since D60 / D61 the built-in ids
+      // of the state reach CAM-03 / CAM-04 and MIC-03 / MIC-04, and a stored registry that
+      // adopted devices under those ids BEFORE the widening reads back as an adapter change:
+      // the placeholder of the state names no adapter (the default of `adapterKindOf`
+      // answers), while the loaded fact names the real one. That is not a runtime mutation of
+      // an immutable column - the UPSERT keeps `adapter_kind` out of its SET list either way
+      // and the store stays the truth - so a placeholder being REPLACED by a named adapter is
+      // let through, on the whole-row path and on the column-set path alike. A named adapter
+      // changing, or falling back to the default (a device that lost its member mid-run),
+      // still throws: the teeth of M4-MT-12 hold for every move a running Core makes on its
+      // own.
+      const placeholder = prior !== undefined && (prior as { adapter?: unknown }).adapter === undefined;
+      if (old !== undefined && old.adapterKind !== row.adapterKind && !placeholder) {
         throw notWritable('capture_devices', `the adapter kind of ${row.id} changed; it is written at INSERT and never updated (dbc-4 §N.2).`);
       }
       if (old === undefined) {
@@ -225,7 +238,9 @@ function diffCapture(previous: DurableSlices, next: DurableSlices, buckets: Buck
       // row), so the registry's transport is never overwritten with the neutral code: the change
       // is an UPDATE of exactly the modelled columns that moved, and `transport` is never one.
       const writable: readonly (keyof MappedRow<'captureDevices'>)[] = RUNTIME_UPDATABLE_COLUMNS.captureDevices;
-      const changed = (Object.keys(row) as (keyof MappedRow<'captureDevices'>)[]).filter((column) => column !== 'transport' && !isDeepStrictEqual(old[column], row[column]));
+      // D62c: on this path an adapter the placeholder never named is not a column the engine
+      // writes either - the store's INSERTed value stands, as it does on the whole-row path.
+      const changed = (Object.keys(row) as (keyof MappedRow<'captureDevices'>)[]).filter((column) => !placeholder || column !== 'adapterKind').filter((column) => column !== 'transport' && !isDeepStrictEqual(old[column], row[column]));
       const refused = changed.filter((column) => !writable.includes(column));
       if (refused.length > 0) throw notWritable('capture_devices', `the column(s) ${refused.join(', ')} of ${row.id} are not the engine's to change.`);
       if (changed.length > 0) updates.push({ op: 'update', table: 'captureDevices', key: { id: row.id }, set: pick(row, changed) });
