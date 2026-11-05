@@ -166,8 +166,8 @@ export function captureConfigSliceOf(config: CaptureConfigRecord | null, devices
       ...camera('VIDEO-03', config.video03DeviceId, config.video03Profile, ['video03DeviceId', 'video03Profile']),
       ...camera('VIDEO-04', config.video04DeviceId, config.video04Profile, ['video04DeviceId', 'video04Profile']),
     ],
-    mics: [...mic('MIC-01', config.mic01Id), ...mic('MIC-02', config.mic02Id), ...mic('MIC-03', config.mic03Id), ...mic('MIC-04', config.mic04Id)].sort((left, right) => // D61 (2026-11-04): four numbered channels
-      left.inputId < right.inputId ? -1 : left.inputId > right.inputId ? 1 : 0,
+    mics: [...mic('MIC-01', config.mic01Id), ...mic('MIC-02', config.mic02Id), ...mic('MIC-03', config.mic03Id), ...mic('MIC-04', config.mic04Id)].sort((left, right) => // D61 (2026-11-04): four numbered channels; AC-B-70 generalized — the engine holds the lines in CHANNEL order (capture-config.ts `inChannelOrder`), so this load orders by channel too
+      left.channel < right.channel ? -1 : left.channel > right.channel ? 1 : 0,
     ),
     locked,
     updatedAt: config.updatedAt,

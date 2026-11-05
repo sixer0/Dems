@@ -182,7 +182,14 @@ describe('G70b-01: a camera adopted on a BOOTED development Core', () => {
     // THE FINDING. Before the fix: 422 `DEVELOPMENT_SOURCE_NOT_ALLOWED` until the Core restarts.
     const assigned = await post(`/api/v1/capture/cameras/${deviceId}/source`, { trackId: 'VIDEO-02' });
     expect(assigned.statusCode, assigned.body).toBe(200);
-    expect(await selector()).toEqual([['VIDEO-01', before[0]?.[1]], ['VIDEO-02', deviceId]]);
+    // D60 (2026-11-04): the selector answers all FOUR tracks — the adopted camera takes VIDEO-02 and
+    // the three tracks the seed assigned stay where they were.
+    expect(await selector()).toEqual([
+      ['VIDEO-01', before[0]?.[1]],
+      ['VIDEO-02', deviceId],
+      ['VIDEO-03', before[2]?.[1]],
+      ['VIDEO-04', before[3]?.[1]],
+    ]);
     // The registry of the running Core serves it: a generated test source, as a stored `FAKE` camera gets at a boot.
     expect(registry.describe(deviceId)).toMatchObject({ id: deviceId, deviceClass: 'CAMERA', adapterKind: 'FAKE', sourceClass: 'DEVELOPMENT', hasOpener: true });
     expect(registry.list().map((device) => device.id)).toContain(deviceId);
@@ -218,8 +225,9 @@ describe('G70b-01: a camera adopted on a BOOTED development Core', () => {
     const tracks = await selector();
     expect(tracks[1]).toEqual(['VIDEO-02', deviceId]);
     // Nothing of this Mac is on a track: the read of a generated source opens nothing.
+    // D60 (2026-11-04): FOUR tracks now, every one of them a generated (FAKE) source.
     const kinds = new Map(captureFenceControl(app).registry()?.list().map((device) => [device.id, device.adapterKind]));
-    expect(tracks.map(([, id]) => kinds.get(id ?? ''))).toEqual(['FAKE', 'FAKE']);
+    expect(tracks.map(([, id]) => kinds.get(id ?? ''))).toEqual(['FAKE', 'FAKE', 'FAKE', 'FAKE']);
 
     const investigator = app.engine.slice('operators').find((operator) => operator.role === 'INVESTIGATOR');
     if (investigator === undefined) throw new Error('the seed has no investigator');

@@ -8,6 +8,9 @@ ALTER TABLE "capture_config" ADD COLUMN "video_03_device_id" text;--> statement-
 ALTER TABLE "capture_config" ADD COLUMN "video_03_profile" text;--> statement-breakpoint
 ALTER TABLE "capture_config" ADD COLUMN "video_04_device_id" text;--> statement-breakpoint
 ALTER TABLE "capture_config" ADD COLUMN "video_04_profile" text;--> statement-breakpoint
+-- D60 (dbc-17): the third and fourth slots reference their camera like the first two (0004 shape).
+ALTER TABLE "capture_config" ADD CONSTRAINT "capture_config_video_03_device_id_fkey" FOREIGN KEY ("video_03_device_id") REFERENCES "capture_devices"("id") ON DELETE RESTRICT ON UPDATE NO ACTION;--> statement-breakpoint
+ALTER TABLE "capture_config" ADD CONSTRAINT "capture_config_video_04_device_id_fkey" FOREIGN KEY ("video_04_device_id") REFERENCES "capture_devices"("id") ON DELETE RESTRICT ON UPDATE NO ACTION;--> statement-breakpoint
 ALTER TABLE "capture_config" ADD CONSTRAINT "capture_config_profile_34_check" CHECK ((video_03_profile ~ '^[A-Z][A-Z0-9_]{0,63}$'::text) AND (video_04_profile ~ '^[A-Z][A-Z0-9_]{0,63}$'::text));; --> statement-breakpoint
 -- The no-collision rule of the selector, pairwise over the four tracks: two tracks may share a
 -- device (the dual-lens case) only when their profiles differ.

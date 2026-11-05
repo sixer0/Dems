@@ -151,7 +151,8 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   // refusing value is one of neither set ('GHOST') - the probe breaks the rule as landed.
   ['evidence_items_sources_check', 'evidence_items', evidenceItem({ integrity_source: 'GHOST' })],
   ['evidence_items_json_check', 'evidence_items', evidenceItem({ markers: json({}) })],
-  ['evidence_tracks_track_check', 'evidence_tracks', evidenceTrack('VIDEO-01', 5)],
+  // D61 (2026-11-04): the position bound widened to eight (0040); a ninth track breaks the check.
+  ['evidence_tracks_track_check', 'evidence_tracks', evidenceTrack('VIDEO-01', 9)],
   ['evidence_tracks_values_check', 'evidence_tracks', evidenceTrack('VIDEO-01', 1, { sha256: 'nothex' })],
   ['evidence_custody_values_check', 'evidence_custody', evidenceCustody(0)],
   ['exports_id_check', 'exports', exportRecord('EXP-1')],
@@ -190,7 +191,10 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   ['capture_devices_poe_port_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { poe_port: 'eth0' })],
   ['capture_config_singleton_check', 'capture_config', captureConfig({ singleton: false })],
   ['capture_config_profile_check', 'capture_config', captureConfig({ video_01_profile: 'uhd' })],
-  ['capture_config_mic_check', 'capture_config', captureConfig({ mic_standby_id: 'MIC-01' })],
+  // D60 (2026-11-04): the third and fourth slots carry their own profile CHECK (0039).
+  ['capture_config_profile_34_check', 'capture_config', captureConfig({ video_03_profile: 'uhd' })],
+  // D61 (2026-11-04): the collision rule is pairwise over the four numbered channels (0040).
+  ['capture_config_mic_check', 'capture_config', captureConfig({ mic_02_id: 'MIC-01' })],
   ['capture_config_selector_check', 'capture_config', captureConfig({ video_02_device_id: 'CAM-01', video_02_profile: 'UHD' })],
   ['capture_config_revision_check', 'capture_config', captureConfig({ revision: 0 })],
   ['capture_device_credentials_username_check', 'capture_device_credentials', captureDeviceCredential('CAM-01', { username: '' })],
@@ -347,9 +351,9 @@ const SHADOWED: ReadonlyArray<readonly [string, string, Row, string, string | un
   // v2 again: every kind outside (REFERENCE, ENCRYPTED) also breaks stt_config_credential_check, whose
   // three branches name the same set; that one comes first in name order.
   ['stt_config_credential_kind_check', 'stt_config', sttConfig({ credential_kind: 'PLAIN' }), SQLSTATE.checkViolation, 'stt_config_credential_check'],
-  // v3 (dbc-4 §N.3): a fifth slot is in neither branch of session_capture_sources_pairing_check,
-  // which comes first in name order.
-  ['session_capture_sources_slot_check', 'session_capture_sources', captureSource('VIDEO-03'), SQLSTATE.checkViolation, 'session_capture_sources_pairing_check'],
+  // v3, widened by D61 (2026-11-04): a ninth slot is in neither branch of
+  // session_capture_sources_pairing_check, which comes first in name order.
+  ['session_capture_sources_slot_check', 'session_capture_sources', captureSource('MIC-05'), SQLSTATE.checkViolation, 'session_capture_sources_pairing_check'],
 ];
 
 async function insert(table: string, row: Row): Promise<void> {
@@ -358,11 +362,11 @@ async function insert(table: string, row: Row): Promise<void> {
 }
 
 describe('CL-03: one refused row per named CHECK', () => {
-  it('the list covers all 233 CHECKs of the contract: 228 directly, 5 that another rule refuses first', () => {
+  it('the list covers all 234 CHECKs of the contract: 229 directly, 5 that another rule refuses first', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'CHECK').map((constraint) => constraint.name));
     const covered = [...REFUSED_BY_CHECK.map(([name]) => name), ...SHADOWED.map(([name]) => name)];
-    expect(named).toHaveLength(233);
-    expect(REFUSED_BY_CHECK).toHaveLength(228);
+    expect(named).toHaveLength(234);
+    expect(REFUSED_BY_CHECK).toHaveLength(229);
     expect([...covered].sort()).toEqual([...named].sort());
     for (const [name, table] of [...REFUSED_BY_CHECK, ...SHADOWED]) expect(name.startsWith(`${table}_`), name).toBe(true);
   });
@@ -403,7 +407,8 @@ describe('the valid rows are accepted: no CHECK is stricter than the contract', 
     await insertRow(owner, 'session_history', sessionHistory());
     await insertRow(owner, 'session_history', sessionHistory({ id: 'SES-20261001-0003', outcome: 'INCOMPLETE', fault_kind: 'POWER_FAIL', started_at: null, start_time_source: null }));
     await insertRow(owner, 'evidence_items', evidenceItem());
-    for (const [position, track] of ['VIDEO-01', 'VIDEO-02', 'AUDIO-01', 'AUDIO-02'].entries()) {
+    // D60/D61 (2026-11-04): eight tracks - four video, four numbered audio channels, position 1..8.
+    for (const [position, track] of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'].entries()) {
       await insertRow(owner, 'evidence_tracks', evidenceTrack(track, position + 1));
     }
     await insertRow(owner, 'evidence_custody', evidenceCustody(1));
@@ -433,11 +438,15 @@ describe('the valid rows are accepted: no CHECK is stricter than the contract', 
     await insertRow(owner, 'capture_devices', captureDevice('CAM-02', 'CAMERA'));
     await insertRow(owner, 'capture_devices', captureDevice('MIC-01', 'MIC'));
     await insertRow(owner, 'capture_devices', captureDevice('MIC-02', 'MIC'));
+    // D61 (2026-11-04): the four channels feed their built-ins, so MIC-03/04 exist too.
+    await insertRow(owner, 'capture_devices', captureDevice('MIC-03', 'MIC'));
+    await insertRow(owner, 'capture_devices', captureDevice('MIC-04', 'MIC'));
     await insertRow(owner, 'capture_devices', captureDevice('POE-A1', 'POE', { poe_port: 'P1' }));
     await insertRow(owner, 'capture_config', captureConfig());
     await insertRow(owner, 'capture_device_credentials', captureDeviceCredential('CAM-01'));
-    // schema v3 (dbc-4 §N.3): the four source rows of the session, before its first interval.
-    for (const slot of ['VIDEO-01', 'VIDEO-02', 'MIC-PRIMARY', 'MIC-STANDBY']) await insertRow(owner, 'session_capture_sources', captureSource(slot));
+    // schema v3 (dbc-4 §N.3), widened by D60/D61 (2026-11-04): the eight source rows of the session
+    // (four video tracks, four microphone channels), before its first interval.
+    for (const slot of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) await insertRow(owner, 'session_capture_sources', captureSource(slot));
     await insertRow(owner, 'session_audio_intervals', audioInterval(1));
     await insertRow(owner, 'recording_fragments', recordingFragment(SESSION_ID, 'VIDEO-01', 1));
     await insertRow(owner, 'transcript_chunks', transcriptChunk(1, { status: 'DONE', segments: json([]), computed_at: T + 60_000 }));
@@ -546,8 +555,14 @@ describe('CL-02: every reference is a foreign key with ON DELETE RESTRICT', () =
     ['active_session_stopped_by_fkey', 'active_session', activeSession({ stopped_by: 'OPR-777' })],
     ['capture_config_video_01_device_id_fkey', 'capture_config', captureConfig({ video_01_device_id: 'CAM-99' })],
     ['capture_config_video_02_device_id_fkey', 'capture_config', captureConfig({ video_02_device_id: 'CAM-99' })],
-    ['capture_config_mic_primary_id_fkey', 'capture_config', captureConfig({ mic_primary_id: 'MIC-99' })],
-    ['capture_config_mic_standby_id_fkey', 'capture_config', captureConfig({ mic_standby_id: 'MIC-99' })],
+    // D60 (2026-11-04) added the third and fourth camera pairs' keys; D61 (2026-11-04) renamed the
+    // two mic roles and added the third and fourth channels (0040).
+    ['capture_config_video_03_device_id_fkey', 'capture_config', captureConfig({ video_03_device_id: 'CAM-99', video_03_profile: 'FHD' })],
+    ['capture_config_video_04_device_id_fkey', 'capture_config', captureConfig({ video_04_device_id: 'CAM-99', video_04_profile: 'FHD' })],
+    ['capture_config_mic_01_id_fkey', 'capture_config', captureConfig({ mic_01_id: 'MIC-99' })],
+    ['capture_config_mic_02_id_fkey', 'capture_config', captureConfig({ mic_02_id: 'MIC-99' })],
+    ['capture_config_mic_03_id_fkey', 'capture_config', captureConfig({ mic_03_id: 'MIC-99' })],
+    ['capture_config_mic_04_id_fkey', 'capture_config', captureConfig({ mic_04_id: 'MIC-99' })],
     ['capture_config_updated_by_fkey', 'capture_config', captureConfig({ updated_by: 'OPR-777' })],
     ['capture_device_credentials_device_id_fkey', 'capture_device_credentials', captureDeviceCredential('CAM-99')],
     ['session_audio_intervals_mic_device_id_fkey', 'session_audio_intervals', audioInterval(2, { mic_device_id: 'MIC-99', from_media_ms: 100, to_media_ms: 200, from_at: T + 100, to_at: T + 200, reason: 'MANUAL' })],
@@ -576,9 +591,9 @@ describe('CL-02: every reference is a foreign key with ON DELETE RESTRICT', () =
     ['capture_devices_retired_by_fkey', 'capture_devices', captureDevice('CAM-77', 'CAMERA', { retired_at: T, retired_by: 'OPR-777' })],
   ];
 
-  it('the list covers all 49 foreign keys of the contract', () => {
+  it('the list covers all 53 foreign keys of the contract', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'FOREIGN KEY').map((constraint) => constraint.name));
-    expect(named).toHaveLength(49);
+    expect(named).toHaveLength(53);
     expect([...UNKNOWN_PARENT.map(([name]) => name), 'audit_log_actor_id_fkey'].sort()).toEqual([...named].sort());
   });
 

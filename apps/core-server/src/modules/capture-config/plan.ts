@@ -108,7 +108,7 @@ export interface CapturePlanSelector {
 
 /**
  * The four numbered microphone channels (D61, 2026-11-04): the microphone half of the eight slots,
- * the columns `mic_01_id`..`mic_04_id` of the selector row and the `MIC-01`..`MIC-04` values of
+ * the columns `mic_0N_id` of the selector row and the `MIC-01`..`MIC-04` values of
  * `session_capture_sources_slot_check` (migration 0040). The shared vocabulary is the one source;
  * the fence and the row mapping read the same list. The protocol's own D61 wave (2026-11-04) landed
  * the `channel` member on the plan: the LEGACY_ROLE_OF shim that bridged the two-role lane during

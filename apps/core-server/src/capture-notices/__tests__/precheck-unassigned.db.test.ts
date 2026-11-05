@@ -9,13 +9,13 @@
 // The cases below hold both halves at a booted Core: the gate's outcome and the pre-check answer.
 //
 // WHAT IS REAL: the app factory and its boot in REAL_DEVELOPMENT on the GENERATED sources (the
-// development test sources the fence registers: CAM-01, CAM-02, MIC-01, MIC-02 of kind FAKE), the
+// development test sources the fence registers: CAM-01..04 and MIC-01..04 of kind FAKE), the
 // engine host with its pipeline and audit chain, this unit as the app builds it, the probe it was
 // provided with at the boot. WHAT STANDS IN: the worker program and the helper program are the
 // stand-ins of the real-boot fixture and are never asked to capture (no session is started).
 // A stored unassigned slot is NULL written into a clone of the seed by the owner, before the boot
 // (operation 78 `unassign` is row 29's subject and is held there).
-import { CAPTURE_START_REQUIRED_SLOTS, CaptureStartRule, SOURCE_NOT_ASSIGNED_PRECHECK_VALUE, unassignedSlotOfPrecheckItem, type PrecheckItem } from '@dems/shared/sim';
+import { CAPTURE_START_REQUIRED_SLOTS, CAPTURE_SOURCE_NOT_ASSIGNED_REASON, CaptureStartRule, SOURCE_NOT_ASSIGNED_PRECHECK_VALUE, unassignedSlotOfPrecheckItem, type PrecheckItem } from '@dems/shared/sim';
 import type { Pool } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../test/helpers/db';
@@ -30,15 +30,26 @@ const fixture = realBootFixture('row30');
 fixture.provisionKey();
 afterAll(() => fixture.remove());
 
-// D61 (2026-11-04): the two mic roles became the four numbered channels; the seed still assigns
-// only channels 1 and 2, so this unit walks the four slots it always walked, now by their names.
+// D61 (2026-11-04): the selector is EIGHT slots and the seed assigns every one of them (four
+// video tracks, four numbered channels). The pre-check answer keeps its CLOSED item list
+// (`PRECHECK_ORDER`): the four slots that ever had an item keep it (VIDEO-03/04 and MIC-03/04
+// have none of their own); the eight-slot rule bites at the START (`startRecordingTransition`).
+// This unit therefore walks the four item-carrying slots for the BLOCK item, walks all eight for
+// the held selector, and names the four item-less slots in the start-refusal case below.
 const SLOTS = ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02'] as const;
 type Slot = (typeof SLOTS)[number];
-const COLUMNS_OF: Readonly<Record<Slot, readonly string[]>> = {
+const ALL_SLOTS = [...CAPTURE_START_REQUIRED_SLOTS] as const;
+/** The slots WITHOUT an item of their own since the closed check list was written - the eight-slot rule still refuses a start for them (C25, D61). */
+const ITEM_LESS_SLOTS = ['VIDEO-03', 'VIDEO-04', 'MIC-03', 'MIC-04'] as const;
+const COLUMNS_OF: Readonly<Record<string, readonly string[]>> = {
   'VIDEO-01': ['video_01_device_id', 'video_01_profile'],
   'VIDEO-02': ['video_02_device_id', 'video_02_profile'],
+  'VIDEO-03': ['video_03_device_id', 'video_03_profile'],
+  'VIDEO-04': ['video_04_device_id', 'video_04_profile'],
   'MIC-01': ['mic_01_id'], // D61: 0040 renamed the role columns to the channel columns
   'MIC-02': ['mic_02_id'], // D61
+  'MIC-03': ['mic_03_id'], // D61
+  'MIC-04': ['mic_04_id'], // D61
 };
 /** The pre-check item that speaks for a slot (the stored check IDs keep the role names), and the device the seed assigns to it. */
 const ITEM_OF: Readonly<Record<Slot, PrecheckItem['id']>> = { 'VIDEO-01': 'LENS_1', 'VIDEO-02': 'LENS_2', 'MIC-01': 'MIC_PRIMARY', 'MIC-02': 'MIC_STANDBY' };
@@ -64,7 +75,7 @@ interface Ran {
 }
 
 /** A Core on a clone of the seed with the named slots unassigned in the stored selector, and ONE run of the pre-check as the route makes it: the gate, then the hosted action. */
-async function precheckOn(slug: string, unassigned: readonly Slot[], mode: 'REAL_DEVELOPMENT' | 'SIMULATED' = 'REAL_DEVELOPMENT'): Promise<Ran> {
+async function precheckOn(slug: string, unassigned: readonly string[], mode: 'REAL_DEVELOPMENT' | 'SIMULATED' = 'REAL_DEVELOPMENT'): Promise<Ran> {
   const target = await db.another({ template: 'seed', slug });
   const owner: Pool = target.ownerPool();
   // No speech runtime on a test host: a real-capture boot resolves the stored selection first.
@@ -75,9 +86,10 @@ async function precheckOn(slug: string, unassigned: readonly Slot[], mode: 'REAL
   await core.engine.idle();
   const operation = captureFenceControl(core.app).operation;
   expect(operation).toBe(mode === 'SIMULATED' ? CaptureOperation.SIMULATED : CaptureOperation.REAL_DEVELOPMENT);
-  // The selector the Core holds is the stored one: the lines of the assigned slots and no other.
+  // The selector the Core holds is the stored one: the lines of the assigned slots and no other
+  // (D61: of the EIGHT the seed assigns, minus the ones this case emptied).
   const held = core.engine.slice('captureConfig');
-  expect([...held.cameras.map((camera) => camera.trackId as string), ...held.mics.map((mic) => mic.channel as string)].sort()).toEqual(SLOTS.filter((slot) => !unassigned.includes(slot)).sort());
+  expect([...held.cameras.map((camera) => camera.trackId as string), ...held.mics.map((mic) => mic.channel as string)].sort()).toEqual(ALL_SLOTS.filter((slot) => !unassigned.includes(slot)).sort());
 
   const investigator = core.principal('INVESTIGATOR');
   const created = await core.engine.command(investigator, 'createSession', { ...SESSION_INPUT, investigatorId: investigator.operatorId });
@@ -119,7 +131,7 @@ const ENDINGS = "SELECT type FROM public.audit_log WHERE type IN ('PRECHECK_PASS
 
 describe('task 4 row 30 (C18, C25): in real capture an unassigned selector slot is ONE BLOCK item of the pre-check, decided by the shared session machine; the gate of this unit asks nothing for it', () => {
   // D61 (2026-11-04): a start needs EIGHT slots - four video tracks and four numbered microphone
-  // channels; this unit walks the four the seed assigns (VIDEO-03/04 and MIC-03/04 stay NULL in it).
+  // channels - and the seed assigns all eight; the closed item list speaks for the first four.
   it('the slots a start needs are the eight of the selector, every channel included (C25, D61)', () => {
     expect([...CAPTURE_START_REQUIRED_SLOTS].sort()).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'].sort());
   });
@@ -158,6 +170,25 @@ describe('task 4 row 30 (C18, C25): in real capture an unassigned selector slot 
     expect(ran.gate).toEqual({ asked: true, unreachable: [], search: 'NOT_NEEDED' });
     expect(await ran.rows(UNREACHABLE_ROWS)).toEqual([]);
     expect(await ran.start()).toBeInstanceOf(Error);
+  });
+
+  // D61 (2026-11-04): the eight-slot rule keeps its teeth on the four slots the CLOSED check list
+  // never carried an item for (`PRECHECK_ORDER` is fixed; only LENS_1/LENS_2/MIC_PRIMARY/MIC_STANDBY
+  // speak for a source). Emptying VIDEO-03 .. MIC-04 therefore shows no item and can end the
+  // pre-check passed - and the start rule of the shared session machine still refuses the start
+  // with `CAPTURE_SOURCE_NOT_ASSIGNED` (`startRecordingTransition`, row 163).
+  it('the four slots WITHOUT an item of their own (VIDEO-03 .. MIC-04): no item says it, and the eight-slot start rule refuses anyway (C25, D61)', async () => {
+    const ran = await precheckOn('r30-item-less', [...ITEM_LESS_SLOTS]);
+    expect(ran.unassigned).toEqual([]);
+    expect(ran.items.filter((item) => item.value === SOURCE_NOT_ASSIGNED_PRECHECK_VALUE || item.params?.['rule'] === CaptureStartRule.SOURCE_NOT_ASSIGNED)).toEqual([]);
+    expect(ran.blocked).toEqual([]);
+    expect(ran.gate).toEqual({ asked: true, unreachable: [], search: 'NOT_NEEDED' });
+    expect(['PASS', 'WARN']).toContain(ran.outcome);
+    if (ran.outcome === 'WARN') expect(await ran.acknowledge()).not.toBeInstanceOf(Error);
+    const refusal = await ran.start();
+    // The engine's door words the transition's refusal as an ApiFailure: the reason travels in its `details` member.
+    expect(refusal).toBeInstanceOf(Error);
+    expect((refusal as Error & { details?: { reason?: string } }).details?.reason).toBe(CAPTURE_SOURCE_NOT_ASSIGNED_REASON);
   });
 
   it('CONTROL - the assigned selector of the seed: 0 such items, 0 BLOCK items, and the pre-check ends passed', async () => {

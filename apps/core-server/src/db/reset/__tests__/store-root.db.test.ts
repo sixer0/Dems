@@ -72,7 +72,7 @@ async function signedPackage(sessionId: string, rows: readonly SessionCaptureSou
     beforeSeal: (input) => {
       const loose = input as unknown as LooseInput;
       loose.tracks.forEach((track, index) => (track.deviceId = deviceOf(index === 0 ? 'VIDEO-01' : 'VIDEO-02')));
-      loose.audio.sourceIntervals.forEach((interval, index) => (interval.micDeviceId = deviceOf(index === 0 ? 'MIC-PRIMARY' : 'MIC-STANDBY')));
+      loose.audio.sourceIntervals.forEach((interval, index) => (interval.micDeviceId = deviceOf(index === 0 ? 'MIC-01' : 'MIC-02'))); // D61 (2026-11-04): the roles became the numbered channels
     },
   });
 }
@@ -103,8 +103,12 @@ beforeAll(async () => {
   const built = await signedPackage(PRODUCTION_SESSION, [
     { slot: 'VIDEO-01', deviceId: 'CAM-07', adapterKind: 'ONVIF_RTSP' },
     { slot: 'VIDEO-02', deviceId: 'CAM-07', adapterKind: 'ONVIF_RTSP' },
-    { slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'USB_AUDIO' },
-    { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'USB_AUDIO' },
+    // D61 (2026-11-04, migration 0040): the two roles are the numbered channels MIC-01/MIC-02 —
+    // the value set `CAPTURE_SOURCE_SLOTS` holds nothing else, so the old names are refused as a
+    // torn start record. A four-row plan stays a complete plan of its own era (the requirement is
+    // the session's own slot set, never a fixed count).
+    { slot: 'MIC-01', deviceId: 'MIC-01', adapterKind: 'USB_AUDIO' },
+    { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'USB_AUDIO' },
   ]);
   expect(built.manifest.developmentSources).toBe(false);
   productionPackage = built.dir;
@@ -264,11 +268,18 @@ describe('D: a permitted reset removes the cleared development package below the
       "UPDATE public.evidence_items SET integrity_source = 'REAL', sealed_at = ended_at, development_sources = true WHERE id = (SELECT min(id) FROM public.evidence_items) RETURNING id, session_id",
     )).rows[0];
     const sessionId = item?.session_id ?? '';
+    // D61 (2026-11-04): the real-evidence guard counts the start record against
+    // `SOURCE_ROWS_PER_SESSION` = EIGHT (four video tracks, four numbered channels), and the slot
+    // CHECK of migration 0040 admits nothing but these names.
     const rows: SessionCaptureSourceRow[] = [
       { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'FAKE' },
       { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },
-      { slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'FAKE' },
-      { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' },
+      { slot: 'VIDEO-03', deviceId: 'CAM-03', adapterKind: 'FAKE' }, // D60
+      { slot: 'VIDEO-04', deviceId: 'CAM-04', adapterKind: 'FAKE' }, // D60
+      { slot: 'MIC-01', deviceId: 'MIC-01', adapterKind: 'FAKE' }, // D61
+      { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'FAKE' }, // D61
+      { slot: 'MIC-03', deviceId: 'MIC-03', adapterKind: 'FAKE' }, // D61
+      { slot: 'MIC-04', deviceId: 'MIC-04', adapterKind: 'FAKE' }, // D61
     ];
     for (const row of rows) await owner.query('INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at) VALUES ($1, $2, $3, $4, 1790823600000)', [sessionId, row.slot, row.deviceId, row.adapterKind]);
     const built = await signedPackage(sessionId, rows, item?.id);

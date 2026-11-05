@@ -99,14 +99,21 @@ describe('ST-1: row counts after a first seed at the fixed instant (contract §9
     }
   });
 
-  it('M4-MT-15 (seed): the 5 built-ins are all FAKE and named so by the seed, 0 source rows, NULL flags on the v1 items', async () => {
+  it('M4-MT-15 (seed): the 9 built-ins are all FAKE and named so by the seed, 0 source rows, NULL flags on the v1 items', async () => {
+    // D60 / D61 (2026-11-04, ratified PT GSP): five built-ins -> NINE — four cameras (CAM-01..04,
+    // the four video tracks of D60), four numbered microphone channels (MIC-01..04, D61) and the
+    // switch. Adoption mints ids past the block (CAM-05+, MIC-05+), so none of these is discovered.
     const pool = db.ownerPool();
     const devices = await pool.query('SELECT id, adapter_kind FROM capture_devices ORDER BY id');
     expect(devices.rows).toEqual([
       { id: 'CAM-01', adapter_kind: 'FAKE' },
       { id: 'CAM-02', adapter_kind: 'FAKE' },
+      { id: 'CAM-03', adapter_kind: 'FAKE' },
+      { id: 'CAM-04', adapter_kind: 'FAKE' },
       { id: 'MIC-01', adapter_kind: 'FAKE' },
       { id: 'MIC-02', adapter_kind: 'FAKE' },
+      { id: 'MIC-03', adapter_kind: 'FAKE' },
+      { id: 'MIC-04', adapter_kind: 'FAKE' },
       { id: 'POE-SWITCH', adapter_kind: 'FAKE' },
     ]);
     const facts = await pool.query(

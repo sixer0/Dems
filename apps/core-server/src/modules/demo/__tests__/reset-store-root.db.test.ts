@@ -71,8 +71,10 @@ beforeAll(async () => {
     sourceRows: [
       { slot: 'VIDEO-01', deviceId: 'CAM-07', adapterKind: 'ONVIF_RTSP' },
       { slot: 'VIDEO-02', deviceId: 'CAM-07', adapterKind: 'ONVIF_RTSP' },
-      { slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'USB_AUDIO' },
-      { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'USB_AUDIO' },
+      // D61 (2026-11-04, migration 0040): the two roles are the numbered channels MIC-01/MIC-02;
+      // the value set admits no other slot name.
+      { slot: 'MIC-01', deviceId: 'MIC-01', adapterKind: 'USB_AUDIO' },
+      { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'USB_AUDIO' },
     ],
     beforeSeal: (input) => {
       const loose = input as unknown as { tracks: { deviceId: string }[]; audio: { sourceIntervals: { micDeviceId: string }[] } };

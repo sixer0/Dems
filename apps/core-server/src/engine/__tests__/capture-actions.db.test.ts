@@ -88,8 +88,11 @@ describe('engine.applyCaptureTelemetry (SH-18, CS-04): about 20 frames a second'
   it('a frame that changes nothing the tables hold sends no statement, moves no revision and publishes no state; the levels go out as meter frames', async () => {
     const host = await booted('r58_telemetry_idle');
     expect(cameras(host)).toEqual([
+      // D60 (2026-11-04): the seed carries four built-in cameras.
       { id: 'CAM-01', online: true, streamState: 'LIVE' },
       { id: 'CAM-02', online: true, streamState: 'LIVE' },
+      { id: 'CAM-03', online: true, streamState: 'LIVE' },
+      { id: 'CAM-04', online: true, streamState: 'LIVE' },
     ]);
     const head = await readHead(host.owner);
     const sent = host.database.statements.length;
@@ -134,8 +137,11 @@ describe('engine.applyCaptureTelemetry (SH-18, CS-04): about 20 frames a second'
     expect(change?.ops.map((op) => op.slice)).toEqual(expect.arrayContaining(['captureConfig', 'captureDevices']));
     expect(change?.ops.map((op) => op.slice)).not.toEqual(expect.arrayContaining(['audit']));
     expect(cameras(host)).toEqual([
+      // D60 (2026-11-04): four built-in cameras; the frame of this case moves CAM-02 alone.
       { id: 'CAM-01', online: true, streamState: 'LIVE' },
       { id: 'CAM-02', online: false, streamState: 'LOST' },
+      { id: 'CAM-03', online: true, streamState: 'LIVE' },
+      { id: 'CAM-04', online: true, streamState: 'LIVE' },
     ]);
     // What a restart would read is what the engine holds; telemetry is no audit matter.
     const stored = await storedSlices(host.owner);
@@ -163,8 +169,11 @@ describe('engine.applyCaptureTelemetry (SH-18, CS-04): about 20 frames a second'
     expect(host.engine.revision).toBe(revision + 1);
     expect(stateChanges(host.publications)).toHaveLength(changes + 1);
     expect(cameras(host)).toEqual([
+      // D60 (2026-11-04): four built-in cameras; the frame of this case moves CAM-02 alone.
       { id: 'CAM-01', online: true, streamState: 'LIVE' },
       { id: 'CAM-02', online: false, streamState: 'LOST' },
+      { id: 'CAM-03', online: true, streamState: 'LIVE' },
+      { id: 'CAM-04', online: true, streamState: 'LIVE' },
     ]);
     // The slot is free again: the next changing frame is a unit of its own.
     await host.engine.applyCaptureTelemetry(frame({ ingest: [{ deviceId: 'CAM-02', state: 'CONNECTED' }] }));
@@ -281,8 +290,11 @@ describe('fix round 1 (decision D72): the clear, the ignored IDs, and NO SIGNAL 
     }
     // Ignored: the camera of that track is as it was, nothing was written.
     expect(cameras(host)).toEqual([
+      // D60 (2026-11-04): the seed carries four built-in cameras.
       { id: 'CAM-01', online: true, streamState: 'LIVE' },
       { id: 'CAM-02', online: true, streamState: 'LIVE' },
+      { id: 'CAM-03', online: true, streamState: 'LIVE' },
+      { id: 'CAM-04', online: true, streamState: 'LIVE' },
     ]);
     expect(host.database.statements).toHaveLength(sent);
     expect(host.engine.revision).toBe(revision);

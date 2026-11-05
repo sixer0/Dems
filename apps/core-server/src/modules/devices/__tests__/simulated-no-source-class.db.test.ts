@@ -53,7 +53,9 @@ const TABLE: readonly Row[] = [
   { operation: 'getCaptureDiscovery', method: 'GET', url: pathOf('getCaptureDiscovery'), status: 200 },
   { operation: 'rescanCaptureInputs', method: 'POST', url: pathOf('rescanCaptureInputs'), status: 200 },
   { operation: 'setPrimaryMic', method: 'POST', url: '/api/v1/capture/mics/MIC-02/primary', status: 200 },
-  { operation: 'updateCaptureConfig', method: 'POST', url: pathOf('updateCaptureConfig'), body: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }] }, status: 200 },
+  // D61 (2026-11-04): the mic line is keyed by its CHANNEL — the `role` member of the two-role lane is
+  // off the wire (strict schema: a body that still states it is 422). Four numbered channels.
+  { operation: 'updateCaptureConfig', method: 'POST', url: pathOf('updateCaptureConfig'), body: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-01' }, { inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-02' }, { inputId: 'MIC-03', deviceId: 'MIC-03', channel: 'MIC-03' }, { inputId: 'MIC-04', deviceId: 'MIC-04', channel: 'MIC-04' }] }, status: 200 },
   { operation: 'setCaptureCameraSource', method: 'POST', url: '/api/v1/capture/cameras/CAM-01/source', body: { trackId: 'VIDEO-01' }, status: 200 },
   { operation: 'listAlerts', method: 'GET', url: pathOf('listAlerts'), status: 200 },
 ];
@@ -99,8 +101,11 @@ describe('G70-01: a Core in SIMULATED capture states no source class and no adap
     const response = await server.post('TECHNICIAN', pathOf('rescanCaptureInputs'));
     expect(response.statusCode, response.body).toBe(200);
     expect(response.json<{ inputs: unknown[] }>().inputs).toEqual([
+      // D61 (2026-11-04): the Core registers FOUR numbered microphone channels; the re-read names each one.
       { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, errorCode: null },
       { deviceId: 'MIC-02', inputId: 'MIC-02', present: true, errorCode: null },
+      { deviceId: 'MIC-03', inputId: 'MIC-03', present: true, errorCode: null },
+      { deviceId: 'MIC-04', inputId: 'MIC-04', present: true, errorCode: null },
     ]);
   });
 });

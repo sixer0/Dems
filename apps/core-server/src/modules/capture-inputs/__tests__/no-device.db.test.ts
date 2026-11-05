@@ -214,7 +214,7 @@ describe('situation B through the sessions routes (M4-NODEV-B-1, M4-PRECHK-RULE-
     expect(alerts('CAPTURE_DEVICE_UNREACHABLE', true)).toEqual([]);
   });
 
-  it('both cameras stopped block the start; the active microphone removed blocks; the standby removed warns (D83)', async () => {
+  it('every camera stopped blocks the start; one camera down warns; the active microphone removed blocks; another channel removed warns (D83; D60, 2026-11-04: four tracks)', async () => {
     const investigator = server.operatorId('INVESTIGATOR');
     nextSearch = () => ({ searchId: 'DSC-000031', trigger: 'PRECHECK', outcome: 'COMPLETE', responderCount: 1 });
     const run = async (caseNumber: string): Promise<{ sessionId: string; session: Checked; rows: AuditRow[] }> => {
@@ -230,14 +230,16 @@ describe('situation B through the sessions routes (M4-NODEV-B-1, M4-PRECHK-RULE-
     // Read after each run from the replicated slice (the run's session is still open).
     const itemOf = (_session: Checked, id: string) => sliceItem(id);
 
-    // Both cameras.
-    adapters.stop('CAM-01');
-    adapters.stop('CAM-02');
+    // D60 (2026-11-04): the selector names FOUR cameras, so `noCamera` needs all four down — the
+    // old two-camera pair now only degrades (the rule of the one remaining track, `oneCamera`).
+    const ALL_CAMERAS = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'];
+    // All four cameras.
+    for (const id of ALL_CAMERAS) adapters.stop(id);
     const both = await run('LP/2026/1001-0135');
     expect(both.session.precheck.outcome).toBe('BLOCK');
     expect(itemOf(both.session, 'LENS_1')).toMatchObject({ status: 'BLOCK', params: { rule: 'noCamera' } });
     expect(itemOf(both.session, 'LENS_2')).toMatchObject({ status: 'BLOCK', params: { rule: 'noCamera' } });
-    expect(typed(both.rows, 'CAPTURE_DEVICE_UNREACHABLE').map((row) => [row.details['deviceId'], row.details['degraded']])).toEqual([['CAM-01', false], ['CAM-02', false]]);
+    expect(typed(both.rows, 'CAPTURE_DEVICE_UNREACHABLE').map((row) => [row.details['deviceId'], row.details['degraded']])).toEqual([['CAM-01', false], ['CAM-02', false], ['CAM-03', false], ['CAM-04', false]]); // D60: one row per stopped track
     expect(typed(both.rows, 'PRECHECK_BLOCKED')).toHaveLength(1);
     // A start from a blocked result is refused, also with the acknowledgement.
     const refused = await server.post('INVESTIGATOR', on(both.sessionId, 'start'), { acknowledgeWarnings: true });
@@ -245,8 +247,7 @@ describe('situation B through the sessions routes (M4-NODEV-B-1, M4-PRECHK-RULE-
     expect(errorOf(refused).code).toBe('PRECHECK_BLOCKED');
     expect((await currentSession()).state).toBe('PRECHECK');
     expect((await server.post('INVESTIGATOR', on(both.sessionId, 'cancel'))).statusCode).toBe(204);
-    adapters.start('CAM-01');
-    adapters.start('CAM-02');
+    for (const id of ALL_CAMERAS) adapters.start(id);
 
     // The ACTIVE microphone: blocked, 0 searches, the named cause in the row.
     searches.length = 0;
@@ -291,14 +292,18 @@ describe('operation 97 through the real pipeline (M4-MIC-RESCAN-1)', () => {
     expect(validateCoreApiResponse('rescanCaptureInputs', 200, bodyOf(first))).toEqual({ ok: true });
     // Fix wave H (G70-01, decision D196): this server runs SIMULATED capture (the probe is the test's), so no entry
     // states an adapter or a source class; what a real operation states is `routes.test.ts`'s (capture mode real).
+    // D61 (2026-11-04): the Core registers FOUR numbered microphone channels, so the re-read names all four.
     expect((first.json() as { inputs: unknown[]; unregisteredCount: number }).inputs).toEqual([
       { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, errorCode: null },
       { deviceId: 'MIC-02', inputId: 'MIC-02', present: false, errorCode: 'PERMISSION_DENIED' },
+      { deviceId: 'MIC-03', inputId: 'MIC-03', present: true, errorCode: null },
+      { deviceId: 'MIC-04', inputId: 'MIC-04', present: true, errorCode: null },
     ]);
     await server.app.pipeline.drain();
     let rows = await server.since(before);
     expect(rows.map((row) => [row.type, row.category, row.actorId])).toEqual([['CAPTURE_DISCOVERY_SEARCHED', 'DEVICE', server.operatorId('TECHNICIAN')]]);
-    expect(rows[0]?.details).toMatchObject({ scope: 'MIC_LOCAL', trigger: 'MANUAL', outcome: 'COMPLETE', responderCount: 1, registeredCount: 2, newCount: 0, interfaceCount: 0, operationId: 'rescanCaptureInputs', permission: 'CAPTURE_CONFIG' });
+    // D61 (2026-11-04): four channels are registered; THREE answer (MIC-02 is out with its error).
+    expect(rows[0]?.details).toMatchObject({ scope: 'MIC_LOCAL', trigger: 'MANUAL', outcome: 'COMPLETE', responderCount: 3, registeredCount: 4, newCount: 0, interfaceCount: 0, operationId: 'rescanCaptureInputs', permission: 'CAPTURE_CONFIG' });
     expect(String(rows[0]?.details['searchId'])).toMatch(/^DSC-[0-9]{6,}$/);
     // `captureDevices` is published and stored: MIC-02 reads not online. No alert: that is a pre-check's.
     expect(server.engine.slice('captureDevices').devices.find((device) => device.id === 'MIC-02')?.online).toBe(false);
@@ -335,10 +340,10 @@ describe('operation 97 through the real pipeline (M4-MIC-RESCAN-1)', () => {
     before = await server.trailLength();
     const second = await server.post('TECHNICIAN', RESCAN);
     expect(second.statusCode).toBe(200);
-    expect((second.json() as { inputs: { present: boolean }[] }).inputs.map((input) => input.present)).toEqual([true, true]);
+    expect((second.json() as { inputs: { present: boolean }[] }).inputs.map((input) => input.present)).toEqual([true, true, true, true]); // D61 (2026-11-04): the four numbered channels
     await server.app.pipeline.drain();
     rows = await server.since(before);
-    expect(rows.map((row) => [row.type, row.actorId, row.details['responderCount']])).toEqual([['CAPTURE_DISCOVERY_SEARCHED', server.operatorId('TECHNICIAN'), 2]]);
+    expect(rows.map((row) => [row.type, row.actorId, row.details['responderCount']])).toEqual([['CAPTURE_DISCOVERY_SEARCHED', server.operatorId('TECHNICIAN'), 4]]); // D61: four channels answered
     expect(server.engine.slice('captureDevices').devices.find((device) => device.id === 'MIC-02')?.online).toBe(true);
     // Present again in a re-read: the pre-check alert stays until a pre-check run finds it reachable (C3 §5.4).
     expect(alerts('CAPTURE_DEVICE_UNREACHABLE', true).map((alert) => alert.target)).toEqual(['MIC-02']);

@@ -147,7 +147,10 @@ async function rig(
   });
   target.onCleanup(() => supervisor.shutdown());
 
-  // The devices: fake adapters behind the four built-ins, in a registry of the running operation.
+  // The devices: fake adapters behind the EIGHT assigned built-ins (D60 2026-11-04: four video
+  // tracks; D61 2026-11-04: four microphone channels), in a registry of the running operation. The
+  // seeded selector names all eight, so a registry of four makes the plan builder refuse the start
+  // (`SOURCE_KIND_NOT_RECORDABLE / NO_ADAPTER`) for every case in this file.
   const built = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_DEVELOPMENT });
   /** A handle that says when it is closed, and behaves as a real source does: a camera that stops while the worker records is a lost camera. */
   const watched = <Handle extends SourceHandle>(handle: Handle): Handle => {
@@ -165,12 +168,16 @@ async function rig(
     handles.push(seen);
     return seen;
   };
-  for (const id of ['CAM-01', 'CAM-02']) {
+  // D60 (2026-11-04) + D61 (2026-11-04): the seeded selector assigns FOUR camera tracks and FOUR
+  // microphone channels, so the rig stands a fake adapter behind every one of the eight built-ins.
+  // A registry of the two-track era made the plan builder refuse every start with
+  // `SOURCE_KIND_NOT_RECORDABLE / NO_ADAPTER` on `CAM-03`.
+  for (const id of ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']) {
     const offset = options.clockOffsets?.[id];
     const camera = createFakeCameraAdapter({ id, ...(offset === undefined ? {} : { ntpOffsetMs: offset }) });
     built.register({ ...camera, openSource: async (deviceId, to, signal) => watched(await camera.openSource(deviceId, to, signal)) });
   }
-  for (const id of ['MIC-01', 'MIC-02']) {
+  for (const id of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) {
     const mic = createFakeAudioInputAdapter({ id, runDir: `${fixture.dataDir}/run/capture` });
     built.register({ ...mic, open: async (inputId, to) => watched(await mic.open(inputId, to)) });
   }
@@ -294,17 +301,22 @@ const checkpoint = (index: number, start: number, chain: string, sha: string): C
 const startInterval: AudioSourceIntervalRecord = { kind: 'AUDIO_SOURCE_INTERVAL', deviceId: 'MIC-01', role: 'PRIMARY', index: 1, fromSample: 0, sampleRateHz: 48_000, capturedAtMs: FIXED_NOW, reason: 'SESSION_START', correlationId: null, appliedDelayUs: null };
 
 describe('a real recording: start, the first durable fragment, the switch, the stop', () => {
-  it('the start writes the four source rows with RECORDING, says "connecting", calls capture.start ONCE with the plan of row 66; durable only from the first fragment; a clean stop raises no fault', async () => {
+  it('the start writes the eight source rows with RECORDING, says "connecting", calls capture.start ONCE with the plan of row 66; durable only from the first fragment; a clean stop raises no fault', async () => {
     const of = await rig('r71b_flow');
     const id = await of.arm();
     await of.start(id);
 
-    // MR-S1: four rows, of the class of the running operation, stored with RECORDING.
+    // MR-S1 (D60 + D61, 2026-11-04): EIGHT rows — four video tracks and four numbered microphone
+    // channels — of the class of the running operation, stored with RECORDING.
     expect(await sourcesOf(of, id)).toEqual([
-      { slot: 'MIC-PRIMARY', device_id: 'MIC-01', adapter_kind: 'FAKE' },
-      { slot: 'MIC-STANDBY', device_id: 'MIC-02', adapter_kind: 'FAKE' },
+      { slot: 'MIC-01', device_id: 'MIC-01', adapter_kind: 'FAKE' }, // D61: the channel is the slot
+      { slot: 'MIC-02', device_id: 'MIC-02', adapter_kind: 'FAKE' },
+      { slot: 'MIC-03', device_id: 'MIC-03', adapter_kind: 'FAKE' },
+      { slot: 'MIC-04', device_id: 'MIC-04', adapter_kind: 'FAKE' },
       { slot: 'VIDEO-01', device_id: 'CAM-01', adapter_kind: 'FAKE' },
       { slot: 'VIDEO-02', device_id: 'CAM-02', adapter_kind: 'FAKE' },
+      { slot: 'VIDEO-03', device_id: 'CAM-03', adapter_kind: 'FAKE' }, // D60
+      { slot: 'VIDEO-04', device_id: 'CAM-04', adapter_kind: 'FAKE' }, // D60
     ]);
     // D84 / D91 R-1: the stored state is RECORDING, the payload says the capture is not durable yet.
     expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'RECORDING', captureDurable: false });
@@ -315,16 +327,20 @@ describe('a real recording: start, the first durable fragment, the switch, the s
     expect(starts).toHaveLength(1);
     expect(starts[0]).toMatchObject({ v: CAPTURE_PROTOCOL_VERSION, sessionId: id, attempt: 1 });
     // Task 4 row 47: the address of a track is the listener of that track, the session, the track, and one random element after them.
+    // D60 (2026-11-04): FOUR camera lines, each on its own loopback listener of `CAPTURE_INGEST_PORT`.
     expect(starts[0]?.plan.cameras.map((camera) => [camera.deviceId, camera.trackId, camera.ingestUrl.slice(0, camera.ingestUrl.lastIndexOf('/'))])).toEqual([
       ['CAM-01', 'VIDEO-01', `rtsp://127.0.0.1:8554/${id}/video-01`],
       ['CAM-02', 'VIDEO-02', `rtsp://127.0.0.1:8556/${id}/video-02`],
+      ['CAM-03', 'VIDEO-03', `rtsp://127.0.0.1:8560/${id}/video-03`], // D60
+      ['CAM-04', 'VIDEO-04', `rtsp://127.0.0.1:8562/${id}/video-04`], // D60
     ]);
-    expect(starts[0]?.plan.cameras.map((camera) => INGEST_ELEMENT.test(elementOf(camera.ingestUrl)))).toEqual([true, true]);
+    expect(starts[0]?.plan.cameras.map((camera) => INGEST_ELEMENT.test(elementOf(camera.ingestUrl)))).toEqual([true, true, true, true]);
     expect(starts[0]?.plan.cameras.every((camera) => camera.outputPath.startsWith(`${fixture.mediaStoreDir}/SESSION-${id}/`))).toBe(true);
-    // D61 (2026-11-04): the plan rows carry the numbered CHANNEL; the two-role lane survives only on SWITCH_AUDIO_SOURCE.to, telemetry and interval records.
-    expect(starts[0]?.plan.mics.map((mic) => [mic.deviceId, mic.channel])).toEqual([['MIC-01', 'MIC-01'], ['MIC-02', 'MIC-02']]);
+    // D61 (2026-11-04): the plan rows carry the numbered CHANNEL and every channel gets its own file
+    // (`<CHANNEL>.m4a`); the two-role lane survives only on SWITCH_AUDIO_SOURCE.to, telemetry and interval records.
+    expect(starts[0]?.plan.mics.map((mic) => [mic.deviceId, mic.channel])).toEqual([['MIC-01', 'MIC-01'], ['MIC-02', 'MIC-02'], ['MIC-03', 'MIC-03'], ['MIC-04', 'MIC-04']]);
     // The microphones are opened before the plan, the cameras only when the worker listens.
-    expect(of.order).toEqual(['open MIC-01', 'open MIC-02', 'open CAM-01', 'open CAM-02']);
+    expect(of.order).toEqual(['open MIC-01', 'open MIC-02', 'open MIC-03', 'open MIC-04', 'open CAM-01', 'open CAM-02', 'open CAM-03', 'open CAM-04']);
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING', 'STARTED']);
 
     // The interval of the start and the first fragment.
@@ -373,7 +389,8 @@ describe('a real recording: start, the first durable fragment, the switch, the s
     sessionCapture(of.app).afterStopCommitted(id);
     await of.settled();
     expect(worker.commands('STOP')).toHaveLength(1);
-    expect(of.order.slice(4)).toEqual(['STOP', 'close MIC-01', 'close MIC-02', 'close CAM-01', 'close CAM-02']);
+    // D60 / D61 (2026-11-04): eight sources close — the four channels and the four tracks.
+    expect(of.order.slice(8)).toEqual(['STOP', 'close MIC-01', 'close MIC-02', 'close MIC-03', 'close MIC-04', 'close CAM-01', 'close CAM-02', 'close CAM-03', 'close CAM-04']);
     expect(of.events.at(-1)).toMatchObject({ type: 'STOPPED', sessionId: id, fragmentRowsBehind: [] });
     expect(sessionCapture(of.app).liveSessionId()).toBeNull();
     // A clean stop writes no capture fault and no fault audit row (the control below shows that the
@@ -494,14 +511,17 @@ describe('M5-SEC-SRC-1 (the suite part): production-kind sources have no opener 
   });
 
   // Task 4 row 88 (THE LIFT, AM-1; specification 6.3 "Test: no listener without an opener ... a twin with openers is added").
-  it('TWIN since the lift: the same four production-kind devices WITH their opener register and pass the class gate; the start is then held by the next fail-closed line (ruling C34: this rig wires no relay report source) - 409 RELAY_REPORTS_NOT_WIRED, still 0 workers, 0 sources asked to open, 0 source rows', async () => {
+  // D60 / D61 (2026-11-04): the selector assigns EIGHT slots, so the twin registers an opener behind four
+  // production cameras and four production microphones; a registry of four fails the class gate on the
+  // first un-registered device (`NO_ADAPTER`) and would test nothing about the lift.
+  it('TWIN since the lift: the same eight production-kind devices WITH their opener register and pass the class gate; the start is then held by the next fail-closed line (ruling C34: this rig wires no relay report source) - 409 RELAY_REPORTS_NOT_WIRED, still 0 workers, 0 sources asked to open, 0 source rows', async () => {
     const asked: string[] = [];
     const liftedRegistry = (): CaptureDeviceRegistry => {
       const production = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
-      for (const id of ['CAM-01', 'CAM-02']) {
+      for (const id of ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']) {
         production.register({ ...createFakeCameraAdapter({ id }), kind: 'ONVIF_RTSP', hasOpener: true, openSource: async (deviceId) => (asked.push(`open ${deviceId}`), Promise.reject(new Error('a production kind was asked to open'))) });
       }
-      for (const id of ['MIC-01', 'MIC-02']) {
+      for (const id of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) {
         production.register({ ...createFakeAudioInputAdapter({ id, runDir: `${fixture.dataDir}/run-r88-twin` }), kind: 'USB_AUDIO', hasOpener: true, open: async (inputId) => (asked.push(`open ${inputId}`), Promise.reject(new Error('a production kind was asked to open'))) });
       }
       expect(production.openerKinds()).toEqual(['ONVIF_RTSP', 'USB_AUDIO']);
@@ -542,14 +562,14 @@ describe('D84: nothing durable is a failed start, something durable is an interr
     expect([undefined, 'NO_CAMERA_CONNECTED']).toContain(alerts[0]?.params?.['reason']);
     expect((await faultRows(of)).filter((row) => row.startsWith('FAULT_RAISED CAPTURE_FAULT'))).toHaveLength(1);
     console.info(`[row71c] failed start: the CAPTURE_FAULT alert ${alerts[0]?.params?.['reason'] === undefined ? 'holds NO reason (raised by the forwarder first)' : 'holds reason NO_CAMERA_CONNECTED'}`);
-    expect(of.order.filter((entry) => entry.startsWith('close')).sort()).toEqual(['close CAM-01', 'close CAM-02', 'close MIC-01', 'close MIC-02']);
+    expect(of.order.filter((entry) => entry.startsWith('close')).sort()).toEqual(['close CAM-01', 'close CAM-02', 'close CAM-03', 'close CAM-04', 'close MIC-01', 'close MIC-02', 'close MIC-03', 'close MIC-04']);
     expect(sessionCapture(of.app).liveSessionId()).toBeNull();
-    // The recovery: a history entry, and no evidence item. The four source rows stay (MR-S1).
+    // The recovery: a history entry, and no evidence item. The eight source rows stay (MR-S1, D60/D61).
     await of.app.engine.command(of.investigator, 'recover');
     await of.drive(5_000);
     expect(of.app.engine.slice('session')).toBeNull();
     expect(await evidenceCount(of)).toBe(before);
-    expect(await sourcesOf(of, id)).toHaveLength(4);
+    expect(await sourcesOf(of, id)).toHaveLength(8);
   });
 
   it('CONTROL: the same loss AFTER the first durable fragment is an interrupted recording - the session keeps what it recorded and the sealing row is told', async () => {
@@ -566,8 +586,9 @@ describe('D84: nothing durable is a failed start, something durable is an interr
     const session = of.app.engine.slice('session');
     expect(session).toMatchObject({ id, state: 'FAULT', captureDurable: true, fault: { kind: 'CAPTURE_FAULT', fromState: 'RECORDING' } });
     expect(session?.startedAt).not.toBeNull();
-    expect(of.events.at(-1)).toMatchObject({ type: 'INTERRUPTED', sessionId: id, files: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }] });
-    expect(of.order.filter((entry) => entry.startsWith('close'))).toHaveLength(4);
+    // D60 (2026-11-04): the interrupted hand-off names the FOUR camera files of the plan.
+    expect(of.events.at(-1)).toMatchObject({ type: 'INTERRUPTED', sessionId: id, files: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }, { trackId: 'VIDEO-03', deviceId: 'CAM-03' }, { trackId: 'VIDEO-04', deviceId: 'CAM-04' }] });
+    expect(of.order.filter((entry) => entry.startsWith('close'))).toHaveLength(8);
   });
 
   it('THE FILE IS THE TRUTH: no record arrived, but a camera file of the plan is on the disk - never a failed start', async () => {
@@ -659,13 +680,13 @@ const stopNow = async (of: Rig, sessionId: string): Promise<void> => {
 };
 
 describe('row 71c: the STT snapshot of a session is written in the unit of its start (dbc-6 MR-T1)', () => {
-  it('a start stores ONE snapshot row with the four source rows; the seal reads that row, not a placeholder', async () => {
+  it('a start stores ONE snapshot row with the eight source rows; the seal reads that row, not a placeholder', async () => {
     const of = await rig('r71c_snapshot');
     const id = await of.arm();
     expect(await snapshotRows(of, id)).toEqual([]);
     await of.start(id);
     expect(await snapshotRows(of, id)).toEqual([{ enabled: false, revision: expect.any(Number) }]);
-    expect(await sourcesOf(of, id)).toHaveLength(4);
+    expect(await sourcesOf(of, id)).toHaveLength(8); // D60 / D61 (2026-11-04): four tracks + four channels
     // What the seal's reader is handed for field 123: the session's own row.
     expect(await transcriptionControl(of.app).manifestSnapshot(id)).toMatchObject({ enabled: false });
     // A change of the stored configuration while the session is open does not reach its snapshot (write-once).
@@ -708,7 +729,7 @@ describe('row 71c: the STT snapshot of a session is written in the unit of its s
     await of.start(id);
     expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'RECORDING' });
     expect(await snapshotRows(of, id)).toEqual([{ enabled: false, revision: expect.any(Number) }]);
-    expect(await sourcesOf(of, id)).toHaveLength(4);
+    expect(await sourcesOf(of, id)).toHaveLength(8); // D60 / D61 (2026-11-04): four tracks + four channels
     expect(of.fake.calls()).toBe(1);
   });
 
@@ -805,6 +826,10 @@ describe('row 71c: what the capture side reports is kept for the seal while the 
         { trackId: 'VIDEO-01', deviceId: 'CAM-01', clockOffsetMs: -7, measuredClockOffsetMs: null, syncLevel: 'F_FULLFSYNC', firstVideo: { pts: 3_600, timescale: 90_000, heldMs: 40, skipped: { noTimestamp: 0, beforeAudioStart: 2, noCameraClock: 0, beforeKeyframe: 5 }, skippedSpanMs: 40 } },
         // No FIRST_VIDEO_SAMPLE arrived for the second file: null, never a made-up value (fields 127 / 128 are nullable).
         { trackId: 'VIDEO-02', deviceId: 'CAM-02', clockOffsetMs: 12, measuredClockOffsetMs: null, syncLevel: null, firstVideo: null },
+        // D60 (2026-11-04): the two further tracks of the plan are in the facts too, at the adapter's
+        // own offset (0 for a fake that was given none) and with nothing stated by the worker yet.
+        { trackId: 'VIDEO-03', deviceId: 'CAM-03', clockOffsetMs: 0, measuredClockOffsetMs: null, syncLevel: null, firstVideo: null },
+        { trackId: 'VIDEO-04', deviceId: 'CAM-04', clockOffsetMs: 0, measuredClockOffsetMs: null, syncLevel: null, firstVideo: null },
       ],
     });
     await stopNow(of, id);
@@ -834,7 +859,8 @@ describe('row 71c, item 4 (a): a session that leaves RECORDING by another door h
     await of.settled();
     expect(worker.commands('STOP')).toHaveLength(1);
     expect(sessionCapture(of.app).liveSessionId()).toBeNull();
-    expect(of.order.filter((entry) => entry.startsWith('close'))).toHaveLength(4);
+    // D60 / D61 (2026-11-04): eight sources are closed - four channels, four tracks.
+    expect(of.order.filter((entry) => entry.startsWith('close'))).toHaveLength(8);
     expect(of.events.at(-1)).toMatchObject({ type: 'INTERRUPTED', sessionId: id, cause: SESSION_LEFT_RECORDING });
     expect(of.transcriber).toEqual([`begin ${id}`, `end ${id} recorded`]);
   });
@@ -905,7 +931,8 @@ describe('pass D9: the microphone helpers of a session are started together (cap
     const firstSettled = helpers.log.findIndex((entry) => entry.startsWith('settled'));
     expect(helpers.log.indexOf('camera CAM-01')).toBeLessThan(firstSettled);
     expect(helpers.log.indexOf('camera CAM-02')).toBeLessThan(firstSettled);
-    expect(helpers.log.filter((entry) => entry.startsWith('settled')).sort()).toEqual(['settled MIC-01', 'settled MIC-02']);
+    // D61 (2026-11-04): FOUR helpers - the four numbered channels of the microphone plane.
+    expect(helpers.log.filter((entry) => entry.startsWith('settled')).sort()).toEqual(['settled MIC-01', 'settled MIC-02', 'settled MIC-03', 'settled MIC-04']);
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING', 'STARTED']);
     expect(of.fake.calls()).toBe(1);
   });
@@ -918,20 +945,23 @@ describe('pass D9: the microphone helpers of a session are started together (cap
     expect(headGap(helpers)).toBeGreaterThan(CHUNK_SAMPLES);
   });
 
-  it('the STANDBY cannot start: a named warning with its role, the primary is launched in the same turn and is not delayed, the session starts, nothing is switched', async () => {
+  // D61 (2026-11-04): the microphone plane is numbered, so the failure row of a channel that did not
+  // start carries `channel`, never the superseded `role` (the two-role lane survives on SWITCH_AUDIO_SOURCE.to,
+  // the interval records and the telemetry role members only). Channel 1 keeps the error level.
+  it('a channel that cannot start: a named warning with its channel, the first channel is launched in the same turn and is not delayed, the session starts, nothing is switched', async () => {
     const helpers = scripted((deviceId) => (deviceId === 'MIC-02' ? 'FAIL' : 'SETTLE'));
     const of = await rig('d9_mic_standby_fails', { registry: helpers.registry });
     const appended = vi.spyOn(of.app.errorLog, 'append');
     const id = await of.arm();
     await of.start(id);
     expect(headGap(helpers)).toBe(0);
-    expect(appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === 'CAPTURE_MIC_NOT_STARTED').map((entry) => [entry.level, entry.context?.['deviceId'], entry.context?.['role'], entry.context?.['cause']])).toEqual([['warn', 'MIC-02', 'STANDBY', 'MIC_START_FAILED']]);
+    expect(appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === 'CAPTURE_MIC_NOT_STARTED').map((entry) => [entry.level, entry.context?.['deviceId'], entry.context?.['channel'], entry.context?.['cause']])).toEqual([['warn', 'MIC-02', 'MIC-02', 'MIC_START_FAILED']]); // D61: `channel`, not `role`
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING', 'STARTED']);
     expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', audioSource: { activeInputId: 'MIC-01', standbyInputId: 'MIC-02' } });
     expect(of.fake.last().commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
   });
 
-  it('a PRIMARY whose start never answers is given up at the bound and said as an error; the standby and the cameras did not wait for it, and it is never replaced', async () => {
+  it('channel 1 whose start never answers is given up at the bound and said as an error; the other three channels and the cameras did not wait for it, and it is never replaced', async () => { // D61: the numbered channel replaces the PRIMARY role word
     const helpers = scripted((deviceId) => (deviceId === 'MIC-01' ? 'HANG' : 'SETTLE'));
     const of = await rig('d9_mic_primary_hangs', { registry: helpers.registry });
     sessionCapture(of.app).replace({ micStartBoundMs: 150 });
@@ -944,7 +974,7 @@ describe('pass D9: the microphone helpers of a session are started together (cap
     }
     expect(helpers.log.indexOf('settled MIC-02')).toBeGreaterThan(-1);
     expect(helpers.log).toEqual(expect.arrayContaining(['camera CAM-01', 'camera CAM-02']));
-    expect(appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === 'CAPTURE_MIC_NOT_STARTED').map((entry) => [entry.level, entry.context?.['deviceId'], entry.context?.['role'], entry.context?.['cause']])).toEqual([['error', 'MIC-01', 'PRIMARY', 'MIC_START_BOUND']]);
+    expect(appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === 'CAPTURE_MIC_NOT_STARTED').map((entry) => [entry.level, entry.context?.['deviceId'], entry.context?.['channel'], entry.context?.['cause']])).toEqual([['error', 'MIC-01', 'MIC-01', 'MIC_START_BOUND']]); // D61: `channel`, not `role`
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING', 'STARTED']);
     expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', audioSource: { activeInputId: 'MIC-01' } });
     expect(of.fake.last().commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
@@ -1156,7 +1186,8 @@ describe('review R74-09: the unit has a shutdown path of its own', () => {
     const told = of.events.length;
     await sessionCapture(of.app).shutdown();
     expect(of.fake.last().commands('STOP')).toHaveLength(1);
-    expect(of.order.slice(4)).toEqual(['STOP', 'close MIC-01', 'close MIC-02', 'close CAM-01', 'close CAM-02']);
+    // D60 / D61 (2026-11-04): eight sources — the four channels and the four tracks close after the STOP.
+    expect(of.order.slice(8)).toEqual(['STOP', 'close MIC-01', 'close MIC-02', 'close MIC-03', 'close MIC-04', 'close CAM-01', 'close CAM-02', 'close CAM-03', 'close CAM-04']);
     expect(sessionCapture(of.app).liveSessionId()).toBeNull();
     expect(of.events.slice(told)).toEqual([]);
     expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'RECORDING' });
@@ -1198,7 +1229,8 @@ describe('review R74-09: the unit has a shutdown path of its own', () => {
     await sessionCapture(of.app).shutdown();
     expect(aborted).toBe(1);
     expect(of.fake.last().commands('STOP')).toHaveLength(1);
-    expect(of.order.filter((entry) => entry.startsWith('close')).sort()).toEqual(['close CAM-01', 'close MIC-01', 'close MIC-02']);
+    // D60 / D61 (2026-11-04): SEVEN sources close — CAM-02 is still inside its settle window and never opened a handle.
+    expect(of.order.filter((entry) => entry.startsWith('close')).sort()).toEqual(['close CAM-01', 'close CAM-03', 'close CAM-04', 'close MIC-01', 'close MIC-02', 'close MIC-03', 'close MIC-04']);
     expect(sessionCapture(of.app).liveSessionId()).toBeNull();
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING']);
   });
@@ -1207,7 +1239,7 @@ describe('review R74-09: the unit has a shutdown path of its own', () => {
     const { of } = await durableSession('fm5_shutdown_close');
     await of.app.close();
     expect(of.fake.last().commands('STOP')).toHaveLength(1);
-    expect(of.order.filter((entry) => entry.startsWith('close'))).toHaveLength(4);
+    expect(of.order.filter((entry) => entry.startsWith('close'))).toHaveLength(8); // D60 / D61: four channels, four tracks
     expect(of.order.indexOf('STOP')).toBeLessThan(of.order.indexOf('close MIC-01'));
   });
 });
@@ -1407,7 +1439,9 @@ describe('F-Y item 3: the sync level the worker achieved is kept with the sessio
     of.fake.last().firstDurableFragment('CAM-02', 5_131, 'FSYNC');
     await of.settled();
     expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
-    expect(await camerasOf(of, id)).toEqual([['CAM-01', 0, null, 'FSYNC'], ['CAM-02', 0, null, 'FSYNC']]);
+    // D60 (2026-11-04): the facts name ALL FOUR tracks; only the two that reported a first durable
+    // fragment carry a sync level, the other two stay null.
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', 0, null, 'FSYNC'], ['CAM-02', 0, null, 'FSYNC'], ['CAM-03', 0, null, null], ['CAM-04', 0, null, null]]);
     const alerts = systemAlerts(of, 'EVIDENCE_VOLUME_SYNC_NOT_FULL');
     expect(alerts.map((alert) => [alert.severity, alert.target, alert.message, alert.params?.['sessionId'], alert.params?.['syncLevel']])).toEqual([['INFO', 'EVIDENCE_VOLUME', 'The evidence volume does not confirm full durability; recordings may not survive a power loss.', id, 'FSYNC']]);
     expect(captureFault(of)).toEqual([]);
@@ -1415,7 +1449,7 @@ describe('F-Y item 3: the sync level the worker achieved is kept with the sessio
     expect(of.events.at(-1)).toMatchObject({ type: 'STOPPED', sessionId: id });
     expect(systemAlerts(of, 'EVIDENCE_VOLUME_SYNC_NOT_FULL')).toEqual([]);
     // The level stays with the session after its capture ended: the seal's reader finds it there.
-    expect(await camerasOf(of, id)).toEqual([['CAM-01', 0, null, 'FSYNC'], ['CAM-02', 0, null, 'FSYNC']]);
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', 0, null, 'FSYNC'], ['CAM-02', 0, null, 'FSYNC'], ['CAM-03', 0, null, null], ['CAM-04', 0, null, null]]); // D60
   });
 
   it('REAL_PRODUCTION sources: the same level is ONE CRITICAL alert on the session, and the session still records', async () => {
@@ -1433,7 +1467,7 @@ describe('F-Y item 3: the sync level the worker achieved is kept with the sessio
 
   it('CONTROL: the full sync is kept in the facts and tells the operator nothing', async () => {
     const { of, id } = await durableSession('fy_sync_full');
-    expect(await camerasOf(of, id)).toEqual([['CAM-01', 0, null, 'F_FULLFSYNC'], ['CAM-02', 0, null, null]]);
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', 0, null, 'F_FULLFSYNC'], ['CAM-02', 0, null, null], ['CAM-03', 0, null, null], ['CAM-04', 0, null, null]]); // D60: four tracks in the facts
     expect(systemAlerts(of, 'EVIDENCE_VOLUME_SYNC_NOT_FULL')).toEqual([]);
   });
 });
@@ -1450,26 +1484,26 @@ describe('F-Y item 4: the clock offset the worker measured is the source of mani
     await of.settled();
     expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
     expect(of.supervisor.status().phase).toBe('RECORDING');
-    expect(await camerasOf(of, id)).toEqual([['CAM-01', -7, -1_500, 'F_FULLFSYNC'], ['CAM-02', 12, -100, null]]);
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', -7, -1_500, 'F_FULLFSYNC'], ['CAM-02', 12, -100, null], ['CAM-03', 0, null, null], ['CAM-04', 0, null, null]]); // D60: four tracks
     const advice = systemAlerts(of, 'CAMERA_CLOCK_OFFSET');
     expect(advice.map((alert) => [alert.severity, alert.target, alert.message, alert.params?.['offsetMs']])).toEqual([['INFO', 'CAM-01', "Camera clock differs from the Core by 1500 ms; the recording keeps the camera's own timeline and records the offset.", -1_500]]);
     expect(captureFault(of)).toEqual([]);
     // The offset AT ANCHORING: what the same worker says later is drift, not this number.
     of.fake.last().telemetry(2, [{ deviceId: 'CAM-01', lagMs: 1_900 }, { deviceId: 'CAM-02', lagMs: 900 }]);
     await of.settled();
-    expect(await camerasOf(of, id)).toEqual([['CAM-01', -7, -1_500, 'F_FULLFSYNC'], ['CAM-02', 12, -100, null]]);
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', -7, -1_500, 'F_FULLFSYNC'], ['CAM-02', 12, -100, null], ['CAM-03', 0, null, null], ['CAM-04', 0, null, null]]); // D60: four tracks
     expect(systemAlerts(of, 'CAMERA_CLOCK_OFFSET')).toHaveLength(1);
     await stopNow(of, id);
     expect(of.events.at(-1)).toMatchObject({ type: 'STOPPED', sessionId: id });
     expect(systemAlerts(of, 'CAMERA_CLOCK_OFFSET')).toEqual([]);
-    expect(await camerasOf(of, id)).toEqual([['CAM-01', -7, -1_500, 'F_FULLFSYNC'], ['CAM-02', 12, -100, null]]);
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', -7, -1_500, 'F_FULLFSYNC'], ['CAM-02', 12, -100, null], ['CAM-03', 0, null, null], ['CAM-04', 0, null, null]]); // D60: four tracks
   });
 
   it('CONTROL: 100 ms on both cameras - measured and kept, no advisory at all; exactly the threshold is not above it', async () => {
     const { of, id } = await durableSession('fy_clock_small');
     of.fake.last().telemetry(1, [{ deviceId: 'CAM-01', lagMs: -100 }, { deviceId: 'CAM-02', lagMs: CAMERA_CLOCK_OFFSET_ADVISORY_MS }]);
     await of.settled();
-    expect(await camerasOf(of, id)).toEqual([['CAM-01', 0, 100, 'F_FULLFSYNC'], ['CAM-02', 0, -CAMERA_CLOCK_OFFSET_ADVISORY_MS, null]]);
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', 0, 100, 'F_FULLFSYNC'], ['CAM-02', 0, -CAMERA_CLOCK_OFFSET_ADVISORY_MS, null], ['CAM-03', 0, null, null], ['CAM-04', 0, null, null]]); // D60: four tracks
     expect(systemAlerts(of, 'CAMERA_CLOCK_OFFSET')).toEqual([]);
   });
 });
@@ -1497,7 +1531,7 @@ describe('C3: a camera given up while the session went on is handed to the seal 
     const ends = (told as Extract<SessionCaptureEvent, { type: 'STOPPED' }>).cameraEnds ?? [];
     expect(ends.map((end) => [end.deviceId, end.reason])).toEqual([['CAM-02', 'CAMERA_CLOCK_OUT_OF_BOUND']]);
     const facts = await readSessionCaptureFacts(of.app.config.mediaStoreDir, id);
-    expect(facts?.cameras.map((camera) => [camera.trackId, camera.deviceId, camera.ended?.reason ?? null])).toEqual([['VIDEO-01', 'CAM-01', null], ['VIDEO-02', 'CAM-02', 'CAMERA_CLOCK_OUT_OF_BOUND']]);
+    expect(facts?.cameras.map((camera) => [camera.trackId, camera.deviceId, camera.ended?.reason ?? null])).toEqual([['VIDEO-01', 'CAM-01', null], ['VIDEO-02', 'CAM-02', 'CAMERA_CLOCK_OUT_OF_BOUND'], ['VIDEO-03', 'CAM-03', null], ['VIDEO-04', 'CAM-04', null]]); // D60: four tracks
     // What the supervisor stated is what is kept: the instant and the last durable fragment of that file.
     expect(facts?.cameras[1]?.ended).toEqual({ reason: ends[0]?.reason, at: ends[0]?.at, lastDurableFragmentIndex: ends[0]?.lastDurableFragmentIndex, lastDurableMediaEndMs: ends[0]?.lastDurableMediaEndMs });
   });
@@ -1512,7 +1546,7 @@ describe('C3: a camera given up while the session went on is handed to the seal 
     await stopNow(of, id);
     expect(of.events.at(-1)).toMatchObject({ type: 'STOPPED', sessionId: id });
     expect('cameraEnds' in (of.events.at(-1) ?? {})).toBe(false);
-    expect((await readSessionCaptureFacts(of.app.config.mediaStoreDir, id))?.cameras.map((camera) => camera.ended ?? null)).toEqual([null, null]);
+    expect((await readSessionCaptureFacts(of.app.config.mediaStoreDir, id))?.cameras.map((camera) => camera.ended ?? null)).toEqual([null, null, null, null]); // D60: four tracks
   });
 });
 
@@ -1637,24 +1671,24 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
   };
   const notOpenedLines = (of: Rig): Array<Record<string, unknown>> => of.log.lines().filter((line) => line.code === 'CAPTURE_CAMERA_NOT_OPENED');
 
-  it('each camera adapter is asked ONCE, with the address of the plan frame byte for byte and the profile of the plan; the two tracks carry different 128-bit elements; the address is in no log line, audit row, session row, event or facts file', async () => {
+  it('each camera adapter is asked ONCE, with the address of the plan frame byte for byte and the profile of the plan; the four tracks carry different 128-bit elements; the address is in no log line, audit row, session row, event or facts file', async () => { // D60: four tracks
     const seen = cameras();
     const of = await rig('r47_address', { registry: seen.registry });
     const id = await of.arm();
     await of.start(id);
     const plan = of.fake.last().commands('START')[0]?.plan;
-    expect(plan?.cameras.map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02']);
+    expect(plan?.cameras.map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']); // D60 (2026-11-04): four tracks
     const inPlan = (deviceId: string) => plan?.cameras.find((camera) => camera.deviceId === deviceId);
 
     // One open per camera of the plan (AD-11: one credential read per camera per attempt), each told the plan's own string and profile.
-    expect(seen.asked.map((ask) => ask.deviceId)).toEqual(['CAM-01', 'CAM-02']);
-    expect(seen.asked.map((ask) => ask.target.ingestUrl === inPlan(ask.deviceId)?.ingestUrl)).toEqual([true, true]);
-    expect(seen.asked.map((ask) => typeof ask.target.profile === 'string' && ask.target.profile === inPlan(ask.deviceId)?.profile)).toEqual([true, true]);
+    expect(seen.asked.map((ask) => ask.deviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']); // D60
+    expect(seen.asked.map((ask) => ask.target.ingestUrl === inPlan(ask.deviceId)?.ingestUrl)).toEqual([true, true, true, true]);
+    expect(seen.asked.map((ask) => typeof ask.target.profile === 'string' && ask.target.profile === inPlan(ask.deviceId)?.profile)).toEqual([true, true, true, true]);
 
-    // BR-07 (1): 16 bytes of the random source per track, in the grammar; the two tracks differ.
+    // BR-07 (1): 16 bytes of the random source per track, in the grammar; the four tracks differ (D60).
     const elements = (plan?.cameras ?? []).map((camera) => elementOf(camera.ingestUrl));
-    expect(elements.map((element) => INGEST_ELEMENT.test(element) && Buffer.from(element, 'base64url').length === 16)).toEqual([true, true]);
-    expect(new Set(elements).size).toBe(2);
+    expect(elements.map((element) => INGEST_ELEMENT.test(element) && Buffer.from(element, 'base64url').length === 16)).toEqual([true, true, true, true]);
+    expect(new Set(elements).size).toBe(4);
 
     // BR-07 (4), at the level of this unit: the element is in none of the places this unit writes.
     of.fake.last().record(startInterval);
@@ -1690,19 +1724,20 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
     await startAndReturn(of, id);
     // The second camera is open while the first has not answered: with one open after the other this never happens.
     await vi.waitFor(() => expect(of.order).toContain('open CAM-02'), { timeout: 5_000 });
-    expect(seen.asked.map((ask) => ask.deviceId)).toEqual(['CAM-01', 'CAM-02']);
+    expect(seen.asked.map((ask) => ask.deviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']); // D60
     expect(of.order).not.toContain('open CAM-01');
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING']);
-    expect(seen.asked.map((ask) => ask.signal.aborted)).toEqual([false, false]);
+    expect(seen.asked.map((ask) => ask.signal.aborted)).toEqual([false, false, false, false]);
     expect(notOpenedLines(of)).toEqual([]);
 
     answer();
     await of.settled();
-    expect(of.order.filter((entry) => entry.startsWith('open CAM'))).toEqual(['open CAM-02', 'open CAM-01']);
-    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02'], camerasNotOpened: [] });
+    // D60: the three cameras that were not held settle in the order of the plan, the slow one last.
+    expect(of.order.filter((entry) => entry.startsWith('open CAM'))).toEqual(['open CAM-02', 'open CAM-03', 'open CAM-04', 'open CAM-01']);
+    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'], camerasNotOpened: [] });
     // Still one open per camera.
-    expect(seen.asked).toHaveLength(2);
+    expect(seen.asked).toHaveLength(4);
   });
 
   it('REAL_PRODUCTION: an open with no outcome is given up at the bound - its own signal is aborted, the session and the other camera go on, the camera is said not opened with the cause, a source that comes up later is closed at once; each adapter was asked once', async () => {
@@ -1713,8 +1748,9 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
     sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION, relayReports: SILENT_RELAYS, cameraOpenBoundMs: 60 });
     const id = await of.arm();
     await of.start(id);
-    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-02'], camerasNotOpened: ['CAM-01'] });
-    expect(seen.asked.map((ask) => [ask.deviceId, ask.signal.aborted])).toEqual([['CAM-01', true], ['CAM-02', false]]);
+    // D60: the three cameras that answered are STARTED; only the held one is given up at the bound.
+    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-02', 'CAM-03', 'CAM-04'], camerasNotOpened: ['CAM-01'] });
+    expect(seen.asked.map((ask) => [ask.deviceId, ask.signal.aborted])).toEqual([['CAM-01', true], ['CAM-02', false], ['CAM-03', false], ['CAM-04', false]]);
     expect(notOpenedLines(of).map((line) => [line.deviceId, line.cause])).toEqual([['CAM-01', 'CAMERA_OPEN_BOUND']]);
     // The session was not ended by the bound of one camera.
     expect(sessionCapture(of.app).liveSessionId()).toBe(id);
@@ -1727,7 +1763,7 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
     await vi.waitFor(() => expect(closed).toBe(1), { timeout: 5_000 });
     await of.settled();
     expect(of.events.filter((event) => event.type === 'STARTED')).toHaveLength(1);
-    expect(seen.asked).toHaveLength(2);
+    expect(seen.asked).toHaveLength(4); // D60
     expect(notOpenedLines(of)).toHaveLength(1);
     await sessionCapture(of.app).shutdown();
     expect(closed).toBe(1);
@@ -1763,8 +1799,8 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
     sessionCapture(of.app).afterStartCommitted(id);
     await of.settled();
     expect(insideTheStart).toBe('PIPELINE_REENTRANT');
-    expect(reads.sort()).toEqual(['CAM-01 COMMITTED', 'CAM-02 COMMITTED']);
-    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02'], camerasNotOpened: [] });
+    expect(reads.sort()).toEqual(['CAM-01 COMMITTED', 'CAM-02 COMMITTED', 'CAM-03 COMMITTED', 'CAM-04 COMMITTED']); // D60: four opens, each outside the unit
+    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'], camerasNotOpened: [] });
   });
 
   // ── Task 4 row 179 (BR-07 (2)): the address of a camera open is the one of the worker in force ──
@@ -1782,9 +1818,10 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
     expect(of.fake.workers).toHaveLength(1);
     expect(of.fake.last().commands('START')).toMatchObject([{ attempt: 2 }]);
     const second = planOfWorker(of, 0);
-    expect(askedOf(seen.asked)).toEqual([['CAM-01', second['CAM-01']], ['CAM-02', second['CAM-02']]]);
-    expect(Object.values(second).map((address) => INGEST_ELEMENT.test(elementOf(address)))).toEqual([true, true]);
-    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02'], camerasNotOpened: [] });
+    // D60 (2026-11-04): four cameras, four opens, all of them with the addresses of the worker that came up.
+    expect(askedOf(seen.asked)).toEqual([['CAM-01', second['CAM-01']], ['CAM-02', second['CAM-02']], ['CAM-03', second['CAM-03']], ['CAM-04', second['CAM-04']]]);
+    expect(Object.values(second).map((address) => INGEST_ELEMENT.test(elementOf(address)))).toEqual([true, true, true, true]);
+    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'], camerasNotOpened: [] });
   });
 
   it('row 179, REAL_PRODUCTION: the worker of a recording is replaced before anything is durable - the sources of attempt 1 are closed, every camera is opened again, and each open is handed the string of ITS OWN attempt; no element is used twice; nothing of it is written', async () => {
@@ -1794,27 +1831,28 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
     const id = await of.arm();
     await of.start(id);
     const first = planOfWorker(of, 0);
-    expect(askedOf(seen.asked)).toEqual([['CAM-01', first['CAM-01']], ['CAM-02', first['CAM-02']]]);
+    // D60 (2026-11-04): attempt 1 opens FOUR cameras.
+    expect(askedOf(seen.asked)).toEqual([['CAM-01', first['CAM-01']], ['CAM-02', first['CAM-02']], ['CAM-03', first['CAM-03']], ['CAM-04', first['CAM-04']]]);
     of.order.length = 0;
 
     of.fake.last().exit(1);
-    await vi.waitFor(() => expect(seen.asked).toHaveLength(4), { timeout: 5_000 });
+    await vi.waitFor(() => expect(seen.asked).toHaveLength(8), { timeout: 5_000 });
     await of.settled();
     expect(of.fake.workers).toHaveLength(2);
     expect(of.fake.last().commands('START')).toMatchObject([{ attempt: 2 }]);
     const second = planOfWorker(of, 1);
-    // The relay double of each attempt received the string of its own attempt, byte for byte.
-    expect(askedOf(seen.asked.slice(2))).toEqual([['CAM-01', second['CAM-01']], ['CAM-02', second['CAM-02']]]);
-    // Four addresses, four elements: none of attempt 1 is in the plan or in an open of attempt 2.
+    // The relay double of each attempt received the string of its own attempt, byte for byte (D60: FOUR cameras per attempt).
+    expect(askedOf(seen.asked.slice(4))).toEqual([['CAM-01', second['CAM-01']], ['CAM-02', second['CAM-02']], ['CAM-03', second['CAM-03']], ['CAM-04', second['CAM-04']]]);
+    // Eight addresses, eight elements: none of attempt 1 is in the plan or in an open of attempt 2 (D60: four per attempt).
     const elements = [...Object.values(first), ...Object.values(second)].map(elementOf);
-    expect(elements.map((element) => INGEST_ELEMENT.test(element))).toEqual([true, true, true, true]);
-    expect(new Set(elements).size).toBe(4);
+    expect(elements.map((element) => INGEST_ELEMENT.test(element))).toEqual([true, true, true, true, true, true, true, true]);
+    expect(new Set(elements).size).toBe(8);
     // The camera sources of the earlier worker were closed BEFORE the cameras were opened again.
     const cameraSteps = of.order.filter((entry) => / CAM-/.test(entry));
-    expect(cameraSteps.slice(0, 2).sort()).toEqual(['close CAM-01', 'close CAM-02']);
-    expect(cameraSteps.slice(2).sort()).toEqual(['open CAM-01', 'open CAM-02']);
-    // Task 4 row 191 (this line read "no microphone was touched" until then): the microphones of the earlier worker are closed, both, and then opened again for the later one.
-    expect(of.order.filter((entry) => / MIC-/.test(entry))).toEqual(['close MIC-01', 'close MIC-02', 'open MIC-01', 'open MIC-02']);
+    expect(cameraSteps.slice(0, 4).sort()).toEqual(['close CAM-01', 'close CAM-02', 'close CAM-03', 'close CAM-04']);
+    expect(cameraSteps.slice(4).sort()).toEqual(['open CAM-01', 'open CAM-02', 'open CAM-03', 'open CAM-04']);
+    // Task 4 row 191 (this line read "no microphone was touched" until then): the microphones of the earlier worker are closed, ALL FOUR, and then opened again for the later one (D61).
+    expect(of.order.filter((entry) => / MIC-/.test(entry))).toEqual(['close MIC-01', 'close MIC-02', 'close MIC-03', 'close MIC-04', 'open MIC-01', 'open MIC-02', 'open MIC-03', 'open MIC-04']);
     expect(of.log.lines().filter((line) => line.code === 'CAPTURE_CAMERA_NOT_OPENED' || line.code === 'CAPTURE_SOURCE_NOT_CLOSED')).toEqual([]);
     expect(of.events.filter((event) => event.type === 'STARTED')).toHaveLength(1);
     expect(sessionCapture(of.app).liveSessionId()).toBe(id);
@@ -1828,7 +1866,8 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
     expect(places.map((text) => text.includes(id))).toEqual([true, true, true, true]);
     expect(places.map((text) => elements.some((element) => text.includes(element)))).toEqual([false, false, false, false]);
     await sessionCapture(of.app).shutdown();
-    expect(of.order.filter((entry) => /close CAM-/.test(entry)).sort()).toEqual(['close CAM-01', 'close CAM-01', 'close CAM-02', 'close CAM-02']);
+    // D60: each of the four cameras is closed twice across the file — once for its own attempt.
+    expect(of.order.filter((entry) => /close CAM-/.test(entry)).sort()).toEqual(['close CAM-01', 'close CAM-01', 'close CAM-02', 'close CAM-02', 'close CAM-03', 'close CAM-03', 'close CAM-04', 'close CAM-04']);
   });
 
   it('row 179, REAL_PRODUCTION: an open of attempt 1 that is still in flight when its worker goes down is given up without a report - its signal is aborted, STARTED waits for the opens of attempt 2 and names them, a source that comes up late is closed', async () => {
@@ -1843,12 +1882,13 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
     await vi.waitFor(() => expect(of.order).toContain('open CAM-02'), { timeout: 5_000 });
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING']);
     of.fake.last().exit(1);
-    await vi.waitFor(() => expect(seen.asked).toHaveLength(4), { timeout: 5_000 });
+    await vi.waitFor(() => expect(seen.asked).toHaveLength(8), { timeout: 5_000 }); // D60: four cameras per attempt
     await of.settled();
     const second = planOfWorker(of, 1);
-    expect(seen.asked.map((ask) => [ask.deviceId, ask.signal.aborted])).toEqual([['CAM-01', true], ['CAM-02', false], ['CAM-01', false], ['CAM-02', false]]);
-    expect(askedOf(seen.asked.slice(2))).toEqual([['CAM-01', second['CAM-01']], ['CAM-02', second['CAM-02']]]);
-    expect(of.events.filter((event) => event.type === 'STARTED')).toEqual([{ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02'], camerasNotOpened: [] }]);
+    // The open of attempt 1 that never answered is aborted; the other three of attempt 1 and all four of attempt 2 stand.
+    expect(seen.asked.map((ask) => [ask.deviceId, ask.signal.aborted])).toEqual([['CAM-01', true], ['CAM-02', false], ['CAM-03', false], ['CAM-04', false], ['CAM-01', false], ['CAM-02', false], ['CAM-03', false], ['CAM-04', false]]);
+    expect(askedOf(seen.asked.slice(4))).toEqual([['CAM-01', second['CAM-01']], ['CAM-02', second['CAM-02']], ['CAM-03', second['CAM-03']], ['CAM-04', second['CAM-04']]]);
+    expect(of.events.filter((event) => event.type === 'STARTED')).toEqual([{ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'], camerasNotOpened: [] }]);
     expect(notOpenedLines(of)).toEqual([]);
     let closed = 0;
     bring({ deviceId: 'CAM-01', close: async () => void (closed += 1) });
@@ -1867,10 +1907,10 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
     await vi.waitFor(() => expect(of.fake.workers).toHaveLength(2), { timeout: 5_000 });
     await vi.waitFor(() => expect(of.fake.last().commands('START')).toHaveLength(1), { timeout: 5_000 });
     await of.settled();
-    expect(seen.asked).toHaveLength(2);
+    expect(seen.asked).toHaveLength(4); // D60: four cameras, opened once (the development operation does not re-open)
     expect(of.order.filter((entry) => / CAM-/.test(entry))).toEqual([]);
     // The plan of the later worker is renewed in every real operation (the supervisor does not know the operation).
-    expect(new Set([...Object.values(planOfWorker(of, 0)), ...Object.values(planOfWorker(of, 1))].map(elementOf)).size).toBe(4);
+    expect(new Set([...Object.values(planOfWorker(of, 0)), ...Object.values(planOfWorker(of, 1))].map(elementOf)).size).toBe(8); // D60: four per attempt
     await sessionCapture(of.app).shutdown();
   });
 });
@@ -1910,7 +1950,8 @@ describe('task 4 row 48 (SA-3; RC-3, AD-01 (4), BR-08): a camera counts as open 
     await of.settled();
     expect(sessionCapture(of.app).liveSessionId()).toBeNull();
     expect(of.fake.last().commands('STOP')).toHaveLength(1);
-    expect(of.order.filter((entry) => entry.startsWith('close')).sort()).toEqual(['close CAM-01', 'close CAM-02', 'close MIC-01', 'close MIC-02']);
+    // D60 / D61 (2026-11-04): the ended capture closes EIGHT sources — four channels, four tracks.
+    expect(of.order.filter((entry) => entry.startsWith('close')).sort()).toEqual(['close CAM-01', 'close CAM-02', 'close CAM-03', 'close CAM-04', 'close MIC-01', 'close MIC-02', 'close MIC-03', 'close MIC-04']);
     expect(await auditOfTheFault(of)).toBe(1);
     expect(of.events.at(-1)).toMatchObject({ type: 'FAILED_START', sessionId: id, cause: 'CAMERA_INGEST_NOT_PAIRED' });
     // C35 (b): the session is in FAULT by the capture, its fault row states the cause, and ONE critical notice is active for it.
@@ -2341,18 +2382,24 @@ describe('task 4 row 71 (WP-07c; schema design 2.3; AD-07 (1), S13-13): the card
     Object.fromEntries((await of.rows<{ slot: string; source_facts: unknown }>('SELECT slot, source_facts FROM public.session_capture_sources WHERE session_id = $1 ORDER BY slot', [sessionId])).map((row) => [row.slot, row.source_facts]));
   const warned = (of: Rig): string[] => of.log.lines().map((line) => String(line.code)).filter((code) => code.startsWith('CAPTURE_SOURCE_FACTS_'));
 
-  it('a start with doubles writes the card facts of BOTH microphones - which card, which input, rate and format - and nothing for the cameras; they are in the rows of the start, not written afterwards', async () => {
+  // D61 (2026-11-04): the microphone plane is FOUR numbered channels, so the row's facts are keyed by
+  // the channel (`MIC-01`..`MIC-04`), never by the superseded role words (`MIC-PRIMARY`/`MIC-STANDBY`).
+  it('a start with doubles writes the card facts of ALL FOUR microphones - which card, which input, rate and format - and nothing for the cameras; they are in the rows of the start, not written afterwards', async () => {
     const of = await rig('r71_facts', { registry: stating((inputId) => (inputId === 'MIC-01' ? CARD : { ...CARD, product: '  UMC1820  ', usbId: null, cardId: 'U192k', cardDevice: 1, inputNumber: 2, nativeChannels: 2, sampleBits: 16 })) });
     const id = await of.arm();
     await of.start(id);
     expect(await factsOf(of, id)).toEqual({
-      'MIC-PRIMARY': { model: 'Scarlett 18i20 USB', usbId: '1235:8215', cardId: 'USB', cardDevice: 0, inputNumber: 1, nativeChannels: 18, sampleRate: 48_000, sampleBits: 24 },
+      'MIC-01': { model: 'Scarlett 18i20 USB', usbId: '1235:8215', cardId: 'USB', cardDevice: 0, inputNumber: 1, nativeChannels: 18, sampleRate: 48_000, sampleBits: 24 }, // D61: the channel keys the row
       // A card that is not USB has no USB id: the key is absent, never a made-up id. The spaces at both ends of a name are dropped by the card text rule.
-      'MIC-STANDBY': { model: 'UMC1820', cardId: 'U192k', cardDevice: 1, inputNumber: 2, nativeChannels: 2, sampleRate: 48_000, sampleBits: 16 },
+      'MIC-02': { model: 'UMC1820', cardId: 'U192k', cardDevice: 1, inputNumber: 2, nativeChannels: 2, sampleRate: 48_000, sampleBits: 16 },
+      'MIC-03': { model: 'UMC1820', cardId: 'U192k', cardDevice: 1, inputNumber: 2, nativeChannels: 2, sampleRate: 48_000, sampleBits: 16 }, // D61: the third and fourth channel state the same second card
+      'MIC-04': { model: 'UMC1820', cardId: 'U192k', cardDevice: 1, inputNumber: 2, nativeChannels: 2, sampleRate: 48_000, sampleBits: 16 },
       'VIDEO-01': {},
       'VIDEO-02': {},
+      'VIDEO-03': {}, // D60
+      'VIDEO-04': {}, // D60
     });
-    // One instant and one statement for the four rows (MR-S1), and the session records.
+    // One instant and one statement for the eight rows (MR-S1, D60/D61), and the session records.
     expect(await of.rows('SELECT DISTINCT recorded_at FROM public.session_capture_sources WHERE session_id = $1', [id])).toHaveLength(1);
     expect([of.app.engine.slice('session')?.state, sessionCapture(of.app).liveSessionId(), warned(of)]).toEqual(['RECORDING', id, []]);
     await sessionCapture(of.app).shutdown();
@@ -2369,10 +2416,15 @@ describe('task 4 row 71 (WP-07c; schema design 2.3; AD-07 (1), S13-13): the card
     await of.start(id);
     const facts = await factsOf(of, id);
     expect(facts).toEqual({
-      'MIC-PRIMARY': { model: 'UNKNOWN', usbId: '0000:0000' },
-      'MIC-STANDBY': { model: 'UNKNOWN', usbId: '0000:0000', cardId: 'USB_2', cardDevice: 0, nativeChannels: 18, sampleRate: 48_000 },
+      'MIC-01': { model: 'UNKNOWN', usbId: '0000:0000' }, // D61: keyed by channel
+      'MIC-02': { model: 'UNKNOWN', usbId: '0000:0000', cardId: 'USB_2', cardDevice: 0, nativeChannels: 18, sampleRate: 48_000 },
+      // D61: the two channels the hostile map does not name state nothing at all.
+      'MIC-03': {},
+      'MIC-04': {},
       'VIDEO-01': {},
       'VIDEO-02': {},
+      'VIDEO-03': {}, // D60
+      'VIDEO-04': {}, // D60
     });
     // The bound of the column, measured on what is stored: the whole map and every text of it.
     const stored = await of.rows<{ bytes: number; longest: number }>(
@@ -2388,11 +2440,11 @@ describe('task 4 row 71 (WP-07c; schema design 2.3; AD-07 (1), S13-13): the card
     await sessionCapture(of.app).shutdown();
   });
 
-  it('CONTROL - adapters that state nothing (the fakes as they are): four rows with {} and no entry in the log; an adapter that THROWS does not refuse the start - {} for that microphone, ONE warning with the session and the device, the other microphone keeps its facts', async () => {
+  it('CONTROL - adapters that state nothing (the fakes as they are): eight rows with {} and no entry in the log; an adapter that THROWS does not refuse the start - {} for that microphone, ONE warning with the session and the device, the other microphones keep their facts', async () => { // D60/D61: eight rows
     const plain = await rig('r71_plain');
     const plainId = await plain.arm();
     await plain.start(plainId);
-    expect(await factsOf(plain, plainId)).toEqual({ 'MIC-PRIMARY': {}, 'MIC-STANDBY': {}, 'VIDEO-01': {}, 'VIDEO-02': {} });
+    expect(await factsOf(plain, plainId)).toEqual({ 'MIC-01': {}, 'MIC-02': {}, 'MIC-03': {}, 'MIC-04': {}, 'VIDEO-01': {}, 'VIDEO-02': {}, 'VIDEO-03': {}, 'VIDEO-04': {} }); // D60 / D61
     expect(warned(plain)).toEqual([]);
     await sessionCapture(plain.app).shutdown();
 
@@ -2406,12 +2458,13 @@ describe('task 4 row 71 (WP-07c; schema design 2.3; AD-07 (1), S13-13): the card
     const id = await of.arm();
     await of.start(id);
     const facts = await factsOf(of, id);
-    expect(facts['MIC-STANDBY']).toEqual({});
-    expect(facts['MIC-PRIMARY']).toMatchObject({ model: 'Scarlett 18i20 USB', inputNumber: 1 });
+    expect(facts['MIC-02']).toEqual({}); // D61: the channel keys the row
+    expect(facts['MIC-01']).toMatchObject({ model: 'Scarlett 18i20 USB', inputNumber: 1 });
+    expect([facts['MIC-03'], facts['MIC-04']]).toEqual([expect.objectContaining({ model: 'Scarlett 18i20 USB' }), expect.objectContaining({ model: 'Scarlett 18i20 USB' })]); // D61: the channels that did not throw keep theirs
     expect(warned(of)).toEqual(['CAPTURE_SOURCE_FACTS_NOT_READ']);
     const entries = appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === 'CAPTURE_SOURCE_FACTS_NOT_READ');
     expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({ level: 'warn', context: { sessionId: id, deviceId: 'MIC-02', slot: 'MIC-STANDBY', cause: 'UNEXPECTED' } });
+    expect(entries[0]).toMatchObject({ level: 'warn', context: { sessionId: id, deviceId: 'MIC-02', slot: 'MIC-02', cause: 'UNEXPECTED' } }); // D61: the audit slot is the channel
     // What the adapter threw may carry device text: its message is in no entry and in no log line.
     expect(JSON.stringify(entries) + JSON.stringify(of.log.lines())).not.toContain('SECRET');
     expect(of.app.engine.slice('session')?.state).toBe('RECORDING');
@@ -2488,7 +2541,8 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
   }
   const micsOfWorker = (of: Rig, index: number): string[] => (of.fake.workers[index]?.commands('START')[0]?.plan.mics ?? []).map((mic) => `${mic.deviceId} ${mic.channel}`); // D61 (2026-11-04): the plan line names its numbered channel
   const micEntries = (appended: { mock: { calls: Array<[{ code?: string; level: string; context?: Record<string, unknown> }]> } }, code: string) =>
-    appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === code).map((entry) => [entry.level, entry.context?.['deviceId'], entry.context?.['role'], entry.context?.['attempt'] ?? null, entry.context?.['cause'] ?? null]);
+    // D61 (2026-11-04): the failure row of a microphone names its CHANNEL (`channel`), not the superseded `role`.
+    appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === code).map((entry) => [entry.level, entry.context?.['deviceId'], entry.context?.['channel'], entry.context?.['attempt'] ?? null, entry.context?.['cause'] ?? null]);
   const secondRecords = async (of: Rig): Promise<void> => {
     await vi.waitFor(() => expect(of.fake.workers).toHaveLength(2), { timeout: 5_000 });
     await vi.waitFor(() => expect(of.supervisor.status()).toMatchObject({ phase: 'RECORDING', attempt: 2 }), { timeout: 5_000 });
@@ -2496,7 +2550,7 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     await of.settled();
   };
 
-  it('REAL_PRODUCTION, sources ready INSIDE the back-off: each microphone is started ONCE per attempt; the handles of attempt 1 are closed, both, before any is opened again; the pipes are made again before worker 2 exists; the starts follow its acknowledgement and precede its cameras; 0 handles left open', async () => {
+  it('REAL_PRODUCTION, sources ready INSIDE the back-off: each microphone is started ONCE per attempt; the handles of attempt 1 are closed, ALL FOUR (D61), before any is opened again; the pipes are made again before worker 2 exists; the starts follow its acknowledgement and precede its cameras; 0 handles left open', async () => {
     const mics = microphones();
     const of = await rig('r191_two_attempts', { registry: mics.registry, limits: FAST_RESTART });
     mics.follow(of);
@@ -2504,33 +2558,43 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     const id = await of.arm();
     await of.start(id);
     const first = [...mics.log];
-    // Attempt 1, as before this row: opened before the worker, started after its acknowledgement, before the cameras.
-    expect(first.filter((entry) => !entry.startsWith('phase'))).toEqual(['open MIC-01#1 w0', 'open MIC-02#1 w0', 'start MIC-01#1 w1', 'start MIC-02#1 w1', 'camera CAM-01', 'camera CAM-02']);
+    // Attempt 1, as before this row: opened before the worker, started after its acknowledgement, before the
+    // cameras. D61 (2026-11-04): FOUR channels of the numbered plane, and D60: four camera lines.
+    expect(first.filter((entry) => !entry.startsWith('phase'))).toEqual(['open MIC-01#1 w0', 'open MIC-02#1 w0', 'open MIC-03#1 w0', 'open MIC-04#1 w0', 'start MIC-01#1 w1', 'start MIC-02#1 w1', 'start MIC-03#1 w1', 'start MIC-04#1 w1', 'camera CAM-01', 'camera CAM-02', 'camera CAM-03', 'camera CAM-04']);
     mics.log.length = 0;
 
     of.fake.last().exit(1);
     await secondRecords(of);
-    await vi.waitFor(() => expect(mics.log.filter((entry) => entry.startsWith('camera'))).toHaveLength(2), { timeout: 5_000 });
+    await vi.waitFor(() => expect(mics.log.filter((entry) => entry.startsWith('camera'))).toHaveLength(4), { timeout: 5_000 }); // D60
+    // D61: the whole four-channel plane is closed, opened and started again for the later worker.
     expect(mics.log).toEqual([
       'phase RESTARTING',
       'close MIC-01#1',
       'close MIC-02#1',
+      'close MIC-03#1',
+      'close MIC-04#1',
       'open MIC-01#2 w1',
       'open MIC-02#2 w1',
+      'open MIC-03#2 w1',
+      'open MIC-04#2 w1',
       'phase RECORDING',
       'start MIC-01#2 w2',
       'start MIC-02#2 w2',
+      'start MIC-03#2 w2',
+      'start MIC-04#2 w2',
       'camera CAM-01',
       'camera CAM-02',
+      'camera CAM-03',
+      'camera CAM-04',
     ]);
-    // The plan of the later worker names both microphones, with the pipes of the handles that were opened for it.
-    expect(micsOfWorker(of, 1)).toEqual(['MIC-01 MIC-01', 'MIC-02 MIC-02']);
+    // The plan of the later worker names all four microphones, with the pipes of the handles that were opened for it.
+    expect(micsOfWorker(of, 1)).toEqual(['MIC-01 MIC-01', 'MIC-02 MIC-02', 'MIC-03 MIC-03', 'MIC-04 MIC-04']);
     expect(of.fake.workers[1]?.commands('START')[0]?.plan.mics).toEqual(of.fake.workers[0]?.commands('START')[0]?.plan.mics);
     expect(of.log.lines().filter((line) => ['CAPTURE_MIC_NOT_OPENED', 'CAPTURE_MIC_NOT_STARTED', 'CAPTURE_SOURCE_NOT_CLOSED', 'CAPTURE_MIC_REPORT_SUPERSEDED'].includes(String(line.code)))).toEqual([]);
     expect(of.events.filter((event) => event.type === 'STARTED')).toHaveLength(1);
     await sessionCapture(of.app).shutdown();
     const all = [...first, ...mics.log];
-    for (const deviceId of ['MIC-01', 'MIC-02']) {
+    for (const deviceId of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) { // D61: four channels
       expect(all.filter((entry) => entry.startsWith(`start ${deviceId}#`))).toHaveLength(2);
       expect([all.filter((entry) => entry.startsWith(`open ${deviceId}#`)).length, all.filter((entry) => entry.startsWith(`close ${deviceId}#`)).length]).toEqual([2, 2]);
     }
@@ -2550,15 +2614,22 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     expect(of.fake.workers).toHaveLength(1);
     expect(of.supervisor.status()).toMatchObject({ phase: 'RESTARTING', attempt: 2 });
     await secondRecords(of);
-    expect(mics.log).toEqual(['phase RESTARTING', 'close MIC-01#1', 'close MIC-02#1', 'open MIC-01#2 w1', 'open MIC-02#2 w1', 'phase RECORDING', 'start MIC-01#2 w2', 'start MIC-02#2 w2']);
+    // D61 (2026-11-04): the four-channel plane is closed and made again as one set.
+    expect(mics.log).toEqual(['phase RESTARTING', 'close MIC-01#1', 'close MIC-02#1', 'close MIC-03#1', 'close MIC-04#1', 'open MIC-01#2 w1', 'open MIC-02#2 w1', 'open MIC-03#2 w1', 'open MIC-04#2 w1', 'phase RECORDING', 'start MIC-01#2 w2', 'start MIC-02#2 w2', 'start MIC-03#2 w2', 'start MIC-04#2 w2']);
     expect(performance.now() - downAt).toBeGreaterThanOrEqual(300);
     expect(of.order.filter((entry) => / CAM-/.test(entry) && !entry.startsWith('open'))).toEqual([]);
     expect(sessionCapture(of.app).liveSessionId()).toBe(id);
     await sessionCapture(of.app).shutdown();
-    expect(mics.log.filter((entry) => entry.startsWith('close MIC-')).sort()).toEqual(['close MIC-01#1', 'close MIC-01#2', 'close MIC-02#1', 'close MIC-02#2']);
+    expect(mics.log.filter((entry) => entry.startsWith('close MIC-')).sort()).toEqual(['close MIC-01#1', 'close MIC-01#2', 'close MIC-02#1', 'close MIC-02#2', 'close MIC-03#1', 'close MIC-03#2', 'close MIC-04#1', 'close MIC-04#2']); // D61: four channels
   });
 
-  it('a microphone that cannot be OPENED again, as at a first start (D80(6)): the STANDBY - a warning with its role and attempt, the later worker gets a plan with the PRIMARY alone and records; the PRIMARY - an error, NO later worker, the capture ends as a failed start; neither is replaced by the other', async () => {
+  // D61 (2026-11-04) CHANGED THE SHAPE OF THIS RULE, not only its words: the protocol holds the plan
+  // at EXACTLY FOUR microphone lines (`CapturePlanSchema.mics.min(4).max(4)`), so a channel that cannot
+  // be opened for the later worker can no longer be dropped — the plan of the later worker cannot be
+  // built at all and NO later worker comes up (D80(6)'s "the later worker records with the rest" is
+  // superseded by the four-channel ruling). What survives per channel is the LEVEL of the row: channel 1
+  // (the transcription channel of `AUDIO-01`) is an error, a later channel warns. Neither replaces the other.
+  it('a microphone that cannot be OPENED again, as at a first start (D80(6) as D61 narrows it): the row names its channel and attempt - an error on channel 1, a warning on a later channel - and NO later worker comes up, the capture ending as a failed start', async () => {
     const standby = microphones({ open: (deviceId, nth) => (deviceId === 'MIC-02' && nth === 2 ? 'FAIL' : 'OK') });
     const withPrimary = await rig('r191_standby_not_opened', { registry: standby.registry, limits: FAST_RESTART });
     standby.follow(withPrimary);
@@ -2566,12 +2637,16 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     const id = await withPrimary.arm();
     await withPrimary.start(id);
     withPrimary.fake.last().exit(1);
-    await secondRecords(withPrimary);
-    expect(micEntries(appended, 'CAPTURE_MIC_NOT_OPENED')).toEqual([['warn', 'MIC-02', 'STANDBY', 2, null]]);
-    expect(micsOfWorker(withPrimary, 1)).toEqual(['MIC-01 MIC-01']);
-    expect(standby.log.filter((entry) => entry.startsWith('start') && entry.includes('#2'))).toEqual(['start MIC-01#2 w2']);
+    await vi.waitFor(() => expect(withPrimary.events.at(-1)?.type).toBe('FAILED_START'), { timeout: 5_000 });
+    await withPrimary.settled();
+    expect(micEntries(appended, 'CAPTURE_MIC_NOT_OPENED')).toEqual([['warn', 'MIC-02', 'MIC-02', 2, null]]); // D61: the channel, not the role; a later channel warns
+    // D61: a plan of THREE channels is refused by the protocol, so the later worker is never started.
+    expect(withPrimary.fake.workers).toHaveLength(1);
+    expect(standby.log.filter((entry) => entry.startsWith('start') && entry.includes('#2'))).toEqual([]);
     expect(withPrimary.fake.last().commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
-    expect(sessionCapture(withPrimary.app).liveSessionId()).toBe(id);
+    // Everything that WAS opened again is closed with the capture: nothing is left open (D61: three channels reached #2).
+    expect(standby.log.filter((entry) => entry.startsWith('close MIC-')).sort()).toEqual(['close MIC-01#1', 'close MIC-01#2', 'close MIC-02#1', 'close MIC-03#1', 'close MIC-03#2', 'close MIC-04#1', 'close MIC-04#2']);
+    expect(sessionCapture(withPrimary.app).liveSessionId()).toBeNull();
     await sessionCapture(withPrimary.app).shutdown();
 
     const primary = microphones({ open: (deviceId, nth) => (deviceId === 'MIC-01' && nth === 2 ? 'FAIL' : 'OK') });
@@ -2583,15 +2658,15 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     without.fake.last().exit(1);
     await vi.waitFor(() => expect(without.events.at(-1)?.type).toBe('FAILED_START'), { timeout: 5_000 });
     await without.settled();
-    expect(micEntries(said, 'CAPTURE_MIC_NOT_OPENED')).toEqual([['error', 'MIC-01', 'PRIMARY', 2, null]]);
+    expect(micEntries(said, 'CAPTURE_MIC_NOT_OPENED')).toEqual([['error', 'MIC-01', 'MIC-01', 2, null]]); // D61: channel 1 is the error
     expect(without.fake.workers).toHaveLength(1);
     expect(primary.log.filter((entry) => entry.startsWith('start') && entry.includes('#2'))).toEqual([]);
-    // The standby that WAS opened again is closed with the capture: nothing is left open.
-    expect(primary.log.filter((entry) => entry.startsWith('close MIC-')).sort()).toEqual(['close MIC-01#1', 'close MIC-02#1', 'close MIC-02#2']);
+    // The channels that WERE opened again are closed with the capture: nothing is left open (D61: three of them).
+    expect(primary.log.filter((entry) => entry.startsWith('close MIC-')).sort()).toEqual(['close MIC-01#1', 'close MIC-02#1', 'close MIC-02#2', 'close MIC-03#1', 'close MIC-03#2', 'close MIC-04#1', 'close MIC-04#2']);
     expect(sessionCapture(without.app).liveSessionId()).toBeNull();
   });
 
-  it('a microphone that cannot be STARTED again is said with its role, as at a first start: the PRIMARY an error, the STANDBY a warning; the capture goes on and nothing is switched', async () => {
+  it('a microphone that cannot be STARTED again is said with its channel, as at a first start (D61): channel 1 an error, the three later channels a warning; the capture goes on and nothing is switched', async () => {
     const mics = microphones({ start: (_deviceId, nth) => (nth === 2 ? 'FAIL' : 'SETTLE') });
     const of = await rig('r191_not_started_again', { registry: mics.registry, limits: FAST_RESTART });
     mics.follow(of);
@@ -2601,8 +2676,10 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     of.fake.last().exit(1);
     await secondRecords(of);
     expect(micEntries(appended, 'CAPTURE_MIC_NOT_STARTED').sort()).toEqual([
-      ['error', 'MIC-01', 'PRIMARY', null, 'MIC_START_FAILED'],
-      ['warn', 'MIC-02', 'STANDBY', null, 'MIC_START_FAILED'],
+      ['error', 'MIC-01', 'MIC-01', null, 'MIC_START_FAILED'], // D61: channel 1 is the error
+      ['warn', 'MIC-02', 'MIC-02', null, 'MIC_START_FAILED'],
+      ['warn', 'MIC-03', 'MIC-03', null, 'MIC_START_FAILED'],
+      ['warn', 'MIC-04', 'MIC-04', null, 'MIC_START_FAILED'],
     ]);
     expect(of.fake.last().commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
     expect(sessionCapture(of.app).liveSessionId()).toBe(id);
@@ -2622,19 +2699,22 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
       await capture.recordingStartedIn(scope, id);
     });
     capture.afterStartCommitted(id);
-    await vi.waitFor(() => expect(mics.log.filter((entry) => entry.startsWith('start'))).toHaveLength(2), { timeout: 5_000 });
+    await vi.waitFor(() => expect(mics.log.filter((entry) => entry.startsWith('start'))).toHaveLength(4), { timeout: 5_000 }); // D61: four channels
     // The session has not said STARTED: it waits for the starts of the worker in force.
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING']);
     of.fake.last().exit(1);
     await secondRecords(of);
     await vi.waitFor(() => expect(of.events.map((event) => event.type)).toEqual(['CONNECTING', 'STARTED']), { timeout: 5_000 });
     expect(micEntries(appended, 'CAPTURE_MIC_NOT_STARTED')).toEqual([]);
-    expect(of.log.lines().filter((line) => line.code === 'CAPTURE_MIC_REPORT_SUPERSEDED').map((line) => [line.deviceId, line.role, line.attempt, line.attemptInForce, line.dropped]).sort()).toEqual([
-      ['MIC-01', 'PRIMARY', 1, 2, expect.any(Number)],
-      ['MIC-02', 'STANDBY', 1, 2, expect.any(Number)],
+    // D61 (2026-11-04): the superseded report is said per CHANNEL (`channel`), four of them.
+    expect(of.log.lines().filter((line) => line.code === 'CAPTURE_MIC_REPORT_SUPERSEDED').map((line) => [line.deviceId, line.channel, line.attempt, line.attemptInForce, line.dropped]).sort()).toEqual([
+      ['MIC-01', 'MIC-01', 1, 2, expect.any(Number)],
+      ['MIC-02', 'MIC-02', 1, 2, expect.any(Number)],
+      ['MIC-03', 'MIC-03', 1, 2, expect.any(Number)],
+      ['MIC-04', 'MIC-04', 1, 2, expect.any(Number)],
     ]);
     // STARTED was said after the starts of attempt 2, not after those of the worker that was replaced.
-    expect(mics.log.filter((entry) => entry.startsWith('start'))).toEqual(['start MIC-01#1 w1', 'start MIC-02#1 w1', 'start MIC-01#2 w2', 'start MIC-02#2 w2']);
+    expect(mics.log.filter((entry) => entry.startsWith('start'))).toEqual(['start MIC-01#1 w1', 'start MIC-02#1 w1', 'start MIC-03#1 w1', 'start MIC-04#1 w1', 'start MIC-01#2 w2', 'start MIC-02#2 w2', 'start MIC-03#2 w2', 'start MIC-04#2 w2']);
     await capture.shutdown();
 
     const control = microphones({ start: () => 'FAIL' });
@@ -2642,8 +2722,10 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     const said = vi.spyOn(plain.app.errorLog, 'append');
     await plain.start(await plain.arm());
     expect(micEntries(said, 'CAPTURE_MIC_NOT_STARTED').sort()).toEqual([
-      ['error', 'MIC-01', 'PRIMARY', null, 'MIC_START_FAILED'],
-      ['warn', 'MIC-02', 'STANDBY', null, 'MIC_START_FAILED'],
+      ['error', 'MIC-01', 'MIC-01', null, 'MIC_START_FAILED'], // D61: the channel, and channel 1 is the error
+      ['warn', 'MIC-02', 'MIC-02', null, 'MIC_START_FAILED'],
+      ['warn', 'MIC-03', 'MIC-03', null, 'MIC_START_FAILED'],
+      ['warn', 'MIC-04', 'MIC-04', null, 'MIC_START_FAILED'],
     ]);
     await sessionCapture(plain.app).shutdown();
   });
@@ -2684,7 +2766,7 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     // ONE audit row per restart, whatever the later worker repeats: the session, the attempts, both bounds; the microphones by the row's device and its message.
     const gaps = await gapRows(of, id);
     expect(gaps).toEqual([
-      { category: 'DEVICE', severity: 'WARNING', actor_id: null, device_id: 'MIC-01', session_id: id, message: expect.stringContaining('attempt 1 to 2; microphones: MIC-01 PRIMARY, MIC-02 STANDBY'), details: { sessionId: id, earlierAttempt: 1, laterAttempt: 2, audioAbsentAtLeastMs: 0, audioAbsentAtMostMs: 900 } },
+      { category: 'DEVICE', severity: 'WARNING', actor_id: null, device_id: 'MIC-01', session_id: id, message: expect.stringContaining('attempt 1 to 2; microphones: MIC-01 MIC-01, MIC-02 MIC-02, MIC-03 MIC-03, MIC-04 MIC-04'), details: { sessionId: id, earlierAttempt: 1, laterAttempt: 2, audioAbsentAtLeastMs: 0, audioAbsentAtMostMs: 900 } }, // D61: the selector names channels
     ]);
     await sessionCapture(of.app).shutdown();
   });

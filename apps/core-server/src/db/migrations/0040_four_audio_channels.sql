@@ -6,6 +6,10 @@ ALTER TABLE "capture_config" RENAME COLUMN "mic_primary_id" TO "mic_01_id";--> s
 ALTER TABLE "capture_config" RENAME COLUMN "mic_standby_id" TO "mic_02_id";--> statement-breakpoint
 ALTER TABLE "capture_config" ADD COLUMN "mic_03_id" text;--> statement-breakpoint
 ALTER TABLE "capture_config" ADD COLUMN "mic_04_id" text;--> statement-breakpoint
+-- D61 renames the two role foreign keys with their columns (dbc-18: "two renames, two new"). A
+-- column rename leaves the constraint's name alone, so say it out loud.
+ALTER TABLE "capture_config" RENAME CONSTRAINT "capture_config_mic_primary_id_fkey" TO "capture_config_mic_01_id_fkey";--> statement-breakpoint
+ALTER TABLE "capture_config" RENAME CONSTRAINT "capture_config_mic_standby_id_fkey" TO "capture_config_mic_02_id_fkey";--> statement-breakpoint
 -- The no-doubled-device rule of the mics, pairwise over the four channels (the old check refused a
 -- standby equal to the primary; NULL on either side passes, as before).
 ALTER TABLE "capture_config" DROP CONSTRAINT "capture_config_mic_check";--> statement-breakpoint

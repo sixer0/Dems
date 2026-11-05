@@ -41,7 +41,7 @@ let server: DevicesApp;
 
 const ROLES = ['INVESTIGATOR', 'SUPERVISOR', 'TECHNICIAN'] as const satisfies readonly OperatorRole[];
 /** The devices of the Core that the simulator restarts and sends a test signal to. */
-const HARDWARE = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'REC-INDICATOR', 'TABLET'] as const;
+const HARDWARE = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH', 'REC-INDICATOR', 'TABLET'] as const; // D60/D61 (2026-11-04): four tracks and four channels of built-ins
 /** The platform devices: they accept IDENTIFY only. */
 const PLATFORM = ['GNSS', 'TPM', 'FRONT-PANEL'] as const;
 
@@ -81,8 +81,8 @@ describe('the booted server', () => {
     expect(server.timer.active()).toBe(1);
     expect(server.app.server.listening).toBe(false);
     expect(server.engine.slice('session')).toBeNull();
-    expect(server.engine.slice('cameras').map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02']);
-    expect(server.engine.slice('mics').map((mic) => mic.deviceId)).toEqual(['MIC-01', 'MIC-02']);
+    expect(server.engine.slice('cameras').map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']); // D60 (2026-11-04): four tracks
+    expect(server.engine.slice('mics').map((mic) => mic.deviceId)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']); // D61 (2026-11-04): four channels
     expect(server.engine.slice('otherDevices').map((device) => device.id)).toEqual(['POE-SWITCH', 'REC-INDICATOR', 'TABLET']);
   });
 });
@@ -217,7 +217,7 @@ describe('operations 49 and 50: testDeviceSignal and identifyDevice (DIAGNOSTICS
 
   it('a device the Core does not have: 404 NOT_FOUND for both operations, also for the ID of a paired mobile device', async () => {
     const before = await server.trailLength();
-    for (const id of ['CAM-03', 'MIC-09', 'DEV-0001', 'NVME-SYS', 'X']) {
+    for (const id of ['CAM-09', 'MIC-09', 'DEV-0001', 'NVME-SYS', 'X']) { // D60/D61 (2026-11-04): `CAM-03` is a built-in now; the unknown id of the class is the next free one
       for (const [operationId, url] of [
         ['testDeviceSignal', testSignal(id)],
         ['identifyDevice', identify(id)],
@@ -311,7 +311,7 @@ describe('operation 48: restartDevice (DEVICE_MANAGE)', () => {
   });
 
   it('a device the Core does not have: 404 NOT_FOUND', async () => {
-    for (const id of ['CAM-03', 'DEV-0001']) {
+    for (const id of ['CAM-09', 'DEV-0001']) { // D60/D61 (2026-11-04): `CAM-03` is a built-in now
       const response = await server.post('TECHNICIAN', restart(id));
       expect(outcome(response), id).toEqual([404, 'NOT_FOUND']);
       expect(errorOf(response).details, id).toEqual({ simCode: 'NOT_FOUND' });
@@ -392,16 +392,16 @@ describe('operations 51 and 52: setActiveCamera and resetMicClip (every signed-i
     expect(server.engine.slice('activeCameraId')).toBe('VIDEO-01');
     // NONE-P: no audit row for any of the five calls.
     expect(await server.trailLength()).toBe(before);
-    // Both video tracks are untouched by the view selection.
-    expect((await server.get('INVESTIGATOR', VIDEO)).json()).toMatchObject({ tracks: [{ trackId: 'VIDEO-01', online: true }, { trackId: 'VIDEO-02', online: true }] });
+    // Every video track is untouched by the view selection (D60, 2026-11-04: four).
+    expect((await server.get('INVESTIGATOR', VIDEO)).json()).toMatchObject({ tracks: [{ trackId: 'VIDEO-01', online: true }, { trackId: 'VIDEO-02', online: true }, { trackId: 'VIDEO-03', online: true }, { trackId: 'VIDEO-04', online: true }] });
     await expectStoredEqualsCommitted();
   });
 
   it('resetMicClip with no latch set: 204 for every role, nothing changes and no row is written', async () => {
     const before = { rows: await server.trailLength(), revision: server.engine.revision, mics: server.engine.slice('mics') };
-    expect(before.mics.map((mic) => mic.clipLatched)).toEqual([false, false]);
+    expect(before.mics.map((mic) => mic.clipLatched)).toEqual([false, false, false, false]); // D61 (2026-11-04): four channels
     for (const role of ROLES) {
-      for (const channel of ['AUDIO-01', 'AUDIO-02']) {
+      for (const channel of ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']) { // D61 (2026-11-04): v2 records four audio tracks
         const response = await server.post(role, CLIP_RESET, { channel });
         expect(response.statusCode, `${role} ${channel}`).toBe(204);
         expect(validateCoreApiResponse('resetMicClip', 204, bodyOf(response))).toEqual({ ok: true });
@@ -417,7 +417,7 @@ describe('operations 51 and 52: setActiveCamera and resetMicClip (every signed-i
     const json = { 'content-type': 'application/json', origin: WEB_ORIGIN, ...server.sessions.TECHNICIAN };
     const cases: ReadonlyArray<readonly [operationId: 'setActiveCamera' | 'resetMicClip', url: string, payload: string, expected: [number, string]]> = [
       ['setActiveCamera', ACTIVE_CAMERA, '{}', [422, 'INVALID_INPUT']],
-      ['setActiveCamera', ACTIVE_CAMERA, '{"cameraId":"VIDEO-03"}', [422, 'INVALID_INPUT']],
+      ['setActiveCamera', ACTIVE_CAMERA, '{"cameraId":"VIDEO-05"}', [422, 'INVALID_INPUT']], // D60 (2026-11-04): VIDEO-03/04 are valid tracks now; outside the enum is VIDEO-05
       ['setActiveCamera', ACTIVE_CAMERA, '{"cameraId":', [400, 'INVALID_JSON']],
       ['resetMicClip', CLIP_RESET, '{}', [422, 'INVALID_INPUT']],
       ['resetMicClip', CLIP_RESET, '{"channel":"VIDEO-01"}', [422, 'INVALID_INPUT']],
@@ -557,11 +557,11 @@ describe('restartDevice while a recording runs', () => {
     expect(recording.engine.slice('session')?.state).toBe('RECORDING');
     // Nobody is left signed in on the engine after the refusals (ENG-7, AC-B-53).
     expect(recording.engine.simulator()?.store.getState().auth).toMatchObject({ status: 'SIGNED_OUT', operatorId: null });
-    console.info('[w36] restartDevice during a recording: 409 RECORDING_ACTIVE, details { simCode: RECORDING_ACTIVE, from: RECORDING, event: deviceCommand }, for CAM-01, CAM-02, MIC-01, MIC-02, POE-SWITCH, REC-INDICATOR, TABLET; no row, no revision');
+    console.info('[w36] restartDevice during a recording: 409 RECORDING_ACTIVE, details { simCode: RECORDING_ACTIVE, from: RECORDING, event: deviceCommand }, for the eight D60/D61 sources, POE-SWITCH, REC-INDICATOR, TABLET; no row, no revision');
   });
 
   it('the order of the refusals is the hosted action\'s: an unknown device 404, a platform device 409 COMMAND_UNSUPPORTED, then 409 RECORDING_ACTIVE', async () => {
-    expect(outcome(await recording.post('TECHNICIAN', restart('CAM-03')))).toEqual([404, 'NOT_FOUND']);
+    expect(outcome(await recording.post('TECHNICIAN', restart('CAM-09')))).toEqual([404, 'NOT_FOUND']); // D60/D61 (2026-11-04): an id the Core does not hold
     for (const id of PLATFORM) {
       const response = await recording.post('TECHNICIAN', restart(id));
       expect(outcome(response), id).toEqual([409, 'COMMAND_UNSUPPORTED']);
@@ -588,11 +588,11 @@ describe('restartDevice while a recording runs', () => {
     expect(recording.engine.slice('session')?.state).toBe('RECORDING');
   });
 
-  it('the reads show the recording: both tracks and both channels REC, the system state RECORDING', async () => {
+  it('the reads show the recording: all four tracks and all four channels REC, the system state RECORDING', async () => {
     const health = (await recording.get('INVESTIGATOR', HEALTH)).json() as { systemState: string };
     expect(health.systemState).toBe('RECORDING');
-    expect((await recording.get('INVESTIGATOR', VIDEO)).json()).toMatchObject({ tracks: [{ recState: 'REC' }, { recState: 'REC' }] });
-    expect((await recording.get('INVESTIGATOR', AUDIO)).json()).toMatchObject({ channels: [{ recState: 'REC' }, { recState: 'REC' }] });
+    expect((await recording.get('INVESTIGATOR', VIDEO)).json()).toMatchObject({ tracks: [{ recState: 'REC' }, { recState: 'REC' }, { recState: 'REC' }, { recState: 'REC' }] }); // D60 (2026-11-04): four tracks REC
+    expect((await recording.get('INVESTIGATOR', AUDIO)).json()).toMatchObject({ channels: [{ recState: 'REC' }, { recState: 'REC' }, { recState: 'REC' }, { recState: 'REC' }] }); // D61: four channels REC
     expect(validateCoreApiResponse('getDeviceHealth', 200, health)).toEqual({ ok: true });
   });
 

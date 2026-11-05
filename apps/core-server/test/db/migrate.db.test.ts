@@ -31,8 +31,12 @@ describe('AC-B-01: the migration set on an empty database', () => {
   // REVISED 2026-11-02/03 (RB-9 0035, purge amendment 0036 + reseal correction 0038, credential
   // creation 0037; principal PT GSP): the set grew 34 -> 39 with the operator administration
   // privileges, the audit purge, the first-credential grant and the purge reseal correction.
-  it('the set is the thirty-nine files of dbc-3 §A.1, §B.13, dbc-4 §N.8, errata PE-129a-01, PE-129b-01, PE-0013-01, task 4 schema sets A, B and C, task 4 package X-C, the profile-code CHECK, the alias removal reasons (two steps), the allowed ONVIF ports, the retirement of a capture device, the supervisor revocation (0034), the RB-9 add-user privileges (0035), the audit purge amendment (0036), the credential creation (0037) and the purge reseal correction (0038), in order, with rising journal times', () => {
-    expect(INITIAL_MIGRATION_TAGS).toHaveLength(39);
+  // REVISED 2026-11-04/05 (D60 / D61, ratified PT GSP): 39 -> 42 — `0039_four_video_tracks` (the
+  // four simultaneous video tracks), `0040_four_audio_channels` (the four numbered microphone
+  // channels) and `0041_capture_widening_privileges` (the column UPDATE of the six new selector
+  // columns, the companion privilege file the widening itself left out).
+  it('the set is the forty-two files of dbc-3 §A.1, §B.13, dbc-4 §N.8, errata PE-129a-01, PE-129b-01, PE-0013-01, task 4 schema sets A, B and C, task 4 package X-C, the profile-code CHECK, the alias removal reasons (two steps), the allowed ONVIF ports, the retirement of a capture device, the supervisor revocation (0034), the RB-9 add-user privileges (0035), the audit purge amendment (0036), the credential creation (0037), the purge reseal correction (0038), the four video tracks (0039, D60), the four audio channels (0040, D61) and the widening privileges (0041), in order, with rising journal times', () => {
+    expect(INITIAL_MIGRATION_TAGS).toHaveLength(42);
     const files = readMigrationSet();
     expect(files.map((file) => file.tag)).toEqual([...INITIAL_MIGRATION_TAGS]);
     expect(files.map((file) => file.idx)).toEqual(Array.from({ length: INITIAL_MIGRATION_TAGS.length }, (_, index) => index));
@@ -55,7 +59,7 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(ledger.ok).toBe(true);
   });
 
-  it('first run, as dems_owner: applies the thirty-nine files and sets schema version 15 (dbc-16)', async () => {
+  it('first run, as dems_owner: applies the forty-two files and sets schema version 15 (dbc-16)', async () => { // D60/D61 (2026-11-04/05): 39 -> 42 files (0039, 0040, 0041)
     const who = await db.ownerPool().query<{ role: string; superuser: boolean }>(
       'SELECT current_user::text AS role, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS superuser',
     );

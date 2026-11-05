@@ -13,7 +13,7 @@
 // not through a route: the demo-control module is another row.
 import { EvidenceDetailSchema, EvidenceVerifyResultSchema } from '@dems/shared/api';
 import { TrackId } from '@dems/shared/domain';
-import { EVIDENCE_STATUS_STAGE, type EvidenceItem } from '@dems/shared/sim';
+import { EVIDENCE_STATUS_STAGE, TRACK_ORDER, type EvidenceItem } from '@dems/shared/sim'; // D60 (2026-11-04): the v1 track view of a seal
 import type { Pool } from 'pg';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
@@ -127,13 +127,20 @@ async function proveImmutable(item: EvidenceItem, steps: readonly Step[]): Promi
   const baseline = await sealedOf(item.id);
   const others = await othersDigest(item.id);
   const custodyAtStart = await storedCustody(owner, item.id);
-  // The item row without its mutable columns, and four track rows.
-  expect(baseline.digest.rows).toBe(5);
-  expect(baseline.members.tracks.map((track) => track.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'AUDIO-01', 'AUDIO-02']);
-  expect(await sealedInAnswer(item.id)).toEqual(baseline.members);
-  expect(sealedInEngine(item.id)).toEqual(baseline.members);
+  // The item row without its mutable columns, plus ONE ROW PER SEALED FILE: four for a dataset item
+  // (the two-track / two-role shape its demo package was sealed with — untouched history, and no
+  // file view of its own), EIGHT for a freshly sealed session (D60 / D61, 2026-11-04: VIDEO-01..04
+  // and AUDIO-01..04). `evidenceTracksToRows` writes the v1 track view first and appends a
+  // file-only row for every file of the seal without one, so the stored order is derived the same
+  // way here; the answer and the engine carry the v1 TRACK VIEW of those rows.
+  const storedTrackIds = [...item.tracks.map((track) => track.trackId), ...(item.files ?? []).map((file) => file.trackId).filter((id) => !item.tracks.some((track) => track.trackId === id))];
+  const trackView = (): SealedMembers => ({ ...baseline.members, tracks: baseline.members.tracks.filter((track) => (TRACK_ORDER as readonly string[]).includes(track.trackId)) });
+  expect(baseline.digest.rows).toBe(1 + storedTrackIds.length);
+  expect(baseline.members.tracks.map((track) => track.trackId)).toEqual(storedTrackIds);
+  expect(await sealedInAnswer(item.id)).toEqual(trackView());
+  expect(sealedInEngine(item.id)).toEqual(trackView());
 
-  const lines = [`[w35] AC-B-69 ${item.id} (${item.integritySource ?? 'no source'}): SHA-256 of the stored sealed rows (item row without its 7 mutable columns + 4 track rows)`];
+  const lines = [`[w35] AC-B-69 ${item.id} (${item.integritySource ?? 'no source'}): SHA-256 of the stored sealed rows (item row without its 7 mutable columns + ${storedTrackIds.length} track rows)`];
   lines.push(`[w35]   before                                  ${baseline.digest.digest}  rows ${baseline.digest.rows}`);
   let custody = custodyAtStart.length;
 
@@ -148,9 +155,9 @@ async function proveImmutable(item: EvidenceItem, steps: readonly Step[]): Promi
     expect(now.versions, step.label).toEqual(baseline.versions);
     // 4. No other item and no other track was touched.
     expect(await othersDigest(item.id), step.label).toBe(others);
-    // 5. The answers and the engine say the same.
-    expect(await sealedInAnswer(item.id), step.label).toEqual(baseline.members);
-    expect(sealedInEngine(item.id), step.label).toEqual(baseline.members);
+    // 5. The answers and the engine say the same (the v1 track view of the stored rows).
+    expect(await sealedInAnswer(item.id), step.label).toEqual(trackView());
+    expect(sealedInEngine(item.id), step.label).toEqual(trackView());
 
     // What the step DID change is of the six columns a command or a fault may change, and custody only grew.
     const state = await storedState(owner, item.id);

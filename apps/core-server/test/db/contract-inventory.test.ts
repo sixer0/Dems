@@ -499,7 +499,7 @@ describe('the hand-written migration files are the statements of the contract', 
     // and the privilege migration of set 4, row 129, and of set 5, row 129a (0004, 0006 and 0008 are drizzle-generated
     // and legitimately carry the marker as lines).
     // D56/D56b (2026-11-03): 0037 and 0038 land, 37 -> 39. D60 (2026-11-04): 0039 lands, 39 -> 40. D61 (2026-11-04): 0040 lands, 40 -> 41.
-    expect(readMigrationSet()).toHaveLength(41);
+    expect(readMigrationSet()).toHaveLength(42); // D61 (2026-11-05): 0041_capture_widening_privileges lands, set 41 -> 42
     // REVISED 2026-11-02 (principal): 0034 and 0036 join the scanned list. 0035 is NOT added yet: its
     // comment block holds three non-ASCII lines (an em dash and a section sign), and the plain-ASCII
     // rule below exists because the migrator hashes the decoded text — so the file has to be corrected

@@ -124,8 +124,9 @@ describe('M2-MT-5: the twelve kept tables survive a permitted reset (capture tab
 
   it('a discovered device, its credential and the selector cross the reset; the kept set is intact', async () => {
     const owner = target.ownerPool();
-    // The seed now writes the five built-in devices and the selector row itself (CS-21; RECON-B2a
-    // R5): the guard mutates built-ins the selector names, adds one DISCOVERED camera the seed
+    // The seed now writes the NINE built-in devices and the selector row itself (CS-21; RECON-B2a
+    // R5; D60/D61, 2026-11-04: four cameras, four numbered mic channels, the switch): the guard
+    // mutates built-ins the selector names, adds one DISCOVERED camera the seed
     // never knows, and a credential for it. If the reset rebuilt from the seed instead of carrying
     // the kept rows, every mutation below would come back as the seed's values.
     await owner.query(`
@@ -150,9 +151,10 @@ describe('M2-MT-5: the twelve kept tables survive a permitted reset (capture tab
       internals,
     );
 
-    // The three capture tables were carried (rows read > 0): the five built-ins the seed wrote
-    // plus the discovered camera, the one credential, the one selector row.
-    expect(report.kept).toMatchObject({ capture_devices: 6, capture_device_credentials: 1, capture_config: 1 });
+    // The three capture tables were carried (rows read > 0): the NINE built-ins the seed wrote
+    // (D60/D61, 2026-11-04: CAM-01..04, MIC-01..04, the switch) plus the discovered camera, the
+    // one credential, the one selector row.
+    expect(report.kept).toMatchObject({ capture_devices: 10, capture_device_credentials: 1, capture_config: 1 }); // D60/D61 (2026-11-04): 5 built-ins + 1 discovered -> 9 built-ins + 1 discovered
 
     const after = target.ownerPool();
     const afterDigests = Object.fromEntries(

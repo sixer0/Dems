@@ -138,16 +138,16 @@ describe('evidence_items: a row that was never sealed comes back without any sea
   });
 });
 
-describe('capture_config: the microphones come back in input order (D106 (1), AC-B-70; D61 of 2026-11-04: the numbered channel plane)', () => {
+describe('capture_config: the microphones come back in CHANNEL order (D106 (1) generalized by AC-B-70 as D61 of 2026-11-04 widened it: the engine holds the lines by channel — capture-config.ts `inChannelOrder`)', () => {
   const stored = (state: SimState) => fromRows(asStored(toRows(state, context)));
   const swapped = (): SimState => {
     const state = idle();
     // What moving the TRANSCRIBED channel onto another device leaves in the engine state (D61: the two-role
     // lane's `setPrimaryMic` is superseded - the lines keep their CHANNELS and exchange their DEVICES), in
-    // input order as the slice always holds it.
+    // channel order as the slice always holds it (D61: AC-B-70's input order became the channel order).
     const on = (mic: SimState['captureConfig']['mics'][number]) =>
       mic.channel === 'MIC-01' ? { ...mic, inputId: 'MIC-02', deviceId: 'MIC-02' } : mic.channel === 'MIC-02' ? { ...mic, inputId: 'MIC-01', deviceId: 'MIC-01' } : mic;
-    const mics = state.captureConfig.mics.map(on).sort((left, right) => (left.inputId < right.inputId ? -1 : left.inputId > right.inputId ? 1 : 0));
+    const mics = state.captureConfig.mics.map(on); // the map preserves the channel order the slice holds
     return { ...state, captureConfig: { ...state.captureConfig, mics } } as SimState;
   };
 
@@ -155,14 +155,14 @@ describe('capture_config: the microphones come back in input order (D106 (1), AC
     expect(stored(idle()).captureConfig.mics.map((mic) => [mic.inputId, mic.channel])).toEqual([['MIC-01', 'MIC-01'], ['MIC-02', 'MIC-02'], ['MIC-03', 'MIC-03'], ['MIC-04', 'MIC-04']]);
   });
 
-  it('after channel 1 became MIC-02: still MIC-01, MIC-02 in the list - the device moved, the input order did not', () => {
+  it('after channel 1 became MIC-02: the list still opens with channel 1 - the device moved, the channel order did not', () => {
     const state = swapped();
-    expect(state.captureConfig.mics.map((mic) => [mic.inputId, mic.channel])).toEqual([['MIC-01', 'MIC-02'], ['MIC-02', 'MIC-01'], ['MIC-03', 'MIC-03'], ['MIC-04', 'MIC-04']]);
+    expect(state.captureConfig.mics.map((mic) => [mic.inputId, mic.channel])).toEqual([['MIC-02', 'MIC-01'], ['MIC-01', 'MIC-02'], ['MIC-03', 'MIC-03'], ['MIC-04', 'MIC-04']]); // D61: channel order
     const rows = toRows(state, context);
     // D61 (2026-11-04): the column of a line is its CHANNEL - mic_01_id holds the device of channel 1, MIC-02.
     expect([rows.captureConfig[0]?.mic01Id, rows.captureConfig[0]?.mic02Id]).toEqual(['MIC-02', 'MIC-01']);
     const back = stored(state).captureConfig;
-    expect(back.mics.map((mic) => [mic.inputId, mic.channel])).toEqual([['MIC-01', 'MIC-02'], ['MIC-02', 'MIC-01'], ['MIC-03', 'MIC-03'], ['MIC-04', 'MIC-04']]);
+    expect(back.mics.map((mic) => [mic.inputId, mic.channel])).toEqual([['MIC-02', 'MIC-01'], ['MIC-01', 'MIC-02'], ['MIC-03', 'MIC-03'], ['MIC-04', 'MIC-04']]); // D61: the read-back matches the engine's channel order
     // NEGATIVE CONTROL: channel-first, the order of the columns, is not what the engine holds.
     expect([...back.mics].sort((left) => (left.channel === 'MIC-01' ? -1 : 1)).map((mic) => mic.inputId)).toEqual(['MIC-02', 'MIC-01', 'MIC-03', 'MIC-04']);
     expect(back.mics).toStrictEqual(state.captureConfig.mics);

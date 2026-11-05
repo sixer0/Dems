@@ -30,8 +30,12 @@ describe('R74-14 (1): a failed start after a restart of a Core in capture mode s
     await first.app.readiness.boot();
     await armed(first);
     const supervisor = first.principal('SUPERVISOR');
+    // D60 (2026-11-04): a start fails only when EVERY camera of the session is lost, and the
+    // selector names FOUR tracks now - the two-track pair of losses became a degraded recording.
     await first.engine.command(supervisor, 'inject', 'CAMERA_LOSS', { cameraId: 'VIDEO-01' });
     await first.engine.command(supervisor, 'inject', 'CAMERA_LOSS', { cameraId: 'VIDEO-02' });
+    await first.engine.command(supervisor, 'inject', 'CAMERA_LOSS', { cameraId: 'VIDEO-03' });
+    await first.engine.command(supervisor, 'inject', 'CAMERA_LOSS', { cameraId: 'VIDEO-04' });
     await first.engine.command(first.principal('INVESTIGATOR'), 'startRecording');
     await first.drive(CAPTURE_CONNECT_MS + 500);
     expect(first.engine.slice('session')).toMatchObject({ state: 'FAULT', captureDurable: false, startedAt: null, fault: { kind: 'CAPTURE_FAULT', fromState: 'RECORDING' } });

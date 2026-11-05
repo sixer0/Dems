@@ -419,7 +419,7 @@ describe('integration pass I-9a: the network facts through the real composition'
     const owner = target.ownerPool();
     // No speech runtime on a test host; the seeded selector assigns development sources, which a production Core refuses to start on: all four unassigned.
     await owner.query('UPDATE public.stt_config SET enabled = false');
-    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_primary_id = NULL, mic_standby_id = NULL');
+    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL, mic_01_id = NULL, mic_02_id = NULL, mic_03_id = NULL, mic_04_id = NULL');
     // Two adopted cameras at their stored addresses, each with its endpoint reference; the stored network choice.
     await owner.query("INSERT INTO public.capture_devices (id, kind, transport, enabled, adapter_kind, address, onvif_uuid) VALUES ('CAM-11', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP', '192.168.50.20', $1), ('CAM-12', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP', '192.168.50.21', $2)", [MOVED_INSIDE, MOVED_OUTSIDE]);
     await owner.query(STORE_CHOICE);
@@ -555,7 +555,7 @@ describe('row 106b: the alias of the camera port through the real composition, o
     const target = await db.another({ template: 'seed', slug });
     const owner = target.ownerPool();
     await owner.query('UPDATE public.stt_config SET enabled = false');
-    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_primary_id = NULL, mic_standby_id = NULL');
+    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL, mic_01_id = NULL, mic_02_id = NULL, mic_03_id = NULL, mic_04_id = NULL');
     await owner.query(STORE_CHOICE);
     await owner.query(LEFT_OPEN, [TECHNICIAN.id]);
     const record = await hashPassword(OWN_PASSWORD);

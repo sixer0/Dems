@@ -25,21 +25,22 @@ const MIXED = 'SES-20261010-9003';
 let cameras: string[] = [];
 let microphones: string[] = [];
 
-async function sources(sessionId: string, kinds: readonly [string, string, string, string]): Promise<void> {
-  await db.ownerPool().query(
-    `INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at) VALUES
-       ($1, 'VIDEO-01', $2, $6, 1791600000000), ($1, 'VIDEO-02', $3, $7, 1791600000000),
-       ($1, 'MIC-PRIMARY', $4, $8, 1791600000000), ($1, 'MIC-STANDBY', $5, $9, 1791600000000)`,
-    [sessionId, cameras[0], cameras[1], microphones[0], microphones[1], ...kinds],
-  );
+// D61 (2026-11-04): a session's start record is EIGHT rows - four video tracks and four numbered
+// microphone channels (`SOURCE_ROWS_PER_SESSION`); the roles died with migration 0040.
+async function sources(sessionId: string, kinds: readonly string[]): Promise<void> {
+  const slots = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'];
+  const devices = [cameras[0], cameras[1], cameras[2], cameras[3], microphones[0], microphones[1], microphones[2], microphones[3]];
+  for (const [index, kind] of kinds.entries()) {
+    await db.ownerPool().query('INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at) VALUES ($1, $2, $3, $4, 1791600000000)', [sessionId, slots[index], devices[index], kind]);
+  }
 }
 const facts = () => findRealSealedEvidence(db.ownerPool(), { database: db.name, storeRoot });
 
 beforeAll(async () => {
   const owner = db.ownerPool();
-  cameras = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'CAM-%' ORDER BY id LIMIT 2")).rows.map((row) => row.id);
-  microphones = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'MIC-%' ORDER BY id LIMIT 2")).rows.map((row) => row.id);
-  expect([cameras.length, microphones.length]).toEqual([2, 2]);
+  cameras = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'CAM-%' ORDER BY id LIMIT 4")).rows.map((row) => row.id); // D60: four built-in cameras
+  microphones = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'MIC-%' ORDER BY id LIMIT 4")).rows.map((row) => row.id); // D61: four built-in channels
+  expect([cameras.length, microphones.length]).toEqual([4, 4]);
 });
 
 describe('R88-09 (2) on the real tables', () => {
@@ -47,9 +48,9 @@ describe('R88-09 (2) on the real tables', () => {
     expect(await facts()).toMatchObject({ unsealedSessions: [], storeUnreadable: null, quarantinedSessions: [] });
   });
 
-  it('a session with four production source rows, no sealed item and no history entry BLOCKS and is named; the guard throws', async () => {
+  it('a session with eight production source rows, no sealed item and no history entry BLOCKS and is named; the guard throws', async () => {
     const before = (await facts()).blocked;
-    await sources(PRODUCTION, ['ONVIF_RTSP', 'ONVIF_RTSP', 'USB_AUDIO', 'USB_AUDIO']);
+    await sources(PRODUCTION, ['ONVIF_RTSP', 'ONVIF_RTSP', 'ONVIF_RTSP', 'ONVIF_RTSP', 'USB_AUDIO', 'USB_AUDIO', 'USB_AUDIO', 'USB_AUDIO']); // D60/D61: eight
     const now = await facts();
     expect(now).toMatchObject({ blocked: true, unsealedSessions: [PRODUCTION] });
     expect(now.dbSessions).toContain(PRODUCTION);
@@ -59,9 +60,9 @@ describe('R88-09 (2) on the real tables', () => {
     expect(typeof before).toBe('boolean');
   });
 
-  it('CONTROL: four DEVELOPMENT source rows without an item are not named (R88-10 is their rule); ONE production row among them is (fail closed)', async () => {
-    await sources(DEVELOPMENT, ['FAKE', 'LOCAL_DEVICE', 'FAKE', 'LOCAL_DEVICE']);
-    await sources(MIXED, ['FAKE', 'ONVIF_RTSP', 'FAKE', 'FAKE']);
+  it('CONTROL: eight DEVELOPMENT source rows without an item are not named (R88-10 is their rule); ONE production row among them is (fail closed)', async () => {
+    await sources(DEVELOPMENT, ['FAKE', 'LOCAL_DEVICE', 'FAKE', 'LOCAL_DEVICE', 'FAKE', 'LOCAL_DEVICE', 'FAKE', 'LOCAL_DEVICE']); // D60/D61: eight
+    await sources(MIXED, ['FAKE', 'ONVIF_RTSP', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE']); // D60/D61: eight
     expect((await facts()).unsealedSessions).toEqual([PRODUCTION, MIXED]);
   });
 
@@ -77,7 +78,7 @@ describe('R88-09 (2) on the real tables', () => {
 
 // ═══ Moved here from `wave-i-a1-unsealed-fake.db.test.ts` (test-suite consolidation, D233): the cases as they were, under one describe. ═══
 // Fix wave I, driver A1 (re-gate 75 finding G75b-01; ruling D216) ON POSTGRESQL: the third branch of
-// the guard's ONE statement - sessions of exactly four source rows, all generated (FAKE), without a
+// the guard's ONE statement - sessions of exactly eight source rows (D61, 2026-11-04: SOURCE_ROWS_PER_SESSION=8), all generated (FAKE), without a
 // sealed item - says on the real tables what the unit file `package-removal.test.ts` rules,
 // and the two branches before it answer as they did.
 //
@@ -95,8 +96,8 @@ describe('G75b-01, D216: the guard\'s statement and the unsealed recordings of g
   let microphones: string[] = [];
 
   async function sources(sessionId: string, kinds: readonly string[]): Promise<void> {
-    const slots = ['VIDEO-01', 'VIDEO-02', 'MIC-PRIMARY', 'MIC-STANDBY'];
-    const devices = [cameras[0], cameras[1], microphones[0], microphones[1]];
+    const slots = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']; // D60/D61 (2026-11-04): the eight slots
+    const devices = [cameras[0], cameras[1], cameras[2], cameras[3], microphones[0], microphones[1], microphones[2], microphones[3]];
     for (const [index, kind] of kinds.entries()) {
       await db.ownerPool().query('INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at) VALUES ($1, $2, $3, $4, 1791600000000)', [sessionId, slots[index], devices[index], kind]);
     }
@@ -109,9 +110,9 @@ describe('G75b-01, D216: the guard\'s statement and the unsealed recordings of g
 
   beforeAll(async () => {
     const owner = db.ownerPool();
-    cameras = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'CAM-%' ORDER BY id LIMIT 2")).rows.map((row) => row.id);
-    microphones = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'MIC-%' ORDER BY id LIMIT 2")).rows.map((row) => row.id);
-    expect([cameras.length, microphones.length]).toEqual([2, 2]);
+    cameras = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'CAM-%' ORDER BY id LIMIT 4")).rows.map((row) => row.id); // D60: four built-in cameras
+    microphones = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'MIC-%' ORDER BY id LIMIT 4")).rows.map((row) => row.id); // D61: four built-in channels
+    expect([cameras.length, microphones.length]).toEqual([4, 4]);
   });
 
   describe('rules (12) + (13) on the real tables', () => {
@@ -120,10 +121,10 @@ describe('G75b-01, D216: the guard\'s statement and the unsealed recordings of g
       await expect(db.appPool().query(REAL_SEALED_EVIDENCE_STATEMENT)).resolves.toBeDefined();
     });
 
-    it('four FAKE source rows without a sealed item ARE named; LOCAL_DEVICE among them, a production kind among them, and three rows are NOT (negative controls)', async () => {
-      await sources(GENERATED, ['FAKE', 'FAKE', 'FAKE', 'FAKE']);
-      await sources(LOCAL, ['FAKE', 'LOCAL_DEVICE', 'FAKE', 'FAKE']);
-      await sources(PRODUCTION, ['FAKE', 'ONVIF_RTSP', 'FAKE', 'FAKE']);
+    it('eight FAKE source rows without a sealed item ARE named; LOCAL_DEVICE among them, a production kind among them, and three rows are NOT (negative controls)', async () => {
+      await sources(GENERATED, ['FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE']); // D61: exactly eight generated rows (SOURCE_ROWS_PER_SESSION)
+      await sources(LOCAL, ['FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'LOCAL_DEVICE']);
+      await sources(PRODUCTION, ['FAKE', 'ONVIF_RTSP', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE']);
       await sources(THREE, ['FAKE', 'FAKE', 'FAKE']);
       expect(await fakeRows()).toEqual([GENERATED]);
     });

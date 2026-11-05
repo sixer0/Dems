@@ -631,7 +631,7 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
       message: 'Camera added',
       actorId: supervisor(at(12)),
       deviceId: null,
-      details: { deviceId: 'CAM-03', candidateId: 'CND-0000000000A1', searchId: 'DSC-000001', adapter: 'FAKE', sourceClass: 'DEVELOPMENT', credentialSet: false, operationId: 'adoptCaptureCandidate', permission: 'CAPTURE_CONFIG' },
+      details: { deviceId: 'CAM-06', candidateId: 'CND-0000000000A1', searchId: 'DSC-000001', adapter: 'FAKE', sourceClass: 'DEVELOPMENT', credentialSet: false, operationId: 'adoptCaptureCandidate', permission: 'CAPTURE_CONFIG' },
     },
   });
   world.record(at(13), {
@@ -657,7 +657,7 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
       message: 'Microphone input registered',
       actorId: technician(at(14)),
       deviceId: null,
-      details: { deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 1, channelCount: 2, permission: 'CAPTURE_CONFIG' },
+      details: { deviceId: 'MIC-05', change: 'REGISTERED', inputNumber: 1, channelCount: 2, permission: 'CAPTURE_CONFIG' },
     },
   });
   world.record(at(15), {
@@ -846,10 +846,10 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
   world.record(at(32), {
     audit: {
       type: 'CAPTURE_DEVICE_RETIRED',
-      message: 'Device retired: CAM-03',
+      message: 'Device retired: CAM-06',
       actorId: technician(at(32)),
       deviceId: null,
-      details: { deviceId: 'CAM-03', kind: 'CAMERA', reason: 'STATEMENT_CHANGED', credentialDestroyed: true, streamRowsKept: 1, operationId: 'retireCaptureDevice', permission: 'CAPTURE_COMMISSION' },
+      details: { deviceId: 'CAM-06', kind: 'CAMERA', reason: 'STATEMENT_CHANGED', credentialDestroyed: true, streamRowsKept: 1, operationId: 'retireCaptureDevice', permission: 'CAPTURE_COMMISSION' },
     },
   });
   // D57 (2026-11-03, principal): the pre-delivery panel setup changed from the console (operation

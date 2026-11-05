@@ -19,13 +19,14 @@
 import { describe, expect, it } from 'vitest';
 import { REPOSITORY, isProductionSource, isTestFile, readTree, stripComments, type SourceFile } from '../../../../test/static/scan';
 
-/** The six columns of `capture_config`, built from parts so that this file is not itself an occurrence. */
-const COLUMNS = ['video_01_device', 'video_01', 'video_02_device', 'video_02', 'mic_primary', 'mic_standby'].map((stem, index) =>
-  [stem, index === 1 || index === 3 ? 'profile' : 'id'].join('_'),
+/** The selector columns of `capture_config` (D60: four video pairs; D61: four numbered mic ids),
+ * built from parts so that this file is not itself an occurrence. */
+const COLUMNS = ['video_01_device', 'video_01', 'video_02_device', 'video_02', 'video_03_device', 'video_03', 'video_04_device', 'video_04', 'mic_01', 'mic_02', 'mic_03', 'mic_04'].map((stem) =>
+  [stem, /^video_0\d$/.test(stem) ? 'profile' : 'id'].join('_'),
 );
-/** The six members of the row image (`db/mapping/rows.ts`), built the same way. */
-const MEMBERS = ['video01Device', 'video01', 'video02Device', 'video02', 'micPrimary', 'micStandby'].map((stem, index) =>
-  [stem, index === 1 || index === 3 ? 'Profile' : 'Id'].join(''),
+/** The members of the row image (`db/mapping/rows.ts`), built the same way. */
+const MEMBERS = ['video01Device', 'video01', 'video02Device', 'video02', 'video03Device', 'video03', 'video04Device', 'video04', 'mic01', 'mic02', 'mic03', 'mic04'].map((stem) =>
+  [stem, /^video0\d$/.test(stem) ? 'Profile' : 'Id'].join(''),
 );
 const NAMES = [...COLUMNS, ...MEMBERS];
 const NAMED = new RegExp(`(?<![A-Za-z0-9_])(?:${NAMES.join('|')})(?![A-Za-z0-9_])`);
@@ -135,10 +136,10 @@ describe('the scan itself', () => {
   });
 
   it('the pattern is the twelve names of row 27 section 1: six columns, six members, as whole identifiers', () => {
-    expect(NAMES).toHaveLength(12);
-    expect(new Set(NAMES).size).toBe(12);
-    expect(COLUMNS.every((name) => /^(?:video_0[12]_(?:device_id|profile)|mic_(?:primary|standby)_id)$/.test(name))).toBe(true);
-    expect(MEMBERS.every((name) => /^(?:video0[12](?:DeviceId|Profile)|mic(?:Primary|Standby)Id)$/.test(name))).toBe(true);
+    expect(NAMES).toHaveLength(24); // D60/D61: twelve columns, twelve members
+    expect(new Set(NAMES).size).toBe(24);
+    expect(COLUMNS.every((name) => /^(?:video_0[1-4]_(?:device_id|profile)|mic_0[1-4]_id)$/.test(name)), 'column shape').toBe(true);
+    expect(MEMBERS.every((name) => /^(?:video0[1-4](?:DeviceId|Profile)|mic0[1-4]Id)$/.test(name)), 'member shape').toBe(true);
     for (const name of NAMES) {
       expect(NAMED.test(`row.${name} ?? null`), name).toBe(true);
       expect(NAMED.test(`row.${name}Old`), name).toBe(false);

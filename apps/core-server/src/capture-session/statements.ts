@@ -6,16 +6,22 @@
  * text (SR-67). Every table is named with its schema.
  *
  * WHAT THE RUNTIME ROLE MAY DO HERE.
- *   `session_capture_sources`   SELECT and INSERT; no UPDATE, no DELETE (0009): the four rows of a
- *                               session are written once.
+ *   `session_capture_sources`   SELECT and INSERT; no UPDATE, no DELETE (0009): the eight rows of a
+ *                               session (D60 / D61, 2026-11-04) are written once.
  *   `session_audio_intervals`   SELECT, INSERT, and UPDATE of `to_media_ms`, `to_at` only (0005):
  *                               an interval is opened by an INSERT and closed by that one UPDATE.
  */
 
 /**
- * MR-S1: the four source rows of a session IN ONE STATEMENT. Parameters: the session ID, the
- * instant, then (slot, device ID, adapter kind, source facts) four times. A session that already
- * has a row is a primary-key violation: the unit that persists RECORDING fails and nothing is stored.
+ * MR-S1: the EIGHT source rows of a session IN ONE STATEMENT (D60, 2026-11-04: six rows, was four;
+ * D61, 2026-11-04: eight — the four video tracks `VIDEO-01`..`VIDEO-04` and the four numbered
+ * microphone channels `MIC-01`..`MIC-04; `SOURCE_ROWS_PER_SESSION` = 8). Parameters: the session
+ * ID, the instant, then (slot, device ID, adapter kind, source facts) EIGHT times, so `$3`..`$34`.
+ * The caller in `recordingStartedIn` flattens `buildSessionCaptureSources` in exactly that order;
+ * the four-tuple text of the two-track era bound 18 parameters and the eight-row call died with
+ * SQLSTATE 08P01 (`bind message supplies 34 parameters, but prepared statement requires 18`).
+ * A session that already has a row is a primary-key violation: the unit that persists RECORDING
+ * fails and nothing is stored.
  *
  * The source facts (task 4 row 71; schema v7) are the text of a flat JSON map, `{}` for a slot
  * that states none. They are written HERE and never again: the runtime role has no UPDATE on the
@@ -25,7 +31,11 @@ export const INSERT_SESSION_CAPTURE_SOURCES = `INSERT INTO public.session_captur
 VALUES ($1::text, $3::text, $4::text, $5::text, $2::bigint, $6::jsonb),
        ($1::text, $7::text, $8::text, $9::text, $2::bigint, $10::jsonb),
        ($1::text, $11::text, $12::text, $13::text, $2::bigint, $14::jsonb),
-       ($1::text, $15::text, $16::text, $17::text, $2::bigint, $18::jsonb)`;
+       ($1::text, $15::text, $16::text, $17::text, $2::bigint, $18::jsonb),
+       ($1::text, $19::text, $20::text, $21::text, $2::bigint, $22::jsonb),
+       ($1::text, $23::text, $24::text, $25::text, $2::bigint, $26::jsonb),
+       ($1::text, $27::text, $28::text, $29::text, $2::bigint, $30::jsonb),
+       ($1::text, $31::text, $32::text, $33::text, $2::bigint, $34::jsonb)`;
 
 /** MR-S6: the rows a session start wrote, read back in the same transaction. */
 export const READ_SESSION_CAPTURE_SOURCES = 'SELECT slot, device_id, adapter_kind FROM public.session_capture_sources WHERE session_id = $1 ORDER BY slot';

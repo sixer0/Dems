@@ -329,11 +329,13 @@ describe('operation 93 and 94 through the real pipeline (M4-AUD-1, M4-DISC-LIFE-
     expect(written).not.toMatch(/192\.0\.2\.20|urn:uuid|CANARY|device_service/);
     expect(server.log.lines().some((line) => line['code'] === 'CAPTURE_DISCOVERY_SEARCHED' && line['searchId'] === 'DSC-000001' && line['responderCount'] === 2)).toBe(true);
 
-    // R-9 AC-3 / AC-4: nothing was registered. The two tables are byte-equal, operation 77 lists the five built-ins, and the chain verifies.
+    // R-9 AC-3 / AC-4: nothing was registered. The two tables are byte-equal, operation 77 lists the
+    // NINE built-ins (D60 / D61, 2026-11-04: four cameras, four numbered mic channels, the switch), and
+    // the chain verifies.
     expect(await registryDigest()).toEqual(registry);
     const devices = (await server.get('TECHNICIAN', '/api/v1/capture/devices')).json<{ devices: { id: string }[] }>();
-    expect(devices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
-    expect(server.engine.slice('captureDevices').devices).toHaveLength(5);
+    expect(devices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH']);
+    expect(server.engine.slice('captureDevices').devices).toHaveLength(9);
     const trailNow = await readTrail(server.owner);
     expect(linkProblems(trailNow)).toEqual([]);
     expect(verifyTrail(trailNow, await readHead(server.owner)).ok).toBe(true);
@@ -644,30 +646,34 @@ describe('the whole flow once on the booted Core, against the fake ONVIF stub wi
       expect(adopted.statusCode, adopted.body).toBe(201);
       const adoption = adopted.json<{ deviceId: string; device: Record<string, unknown>; credentialSet: boolean }>();
       expect(validateCoreApiResponse('adoptCaptureCandidate', 201, adoption)).toEqual({ ok: true });
-      expect(adoption).toMatchObject({ deviceId: 'CAM-03', credentialSet: true, device: { id: 'CAM-03', kind: 'CAMERA', host: expect.stringMatching(/^127\.0\.0\.1(:\d+)?$/), online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } });
+      // D60 (2026-11-04): the built-in block is CAM-01..04, so the adoption mints the FIRST ID PAST IT.
+      expect(adoption).toMatchObject({ deviceId: 'CAM-05', credentialSet: true, device: { id: 'CAM-05', kind: 'CAMERA', host: expect.stringMatching(/^127\.0\.0\.1(:\d+)?$/), online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } });
       await settled();
-      const stored = await server.owner.query<Record<string, unknown>>("SELECT id, kind, transport, adapter_kind, onvif_uuid, address, enabled, jsonb_array_length(profiles) AS profiles FROM capture_devices WHERE id = 'CAM-03'");
-      expect(stored.rows).toEqual([{ id: 'CAM-03', kind: 'CAMERA', transport: 'RTSP', adapter_kind: 'FAKE', onvif_uuid: candidate.endpointRef, address: adoption.device['host'], enabled: true, profiles: expect.any(Number) }]);
+      const stored = await server.owner.query<Record<string, unknown>>("SELECT id, kind, transport, adapter_kind, onvif_uuid, address, enabled, jsonb_array_length(profiles) AS profiles FROM capture_devices WHERE id = 'CAM-05'");
+      expect(stored.rows).toEqual([{ id: 'CAM-05', kind: 'CAMERA', transport: 'RTSP', adapter_kind: 'FAKE', onvif_uuid: candidate.endpointRef, address: adoption.device['host'], enabled: true, profiles: expect.any(Number) }]);
       // Task 4 row 51 (AD-06 (4); C36). Until row 51 this line read "greater than 0": the list held the ONVIF tokens the
       // test read. This Core has no relay program, so its connection test has no stream half and judges no stream: NO
       // code exists, the list is empty and no stream row is written - an ONVIF token is stored nowhere, and no default
       // stands in. The adoption that stores a minted code is `connect/__tests__/connect.db.test.ts` (rows 50 and 51).
       expect(Number(stored.rows[0]?.['profiles'])).toBe(0);
-      expect((await server.owner.query("SELECT count(*)::int AS rows FROM capture_device_streams WHERE device_id = 'CAM-03'")).rows).toEqual([{ rows: 0 }]);
+      expect((await server.owner.query("SELECT count(*)::int AS rows FROM capture_device_streams WHERE device_id = 'CAM-05'")).rows).toEqual([{ rows: 0 }]);
       const after = await server.owner.query<{ devices: number; credentials: number }>('SELECT (SELECT count(*)::int FROM capture_devices) AS devices, (SELECT count(*)::int FROM capture_device_credentials) AS credentials');
       expect([after.rows[0]?.devices, after.rows[0]?.credentials]).toEqual([(registry.rows[0]?.devices ?? 0) + 1, (registry.rows[0]?.credentials ?? 0) + 1]);
       // The replicated slice and operation 77 hold the device; the candidate reads REGISTERED; a repeat is refused.
-      expect(server.engine.slice('captureDevices').devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'CAM-03']);
+      // D60 / D61 (2026-11-04): the nine built-ins in their order, then the adopted camera.
+      expect(server.engine.slice('captureDevices').devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH', 'CAM-05']);
       expect(server.stateChanges().some((change) => change.ops.some((op) => op.op === 'replace' && op.slice === 'captureDevices'))).toBe(true);
-      expect((await read('TECHNICIAN')).candidates[0]).toMatchObject({ status: 'REGISTERED', deviceId: 'CAM-03', adoptable: false });
+      expect((await read('TECHNICIAN')).candidates[0]).toMatchObject({ status: 'REGISTERED', deviceId: 'CAM-05', adoptable: false });
       server.clock.advance(30_000);
       const repeat = await server.post('TECHNICIAN', `${base}/adopt`, { credential: account });
-      expect([outcome(repeat), errorOf(repeat).details]).toEqual([[409, 'INVALID_STATE'], expect.objectContaining({ reason: 'CANDIDATE_ALREADY_REGISTERED', deviceId: 'CAM-03' })]);
+      expect([outcome(repeat), errorOf(repeat).details]).toEqual([[409, 'INVALID_STATE'], expect.objectContaining({ reason: 'CANDIDATE_ALREADY_REGISTERED', deviceId: 'CAM-05' })]);
 
       // ASSIGN (79): the registered camera, and never the candidate id.
-      const assigned = await server.post('TECHNICIAN', '/api/v1/capture/cameras/CAM-03/source', { trackId: 'VIDEO-02' });
+      const assigned = await server.post('TECHNICIAN', '/api/v1/capture/cameras/CAM-05/source', { trackId: 'VIDEO-02' });
       expect(assigned.statusCode, assigned.body).toBe(200);
-      expect(assigned.json<{ cameras: { trackId: string; deviceId: string }[] }>().cameras.map((camera) => [camera.trackId, camera.deviceId])).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-03']]);
+      // D60 (2026-11-04): the answer names all FOUR tracks — the two the seed assigns, the adopted one
+      // on VIDEO-02 and the built-in pair of the new tracks behind it.
+      expect(assigned.json<{ cameras: { trackId: string; deviceId: string }[] }>().cameras.map((camera) => [camera.trackId, camera.deviceId])).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-05'], ['VIDEO-03', 'CAM-03'], ['VIDEO-04', 'CAM-04']]);
       expect((await server.post('TECHNICIAN', `/api/v1/capture/cameras/${candidate.candidateId}/source`, { trackId: 'VIDEO-02' })).statusCode).toBe(404);
       await settled();
 

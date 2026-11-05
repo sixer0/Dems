@@ -71,7 +71,7 @@ const deviceOf = (host: Booted, id: string): CaptureDeviceStatus => {
 const without = (row: StoredRow, ...columns: string[]): StoredRow => Object.fromEntries(Object.entries(row).filter(([column]) => !columns.includes(column)));
 
 const BUILT_IN = 'CAM-01';
-const ADOPTED = 'CAM-03';
+const ADOPTED = 'CAM-05'; // D60 (2026-11-04): the seed holds CAM-01..04 — the next free number an adoption mints
 const ADOPTED_OLD = '192.168.50.20';
 const NEW_ADDRESS = '192.168.50.41';
 const NEW_ADDRESS_WITH_PORT = '192.168.50.42:8080';

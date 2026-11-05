@@ -60,7 +60,7 @@ const SEED_COUNTS: Readonly<Record<string, number>> = {
   permissions: 15,
   registry_counters: 2,
   // REVISED 2026-10-29 (0034_capture_config_supervisor_revocation, principal PT GSP): SUPERVISOR's
-  // CAPTURE_CONFIG grant is revoked — the seed writes 22 grants, 311 rows in all.
+  // CAPTURE_CONFIG grant is revoked — the seed writes 22 grants, 315 rows in all (D60/D61 2026-11-04: nine built-in devices).
   role_permissions: 22,
   roles: 3,
   schema_meta: 1,
@@ -122,7 +122,7 @@ describe('db:reset --database <a name that does not exist yet>: how a lane datab
     expect(out[0]).toBe(`db:reset: ${name} on PostgreSQL 18.4 as dems_owner`);
     expect(out[1]).toBe('db:reset: dataset as of 2026-10-04T04:00:00.000Z (1791086400000); scenario idle; reason RESET; actor none (command line)');
     expect(out[2]).toBe(`db:reset: first build: ${name} did not exist. Nothing was carried over and no chain was discarded; epoch 0.`);
-    expect(out[3]).toMatch(/^db:reset: done in \d+ ms \(R-0 \d+, R-1 \d+, R-2 \d+, R-3 \d+, R-4 \d+, R-5 \d+, R-6 \d+, R-7 \d+, R-8 \d+, R-9 \d+\); the database now holds 311 row\(s\) in 24 of 48 table\(s\)$/);
+    expect(out[3]).toMatch(/^db:reset: done in \d+ ms \(R-0 \d+, R-1 \d+, R-2 \d+, R-3 \d+, R-4 \d+, R-5 \d+, R-6 \d+, R-7 \d+, R-8 \d+, R-9 \d+\); the database now holds 315 row\(s\) in 24 of 48 table\(s\)$/);
     for (const [table, rows] of Object.entries(SEED_COUNTS)) expect(out).toContain(`  ${table.padEnd(24)} ${rows}`);
     expect(out.at(-3)).toMatch(/^audit head       seq 82; hash [0-9a-f]{16}\.\.\.$/);
     expect(out.at(-2)).toBe('lineage          0 row(s); 0 carried over, 0 appended');
@@ -176,7 +176,7 @@ describe('db:reset on a used database', () => {
     expect(done.err).toEqual([]);
     expect(done.out).toContain('db:reset: epoch 0 -> 1');
     expect(done.out).toContain(
-      'db:reset: kept tables carried over unchanged (rows): registry_counters 2, console_settings 1, pairing_codes 5, paired_devices 2, device_credentials 2, auth_sessions 3, biometric_tokens 3, capture_devices 5, capture_device_credentials 0, capture_config 1, stt_config 1, core_media_store 0, capture_device_streams 0, capture_audio_inputs 0, capture_network_config 0, host_network_aliases 0, installation_acceptances 0, audit_chain_history 0',
+      'db:reset: kept tables carried over unchanged (rows): registry_counters 2, console_settings 1, pairing_codes 5, paired_devices 2, device_credentials 2, auth_sessions 3, biometric_tokens 3, capture_devices 9, capture_device_credentials 0, capture_config 1, stt_config 1, core_media_store 0, capture_device_streams 0, capture_audio_inputs 0, capture_network_config 0, host_network_aliases 0, installation_acceptances 0, audit_chain_history 0',
     );
     expect(done.out).toContain('db:reset: pairing codes that were ACTIVE, now CANCELLED: 1; operators with a last sign-in from a kept session: 2');
     expect(done.out).toContain('db:reset: SCENARIO_LOADED is audit row 83 of the new chain');
@@ -233,7 +233,7 @@ describe('nothing the command printed is a credential', () => {
 // Fix wave I, driver A1 (re-gate 75 finding G75b-01; ruling D216) - THE WHOLE RESET, as `db:reset`
 // runs it, on the state lane 2 was left in:
 //
-//   - a session of four generated (FAKE) sources whose seal failed: its recording folder, without a
+//   - a session of eight generated (FAKE) sources (D61, 2026-11-04: SOURCE_ROWS_PER_SESSION=8) whose seal failed: its recording folder, without a
 //     manifest, in the media store;
 //   - in the key folder of that store: the key an EARLIER session of the same number left (made by
 //     a build that bound no key to its session; the database names that earlier session no more)
@@ -272,13 +272,16 @@ describe('G75b-01, D216: db:reset on a development lane whose seal failed', () =
   beforeAll(async () => {
     maintenance = maintenancePool(db.run.dataDir);
     const owner = db.ownerPool();
-    const cameras = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'CAM-%' ORDER BY id LIMIT 2")).rows.map((row) => row.id);
-    const microphones = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'MIC-%' ORDER BY id LIMIT 2")).rows.map((row) => row.id);
+    const cameras = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'CAM-%' ORDER BY id LIMIT 4")).rows.map((row) => row.id); // D60: four built-in cameras
+    const microphones = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'MIC-%' ORDER BY id LIMIT 4")).rows.map((row) => row.id); // D61: four built-in channels
+    // D61 (2026-11-04): the start record of a session is EIGHT rows (SOURCE_ROWS_PER_SESSION=8) — the G75b-01 lane is all-generated.
     await owner.query(
       `INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at) VALUES
        ($1, 'VIDEO-01', $2, 'FAKE', 1791600000000), ($1, 'VIDEO-02', $3, 'FAKE', 1791600000000),
-       ($1, 'MIC-PRIMARY', $4, 'FAKE', 1791600000000), ($1, 'MIC-STANDBY', $5, 'FAKE', 1791600000000)`,
-      [SESSION, cameras[0], cameras[1], microphones[0], microphones[1]],
+       ($1, 'VIDEO-03', $4, 'FAKE', 1791600000000), ($1, 'VIDEO-04', $5, 'FAKE', 1791600000000),
+       ($1, 'MIC-01', $6, 'FAKE', 1791600000000), ($1, 'MIC-02', $7, 'FAKE', 1791600000000),
+       ($1, 'MIC-03', $8, 'FAKE', 1791600000000), ($1, 'MIC-04', $9, 'FAKE', 1791600000000)`,
+      [SESSION, ...cameras, ...microphones],
     );
     // The recording folder of the session whose seal failed: camera files, a part file, no manifest.
     mkdirSync(join(mediaRoot, `SESSION-${SESSION}`, 'fragments'), { recursive: true });
@@ -315,7 +318,7 @@ describe('G75b-01, D216: db:reset on a development lane whose seal failed', () =
       expect(text).toContain(DISCARD_UNSEALED_FAKE_OPTION);
       expect(existsSync(join(mediaRoot, `SESSION-${SESSION}`, 'VIDEO-01.mp4'))).toBe(true);
       expect(readdirSync(keyFolder()).sort()).toEqual([`KID-${EARLIER}.key`, `KID-${SESSION}.key`]);
-      expect((await db.ownerPool().query('SELECT count(*)::int AS n FROM public.session_capture_sources WHERE session_id = $1', [SESSION])).rows).toEqual([{ n: 4 }]);
+      expect((await db.ownerPool().query('SELECT count(*)::int AS n FROM public.session_capture_sources WHERE session_id = $1', [SESSION])).rows).toEqual([{ n: 8 }]); // D61 (2026-11-04): the lane's start record is eight rows
     });
 
     it('WITH the word: exit 0; the reset says what it erases, removes the recording folder, destroys EVERY session key of the store (the two of unknown sessions among them) and the stale facts file; a session of the number starts and seals under a new key', async () => {

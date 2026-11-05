@@ -186,7 +186,7 @@ async function productionClone(slug: string): Promise<Clone> {
   caseClones.push(target);
   const owner = target.ownerPool();
   await owner.query('UPDATE public.stt_config SET enabled = false');
-  await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_primary_id = NULL, mic_standby_id = NULL');
+  await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL, mic_01_id = NULL, mic_02_id = NULL, mic_03_id = NULL, mic_04_id = NULL');
   await ownCredentials(owner);
   return target;
 }
@@ -227,10 +227,15 @@ async function bootOn(target: Clone, dataDir: string, other: Partial<ConfigInput
 
 /** The device ids are those of the harness's session facts (the manifest builder holds the rows to its tracks); the KINDS are the production ones. */
 const PRODUCTION_ROWS: readonly SessionCaptureSourceRow[] = [
+  // D60/D61 (2026-11-04): a fresh start record is EIGHT rows - four video tracks and four numbered channels.
   { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'ONVIF_RTSP' },
   { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'ONVIF_RTSP' },
-  { slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'USB_AUDIO' },
-  { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'USB_AUDIO' },
+  { slot: 'VIDEO-03', deviceId: 'CAM-03', adapterKind: 'ONVIF_RTSP' },
+  { slot: 'VIDEO-04', deviceId: 'CAM-04', adapterKind: 'ONVIF_RTSP' },
+  { slot: 'MIC-01', deviceId: 'MIC-01', adapterKind: 'USB_AUDIO' },
+  { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'USB_AUDIO' },
+  { slot: 'MIC-03', deviceId: 'MIC-03', adapterKind: 'USB_AUDIO' },
+  { slot: 'MIC-04', deviceId: 'MIC-04', adapterKind: 'USB_AUDIO' },
 ];
 function recorded(): Recording {
   const recording = recordSession();

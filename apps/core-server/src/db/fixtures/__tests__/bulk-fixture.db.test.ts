@@ -400,14 +400,15 @@ describe('the bulk template: the v2 rows of dbc-3 §G (CS-20)', () => {
     expect(await count(pool, "SELECT count(*) FROM sealing_jobs WHERE status = 'RUNNING'")).toBe(0);
   });
 
-  it('M4-MT-15 (fixture): the adapter mix of the 12 devices and the 4-per-session source record of dbc-4 §N.10', async () => {
+  it('M4-MT-15 (fixture): the adapter mix of the 16 devices and the 4-per-session source record of dbc-4 §N.10', async () => {
     const pool = db.ownerPool();
     const mix = await pool.query('SELECT kind, adapter_kind, count(*)::int AS n FROM capture_devices GROUP BY 1, 2 ORDER BY 1, 2');
+    // D60/D61 (2026-11-04): NINE built-ins (four FAKE cameras, four FAKE channels, the switch); the fixture adds the rest.
     expect(mix.rows).toEqual([
-      { kind: 'CAMERA', adapter_kind: 'FAKE', n: 2 },
+      { kind: 'CAMERA', adapter_kind: 'FAKE', n: 4 },
       { kind: 'CAMERA', adapter_kind: 'LOCAL_DEVICE', n: 1 },
       { kind: 'CAMERA', adapter_kind: 'ONVIF_RTSP', n: 3 },
-      { kind: 'MIC', adapter_kind: 'FAKE', n: 2 },
+      { kind: 'MIC', adapter_kind: 'FAKE', n: 4 },
       { kind: 'MIC', adapter_kind: 'LOCAL_DEVICE', n: 1 },
       { kind: 'MIC', adapter_kind: 'USB_AUDIO', n: 2 },
       { kind: 'POE', adapter_kind: 'FAKE', n: 1 },
@@ -461,13 +462,13 @@ describe('the bulk template: the v2 rows of dbc-3 §G (CS-20)', () => {
     expect(await count(pool, 'SELECT count(*) FROM evidence_items WHERE manifest_version = 2 AND development_sources IS NULL')).toBe(0);
   });
 
-  it('capture rows: the discovered devices over the seeded five, one dual-profile camera, two fake credentials with a rotation', async () => {
+  it('capture rows: the discovered devices over the seeded nine, one dual-profile camera, two fake credentials with a rotation', async () => {
     const pool = db.ownerPool();
-    expect(await count(pool, "SELECT count(*) FROM capture_devices WHERE id IN ('CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH')")).toBe(5);
-    // dbc-4 §N.10: 12 = 5 built-ins + 3 ONVIF cameras + 2 USB microphones + the local camera and microphone.
-    expect(await count(pool, 'SELECT count(*) FROM capture_devices')).toBe(12);
+    expect(await count(pool, "SELECT count(*) FROM capture_devices WHERE id IN ('CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH')")).toBe(9); // D60/D61 (2026-11-04): the nine built-ins
+    // dbc-4 §N.10 revised by D60/D61 (2026-11-04): 16 = 9 built-ins + 3 ONVIF cameras + 2 USB microphones + the local camera and microphone.
+    expect(await count(pool, 'SELECT count(*) FROM capture_devices')).toBe(16);
     expect(await count(pool, 'SELECT count(*) FROM capture_devices WHERE jsonb_array_length(profiles) >= 2')).toBeGreaterThanOrEqual(BULK_MIX.captureDevices.dualProfileCameras);
-    expect(await count(pool, 'SELECT count(*) FROM capture_device_credentials c WHERE c.device_id IN (\'CAM-01\', \'CAM-02\', \'MIC-01\', \'MIC-02\', \'POE-SWITCH\')')).toBe(0);
+    expect(await count(pool, 'SELECT count(*) FROM capture_device_credentials c WHERE c.device_id IN (\'CAM-01\', \'CAM-02\', \'CAM-03\', \'CAM-04\', \'MIC-01\', \'MIC-02\', \'MIC-03\', \'MIC-04\', \'POE-SWITCH\')')).toBe(0); // D60/D61: no credential on a built-in (RK-12)
     const rotated = await pool.query<{ n: string }>('SELECT count(*) AS n FROM capture_device_credentials c WHERE EXISTS (SELECT 1 FROM capture_device_credentials o WHERE o.rotated_at < c.rotated_at)');
     expect(Number(rotated.rows[0]?.n ?? 0)).toBeGreaterThanOrEqual(BULK_MIX.captureDeviceCredentials.rotatedAtLeast);
   });
@@ -492,8 +493,10 @@ describe('the bulk template: every constraint holds, and nothing was switched of
     // key). REVISED 2026-11-02 (purge amendment, principal PT GSP, 0036): 236 CHECKs, 50 foreign
     // keys, 49 primary keys — T-49 is deliberately keyless, T-50 brings the pkey, one SET NULL
     // actor reference and three CHECKs. None invalid - the loader switched nothing off.
-    expect(byKind['c']).toEqual({ rows: 236, invalid: 0 });
-    expect(byKind['f']).toEqual({ rows: 50, invalid: 0 });
+    // D60/D61 (2026-11-04, dbc-18): 237 CHECKs and 54 foreign keys — the widened value-set CHECKs
+    // stand under their names; 0039/0040 add the four slot references of the new columns.
+    expect(byKind['c']).toEqual({ rows: 237, invalid: 0 });
+    expect(byKind['f']).toEqual({ rows: 54, invalid: 0 });
     expect(byKind['p']).toEqual({ rows: 49, invalid: 0 });
     expect(constraints.rows.reduce((sum, row) => sum + Number(row.invalid), 0)).toBe(0);
 

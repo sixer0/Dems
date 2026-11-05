@@ -141,14 +141,24 @@ const signingMemberRowsOf = async (owner: Pool): Promise<number> => Number((awai
  * What an adoption would leave (the owner writes it as a fixture): two production cameras, assigned
  * to the two tracks. The microphones stay `MIC-01` / `MIC-02` here. (Until pass C1 the shared contract
  * named a microphone input by exactly those two ids; the rule is `MIC-NN` now, D115(2), so a stored
- * selector may name another registered microphone - see the `MIC-03` case below.)
+ * selector may name another registered microphone - see the `MIC-05` case below.)
+ *
+ * D60 / D61 (2026-11-04): the seed's built-ins are NINE — `CAM-01`..`CAM-04`, `MIC-01`..`MIC-04` and
+ * the switch — so the id a registration MINTS is the next free number: `CAM-05` / `MIC-05`. The local
+ * rows of this file carry those ids; `CAM-03` / `MIC-03` are seeded FAKE built-ins and inserting them
+ * again is a duplicate key.
  */
 async function assignProduction(owner: Pool): Promise<void> {
   await owner.query("INSERT INTO public.capture_devices (id, kind, transport, enabled, adapter_kind) VALUES ('CAM-11', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP'), ('CAM-12', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP')");
-  await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-11', video_02_device_id = 'CAM-12'");
+  // D60 (2026-11-04): the selector carries FOUR camera tracks. This fixture adopts two cameras and
+  // leaves tracks 3 and 4 UNASSIGNED (the slot pair goes NULL together, `capture_config_slot_pair_check`),
+  // so the state stays "two production cameras" with nothing invented beside them.
+  await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-11', video_01_profile = 'H264_1080P25', video_02_device_id = 'CAM-12', video_02_profile = 'H264_1080P25', video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL");
 }
+// D60 / D61: the local rows take the NEXT FREE ids (`CAM-05`, `MIC-05`): `CAM-03`/`CAM-04` and
+// `MIC-03`/`MIC-04` are the seeded built-ins of the widened planes.
 const addLocalRows = (owner: Pool): Promise<unknown> =>
-  owner.query("INSERT INTO public.capture_devices (id, kind, transport, model, enabled, adapter_kind) VALUES ('CAM-03', 'CAMERA', 'AVFOUNDATION', 'MacBook Air Camera', false, 'LOCAL_DEVICE'), ('MIC-03', 'MIC', 'AVFOUNDATION', 'MacBook Air Microphone', false, 'LOCAL_DEVICE')");
+  owner.query("INSERT INTO public.capture_devices (id, kind, transport, model, enabled, adapter_kind) VALUES ('CAM-05', 'CAMERA', 'AVFOUNDATION', 'MacBook Air Camera', false, 'LOCAL_DEVICE'), ('MIC-05', 'MIC', 'AVFOUNDATION', 'MacBook Air Microphone', false, 'LOCAL_DEVICE')");
 
 /** The helper rule a refused boot names, or null. */
 const helperProblemOf = (booted: Booted): string | null => (booted.failure?.cause instanceof CaptureFenceError ? booted.failure.cause.helperProblem : null);
@@ -199,28 +209,32 @@ describe('SIMULATED: every stored kind is inert and the database keeps booting',
     const owner = target.ownerPool();
     await assignProduction(owner);
     await addLocalRows(owner);
-    await owner.query("UPDATE public.capture_config SET video_02_device_id = 'CAM-03'");
+    await owner.query("UPDATE public.capture_config SET video_02_device_id = 'CAM-05'"); // D60/D61: the local camera is the next free id
     for (const demoControls of [true, false]) {
       const booted = await boot(target, { demoControls });
       expect(booted.failure, `demo controls ${String(demoControls)}`).toBeNull();
-      expect(engineControl(booted.app).state().captureDevices.devices).toHaveLength(9);
+      // D60 / D61 (2026-11-04): nine built-ins + the two adopted cameras + the two local rows.
+      expect(engineControl(booted.app).state().captureDevices.devices).toHaveLength(13);
       await booted.app.close();
     }
     expect(await bootAuditsOf(owner)).toEqual([]);
-    // CONTROL: the very same database is refused the moment the capture mode is real.
-    expectRefused(await boot(target, REAL), 'DEV_SOURCE_WITHOUT_FLAG', ['CAM-03', 'MIC-01', 'MIC-02']);
+    // CONTROL: the very same database is refused the moment the capture mode is real: the local camera of
+    // VIDEO-02 and the FOUR assigned built-in microphones are development sources (D61).
+    expectRefused(await boot(target, REAL), 'DEV_SOURCE_WITHOUT_FLAG', ['CAM-05', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']);
   });
 
-  it('a stored selector that names MIC-03 rehydrates since the microphone id rule is MIC-NN (pass C1, D115(2)): the simulated boot goes through', async () => {
+  it('a stored selector that names MIC-05 rehydrates since the microphone id rule is MIC-NN (pass C1, D115(2)): the simulated boot goes through', async () => {
     const target = await clone('fence-sim-mic');
     const owner = target.ownerPool();
     await addLocalRows(owner);
-    await owner.query("UPDATE public.capture_config SET mic_01_id = 'MIC-03'"); // D61 (2026-11-04): 0040 renamed the role columns to the channel columns
+    // D61 (2026-11-04): the case names a microphone BEYOND the built-ins; `MIC-03` became a built-in with
+    // the four-channel plane, so the next free id of the class (`MIC-05`, the local row) carries the rule.
+    await owner.query("UPDATE public.capture_config SET mic_01_id = 'MIC-05'");
     const booted = await boot(target, { demoControls: true });
     try {
       expect(booted.failure).toBeNull();
       expect(captureFenceControl(booted.app).operation).toBe('SIMULATED');
-      expect(engineControl(booted.app).state().captureConfig.mics.map((mic) => [mic.inputId, mic.channel]).sort()).toEqual([['MIC-02', 'MIC-02'], ['MIC-03', 'MIC-01']]); // D61: the numbered channel replaced the role
+      expect(engineControl(booted.app).state().captureConfig.mics.map((mic) => [mic.inputId, mic.channel]).sort()).toEqual([['MIC-02', 'MIC-02'], ['MIC-03', 'MIC-03'], ['MIC-04', 'MIC-04'], ['MIC-05', 'MIC-01']]); // D61: the numbered channel replaced the role
     } finally {
       await booted.app.close();
     }
@@ -248,9 +262,10 @@ describe('REAL_PRODUCTION: a development source is never part of it', () => {
   it('row 7 on the seed: the four assigned built-ins are FAKE, so the boot is refused, by name, with no audit row', async () => {
     const target = await clone('fence-row7');
     const booted = await boot(target, REAL);
-    expectRefused(booted, 'DEV_SOURCE_WITHOUT_FLAG', ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02']);
+    // D60 / D61 (2026-11-04): the seed assigns EIGHT built-ins — four camera tracks, four mic channels.
+    expectRefused(booted, 'DEV_SOURCE_WITHOUT_FLAG', ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']);
     expect(await bootAuditsOf(target.ownerPool())).toEqual([]);
-    expect(await kindsOf(target.ownerPool())).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'POE-SWITCH:FAKE']);
+    expect(await kindsOf(target.ownerPool())).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'CAM-03:FAKE', 'CAM-04:FAKE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'MIC-03:FAKE', 'MIC-04:FAKE', 'POE-SWITCH:FAKE']);
   });
 
   it('a stored LOCAL_DEVICE row: assigned -> the refusal names it; registered but unassigned -> it is not named (the fence reads the selector, not the registry)', async () => {
@@ -258,14 +273,15 @@ describe('REAL_PRODUCTION: a development source is never part of it', () => {
     const owner = target.ownerPool();
     await assignProduction(owner);
     await addLocalRows(owner);
-    // Unassigned: the local rows are ignored. What stops this boot is the two FAKE microphones that are assigned.
-    expectRefused(await boot(target, REAL), 'DEV_SOURCE_WITHOUT_FLAG', ['MIC-01', 'MIC-02']);
-    await owner.query("UPDATE public.capture_config SET video_02_device_id = 'CAM-03'");
-    expectRefused(await boot(target, REAL), 'DEV_SOURCE_WITHOUT_FLAG', ['CAM-03', 'MIC-01', 'MIC-02']);
+    // Unassigned: the local rows are ignored. What stops this boot is the FOUR assigned FAKE built-in
+    // microphones (D61, 2026-11-04) - the camera tracks all name production rows by now.
+    expectRefused(await boot(target, REAL), 'DEV_SOURCE_WITHOUT_FLAG', ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']);
+    await owner.query("UPDATE public.capture_config SET video_02_device_id = 'CAM-05'");
+    expectRefused(await boot(target, REAL), 'DEV_SOURCE_WITHOUT_FLAG', ['CAM-05', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']);
     // One key more does not open it: the flag is refused for the production source that stays assigned.
     expectRefused(await boot(target, DEVELOPMENT), 'DEV_FLAG_WITH_PRODUCTION_SOURCE', ['CAM-11']);
     expect(await bootAuditsOf(owner)).toEqual([]);
-    expect(await kindsOf(owner)).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'CAM-03:LOCAL_DEVICE', 'CAM-11:ONVIF_RTSP', 'CAM-12:ONVIF_RTSP', 'MIC-01:FAKE', 'MIC-02:FAKE', 'MIC-03:LOCAL_DEVICE', 'POE-SWITCH:FAKE']);
+    expect(await kindsOf(owner)).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'CAM-03:FAKE', 'CAM-04:FAKE', 'CAM-05:LOCAL_DEVICE', 'CAM-11:ONVIF_RTSP', 'CAM-12:ONVIF_RTSP', 'MIC-01:FAKE', 'MIC-02:FAKE', 'MIC-03:FAKE', 'MIC-04:FAKE', 'MIC-05:LOCAL_DEVICE', 'POE-SWITCH:FAKE']);
   });
 
   it('row 4: real with demo controls is refused', async () => {
@@ -279,24 +295,26 @@ describe('REAL_DEVELOPMENT: the local devices are registered as rows of their ow
     const target = await clone('fence-dev');
     const owner = target.ownerPool();
     const seeded = await devicesOf(owner);
-    expect(seeded.map((row) => row['adapter_kind'])).toEqual(['FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE']);
+    // D60 / D61 (2026-11-04): NINE built-ins — four cameras, four microphones, the switch — every one `FAKE`.
+    expect(seeded.map((row) => row['adapter_kind'])).toEqual(['FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE']);
 
     const first = await boot(target, DEVELOPMENT);
     expect(first.failure).toBeNull();
     const fence = captureFenceControl(first.app);
     expect(fence.operation).toBe('REAL_DEVELOPMENT');
-    expect(fence.outcome()).toMatchObject({ local: { cameraId: 'CAM-03', micId: 'MIC-03' }, inserted: ['CAM-03', 'MIC-03'], helperProgram: HELPER });
+    // D60 / D61 (2026-11-04): the built-ins run to `CAM-04` / `MIC-04`, so the id a registration mints is `CAM-05` / `MIC-05`.
+    expect(fence.outcome()).toMatchObject({ local: { cameraId: 'CAM-05', micId: 'MIC-05' }, inserted: ['CAM-05', 'MIC-05'], helperProgram: HELPER });
     const after = await devicesOf(owner);
     expect(after.filter((row) => row['adapter_kind'] === 'LOCAL_DEVICE')).toEqual([
-      { id: 'CAM-03', kind: 'CAMERA', transport: 'AVFOUNDATION', model: 'MacBook Air Camera', firmware: null, address: null, mac: null, onvif_uuid: null, profiles: [], poe_port: null, enabled: false, last_seen_at: null, adapter_kind: 'LOCAL_DEVICE' },
-      { id: 'MIC-03', kind: 'MIC', transport: 'AVFOUNDATION', model: 'MacBook Air Microphone', firmware: null, address: null, mac: null, onvif_uuid: null, profiles: [], poe_port: null, enabled: false, last_seen_at: null, adapter_kind: 'LOCAL_DEVICE' },
+      { id: 'CAM-05', kind: 'CAMERA', transport: 'AVFOUNDATION', model: 'MacBook Air Camera', firmware: null, address: null, mac: null, onvif_uuid: null, profiles: [], poe_port: null, enabled: false, last_seen_at: null, adapter_kind: 'LOCAL_DEVICE' },
+      { id: 'MIC-05', kind: 'MIC', transport: 'AVFOUNDATION', model: 'MacBook Air Microphone', firmware: null, address: null, mac: null, onvif_uuid: null, profiles: [], poe_port: null, enabled: false, last_seen_at: null, adapter_kind: 'LOCAL_DEVICE' },
     ]);
-    // The five built-ins: every column as the seed wrote it.
+    // The nine built-ins: every column as the seed wrote it.
     expect(after.filter((row) => row['adapter_kind'] === 'FAKE')).toEqual(seeded);
     // The engine read the registry again: the first development boot already lists the two devices.
-    expect(engineControl(first.app).state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'MIC-01', 'MIC-02', 'MIC-03', 'POE-SWITCH']);
+    expect(engineControl(first.app).state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'CAM-05', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'MIC-05', 'POE-SWITCH']);
     // The registry of the running operation: local devices and test sources, each with an opener.
-    expect(fence.registry()?.list().map((entry) => `${entry.id}:${entry.adapterKind}`)).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'CAM-03:LOCAL_DEVICE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'MIC-03:LOCAL_DEVICE', 'POE-SWITCH:FAKE']);
+    expect(fence.registry()?.list().map((entry) => `${entry.id}:${entry.adapterKind}`)).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'CAM-03:FAKE', 'CAM-04:FAKE', 'CAM-05:LOCAL_DEVICE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'MIC-03:FAKE', 'MIC-04:FAKE', 'MIC-05:LOCAL_DEVICE', 'POE-SWITCH:FAKE']);
     expect(fence.openSources()).toEqual([]);
     expect(await fence.leftoverHelpers()).toEqual([]);
     expect(await bootAuditsOf(owner)).toEqual([bootRowOf('REAL_DEVELOPMENT')]);
@@ -304,13 +322,14 @@ describe('REAL_DEVELOPMENT: the local devices are registered as rows of their ow
 
     const second = await boot(target, DEVELOPMENT);
     expect(second.failure).toBeNull();
-    expect(captureFenceControl(second.app).outcome()).toMatchObject({ local: { cameraId: 'CAM-03', micId: 'MIC-03' }, inserted: [] });
+    expect(captureFenceControl(second.app).outcome()).toMatchObject({ local: { cameraId: 'CAM-05', micId: 'MIC-05' }, inserted: [] });
     expect(await devicesOf(owner)).toEqual(after);
     expect(await bootAuditsOf(owner)).toEqual([bootRowOf('REAL_DEVELOPMENT'), bootRowOf('REAL_DEVELOPMENT', 'NONE')]);
     // Once registered they are development sources: taking the flag away without unassigning is fine (they are not assigned) ...
     await second.app.close();
     // ... but the seeded FAKE built-ins are still assigned, so a production boot of this database stays refused.
-    expectRefused(await boot(target, REAL), 'DEV_SOURCE_WITHOUT_FLAG', ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02']);
+    // D60 / D61: the seed assigns EIGHT built-ins.
+    expectRefused(await boot(target, REAL), 'DEV_SOURCE_WITHOUT_FLAG', ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']);
   });
 
   // Task 4 row 209 (SX-15). THE ORDER: the step `capture.fence` writes and commits the boot row BEFORE the step `capture.boot`
@@ -333,7 +352,7 @@ describe('REAL_DEVELOPMENT: the local devices are registered as rows of their ow
   /** The fence step passed with its usual outcome, and the boot was then refused by the boot checks with this code and reason. */
   function expectFencePassedThenRefused(booted: Booted, code: string, reason: string): void {
     expect(booted.log.lines().filter((line) => line['msg'] === 'boot step passed').map((line) => line['step'])).toContain(CAPTURE_FENCE_BOOT_STEP);
-    expect(captureFenceControl(booted.app).outcome()).toMatchObject({ operation: 'REAL_DEVELOPMENT', local: { cameraId: 'CAM-03', micId: 'MIC-03' }, inserted: ['CAM-03', 'MIC-03'], helperProgram: HELPER });
+    expect(captureFenceControl(booted.app).outcome()).toMatchObject({ operation: 'REAL_DEVELOPMENT', local: { cameraId: 'CAM-05', micId: 'MIC-05' }, inserted: ['CAM-05', 'MIC-05'], helperProgram: HELPER }); // D60/D61: the next free ids behind the nine built-ins
     expect(booted.failure?.stepId).toBe('capture.boot');
     const cause = booted.failure?.cause;
     expect(cause).toBeInstanceOf(CaptureBootError);
@@ -429,15 +448,16 @@ describe('REAL_DEVELOPMENT: the local devices are registered as rows of their ow
     const target = await clone('fence-stmt');
     const app = target.appPool();
     const camera = ['CAMERA', 'CAM-', 'AVFOUNDATION', 'MacBook Air Camera', true];
-    expect((await app.query(REGISTER_LOCAL_DEVICE, camera)).rows).toEqual([{ id: 'CAM-03' }]);
+    // D60 / D61 (2026-11-04): the built-ins run to `CAM-04` / `MIC-04`, so the next free number is 05.
+    expect((await app.query(REGISTER_LOCAL_DEVICE, camera)).rows).toEqual([{ id: 'CAM-05' }]);
     expect((await app.query(REGISTER_LOCAL_DEVICE, camera)).rows).toEqual([]);
-    expect((await app.query(REGISTER_LOCAL_DEVICE, ['MIC', 'MIC-', 'AVFOUNDATION', 'MacBook Air Microphone', false])).rows).toEqual([{ id: 'MIC-03' }]);
-    expect(await kindsOf(target.ownerPool())).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'CAM-03:LOCAL_DEVICE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'MIC-03:LOCAL_DEVICE', 'POE-SWITCH:FAKE']);
+    expect((await app.query(REGISTER_LOCAL_DEVICE, ['MIC', 'MIC-', 'AVFOUNDATION', 'MacBook Air Microphone', false])).rows).toEqual([{ id: 'MIC-05' }]);
+    expect(await kindsOf(target.ownerPool())).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'CAM-03:FAKE', 'CAM-04:FAKE', 'CAM-05:LOCAL_DEVICE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'MIC-03:FAKE', 'MIC-04:FAKE', 'MIC-05:LOCAL_DEVICE', 'POE-SWITCH:FAKE']);
     // The runtime role may not change a kind: not of a built-in into a local device, not of a local device into anything.
     await expect(app.query("UPDATE public.capture_devices SET adapter_kind = 'LOCAL_DEVICE' WHERE id = 'CAM-01'")).rejects.toMatchObject({ code: '42501' });
-    await expect(app.query("UPDATE public.capture_devices SET adapter_kind = 'ONVIF_RTSP' WHERE id = 'CAM-03'")).rejects.toMatchObject({ code: '42501' });
+    await expect(app.query("UPDATE public.capture_devices SET adapter_kind = 'ONVIF_RTSP' WHERE id = 'CAM-05'")).rejects.toMatchObject({ code: '42501' });
     // CONTROL: a column the role does hold is updated by the same kind of statement.
-    expect((await app.query("UPDATE public.capture_devices SET enabled = false WHERE id = 'CAM-03'")).rowCount).toBe(1);
+    expect((await app.query("UPDATE public.capture_devices SET enabled = false WHERE id = 'CAM-05'")).rowCount).toBe(1);
     // The class of a kind is held by the database too: a switch cannot be a local device.
     await expect(app.query(REGISTER_LOCAL_DEVICE, ['POE', 'POE-', 'AVFOUNDATION', 'x', false])).rejects.toMatchObject({ code: '23514' });
   });
@@ -462,7 +482,7 @@ describe('REAL_DEVELOPMENT: the local devices are registered as rows of their ow
     expectRefused(missing, 'DEV_HELPER_PROGRAM_UNUSABLE');
     expect(helperProblemOf(missing)).toBe('NOT_FOUND');
     expect(missing.log.text()).not.toContain('/nonexistent/dems/ffmpeg');
-    expect(await kindsOf(owner)).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'POE-SWITCH:FAKE']);
+    expect(await kindsOf(owner)).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'CAM-03:FAKE', 'CAM-04:FAKE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'MIC-03:FAKE', 'MIC-04:FAKE', 'POE-SWITCH:FAKE']);
     expect(await bootAuditsOf(owner)).toEqual([]);
   });
 
@@ -472,7 +492,7 @@ describe('REAL_DEVELOPMENT: the local devices are registered as rows of their ow
     const booted = await boot(target, { ...DEVELOPMENT, captureHelperFfmpegPath: HOMEBREW });
     expectRefused(booted, 'DEV_HELPER_PROGRAM_UNUSABLE');
     expect(helperProblemOf(booted)).toBe('DIRECTORY_WRITABLE');
-    expect(await kindsOf(target.ownerPool())).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'POE-SWITCH:FAKE']);
+    expect(await kindsOf(target.ownerPool())).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'CAM-03:FAKE', 'CAM-04:FAKE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'MIC-03:FAKE', 'MIC-04:FAKE', 'POE-SWITCH:FAKE']);
   });
 });
 
@@ -481,20 +501,22 @@ describe('REAL_DEVELOPMENT: the local devices are registered as rows of their ow
 // the simulator's `H264_1080P25` and the two capture tables are kept across a reset, so the Core
 // that registers the generated adapters corrects the line at its start (`fake-profile.ts`).
 describe('REAL_DEVELOPMENT: the selector line of a generated test source states its adapter\'s profile (G89b-01)', () => {
+  // D60 (2026-11-04): the selector carries FOUR camera lines; the reader states all four.
   const selectorOf = async (owner: Pool): Promise<Record<string, unknown>> =>
-    (await owner.query('SELECT video_01_device_id AS v1, video_01_profile AS p1, video_02_device_id AS v2, video_02_profile AS p2, revision::int AS revision FROM public.capture_config')).rows[0] as Record<string, unknown>;
+    (await owner.query('SELECT video_01_device_id AS v1, video_01_profile AS p1, video_02_device_id AS v2, video_02_profile AS p2, video_03_device_id AS v3, video_03_profile AS p3, video_04_device_id AS v4, video_04_profile AS p4, revision::int AS revision FROM public.capture_config')).rows[0] as Record<string, unknown>;
 
   it('a kept database that says 1080p25: the development start corrects both FAKE lines once, the engine states it, a second start writes nothing', async () => {
     const target = await clone('fence-profile');
     const owner = target.ownerPool();
-    expect(await selectorOf(owner)).toEqual({ v1: 'CAM-01', p1: 'H264_1080P25', v2: 'CAM-02', p2: 'H264_1080P25', revision: 1 });
+    expect(await selectorOf(owner)).toEqual({ v1: 'CAM-01', p1: 'H264_1080P25', v2: 'CAM-02', p2: 'H264_1080P25', v3: 'CAM-03', p3: 'H264_1080P25', v4: 'CAM-04', p4: 'H264_1080P25', revision: 1 });
 
     const first = await boot(target, DEVELOPMENT);
     expect(first.failure).toBeNull();
     expect(captureFenceControl(first.app).outcome()).toMatchObject({ generatedProfilesCorrected: true });
-    expect(await selectorOf(owner)).toEqual({ v1: 'CAM-01', p1: 'H264_720P30', v2: 'CAM-02', p2: 'H264_720P30', revision: 2 });
+    // D60 (2026-11-04): the correction covers the FOUR generated lines, not two.
+    expect(await selectorOf(owner)).toEqual({ v1: 'CAM-01', p1: 'H264_720P30', v2: 'CAM-02', p2: 'H264_720P30', v3: 'CAM-03', p3: 'H264_720P30', v4: 'CAM-04', p4: 'H264_720P30', revision: 2 });
     // The selector the clients read, and the profile the registry's adapter declares: one text.
-    expect(engineControl(first.app).state().captureConfig.cameras.map((camera) => `${camera.deviceId}:${camera.profile}`)).toEqual(['CAM-01:H264_720P30', 'CAM-02:H264_720P30']);
+    expect(engineControl(first.app).state().captureConfig.cameras.map((camera) => `${camera.deviceId}:${camera.profile}`)).toEqual(['CAM-01:H264_720P30', 'CAM-02:H264_720P30', 'CAM-03:H264_720P30', 'CAM-04:H264_720P30']);
     expect(captureFenceControl(first.app).registry()?.describe('CAM-01').profiles).toEqual(['H264_720P30']);
     expect(first.log.lines().filter((line) => line['code'] === 'DEV_GENERATED_SOURCE_PROFILE_STATED')).toHaveLength(1);
     await first.app.close();
@@ -502,7 +524,7 @@ describe('REAL_DEVELOPMENT: the selector line of a generated test source states 
     const second = await boot(target, DEVELOPMENT);
     expect(second.failure).toBeNull();
     expect(captureFenceControl(second.app).outcome()).not.toHaveProperty('generatedProfilesCorrected');
-    expect(await selectorOf(owner)).toMatchObject({ p1: 'H264_720P30', p2: 'H264_720P30', revision: 2 });
+    expect(await selectorOf(owner)).toMatchObject({ p1: 'H264_720P30', p2: 'H264_720P30', p3: 'H264_720P30', p4: 'H264_720P30', revision: 2 });
     expect(second.log.lines().filter((line) => line['code'] === 'DEV_GENERATED_SOURCE_PROFILE_STATED')).toEqual([]);
   });
 
@@ -510,17 +532,19 @@ describe('REAL_DEVELOPMENT: the selector line of a generated test source states 
     const simulated = await clone('fence-profile-sim');
     const booted = await boot(simulated, {});
     expect(booted.failure).toBeNull();
-    expect(await selectorOf(simulated.ownerPool())).toMatchObject({ p1: 'H264_1080P25', p2: 'H264_1080P25', revision: 1 });
+    expect(await selectorOf(simulated.ownerPool())).toMatchObject({ p1: 'H264_1080P25', p2: 'H264_1080P25', p3: 'H264_1080P25', p4: 'H264_1080P25', revision: 1 });
     await booted.app.close();
 
     const target = await clone('fence-profile-local');
     const owner = target.ownerPool();
     // What an earlier development start and an operator's choice would leave: this Mac's camera row, assigned to VIDEO-01 with a profile of its own.
-    await owner.query("INSERT INTO public.capture_devices (id, kind, transport, model, enabled, adapter_kind) VALUES ('CAM-03', 'CAMERA', 'AVFOUNDATION', 'MacBook Air Camera', false, 'LOCAL_DEVICE')");
-    await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-03', video_01_profile = 'H264_1080P30'");
+    // D60 / D61 (2026-11-04): the local row is the next free id of the class (`CAM-05`), and the THREE
+    // FAKE lines the seed still assigns (VIDEO-02..04) are corrected; the local line keeps its profile.
+    await owner.query("INSERT INTO public.capture_devices (id, kind, transport, model, enabled, adapter_kind) VALUES ('CAM-05', 'CAMERA', 'AVFOUNDATION', 'MacBook Air Camera', false, 'LOCAL_DEVICE')");
+    await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-05', video_01_profile = 'H264_1080P30'");
     const development = await boot(target, DEVELOPMENT);
     expect(development.failure).toBeNull();
-    expect(await selectorOf(owner)).toEqual({ v1: 'CAM-03', p1: 'H264_1080P30', v2: 'CAM-02', p2: 'H264_720P30', revision: 2 });
+    expect(await selectorOf(owner)).toEqual({ v1: 'CAM-05', p1: 'H264_1080P30', v2: 'CAM-02', p2: 'H264_720P30', v3: 'CAM-03', p3: 'H264_720P30', v4: 'CAM-04', p4: 'H264_720P30', revision: 2 });
   });
 });
 
@@ -553,26 +577,33 @@ describe('REAL_DEVELOPMENT: the selector line of a generated test source states 
 // A selector that names a production device is written by the owner into the clone BEFORE the
 // boot; a development Core would refuse to assign one and a production Core has no adapter yet.
 describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categories by the three capture operations; "the remedy is executable"; "no recording without sources" (addendum 1.5, 1.7)', () => {
-  // D61 (2026-11-04): the two mic roles became the four numbered channels; this walk holds the four slots the seed assigns.
-  type Slot = 'VIDEO-01' | 'VIDEO-02' | 'MIC-01' | 'MIC-02';
+  // D60 / D61 (2026-11-04): the selector holds EIGHT slots — four video tracks and four numbered
+  // microphone channels — and this walk holds all eight the seed assigns.
+  type Slot = 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04' | 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04';
   type Lines = Readonly<Record<Slot, string | null>>;
   type Category = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '2 (S-5)' | '3 (S-5)';
   type Operation = 'SIMULATED' | 'REAL_DEVELOPMENT' | 'REAL_PRODUCTION';
-  const SLOT_ORDER: readonly Slot[] = ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02'];
+  const SLOT_ORDER: readonly Slot[] = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'];
+  // D61 (2026-11-04): the pre-check answer keeps its CLOSED item list (`PRECHECK_ORDER`, packages/shared):
+  // only these four slots ever carried an item (LENS_1, LENS_2, MIC_PRIMARY, MIC_STANDBY); VIDEO-03/04 and
+  // MIC-03/04 have none of their own. The eight-slot rule of D60/D61 bites at the START
+  // (`startRecordingTransition` refuses on any unassigned slot) — see the `of.start` pins below and the
+  // sibling contract in precheck-unassigned.db.test.ts (row 30).
+  const ITEM_CARRYING_SLOTS: readonly Slot[] = ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02'];
   const U = null;
   const PROFILE = 'H264_1080P25';
-  /** D: CAM-01, CAM-02, MIC-01, MIC-02 (the seed's FAKE rows). P: CAM-11, CAM-12 (ONVIF_RTSP), MIC-11, MIC-12 (USB_AUDIO). */
+  /** D: CAM-01..04, MIC-01..04 (the seed's FAKE rows). P: CAM-11..14 (ONVIF_RTSP), MIC-11..14 (USB_AUDIO). */
   const CATEGORY: Readonly<Record<Category, { readonly title: string; readonly lines: Lines }>> = {
-    '1': { title: 'all four U', lines: { 'VIDEO-01': U, 'VIDEO-02': U, 'MIC-01': U, 'MIC-02': U } },
-    '2': { title: 'some U, the rest D', lines: { 'VIDEO-01': U, 'VIDEO-02': 'CAM-02', 'MIC-01': 'MIC-01', 'MIC-02': U } },
-    '3': { title: 'some U, the rest P', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': U, 'MIC-01': U, 'MIC-02': 'MIC-12' } },
-    '4': { title: 'some U, D and P', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-12', 'MIC-01': 'MIC-11', 'MIC-02': U } },
-    '5': { title: 'four assigned, all D (the seed)', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'MIC-01': 'MIC-01', 'MIC-02': 'MIC-02' } },
-    '6': { title: 'four assigned, all P', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': 'CAM-12', 'MIC-01': 'MIC-11', 'MIC-02': 'MIC-12' } },
-    '7': { title: 'four assigned, D and P', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-12', 'MIC-01': 'MIC-11', 'MIC-02': 'MIC-02' } },
+    '1': { title: 'all eight U', lines: { 'VIDEO-01': U, 'VIDEO-02': U, 'VIDEO-03': U, 'VIDEO-04': U, 'MIC-01': U, 'MIC-02': U, 'MIC-03': U, 'MIC-04': U } },
+    '2': { title: 'some U, the rest D', lines: { 'VIDEO-01': U, 'VIDEO-02': 'CAM-02', 'VIDEO-03': U, 'VIDEO-04': 'CAM-04', 'MIC-01': 'MIC-01', 'MIC-02': U, 'MIC-03': 'MIC-03', 'MIC-04': U } },
+    '3': { title: 'some U, the rest P', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': U, 'VIDEO-03': 'CAM-13', 'VIDEO-04': U, 'MIC-01': 'MIC-11', 'MIC-02': 'MIC-12', 'MIC-03': U, 'MIC-04': U } },
+    '4': { title: 'some U, D and P', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-12', 'VIDEO-03': U, 'VIDEO-04': U, 'MIC-01': 'MIC-11', 'MIC-02': U, 'MIC-03': 'MIC-03', 'MIC-04': U } },
+    '5': { title: 'eight assigned, all D (the seed)', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'VIDEO-03': 'CAM-03', 'VIDEO-04': 'CAM-04', 'MIC-01': 'MIC-01', 'MIC-02': 'MIC-02', 'MIC-03': 'MIC-03', 'MIC-04': 'MIC-04' } },
+    '6': { title: 'eight assigned, all P', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': 'CAM-12', 'VIDEO-03': 'CAM-13', 'VIDEO-04': 'CAM-14', 'MIC-01': 'MIC-11', 'MIC-02': 'MIC-12', 'MIC-03': 'MIC-13', 'MIC-04': 'MIC-14' } },
+    '7': { title: 'eight assigned, D and P', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-12', 'VIDEO-03': 'CAM-03', 'VIDEO-04': 'CAM-14', 'MIC-01': 'MIC-11', 'MIC-02': 'MIC-02', 'MIC-03': 'MIC-13', 'MIC-04': 'MIC-04' } },
     // State S-5 of the security addendum (AD-10 (4); channel 2 under D61 of 2026-11-04): only that microphone channel is unassigned.
-    '2 (S-5)': { title: 'three D, a lone unassigned channel 2', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'MIC-01': 'MIC-01', 'MIC-02': U } },
-    '3 (S-5)': { title: 'three P, a lone unassigned channel 2', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': 'CAM-12', 'MIC-01': 'MIC-11', 'MIC-02': U } },
+    '2 (S-5)': { title: 'seven D, a lone unassigned channel 2', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'VIDEO-03': 'CAM-03', 'VIDEO-04': 'CAM-04', 'MIC-01': 'MIC-01', 'MIC-02': U, 'MIC-03': 'MIC-03', 'MIC-04': 'MIC-04' } },
+    '3 (S-5)': { title: 'seven P, a lone unassigned channel 2', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': 'CAM-12', 'VIDEO-03': 'CAM-13', 'VIDEO-04': 'CAM-14', 'MIC-01': 'MIC-11', 'MIC-02': U, 'MIC-03': 'MIC-13', 'MIC-04': 'MIC-14' } },
   };
   const unassignedOf = (lines: Lines): Slot[] => SLOT_ORDER.filter((slot) => lines[slot] === null);
   const linesOf = (selector: { readonly cameras: readonly { readonly trackId: string; readonly deviceId: string }[]; readonly mics: readonly { readonly channel: string; readonly deviceId: string }[] }): string[] =>
@@ -585,23 +616,34 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
   const on = (sessionId: string, operation: string): string => `${SESSION_URL}/${sessionId}/${operation}`;
 
   /** The production device rows of a clone, as an adoption and a microphone registration would leave them. No address: nothing is dialled. */
+  // D60 / D61 (2026-11-04): FOUR production cameras and FOUR production microphones stand behind the
+  // all-P categories, one device per slot of the widened selector.
   const addProductionRows = (owner: Pool): Promise<unknown> =>
     owner.query(
-      "INSERT INTO public.capture_devices (id, kind, transport, enabled, adapter_kind) VALUES ('CAM-11', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP'), ('CAM-12', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP'), ('MIC-11', 'MIC', 'USB', true, 'USB_AUDIO'), ('MIC-12', 'MIC', 'USB', true, 'USB_AUDIO')",
+      "INSERT INTO public.capture_devices (id, kind, transport, enabled, adapter_kind) VALUES ('CAM-11', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP'), ('CAM-12', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP'), ('CAM-13', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP'), ('CAM-14', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP'), ('MIC-11', 'MIC', 'USB', true, 'USB_AUDIO'), ('MIC-12', 'MIC', 'USB', true, 'USB_AUDIO'), ('MIC-13', 'MIC', 'USB', true, 'USB_AUDIO'), ('MIC-14', 'MIC', 'USB', true, 'USB_AUDIO')",
     );
   /** The stored selector of a category: NULL in the columns of an unassigned slot (device and profile of a video slot together). */
   const storeSelector = (owner: Pool, lines: Lines): Promise<unknown> =>
-    owner.query('UPDATE public.capture_config SET video_01_device_id = $1, video_01_profile = $2, video_02_device_id = $3, video_02_profile = $4, mic_01_id = $5, mic_02_id = $6', [
-      lines['VIDEO-01'],
-      lines['VIDEO-01'] === null ? null : PROFILE,
-      lines['VIDEO-02'],
-      lines['VIDEO-02'] === null ? null : PROFILE,
-      lines['MIC-01'],
-      lines['MIC-02'],
-    ]);
+    owner.query(
+      'UPDATE public.capture_config SET video_01_device_id = $1, video_01_profile = $2, video_02_device_id = $3, video_02_profile = $4, video_03_device_id = $5, video_03_profile = $6, video_04_device_id = $7, video_04_profile = $8, mic_01_id = $9, mic_02_id = $10, mic_03_id = $11, mic_04_id = $12',
+      [
+        lines['VIDEO-01'],
+        lines['VIDEO-01'] === null ? null : PROFILE,
+        lines['VIDEO-02'],
+        lines['VIDEO-02'] === null ? null : PROFILE,
+        lines['VIDEO-03'],
+        lines['VIDEO-03'] === null ? null : PROFILE,
+        lines['VIDEO-04'],
+        lines['VIDEO-04'] === null ? null : PROFILE,
+        lines['MIC-01'],
+        lines['MIC-02'],
+        lines['MIC-03'],
+        lines['MIC-04'],
+      ],
+    );
   const storedSlots = async (owner: Pool): Promise<(string | null)[]> => {
-    const row = (await owner.query('SELECT video_01_device_id AS a, video_02_device_id AS b, mic_01_id AS c, mic_02_id AS d FROM public.capture_config')).rows[0] as Record<string, string | null>;
-    return [row['a'] ?? null, row['b'] ?? null, row['c'] ?? null, row['d'] ?? null];
+    const row = (await owner.query('SELECT video_01_device_id AS a, video_02_device_id AS b, video_03_device_id AS c, video_04_device_id AS d, mic_01_id AS e, mic_02_id AS f, mic_03_id AS g, mic_04_id AS h FROM public.capture_config')).rows[0] as Record<string, string | null>;
+    return [row['a'] ?? null, row['b'] ?? null, row['c'] ?? null, row['d'] ?? null, row['e'] ?? null, row['f'] ?? null, row['g'] ?? null, row['h'] ?? null];
   };
   const sourceRowsOf = async (owner: Pool, sessionId: string | null = null): Promise<string[]> =>
     (await owner.query('SELECT session_id, slot, device_id, adapter_kind FROM public.session_capture_sources ORDER BY session_id, slot')).rows
@@ -790,30 +832,31 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     readonly workers: number | null;
   }
   const state = (category: Category, operation: Operation, boot: string, named: readonly string[] = [], start: State['start'] = null, sourceRows: readonly string[] = [], workers: number | null = null): State => ({ category, operation, boot, named, start, sourceRows, workers });
-  const FOUR_FAKE = ['MIC-01 MIC-01 FAKE', 'MIC-02 MIC-02 FAKE', 'VIDEO-01 CAM-01 FAKE', 'VIDEO-02 CAM-02 FAKE']; // D61 (2026-11-04): the fence read labels the mic slots by their numbered channel
+  // D60 / D61 (2026-11-04): the fence read labels every slot by its own id - four tracks, four channels.
+  const EIGHT_FAKE = ['MIC-01 MIC-01 FAKE', 'MIC-02 MIC-02 FAKE', 'MIC-03 MIC-03 FAKE', 'MIC-04 MIC-04 FAKE', 'VIDEO-01 CAM-01 FAKE', 'VIDEO-02 CAM-02 FAKE', 'VIDEO-03 CAM-03 FAKE', 'VIDEO-04 CAM-04 FAKE'];
 
   /** THE TABLE: 7 categories x 3 operations = 21 states, in the order of addendum 1.5. */
   const TABLE: readonly State[] = [
     state('1', 'REAL_PRODUCTION', BOOTS, [], BLOCKED, [], 0),
     state('1', 'REAL_DEVELOPMENT', BOOTS, [], BLOCKED, [], 0),
     state('1', 'SIMULATED', BOOTS, [], ACCEPTED),
-    state('2', 'REAL_PRODUCTION', NO_FLAG, ['CAM-02', 'MIC-01']),
+    state('2', 'REAL_PRODUCTION', NO_FLAG, ['CAM-02', 'CAM-04', 'MIC-01', 'MIC-03']), // D60/D61: every assigned development source is named
     state('2', 'REAL_DEVELOPMENT', BOOTS, [], BLOCKED, [], 0),
     state('2', 'SIMULATED', BOOTS, [], ACCEPTED),
     state('3', 'REAL_PRODUCTION', BOOTS, [], BLOCKED, [], 0),
-    state('3', 'REAL_DEVELOPMENT', WITH_FLAG, ['CAM-11', 'MIC-12']),
+    state('3', 'REAL_DEVELOPMENT', WITH_FLAG, ['CAM-11', 'CAM-13', 'MIC-11', 'MIC-12']),
     state('3', 'SIMULATED', BOOTS, [], ACCEPTED),
-    state('4', 'REAL_PRODUCTION', NO_FLAG, ['CAM-01']),
+    state('4', 'REAL_PRODUCTION', NO_FLAG, ['CAM-01', 'MIC-03']),
     state('4', 'REAL_DEVELOPMENT', WITH_FLAG, ['CAM-12', 'MIC-11']),
     state('4', 'SIMULATED', BOOTS, [], ACCEPTED),
-    state('5', 'REAL_PRODUCTION', NO_FLAG, ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02']),
-    state('5', 'REAL_DEVELOPMENT', BOOTS, [], ACCEPTED, FOUR_FAKE, 1),
+    state('5', 'REAL_PRODUCTION', NO_FLAG, ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']),
+    state('5', 'REAL_DEVELOPMENT', BOOTS, [], ACCEPTED, EIGHT_FAKE, 1),
     state('5', 'SIMULATED', BOOTS, [], ACCEPTED),
     state('6', 'REAL_PRODUCTION', BOOTS, [], NOT_RECORDABLE, [], 0),
-    state('6', 'REAL_DEVELOPMENT', WITH_FLAG, ['CAM-11', 'CAM-12', 'MIC-11', 'MIC-12']),
+    state('6', 'REAL_DEVELOPMENT', WITH_FLAG, ['CAM-11', 'CAM-12', 'CAM-13', 'CAM-14', 'MIC-11', 'MIC-12', 'MIC-13', 'MIC-14']),
     state('6', 'SIMULATED', BOOTS, [], ACCEPTED),
-    state('7', 'REAL_PRODUCTION', NO_FLAG, ['CAM-01', 'MIC-02']),
-    state('7', 'REAL_DEVELOPMENT', WITH_FLAG, ['CAM-12', 'MIC-11']),
+    state('7', 'REAL_PRODUCTION', NO_FLAG, ['CAM-01', 'CAM-03', 'MIC-02', 'MIC-04']),
+    state('7', 'REAL_DEVELOPMENT', WITH_FLAG, ['CAM-12', 'CAM-14', 'MIC-11', 'MIC-13']),
     state('7', 'SIMULATED', BOOTS, [], ACCEPTED),
   ];
   /** State S-5 where its Core starts: beside the 21, not counted with them. */
@@ -869,8 +912,10 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
       );
       // From CREATE a start is the pre-check run, in every operation.
       expect(attempt.first.slice(0, 2), label).toEqual([202, 'PRECHECK']);
-      // "Source not assigned": one BLOCK item per unassigned slot in real capture (C18 (1), C25: every channel too under D61 of 2026-11-04); none in SIMULATED (C21 (6)).
-      expect(attempt.notAssigned, label).toEqual(of.operation === 'SIMULATED' ? [] : unassignedOf(lines).map((slot) => `${slot} BLOCK`));
+      // "Source not assigned": one BLOCK item per unassigned slot IN THE CLOSED ITEM LIST (C18 (1), C25); D61 (2026-11-04):
+      // the selector is eight slots but the answer keeps its four item-carrying checks — an unassigned VIDEO-03/04 or
+      // MIC-03/04 refuses the START below, it carries no item of its own. None in SIMULATED (C21 (6)).
+      expect(attempt.notAssigned, label).toEqual(of.operation === 'SIMULATED' ? [] : unassignedOf(lines).filter((slot) => ITEM_CARRYING_SLOTS.includes(slot)).map((slot) => `${slot} BLOCK`));
       if (of.start === null) throw new Error(`${label}: the table states no start for a Core that boots`);
       expect(attempt.second.slice(0, of.start.length), label).toEqual([...of.start]);
       const accepted = of.start[0] === 200;
@@ -903,13 +948,13 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     await run(of);
   });
 
-  it('THE REMEDY IS EXECUTABLE (addendum 1.7; AD-04 (3)): seeded clone -> development boot -> operation 78 unassigns the four slots -> production boot passes the fence and the step `capture.config`, ONE boot row -> the assignment of a production device stops at the registry -> a session start answers 409', async () => {
+  it('THE REMEDY IS EXECUTABLE (addendum 1.7; AD-04 (3)): seeded clone -> development boot -> operation 78 unassigns the eight slots (D60/D61) -> production boot passes the fence and the step `capture.config`, ONE boot row -> the assignment of a production device stops at the registry -> a session start answers 409', async () => {
     const target = await clone('r33-remedy');
     const owner = target.ownerPool();
     // The devices a commissioning would leave (see the header): stored, assigned to nothing.
     await addProductionRows(owner);
 
-    // 0. THE STATE THE REMEDY IS FOR: the seeded selector assigns four development sources, so a production Core does not start.
+    // 0. THE STATE THE REMEDY IS FOR: the seeded selector assigns EIGHT development sources (D60/D61), so a production Core does not start.
     const refusedFirst = await coreOn(target, 'REAL_PRODUCTION');
     expect(refusedFirst.failure?.stepId).toBe(CAPTURE_FENCE_BOOT_STEP);
     const refusal = refusedFirst.failure?.cause;
@@ -926,11 +971,12 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     expect(await bootAuditsOf(owner)).toEqual([bootRowOf('REAL_DEVELOPMENT')]);
     // 2. "Unassign them": operation 78, by the TECHNICIAN on the web console - the product's own operation, one audit row per slot.
     const technician = await signIn(development.host, 'TECHNICIAN', undefined);
-    const cleared = await post(development.host, technician, SELECTOR_URL, { unassign: [...SLOT_ORDER] });
+    const cleared = await post(development.host, technician, SELECTOR_URL, { unassign: [...SLOT_ORDER] }); // D60/D61: all eight slots
     expect(cleared.statusCode, cleared.body).toBe(200);
     await settled(development.host);
-    expect(await storedSlots(owner)).toEqual([null, null, null, null]);
-    expect((await owner.query("SELECT count(*)::int AS n FROM public.audit_log WHERE type = 'CAPTURE_CONFIG_CHANGED' AND details->>'operationId' = 'updateCaptureConfig' AND NOT (details ? 'to')")).rows[0]?.n).toBe(4);
+    expect(await storedSlots(owner)).toEqual([null, null, null, null, null, null, null, null]); // D60/D61: eight slots
+    // D60 / D61: one audit row per emptied slot of the widened selector.
+    expect((await owner.query("SELECT count(*)::int AS n FROM public.audit_log WHERE type = 'CAPTURE_CONFIG_CHANGED' AND details->>'operationId' = 'updateCaptureConfig' AND NOT (details ? 'to')")).rows[0]?.n).toBe(8);
     await development.host.app.close();
 
     // (Not an operation of the product in this test: every operator gets a credential of their own - step (b) of the addendum's
@@ -960,7 +1006,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
       expect(answerOf(fake).slice(0, 2)).toEqual([422, 'INVALID_INPUT']);
       if (!served.includes('CAM-11')) {
         expect(answerOf(camera).slice(0, 2)).toEqual([422, 'INVALID_INPUT']);
-        expect(await storedSlots(owner)).toEqual(served.includes('MIC-11') ? [null, null, 'MIC-11', null] : [null, null, null, null]);
+        expect(await storedSlots(owner)).toEqual(served.includes('MIC-11') ? ['CAM-11', null, 'CAM-13', null, 'MIC-11', 'MIC-12', null, null] : [null, null, null, null, null, null, null, null]); // D60/D61: the slots stand where the category put them
       } else expect(camera.statusCode, camera.body).toBe(200);
       if (!served.includes('MIC-11')) expect(answerOf(microphone).slice(0, 2)).toEqual([422, 'INVALID_INPUT']);
       else expect(microphone.statusCode, microphone.body).toBe(200);
@@ -971,7 +1017,8 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
       expect(attempt.second[0]).toBe(409);
       if (served.length === 0) {
         expect(attempt.second.slice(0, 2)).toEqual([...BLOCKED]);
-        expect(attempt.notAssigned).toEqual(SLOT_ORDER.map((slot) => `${slot} BLOCK`));
+        // D61 (2026-11-04): all eight slots are unassigned; the closed item list answers with its four items.
+        expect(attempt.notAssigned).toEqual(ITEM_CARRYING_SLOTS.map((slot) => `${slot} BLOCK`));
       }
       expect([attempt.started, attempt.sourceRows, attempt.workers]).toEqual([0, [], 0]);
       expect(await sourceRowsOf(owner)).toEqual([]);
@@ -1016,7 +1063,8 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     const second = await coreOn(target, 'REAL_DEVELOPMENT', FIXED_NOW + 300_000);
     try {
       expect(second.failure).toBeNull();
-      expect(linesOf(second.host.engine.slice('captureConfig'))).toEqual(['MIC-01 MIC-01', 'VIDEO-01 CAM-01', 'VIDEO-02 CAM-02']);
+      // D60 / D61: the seed's eight slots minus channel 2 — seven lines.
+      expect(linesOf(second.host.engine.slice('captureConfig'))).toEqual(['MIC-01 MIC-01', 'MIC-03 MIC-03', 'MIC-04 MIC-04', 'VIDEO-01 CAM-01', 'VIDEO-02 CAM-02', 'VIDEO-03 CAM-03', 'VIDEO-04 CAM-04']);
       const state = second.host.engine.slice('session')?.state;
       const again = await signIn(second.host, 'INVESTIGATOR', undefined);
       await second.host.engine.setTabletLink('CONNECTED');
@@ -1033,7 +1081,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     }
 
     // The same session under a PRODUCTION boot of the emptied selector (the remedy carried out while a session is armed).
-    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_01_id = NULL, mic_02_id = NULL');
+    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL, mic_01_id = NULL, mic_02_id = NULL, mic_03_id = NULL, mic_04_id = NULL  -- D60/D61 (2026-11-04): all eight slots');
     await ownCredentials(owner);
     const third = await coreOn(target, 'REAL_PRODUCTION', FIXED_NOW + 600_000);
     try {
@@ -1043,8 +1091,8 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
       await third.host.engine.setTabletLink('CONNECTED');
       const answer = answerOf(await post(third.host, again, on(sessionId, 'start'), { acknowledgeWarnings: true }));
       await settled(third.host);
-      seen.push(`armed, all four emptied behind the Core, REAL_PRODUCTION restart | session ${String(state)} | start ${answer.filter((part) => part !== null).join(' ')} | source rows ${(await sourceRowsOf(owner)).length} | workers ${String(third.fake?.calls())}`);
-      // The fence passed (it reads the stored row: nothing is assigned) and the engine rehydrated the open session beside six NULLs.
+      seen.push(`armed, all eight emptied behind the Core, REAL_PRODUCTION restart | session ${String(state)} | start ${answer.filter((part) => part !== null).join(' ')} | source rows ${(await sourceRowsOf(owner)).length} | workers ${String(third.fake?.calls())}`);
+      // The fence passed (it reads the stored row: nothing is assigned) and the engine rehydrated the open session beside the eight empty slots.
       expect(third.steps).toEqual(expect.arrayContaining([CAPTURE_FENCE_BOOT_STEP, 'capture.config', 'engine.rehydrate']));
       expect(state).toBe('FAULT');
       expect(answer.slice(0, 2)).toEqual([409, 'INVALID_STATE']);
@@ -1061,7 +1109,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
   it('C46 / F-07: a REAL_PRODUCTION start through the capture unit\'s own mount runs steps 4d and 4e - no host facts: refused; the entry point\'s facts without a relay program: refused CAPTURE_HOST_RELAY_PROGRAM_UNUSABLE; a prepared host: both steps pass, by their lines', async () => {
     const target = await clone('r85-c46');
     const owner = target.ownerPool();
-    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_01_id = NULL, mic_02_id = NULL');
+    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL, mic_01_id = NULL, mic_02_id = NULL, mic_03_id = NULL, mic_04_id = NULL  -- D60/D61 (2026-11-04): all eight slots');
     await ownCredentials(owner);
     const codesOf = (core: Core): unknown[] => core.host.log.lines().map((line) => line['code']).filter((code) => /^CAPTURE_(?:HOST|PROGRAM)_|^CAPTURE_BOOT_CHECKS_PASSED$/.test(String(code)));
     const refusalOf = (core: Core): unknown => [core.failure?.stepId, (core.failure?.cause as { code?: unknown } | undefined)?.code, (core.failure?.cause as { reason?: unknown } | undefined)?.reason];
@@ -1128,7 +1176,8 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     } finally {
       await development.host.app.close();
     }
-    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_01_id = NULL, mic_02_id = NULL');
+    // D60 / D61: all eight slots emptied (the fence reads eight, and a FAKE source left assigned refuses the production boot).
+    await owner.query('UPDATE public.capture_config SET ' + "video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL, mic_01_id = NULL, mic_02_id = NULL, mic_03_id = NULL, mic_04_id = NULL");  // D60/D61 (2026-11-04): all eight slots emptied
     await ownCredentials(owner);
     expect(await bootRows()).toBe(1);
 

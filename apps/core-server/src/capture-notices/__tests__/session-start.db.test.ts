@@ -96,7 +96,7 @@ async function rig(slug: string, options: RigOptions = {}) {
   target.onCleanup(() => supervisor.shutdown());
 
   const registry = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_DEVELOPMENT });
-  for (const id of ['CAM-01', 'CAM-02']) {
+  for (const id of ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']) { // D60 (2026-11-04): the registry serves every assigned camera of the four-track selector
     const camera = createFakeCameraAdapter({ id });
     registry.register({
       ...camera,
@@ -106,7 +106,7 @@ async function rig(slug: string, options: RigOptions = {}) {
       },
     });
   }
-  for (const id of ['MIC-01', 'MIC-02']) registry.register(createFakeAudioInputAdapter({ id, runDir: `${fixture.dataDir}/run/capture` }));
+  for (const id of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) registry.register(createFakeAudioInputAdapter({ id, runDir: `${fixture.dataDir}/run/capture` })); // D61 (2026-11-04): four numbered channels
   const capture = sessionCapture(app);
   capture.replace({ registry: () => registry, leftoverHelpers: async () => [], tapPathFor: async () => null });
   const events: SessionCaptureEvent[] = [];
@@ -268,7 +268,7 @@ describe('M5-NODEV-C-1, 1 camera: a degraded session', () => {
     const of = await rig('r139_degraded', { camerasNotOpening: ['CAM-02'] });
     const id = await of.arm();
     await of.start(id);
-    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-01'], camerasNotOpened: ['CAM-02'] });
+    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-03', 'CAM-04'], camerasNotOpened: ['CAM-02'] }); // D60: the three cameras that did open
     // CONTROL (D84): nothing durable yet, so nothing says the session records one camera only.
     expect(of.session()).toMatchObject({ state: 'RECORDING', captureDurable: false });
     expect(of.activeAlerts()).toEqual([]);

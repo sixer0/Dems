@@ -319,7 +319,7 @@ export type CaptureDeviceKind = ValueOf<typeof CaptureDeviceKind>;
  * became the first two channels (0040 data migration: `MIC-PRIMARY`→`MIC-01`,
  * `MIC-STANDBY`→`MIC-02`); the values are the `MIC-` prefix of the `session_capture_sources` value
  * set (`CAPTURE_SOURCE_SLOTS` of `evidence-package/source-class.ts`) and the columns
- * `mic_01_id`..`mic_04_id` of `capture_config`. Channel `MIC-0N` feeds track `AUDIO-0N`;
+ * the four `mic_0N_id` columns of `capture_config`. Channel `MIC-0N` feeds track `AUDIO-0N`;
  * `AUDIO-01` keeps the transcription duty (the STT lane reads channel 1 until a separate ruling).
  * Held equal to that prefix by a test; this file is a leaf so both `api/` and `sim/` import it.
  */

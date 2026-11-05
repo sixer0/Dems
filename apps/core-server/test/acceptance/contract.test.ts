@@ -985,23 +985,27 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     fresh(main);
     const supervisor = web.SUPERVISOR;
     const technician = web.TECHNICIAN;
-    interface Selector { cameras: { trackId: string; deviceId: string }[]; mics: { inputId: string; role: string }[]; locked: boolean }
+    // D60/D61 (2026-11-04): four video tracks and four numbered microphone channels — the mic line names its CHANNEL (was the PRIMARY/STANDBY role).
+    interface Selector { cameras: { trackId: string; deviceId: string }[]; mics: { inputId: string; channel: string }[]; locked: boolean }
+    const seededCameras = [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }, { trackId: 'VIDEO-03', deviceId: 'CAM-03' }, { trackId: 'VIDEO-04', deviceId: 'CAM-04' }]; // D60: four built-in cameras
+    const seededMics = [{ inputId: 'MIC-01', channel: 'MIC-01' }, { inputId: 'MIC-02', channel: 'MIC-02' }, { inputId: 'MIC-03', channel: 'MIC-03' }, { inputId: 'MIC-04', channel: 'MIC-04' }]; // D61: four numbered channels
     // Every role reads both slices; neither answer holds a credential member.
     for (const caller of [web.INVESTIGATOR, supervisor, technician]) {
       const config = await expectCall(main, 'getCaptureConfig', caller, 'every role reads the selector', {}, 200);
-      expect(bodyOf<Selector>(config)).toMatchObject({ locked: false, cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }], mics: [{ inputId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', role: 'STANDBY' }] });
+      expect(bodyOf<Selector>(config)).toMatchObject({ locked: false, cameras: seededCameras, mics: seededMics });
       const devices = await expectCall(main, 'getCaptureDevices', caller, 'every role reads the capture registry', {}, 200);
       expect(JSON.stringify([bodyOf(config), bodyOf(devices)])).not.toMatch(/secret|password|username|credential/i);
     }
-    // 80: a holder of CAPTURE_CONFIG makes the second input PRIMARY; the two inputs stay the ordered pair (AC-B-70).
-    const primary = await expectCall(main, 'setPrimaryMic', technician, 'a TECHNICIAN makes MIC-02 the primary input', { id: 'MIC-02' }, 200);
-    expect(bodyOf<Selector>(primary).mics).toMatchObject([{ inputId: 'MIC-01', role: 'STANDBY' }, { inputId: 'MIC-02', role: 'PRIMARY' }]);
+    // 80: a holder of CAPTURE_CONFIG moves the transcription channel (D61, 2026-11-04: operation 80 moves the CHANNEL — the named input
+    // takes `MIC-01`, the input that held channel 1 takes the named input's old channel; was the PRIMARY/STANDBY role swap).
+    const primary = await expectCall(main, 'setPrimaryMic', technician, 'a TECHNICIAN makes MIC-02 the transcription input', { id: 'MIC-02' }, 200);
+    expect(bodyOf<Selector>(primary).mics).toMatchObject([{ inputId: 'MIC-01', channel: 'MIC-02' }, { inputId: 'MIC-02', channel: 'MIC-01' }, { inputId: 'MIC-03', channel: 'MIC-03' }, { inputId: 'MIC-04', channel: 'MIC-04' }]);
     await expectCall(main, 'setPrimaryMic', technician, 'an input the selector does not hold', { id: 'MIC-09' }, 404, 'NOT_FOUND');
     await expectCall(main, 'setPrimaryMic', technician, 'a malformed {id}', { id: 'mic-02' }, 422, 'INVALID_INPUT');
-    // 78: the whole selector; here the two cameras change tracks in one edit. D59 (revocation row of §2.1):
+    // 78: the whole selector; here two of the four cameras change tracks in one edit (D60, 2026-11-04: four tracks answer). D59 (revocation row of §2.1):
     // the grant went from SUPERVISOR on 2026-10-29 (migration 0034) - the editor of the topology is the TECHNICIAN.
     const swapped = await expectCall(main, 'updateCaptureConfig', technician, 'a TECHNICIAN swaps the two cameras', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] } }, 200);
-    expect(bodyOf<Selector>(swapped).cameras).toMatchObject([{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }]);
+    expect(bodyOf<Selector>(swapped).cameras).toMatchObject([{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }, { trackId: 'VIDEO-03', deviceId: 'CAM-03' }, { trackId: 'VIDEO-04', deviceId: 'CAM-04' }]);
     await expectCall(main, 'updateCaptureConfig', technician, 'a device the capture registry does not hold (a discovery candidate is never one)', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-77' }] } }, 422, 'INVALID_INPUT');
     await expectCall(main, 'updateCaptureConfig', technician, 'a track outside the value set', { payload: { cameras: [{ trackId: 'VIDEO-09', deviceId: 'CAM-01' }] } }, 422, 'INVALID_INPUT');
     // 79: a camera device to a video track.
@@ -1024,8 +1028,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     // CAPTURE_CONFIG_LOCKED of an open session is produced where a session is open: the module's
     // own database test today, area 4 of this file once its route walk is whole again.)
     await expectCall(main, 'updateCaptureConfig', technician, 'the two cameras back on their tracks', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }] } }, 200);
-    const restored = await expectCall(main, 'setPrimaryMic', technician, 'MIC-01 is the primary input again', { id: 'MIC-01' }, 200);
-    expect(bodyOf<Selector>(restored)).toMatchObject({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }], mics: [{ inputId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', role: 'STANDBY' }] });
+    const restored = await expectCall(main, 'setPrimaryMic', technician, 'MIC-01 is the transcription input again', { id: 'MIC-01' }, 200);
+    expect(bodyOf<Selector>(restored)).toMatchObject({ cameras: seededCameras, mics: seededMics });
     // 79, accepted (integration pass D4: the cell was never produced): the camera on the track it holds.
     await expectCall(main, 'setCaptureCameraSource', technician, 'a camera on the track it already feeds', { id: 'CAM-01', payload: { trackId: 'VIDEO-01' } }, 200);
     settle();
@@ -1127,20 +1131,21 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       expect(bodyOf<Record<string, unknown>>(tested)).toMatchObject({ candidateId, outcome: 'REACHABLE', authenticated: true });
 
       // 96: the device, its credential and the audit rows in one unit; a repeat, and a test after it, are refused by name.
+      // D60 (2026-11-04): the seed carries FOUR built-in cameras, so the adopted one takes the next free number, CAM-05.
       main.clock.advance(30 * SECOND);
       const adopted = await expectCall(main, 'adoptCaptureCandidate', technician, 'the tested candidate with the same account', { id: candidateId, payload: { credential: account } }, 201);
       const adoption = bodyOf<{ deviceId: string; credentialSet: boolean; device: Record<string, unknown> }>(adopted);
-      expect(adoption).toMatchObject({ deviceId: 'CAM-03', credentialSet: true, device: { id: 'CAM-03', kind: 'CAMERA', adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } });
+      expect(adoption).toMatchObject({ deviceId: 'CAM-05', credentialSet: true, device: { id: 'CAM-05', kind: 'CAMERA', adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } });
       await written();
       main.clock.advance(30 * SECOND);
       for (const operationId of ['adoptCaptureCandidate', 'testCaptureCandidateConnection'] as const) {
         const repeat = await expectCall(main, operationId, technician, 'the candidate is a registered device now', { id: candidateId, payload: { credential: account } }, 409, 'INVALID_STATE');
-        expect(detailsOf(repeat)).toMatchObject({ reason: 'CANDIDATE_ALREADY_REGISTERED', deviceId: 'CAM-03' });
+        expect(detailsOf(repeat)).toMatchObject({ reason: 'CANDIDATE_ALREADY_REGISTERED', deviceId: 'CAM-05' });
       }
-      expect(bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', technician, 'the candidate reads REGISTERED', {}, 200)).candidates.map((candidate) => [candidate.status, candidate.deviceId])).toEqual([['REGISTERED', 'CAM-03']]);
+      expect(bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', technician, 'the candidate reads REGISTERED', {}, 200)).candidates.map((candidate) => [candidate.status, candidate.deviceId])).toEqual([['REGISTERED', 'CAM-05']]);
 
       // 89: the credential of a registered camera is replaced; the answer is the selector and echoes neither field.
-      const replaced = await expectCall(main, 'setCaptureDeviceCredential', technician, 'the holder of CAPTURE_CONFIG replaces the credential of the adopted camera', { id: 'CAM-03', payload: account }, 200);
+      const replaced = await expectCall(main, 'setCaptureDeviceCredential', technician, 'the holder of CAPTURE_CONFIG replaces the credential of the adopted camera', { id: 'CAM-05', payload: account }, 200);
       await expectCall(main, 'setCaptureDeviceCredential', technician, 'a device the capture registry does not hold', { id: 'CAM-99', payload: account }, 404, 'NOT_FOUND');
       await expectCall(main, 'setCaptureDeviceCredential', technician, 'a malformed {id}', { id: 'cam 03', payload: account }, 422, 'INVALID_INPUT');
       // (Its 409 CAPTURE_CONFIG_LOCKED needs an open session: produced by the connect flow's own
@@ -1150,7 +1155,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       // 108 (task 4 rows 146, V3, 146b): the connection test of a REGISTERED camera with its STORED credential. NO BODY:
       // the device is the id of the path and nothing else is read. This Core has no production composition, so no
       // reader was handed in: the envelope's 503, before anything is read.
-      const storedTestNotReady = await expectCall(main, 'testCaptureDeviceConnection', technician, 'no reader of the stored credential was handed in', { id: 'CAM-03' }, 503, 'NOT_READY');
+      const storedTestNotReady = await expectCall(main, 'testCaptureDeviceConnection', technician, 'no reader of the stored credential was handed in', { id: 'CAM-05' }, 503, 'NOT_READY');
       expect(detailsOf(storedTestNotReady)['reason']).toBe('DISCOVERY_NOT_READY');
       // THE READER IS A DOUBLE OF THIS FILE (static rule R-6: only the tests of `modules/capture-config` import the wiring
       // of the credential holders; the real reader, its reveal entry, the relay and the two audit entries of a test are
@@ -1170,8 +1175,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       await expectCall(main, 'testCaptureDeviceConnection', technician, 'a device the capture registry does not hold', { id: 'CAM-99' }, 404, 'NOT_FOUND');
       await expectCall(main, 'testCaptureDeviceConnection', technician, 'a registered device that is no camera', { id: 'MIC-01' }, 404, 'NOT_FOUND');
       await expectCall(main, 'testCaptureDeviceConnection', technician, 'a malformed {id}', { id: 'cam 03' }, 422, 'INVALID_INPUT');
-      // CAM-03 was adopted from the stub as a DEVELOPMENT source (adapter FAKE): it has no stored-credential test.
-      const developmentSource = await expectCall(main, 'testCaptureDeviceConnection', technician, 'a development source', { id: 'CAM-03' }, 409, 'INVALID_STATE');
+      // CAM-05 was adopted from the stub as a DEVELOPMENT source (adapter FAKE): it has no stored-credential test.
+      const developmentSource = await expectCall(main, 'testCaptureDeviceConnection', technician, 'a development source', { id: 'CAM-05' }, 409, 'INVALID_STATE');
       expect(detailsOf(developmentSource)).toEqual({ reason: 'CANDIDATE_NOT_TESTABLE' });
       // Every refusal stood before the read: the reader was not called and nothing was sent to the stub.
       expect(storedReads).toBe(0);
@@ -1179,15 +1184,15 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       // AS A FIXTURE the stored row is given the production adapter kind for one call (the test reads the stored facts at
       // EVERY call): the Core tests the stub at its STORED address with what the reader answered. A body is not read: a
       // decoy address in it changes nothing. This Core has no relay program, so the answer is the ONVIF half's own.
-      await owner().query("UPDATE public.capture_devices SET adapter_kind = 'ONVIF_RTSP' WHERE id = 'CAM-03'");
+      await owner().query("UPDATE public.capture_devices SET adapter_kind = 'ONVIF_RTSP' WHERE id = 'CAM-05'");
       let storedTest: Answer;
       try {
         main.clock.advance(30 * SECOND);
-        storedTest = await expectCall(main, 'testCaptureDeviceConnection', technician, 'the adopted camera, as a production camera at its stored address', { id: 'CAM-03', payload: { address: '192.168.50.99', credential: { username: 'decoy', secret: 'decoy' } } }, 200);
+        storedTest = await expectCall(main, 'testCaptureDeviceConnection', technician, 'the adopted camera, as a production camera at its stored address', { id: 'CAM-05', payload: { address: '192.168.50.99', credential: { username: 'decoy', secret: 'decoy' } } }, 200);
       } finally {
-        await owner().query("UPDATE public.capture_devices SET adapter_kind = 'FAKE' WHERE id = 'CAM-03'");
+        await owner().query("UPDATE public.capture_devices SET adapter_kind = 'FAKE' WHERE id = 'CAM-05'");
       }
-      expect(bodyOf<Record<string, unknown>>(storedTest)).toMatchObject({ deviceId: 'CAM-03', outcome: 'REACHABLE', authenticated: true });
+      expect(bodyOf<Record<string, unknown>>(storedTest)).toMatchObject({ deviceId: 'CAM-05', outcome: 'REACHABLE', authenticated: true });
       expect(storedReads).toBe(1);
       expect(stub.requestLog().length).toBeGreaterThan(requestsBeforeStoredTest);
       console.info(`[w52] operation 108 on the stub: ${String(bodyOf<{ outcome: string }>(storedTest).outcome)}; reads of the stored credential ${storedReads}; requests at the stub +${stub.requestLog().length - requestsBeforeStoredTest}`);
@@ -1198,18 +1203,18 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       // confirmation, not a target: the Core takes the address from the caller's own search state. Nothing is sent
       // to any device by this operation.
       const shownAddress = String(adoption.device['host']);
-      const readdress = (candidate: string, deviceId = 'CAM-03', address = shownAddress): Options => ({ payload: { deviceId, candidateId: candidate, address } });
+      const readdress = (candidate: string, deviceId = 'CAM-05', address = shownAddress): Options => ({ payload: { deviceId, candidateId: candidate, address } });
       const sentBeforeReaddress = stub.requestLog().length;
       const unmoved = await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'the registered camera answers from its stored address', readdress(candidateId), 409, 'INVALID_STATE');
       expect(detailsOf(unmoved)).toEqual({ reason: 'READDRESS_NOT_THE_REGISTERED_CAMERA' });
       await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'an id no search listed', readdress(unknownId), 404, 'NOT_FOUND');
       await expectCall(main, 'confirmCaptureDeviceAddress', spareTechnician, 'the candidate of another session\'s search', readdress(candidateId), 404, 'NOT_FOUND');
       await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'a device the capture registry does not hold', readdress(candidateId, 'CAM-99'), 404, 'NOT_FOUND');
-      await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'an address that is a name', readdress(candidateId, 'CAM-03', 'camera.example'), 422, 'INVALID_INPUT');
+      await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'an address that is a name', readdress(candidateId, 'CAM-05', 'camera.example'), 422, 'INVALID_INPUT');
       // THE CAMERA "MOVES" (fixture): its stored address becomes another one through the engine's own door, in the
       // row and in the running engine together; the next search lists it as the registered camera at a changed address.
       await main.app.engine.run('w52.fixture.cameraMoved', async (scope) => {
-        await readdressCaptureDeviceIn(scope, { deviceId: 'CAM-03', address: '192.168.50.20' });
+        await readdressCaptureDeviceIn(scope, { deviceId: 'CAM-05', address: '192.168.50.20' });
       });
       await written();
       main.clock.advance(130 * SECOND);
@@ -1217,9 +1222,9 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       await delay(3_400);
       await written();
       const movedList = bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', technician, 'the registered camera at a changed address', {}, 200)).candidates;
-      expect(movedList.map((candidate) => [candidate.status, candidate.deviceId])).toEqual([['REGISTERED', 'CAM-03']]);
+      expect(movedList.map((candidate) => [candidate.status, candidate.deviceId])).toEqual([['REGISTERED', 'CAM-05']]);
       const movedId = movedList[0]?.candidateId ?? '';
-      const otherAddress = await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'another address than the one the search shows', readdress(movedId, 'CAM-03', '192.168.50.21'), 409, 'INVALID_STATE');
+      const otherAddress = await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'another address than the one the search shows', readdress(movedId, 'CAM-05', '192.168.50.21'), 409, 'INVALID_STATE');
       expect(detailsOf(otherAddress)).toEqual({ reason: 'READDRESS_CONFIRMATION_MISMATCH' });
       // The destination rule of this Core (no network facts were handed in: it refuses every address): one sentence, never the address.
       const ruledOut = await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'an address the destination rule refuses', readdress(movedId), 422, 'INVALID_INPUT');
@@ -1228,7 +1233,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       // The stub lives on loopback, which the product's rule refuses on any facts: the permissive rule of a test (AD-02 (2)) for ONE call.
       captureReaddressControl(main.app).replaceForTest({ addressRule: (host, port) => loopbackDestination(host, port ?? 80) });
       const confirmed = await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'the operator confirms the address the search shows', readdress(movedId), 200);
-      expect(bodyOf<Record<string, unknown>>(confirmed)).toMatchObject({ deviceId: 'CAM-03', device: { id: 'CAM-03', kind: 'CAMERA', host: shownAddress } });
+      expect(bodyOf<Record<string, unknown>>(confirmed)).toMatchObject({ deviceId: 'CAM-05', device: { id: 'CAM-05', kind: 'CAMERA', host: shownAddress } });
       await written();
       // (Still under the test's rule: the product's rule stands before the unit and would refuse first.)
       const confirmedTwice = await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'the same confirmation again', readdress(movedId), 409, 'INVALID_STATE');
@@ -1260,8 +1265,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
         ['getCaptureDiscovery', {}],
         ['testCaptureCandidateConnection', { id: candidateId, payload: { credential: account } }],
         ['adoptCaptureCandidate', { id: candidateId, payload: { credential: account } }],
-        ['setCaptureDeviceCredential', { id: 'CAM-03', payload: account }],
-        ['testCaptureDeviceConnection', { id: 'CAM-03' }],
+        ['setCaptureDeviceCredential', { id: 'CAM-05', payload: account }],
+        ['testCaptureDeviceConnection', { id: 'CAM-05' }],
         ['rescanCaptureInputs', {}],
       ] as const) {
         await expectCall(main, operationId, CONSOLE, 'the web console without a session', options, 401, 'NOT_SIGNED_IN');
@@ -1328,11 +1333,12 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     const held = bodyOf<Search>(await expectCall(main, 'searchCaptureAudioCards', technician, 'the listing names the registered input and its holder', {}, 200));
     expect(held.cards.map((card) => [card.registered, card.boundTo])).toEqual([[[], null], [[{ inputNumber: 3, deviceId: registered.deviceId }], registered.deviceId]]);
     // 77 (decision C43 (2), (3)): the registered microphone is in the registry every role reads, once
-    // (the repeat made no second device), after the built-in pair and with the capability they state.
+    // (the repeat made no second device), after the built-in FOUR channels (D61, 2026-11-04: the pair became the four
+    // numbered channels MIC-01..MIC-04) and with the capability they state.
     const registry = bodyOf<{ devices: { id: string; kind: string; capabilities: string[]; adapter?: string }[] }>(await expectCall(main, 'getCaptureDevices', web.INVESTIGATOR, 'the registry lists the registered microphone', {}, 200));
     const microphones = registry.devices.filter((device) => device.kind === 'MIC');
-    expect(microphones.map((device) => device.id)).toEqual(['MIC-01', 'MIC-02', registered.deviceId]);
-    expect(microphones.map((device) => device.capabilities)).toEqual([['AUDIO'], ['AUDIO'], ['AUDIO']]);
+    expect(microphones.map((device) => device.id)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', registered.deviceId]); // D61: four built-ins, then the registered one
+    expect(microphones.map((device) => device.capabilities)).toEqual([['AUDIO'], ['AUDIO'], ['AUDIO'], ['AUDIO'], ['AUDIO']]);
     expect(microphones.at(-1)?.adapter).toBe('USB_AUDIO');
     // 99, D48 (2026-10-23, reverses D10 (1) / Q96-01 a; was row 138's "one microphone per card": another input refused
     // AUDIO_CARD_ALREADY_BOUND, the holder moved with `release: true`): ONE MICROPHONE PER INPUT of a card. Another input of the
@@ -2773,21 +2779,23 @@ const NOT_PRODUCED: Readonly<Record<string, string>> = {
 const KNOWN_CODE_GAPS: Readonly<Record<string, string>> = {};
 
 describe('SC6: what the whole file received', () => {
-  it('AC-B-70: every answer that lists audio lists exactly the two session tracks or the two mic inputs (SH-17); the device registry of operation 77 lists the pair first and then every registered microphone', () => {
+  it('AC-B-70: every answer that lists audio lists exactly the four session tracks or the four mic channels (SH-17, D61); the device registry of operation 77 lists the four built-ins first and then every registered microphone', () => {
     // Schema v2 re-keys the audio READS by the physical inputs (C3 §3, ops 44/45: `audio[]` and
-    // `channels[]` carry `inputId` MIC-01/MIC-02, never merged), while the session tracks stay
-    // AUDIO-01/AUDIO-02. A list of either kind must carry both members in order and nothing else.
+    // `channels[]` carry `inputId`, never merged), while the session tracks are the sealed
+    // AUDIO-01..AUDIO-04. D61 (2026-11-04, ruling of the four simultaneous microphone channels):
+    // both lists carry FOUR members in order and nothing else.
     //
     // CORRECTED BY DECISION C43 (2) (task 4 rows 185 / 190; integration pass I-7). The device
-    // REGISTRY (operation 77, `devices`) is no list of the two inputs of a recording: it is every
+    // REGISTRY (operation 77, `devices`) is no list of the inputs of a recording: it is every
     // device the Core holds, and a microphone registered through operation 99 is one of them. Its
-    // microphones are held to their own rule - the built-in pair first, in order, then registered
-    // microphones `MIC-NN` in rising number, none twice - and this file must have seen the
-    // registry WITH a registered microphone, so that the rule is not met by an empty case.
+    // microphones are held to their own rule - the built-in FOUR channels first, in order (D61),
+    // then registered microphones `MIC-NN` in rising number, none twice - and this file must have
+    // seen the registry WITH a registered microphone, so that the rule is not met by an empty case.
     const REGISTRY_PLACE = 'getCaptureDevices devices';
     const registryRule = (ids: readonly string[]): boolean => {
       const numbers = ids.map((id) => /^MIC-(\d{2,})$/.exec(id)?.[1]).map((digits) => (digits === undefined ? Number.NaN : Number(digits)));
-      return ids[0] === 'MIC-01' && ids[1] === 'MIC-02' && numbers.every((number, index) => Number.isInteger(number) && (index === 0 || number > (numbers[index - 1] ?? Number.NaN)));
+      // D61 (2026-11-04): the pair became the four numbered built-ins.
+      return ids[0] === 'MIC-01' && ids[1] === 'MIC-02' && ids[2] === 'MIC-03' && ids[3] === 'MIC-04' && numbers.every((number, index) => Number.isInteger(number) && (index === 0 || number > (numbers[index - 1] ?? Number.NaN)));
     };
     const registries: string[] = [];
     const lists: Array<{ operationId: string; path: string; ids: string[] }> = [];
@@ -2821,14 +2829,22 @@ describe('SC6: what the whole file received', () => {
         expect(registryRule(list.ids), `${list.operationId} ${list.path}: ${pair}`).toBe(true);
         continue;
       }
-      expect(pair === '["AUDIO-01","AUDIO-02"]' || pair === '["MIC-01","MIC-02"]', `${list.operationId} ${list.path}: ${pair}`).toBe(true);
+      // D61 (2026-11-04): the ordered pair became the ordered FOUR — the sealed tracks AUDIO-01..04 or
+      // the mic channels MIC-01..04. BACKWARD COMPATIBILITY IS THE RULING'S OTHER HALF (D60): an item
+      // sealed under the two-track era names its OWN list, read as a prefix of the new order — so a
+      // gapless run of AUDIO- ids that is the pair of that era or the four of this one is the item's
+      // truth, never a violation.
+      const prefixRun = (ids: readonly string[], prefix: readonly string[]): boolean =>
+        ids.length >= 2 && ids.length <= prefix.length && ids.every((id, index) => id === prefix[index]);
+      const ok = prefixRun(list.ids, ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']) || JSON.stringify(list.ids) === '["MIC-01","MIC-02","MIC-03","MIC-04"]';
+      expect(ok, `${list.operationId} ${list.path}: ${pair}`).toBe(true);
     }
-    // The registry was read before any registration (the pair alone) and after one (the pair and the registered microphone).
-    expect(registries).toContain('["MIC-01","MIC-02"]');
-    expect(registries).toContain('["MIC-01","MIC-02","MIC-03"]');
-    // CONTROL of the registry rule: the pair alone and the pair with later microphones pass; a missing or swapped member of the pair, a repeat, a falling number and an id of another form do not.
-    expect([['MIC-01', 'MIC-02'], ['MIC-01', 'MIC-02', 'MIC-03'], ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-11']].map(registryRule)).toEqual([true, true, true]);
-    expect([['MIC-01'], ['MIC-02', 'MIC-01'], ['MIC-01', 'MIC-03'], ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-03'], ['MIC-01', 'MIC-02', 'MIC-04', 'MIC-03'], ['MIC-01', 'MIC-02', 'AUDIO-01'], []].map(registryRule)).toEqual([false, false, false, false, false, false, false]);
+    // The registry was read before any registration (the four built-ins alone) and after one (the four and the registered microphone).
+    expect(registries).toContain('["MIC-01","MIC-02","MIC-03","MIC-04"]'); // D61 (2026-11-04): the pair became the four numbered channels
+    expect(registries).toContain('["MIC-01","MIC-02","MIC-03","MIC-04","MIC-05"]');
+    // CONTROL of the registry rule: the four built-ins alone and the four with later microphones pass; a missing or swapped member of the four, a repeat, a falling number and an id of another form do not.
+    expect([['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'], ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'MIC-05'], ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'MIC-05', 'MIC-11']].map(registryRule)).toEqual([true, true, true]); // D61: four built-ins
+    expect([['MIC-01', 'MIC-02', 'MIC-03'], ['MIC-02', 'MIC-01', 'MIC-03', 'MIC-04'], ['MIC-01', 'MIC-02', 'MIC-04', 'MIC-03'], ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'MIC-04'], ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'AUDIO-01'], []].map(registryRule)).toEqual([false, false, false, false, false, false]); // D61: the four-channel forms
     console.info(`[w52] AC-B-70: ${lists.length} lists of audio (tracks or inputs) in the answers of this file, each the ordered pair:\n${[...byPlace].map(([place, count]) => `[w52]   ${place}: ${count}`).join('\n')}`);
     // The reads that list audio were all among them: the input-keyed reads and the track-keyed one.
     for (const operationId of ['getAudioStatus', 'getDeviceHealth', 'getEvidence']) expect([...byPlace.keys()].some((place) => place.startsWith(`${operationId} `)), operationId).toBe(true);

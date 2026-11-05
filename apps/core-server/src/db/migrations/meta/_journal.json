@@ -288,6 +288,13 @@
       "when": 1793800800000,
       "tag": "0040_four_audio_channels",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793887200000,
+      "tag": "0041_capture_widening_privileges",
+      "breakpoints": true
     }
   ]
 }

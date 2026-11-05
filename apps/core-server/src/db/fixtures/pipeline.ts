@@ -104,9 +104,9 @@ export const FAKE_SOURCE_SHAPE: SourceShape = {
 export const DEVELOPMENT_SOURCE_SHAPE: SourceShape = {
   name: 'DEVELOPMENT',
   slots: [
-    { slot: 'VIDEO-01', deviceId: 'CAM-06', adapterKind: 'LOCAL_DEVICE' },
+    { slot: 'VIDEO-01', deviceId: 'CAM-09', adapterKind: 'LOCAL_DEVICE' },
     { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },
-    { slot: 'MIC-01', deviceId: 'MIC-05', adapterKind: 'LOCAL_DEVICE' }, // D61: the slot name is the channel, the device may be any registered microphone
+    { slot: 'MIC-01', deviceId: 'MIC-07', adapterKind: 'LOCAL_DEVICE' }, // D61: the slot name is the channel, the device may be any registered microphone
     { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'FAKE' }, // D61
   ],
 };
@@ -114,20 +114,20 @@ export const DEVELOPMENT_SOURCE_SHAPE: SourceShape = {
 export const PRODUCTION_SOURCE_SHAPE: SourceShape = {
   name: 'PRODUCTION',
   slots: [
-    { slot: 'VIDEO-01', deviceId: 'CAM-03', adapterKind: 'ONVIF_RTSP' },
-    { slot: 'VIDEO-02', deviceId: 'CAM-04', adapterKind: 'ONVIF_RTSP' },
-    { slot: 'MIC-01', deviceId: 'MIC-03', adapterKind: 'USB_AUDIO' }, // D61 (2026-11-04): numbered channels
-    { slot: 'MIC-02', deviceId: 'MIC-04', adapterKind: 'USB_AUDIO' }, // D61
+    { slot: 'VIDEO-01', deviceId: 'CAM-06', adapterKind: 'ONVIF_RTSP' },
+    { slot: 'VIDEO-02', deviceId: 'CAM-07', adapterKind: 'ONVIF_RTSP' },
+    { slot: 'MIC-01', deviceId: 'MIC-05', adapterKind: 'USB_AUDIO' }, // D61 (2026-11-04): numbered channels
+    { slot: 'MIC-02', deviceId: 'MIC-06', adapterKind: 'USB_AUDIO' }, // D61
   ],
 };
 /** All-production on the dual-lens camera: one device in both VIDEO rows (OD-05). */
 export const PRODUCTION_DUAL_LENS_SOURCE_SHAPE: SourceShape = {
   name: 'PRODUCTION',
   slots: [
-    { slot: 'VIDEO-01', deviceId: 'CAM-03', adapterKind: 'ONVIF_RTSP' },
-    { slot: 'VIDEO-02', deviceId: 'CAM-03', adapterKind: 'ONVIF_RTSP' },
-    { slot: 'MIC-01', deviceId: 'MIC-03', adapterKind: 'USB_AUDIO' }, // D61 (2026-11-04): numbered channels
-    { slot: 'MIC-02', deviceId: 'MIC-04', adapterKind: 'USB_AUDIO' }, // D61
+    { slot: 'VIDEO-01', deviceId: 'CAM-06', adapterKind: 'ONVIF_RTSP' },
+    { slot: 'VIDEO-02', deviceId: 'CAM-06', adapterKind: 'ONVIF_RTSP' },
+    { slot: 'MIC-01', deviceId: 'MIC-05', adapterKind: 'USB_AUDIO' }, // D61 (2026-11-04): numbered channels
+    { slot: 'MIC-02', deviceId: 'MIC-06', adapterKind: 'USB_AUDIO' }, // D61
   ],
 };
 
@@ -152,8 +152,8 @@ interface RecordedSession {
   readonly durationMs: number;
 }
 
-/** The ids of the seed's five built-in capture devices (`seed/seed.ts` `device()` rows). */
-export const BUILT_IN_CAPTURE_DEVICE_IDS = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH'] as const;
+/** The ids of the seed's NINE built-in capture devices (D60/D61, 2026-11-04: four cameras, four numbered mic channels, the switch). */
+export const BUILT_IN_CAPTURE_DEVICE_IDS = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH'] as const; // D60/D61 (2026-11-04): NINE built-ins - four cameras, four numbered mic channels, the switch
 /**
  * The camera files each SEEDED recording closes. The value set `VIDEO_TRACK_ID` widened to FOUR
  * tracks on D60 (2026-11-04); this corpus is history that predates the ruling - every session
@@ -174,7 +174,9 @@ function taggedHash(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
-// ── discovered capture devices and their credentials (dbc-3 §G: 5 built-ins + 3 discovered) ────
+// ── discovered capture devices and their credentials (dbc-3 §G; D60/D61 2026-11-04: nine built-ins,
+//    four discovered cameras CAM-06..09 and three discovered microphones MIC-05..07 — the
+//    fixture adds what the seed's built-ins never are, ids past the built-in block) ────
 
 function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; captureDeviceCredentials: CaptureDeviceCredentialRow[] } {
   const rng = world.rng('pipeline:capture-devices');
@@ -182,7 +184,7 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
   const captureDevices: CaptureDeviceRow[] = [
     {
       // The dual-profile discovery camera §G asks for (OD-05): two profiles, one device.
-      id: 'CAM-03',
+      id: 'CAM-06',
       kind: 'CAMERA',
       transport: 'RTSP',
       model: 'Discovery camera DX-1 (dual profile)',
@@ -199,7 +201,7 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       retiredBy: null,
     },
     {
-      id: 'CAM-04',
+      id: 'CAM-07',
       kind: 'CAMERA',
       transport: 'ONVIF',
       model: 'Discovery camera DX-2',
@@ -218,7 +220,7 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
     {
       // The third discovered camera of dbc-4 §N.10: three `ONVIF_RTSP` rows, three distinct
       // endpoint references (the partial unique index `capture_devices_onvif_uuid_key`).
-      id: 'CAM-05',
+      id: 'CAM-08',
       kind: 'CAMERA',
       transport: 'ONVIF',
       model: 'Discovery camera DX-2',
@@ -236,7 +238,7 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
     },
     {
       // The Core Mac's own camera (R-11; D-DB-13: a row of its own, never a re-labelled built-in).
-      id: 'CAM-06',
+      id: 'CAM-09',
       kind: 'CAMERA',
       transport: 'LOCAL',
       model: 'Core Mac camera (fixture)',
@@ -253,7 +255,7 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       retiredBy: null,
     },
     {
-      id: 'MIC-03',
+      id: 'MIC-05',
       kind: 'MIC',
       transport: 'USB',
       model: 'Discovery microphone DM-1',
@@ -270,7 +272,7 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       retiredBy: null,
     },
     {
-      id: 'MIC-04',
+      id: 'MIC-06',
       kind: 'MIC',
       transport: 'USB',
       model: 'Discovery microphone DM-1',
@@ -288,7 +290,7 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
     },
     {
       // The Core Mac's own microphone (R-11).
-      id: 'MIC-05',
+      id: 'MIC-07',
       kind: 'MIC',
       transport: 'LOCAL',
       model: 'Core Mac microphone (fixture)',
@@ -311,8 +313,8 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
   const newer = world.dayAt(3, 9);
   const captureDeviceCredentials: CaptureDeviceCredentialRow[] = [
     {
-      deviceId: 'CAM-03',
-      username: 'fixture.camera.cam03',
+      deviceId: 'CAM-06',
+      username: 'fixture.camera.cam06',
       encryption: 'AES-256-GCM',
       secretCiphertext: credentials.bytes(45),
       nonce: credentials.bytes(12),
@@ -321,8 +323,8 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
     },
     {
       // Rotated after the row above: the §G "at least 1 rotated" pair on the two fake cameras.
-      deviceId: 'CAM-04',
-      username: 'fixture.camera.cam04',
+      deviceId: 'CAM-07',
+      username: 'fixture.camera.cam07',
       encryption: 'AES-256-GCM',
       secretCiphertext: credentials.bytes(45),
       nonce: credentials.bytes(12),

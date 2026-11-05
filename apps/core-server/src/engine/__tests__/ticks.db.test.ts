@@ -324,9 +324,10 @@ describe('meters(): the newest meter frame, by reference, never stored (decision
     expect(JSON.stringify(meters()?.audio)).not.toBe(firstLevels);
     // An earlier frame is not changed by a later one: each is its own object.
     expect(JSON.stringify(first[0]?.audio)).toBe(firstLevels);
-    // SH-17 (C3 §3, ops 44/45): the meter frame's audio is keyed by INPUT, MIC-01/MIC-02 - the
-    // session tracks AUDIO-01/02 are the other axis (sim/audio.ts maps one onto the other).
-    expect(Object.keys(meters()?.audio.inputs ?? {}).sort()).toEqual(['MIC-01', 'MIC-02']);
+    // SH-17 (C3 §3, ops 44/45): the meter frame's audio is keyed by INPUT - the FOUR numbered
+    // channels MIC-01..MIC-04 since D61 (2026-11-04); the session tracks AUDIO-01..04 are the other
+    // axis (sim/audio.ts maps one onto the other).
+    expect(Object.keys(meters()?.audio.inputs ?? {}).sort()).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']); // D61 (2026-11-04): four numbered channels, was the two-role pair
 
     // Never stored: the committed state has no such slice, and reading the frame sends no statement.
     expect(Object.keys(host.engine.state())).not.toContain('audio');

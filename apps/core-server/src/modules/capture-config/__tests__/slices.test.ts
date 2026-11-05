@@ -104,13 +104,13 @@ describe('captureConfigSliceOf: the selector row plus the registry make slice 29
     expect(slice.updatedAt).toBe(seededConfig.updatedAt);
   });
 
-  it('the mic rows are in input order whichever device holds which channel (AC-B-70; blueprint row 66; D61): a swapped selector row lists MIC-01 first', () => {
+  it('the mic rows are in CHANNEL order whichever device holds which channel (AC-B-70 generalized by D61, 2026-11-04; blueprint row 66): a swapped selector row lists channel MIC-01 first', () => {
     // D61: the swap is of the DEVICES on the two first channels - the line still names its own channel, and the
-    // list is ordered by the INPUT the device is heard on, never by the channel's number.
+    // load orders by the CHANNEL, as the engine holds it (`inChannelOrder`); the HTTP answer re-sorts by input.
     const swapped = captureConfigSliceOf({ ...seededConfig, mic01Id: 'MIC-02', mic02Id: 'MIC-01' }, seededDevices, false);
     expect(swapped.mics.map((mic) => [mic.inputId, mic.deviceId, mic.channel])).toEqual([
-      ['MIC-01', 'MIC-01', 'MIC-02'],
       ['MIC-02', 'MIC-02', 'MIC-01'],
+      ['MIC-01', 'MIC-01', 'MIC-02'],
       ['MIC-03', 'MIC-03', 'MIC-03'],
       ['MIC-04', 'MIC-04', 'MIC-04'],
     ]);

@@ -190,10 +190,16 @@ const useOnvifOnlyTester = (): void => captureConnectControl(guard.app).replaceF
 const streamRows = async (deviceId: string): Promise<Record<string, unknown>[]> =>
   (await owner.query('SELECT profile, onvif_profile_token, video_source_token, lens, stream_role, codec, width, height FROM public.capture_device_streams WHERE device_id = $1 ORDER BY lens', [deviceId])).rows as Record<string, unknown>[];
 
-/** A case that starts from a registry without the camera an earlier case adopted: as the owner, its stream rows first (the foreign key restricts). */
-const dropCamera03 = async (): Promise<void> => {
-  await owner.query("DELETE FROM public.capture_device_streams WHERE device_id = 'CAM-03'");
-  await owner.query("DELETE FROM public.capture_devices WHERE id = 'CAM-03'");
+/**
+ * A case that starts from a registry without the camera an earlier case adopted: as the owner, its
+ * stream rows first (the foreign key restricts). D60 (2026-11-04): the built-in block is CAM-01..04
+ * and the seed assigns all four tracks, so the adopted camera is the FIRST ID PAST THE BLOCK,
+ * `CAM-05` — the old `CAM-03` is a built-in now and its DELETE trips
+ * `capture_config_video_03_device_id_fkey` (RESTRICT).
+ */
+const dropAdoptedCamera = async (): Promise<void> => {
+  await owner.query("DELETE FROM public.capture_device_streams WHERE device_id = 'CAM-05'");
+  await owner.query("DELETE FROM public.capture_devices WHERE id = 'CAM-05'");
 };
 
 const testPath = (id: string): string => `/api/v1/capture/discovery/candidates/${id}/test`;
@@ -453,31 +459,31 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
     expect(response.statusCode, guard.log.lines().filter((line) => Number(line['level']) >= 50).map((line) => JSON.stringify(line)).join('\n')).toBe(201);
     const adoption = response.json() as { deviceId: string; credentialSet: boolean; device: { id: string; kind: string } };
     expect(validateCoreApiResponse('adoptCaptureCandidate', 201, adoption)).toMatchObject({ ok: true });
-    expect(adoption).toMatchObject({ deviceId: 'CAM-03', credentialSet: true, device: { id: 'CAM-03', kind: 'CAMERA' } });
+    expect(adoption).toMatchObject({ deviceId: 'CAM-05', credentialSet: true, device: { id: 'CAM-05', kind: 'CAMERA' } }); // D60 (2026-11-04): four built-in cameras - adoption mints the first id past the block
     expect(await rowCounts()).toEqual([before[0] + 1, before[1] + 1]);
 
     const rows = await since(from);
     expect(rows.map((row) => row.type)).toEqual(['CAPTURE_CONNECTION_TESTED', 'CAPTURE_CREDENTIAL_SET', 'CAPTURE_CANDIDATE_ADOPTED']);
     expect(rows[0]?.details).toMatchObject({ operationId: 'adoptCaptureCandidate', outcome: 'REACHABLE', authenticated: true });
     // The fact of the write, by name only.
-    expect(rows[1]?.details).toEqual({ deviceId: 'CAM-03', operationId: 'adoptCaptureCandidate', permission: 'CAPTURE_CONFIG' });
-    expect(rows[2]?.details).toEqual({ deviceId: 'CAM-03', candidateId: id, searchId: 'DSC-000142', adapter: 'FAKE', sourceClass: 'DEVELOPMENT', credentialSet: true, operationId: 'adoptCaptureCandidate', permission: 'CAPTURE_CONFIG' });
+    expect(rows[1]?.details).toEqual({ deviceId: 'CAM-05', operationId: 'adoptCaptureCandidate', permission: 'CAPTURE_CONFIG' });
+    expect(rows[2]?.details).toEqual({ deviceId: 'CAM-05', candidateId: id, searchId: 'DSC-000142', adapter: 'FAKE', sourceClass: 'DEVELOPMENT', credentialSet: true, operationId: 'adoptCaptureCandidate', permission: 'CAPTURE_CONFIG' });
 
-    const device = (await owner.query('SELECT kind, transport, adapter_kind, address, onvif_uuid, profiles, enabled FROM public.capture_devices WHERE id = $1', ['CAM-03'])).rows[0] as Record<string, unknown>;
+    const device = (await owner.query('SELECT kind, transport, adapter_kind, address, onvif_uuid, profiles, enabled FROM public.capture_devices WHERE id = $1', ['CAM-05'])).rows[0] as Record<string, unknown>;
     // Task 4 row 51 (AD-06 (4)): the profile list holds the MINTED CODE - until row 51 it held the ONVIF token `profile_1`.
     expect(device).toMatchObject({ kind: 'CAMERA', transport: 'RTSP', adapter_kind: 'FAKE', profiles: ['H264_1080P25'], enabled: true });
     // The token stands in the stream row, beside the code, with the facts the Core read from the stream.
-    expect(await streamRows('CAM-03')).toEqual([{ profile: 'H264_1080P25', onvif_profile_token: 'profile_1', video_source_token: 'vs_1', lens: 1, stream_role: 'MAIN', codec: 'H264', width: 1920, height: 1080 }]);
+    expect(await streamRows('CAM-05')).toEqual([{ profile: 'H264_1080P25', onvif_profile_token: 'profile_1', video_source_token: 'vs_1', lens: 1, stream_role: 'MAIN', codec: 'H264', width: 1920, height: 1080 }]);
     // No audit detail of the adoption or of its test holds the token or the code: the rows say what they said before.
     expect(JSON.stringify(rows.map((row) => row.details))).not.toMatch(/profile_1|H264_1080P25/);
     expect(String(device['address'])).toMatch(/^127\.0\.0\.1:\d+$/);
-    const stored = (await owner.query('SELECT username, encryption, secret_ciphertext, nonce, key_ref FROM public.capture_device_credentials WHERE device_id = $1', ['CAM-03'])).rows[0] as { username: string; encryption: string; secret_ciphertext: Buffer; nonce: Buffer; key_ref: string };
+    const stored = (await owner.query('SELECT username, encryption, secret_ciphertext, nonce, key_ref FROM public.capture_device_credentials WHERE device_id = $1', ['CAM-05'])).rows[0] as { username: string; encryption: string; secret_ciphertext: Buffer; nonce: Buffer; key_ref: string };
     expect(stored.encryption).toBe('AES-256-GCM');
     expect(stored.key_ref).toMatch(/^CAPTURE_DEVICE_K_[0-9A-F]{20}$/);
     expect(stored.nonce.byteLength).toBe(12);
     expect(stored.secret_ciphertext.byteLength).toBeGreaterThanOrEqual(33);
     expect(stored.secret_ciphertext.includes(Buffer.from(ACCOUNT.secret))).toBe(false);
-    expect(store.capture.open('CAM-03', { keyRef: stored.key_ref, ciphertext: new Uint8Array(stored.secret_ciphertext), nonce: new Uint8Array(stored.nonce) })).toBe(ACCOUNT.secret);
+    expect(store.capture.open('CAM-05', { keyRef: stored.key_ref, ciphertext: new Uint8Array(stored.secret_ciphertext), nonce: new Uint8Array(stored.nonce) })).toBe(ACCOUNT.secret);
     // The runtime role cannot read it back.
     for (const text of ['SELECT secret_ciphertext FROM public.capture_device_credentials', 'SELECT username FROM public.capture_device_credentials', 'SELECT key_ref FROM public.capture_device_credentials', 'SELECT * FROM public.capture_device_credentials']) {
       expect(await sqlstate(guard.app.db.pool.query(text)), text).toBe('42501');
@@ -494,8 +500,8 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
       const id = candidate({ endpointRef: `urn:uuid:${randomUUID()}` });
       // Another address than the adopted camera's, so that only the injected failure can stop the unit.
       held.get(id)!.candidate.camera = { ...held.get(id)!.candidate.camera, serviceAddress: stub.addresses().deviceServiceUrl };
-      await owner.query("DELETE FROM public.capture_device_credentials WHERE device_id = 'CAM-03'");
-      await dropCamera03();
+      await owner.query("DELETE FROM public.capture_device_credentials WHERE device_id = 'CAM-05'");
+      await dropAdoptedCamera();
       expect((await post(technician, testPath(id), { credential: ACCOUNT })).json(), `round ${round}`).toMatchObject({ outcome: 'REACHABLE' });
       const before = await rowCounts();
       const from = (await trail()).length;
@@ -516,8 +522,8 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
   });
 
   it('a credential row that cannot be written rolls the device row back too (a sealer whose envelope the table refuses)', async () => {
-    await owner.query("DELETE FROM public.capture_device_credentials WHERE device_id = 'CAM-03'");
-    await dropCamera03();
+    await owner.query("DELETE FROM public.capture_device_credentials WHERE device_id = 'CAM-05'");
+    await dropAdoptedCamera();
     const id = candidate();
     await post(technician, testPath(id), { credential: ACCOUNT });
     const before = await rowCounts();
@@ -528,9 +534,9 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
     let registrarReturned = false;
     const failure = await guard.app.engine
       .run('row142.badEnvelope', async (scope) => {
-        await registrar(scope, { kind: 'ANONYMOUS', retiredDeviceId: null }, { id: 'CAM-03', adapterKind: CaptureAdapterKind.FAKE, model: null, address: '127.0.0.1:1', endpointRef: null, profiles: [], streams: [], at: 1 });
+        await registrar(scope, { kind: 'ANONYMOUS', retiredDeviceId: null }, { id: 'CAM-05', adapterKind: CaptureAdapterKind.FAKE, model: null, address: '127.0.0.1:1', endpointRef: null, profiles: [], streams: [], at: 1 });
         registrarReturned = true;
-        await scope.unit.query(UPSERT_CAPTURE_CREDENTIAL, ['CAM-03', 'x', Buffer.alloc(48), Buffer.alloc(11), 'CAPTURE_DEVICE_K_00000000000000000000', 1]);
+        await scope.unit.query(UPSERT_CAPTURE_CREDENTIAL, ['CAM-05', 'x', Buffer.alloc(48), Buffer.alloc(11), 'CAPTURE_DEVICE_K_00000000000000000000', 1]);
       })
       .then(
         () => ({ code: 'answered', constraint: undefined }),
@@ -543,8 +549,8 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
   });
 
   it('M4-CONN-ORDER-1: no adoption without a fresh REACHABLE test; the credential is present exactly when the test was authenticated; each refusal stores nothing', async () => {
-    await owner.query("DELETE FROM public.capture_device_credentials WHERE device_id = 'CAM-03'");
-    await dropCamera03();
+    await owner.query("DELETE FROM public.capture_device_credentials WHERE device_id = 'CAM-05'");
+    await dropAdoptedCamera();
     const before = await rowCounts();
     const untested = candidate();
     expect(reasonOf(await post(technician, adoptPath(untested), { credential: ACCOUNT }))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTED']);

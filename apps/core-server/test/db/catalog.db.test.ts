@@ -308,7 +308,7 @@ const amendedCounts = (() => {
 })();
 
 describe('the live catalog equals the database contract (section 4)', () => {
-  it('50 tables, 512 columns, 236 named CHECKs, 50 foreign keys: the difference is empty', async () => {
+  it('50 tables, 518 columns, 237 named CHECKs, 54 foreign keys: the difference is empty', async () => {
     const live = await readCatalog();
     const lines = difference(amendedTables as unknown as ContractTable[], live);
     const count = (type: string): number => live.constraints.filter((constraint) => constraint.type === type).length;
@@ -347,7 +347,10 @@ describe('the live catalog equals the database contract (section 4)', () => {
     // Task 4 design 07, decision C147 (set 16, dbc-16): +3 columns, +2 CHECKs, +1 foreign key (retirement).
     // Principal PT GSP 2026-11-02 (0036, the purge amendment): +2 tables (T-49: 3 columns, keyless;
     // T-50: 8 columns, 1 PK, 1 FK, 3 CHECKs), +11 columns, +3 CHECKs, +1 foreign key.
-    expect(counts).toMatchObject({ tables: 50, columns: 512, checks: 236, foreignKeys: 50 });
+    // Schema v17 (dbc-18, D60/D61 of 2026-11-04, contract-v17-delta.ts): +6 columns (the two video
+    // pairs of 0039, the channels mic_03_id / mic_04_id of 0040), +4 foreign keys (their four slot
+    // references), +1 named CHECK net (the widened value-set CHECKs stand under their names).
+    expect(counts).toMatchObject({ tables: 50, columns: 518, checks: 237, foreignKeys: 54 });
   });
 
   it('the comparison is not vacuous: a changed inventory produces a difference of each kind', async () => {
@@ -396,7 +399,7 @@ describe('the live catalog equals the database contract (section 4)', () => {
     // (`audit_purge_log_actor_id_fkey`), +1 primary key (T-50; T-49 is keyless on purpose). `n` is
     // the count of NOT NULL columns of the composed contract: 6 unit-record columns lost it to the
     // purge amendment, 9 of the two new tables brought it.
-    expect(byType).toEqual({ c: 236, f: 50, n: notNullColumns, p: 49, u: 15 });
+    expect(byType).toEqual({ c: 237, f: 54, n: notNullColumns, p: 49, u: 15 }); // D60/D61 (2026-11-04): +1 CHECK, +4 foreign keys
     console.info(`[w17] pg_constraint in public by contype: ${JSON.stringify(byType)} (n = NOT NULL constraints of PostgreSQL 18)`);
   });
 });

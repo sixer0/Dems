@@ -1048,7 +1048,7 @@ export function captureConfigFromRow(row: CaptureConfigRow, devices: readonly Ca
   };
   return {
     cameras: [...camera('VIDEO-01', slots.video01DeviceId, slots.video01Profile), ...camera('VIDEO-02', slots.video02DeviceId, slots.video02Profile), ...camera('VIDEO-03', slots.video03DeviceId, slots.video03Profile), ...camera('VIDEO-04', slots.video04DeviceId, slots.video04Profile)],
-    mics: [...mic('MIC-01', slots.mic01Id), ...mic('MIC-02', slots.mic02Id), ...mic('MIC-03', slots.mic03Id), ...mic('MIC-04', slots.mic04Id)].sort((left, right) => compareIds(left.inputId, right.inputId)),
+    mics: [...mic('MIC-01', slots.mic01Id), ...mic('MIC-02', slots.mic02Id), ...mic('MIC-03', slots.mic03Id), ...mic('MIC-04', slots.mic04Id)].sort((left, right) => compareIds(left.channel, right.channel)), // D61 (2026-11-04): AC-B-70 generalized — the engine holds the lines in CHANNEL order (capture-config.ts `inChannelOrder`), so the read-back orders by channel, not by input
     locked: false,
     updatedAt: row.updatedAt,
   };

@@ -590,9 +590,9 @@ describe('the v2 pipeline rows of dbc-3 §G (CS-20)', () => {
 
   it('the discovered capture rows: seven devices over the five seeded ones, one dual-profile camera, two camera credentials, one rotated', () => {
     const { captureDevices, captureDeviceCredentials } = fixture.rows;
-    expect(captureDevices.map((row) => row.id)).toEqual(['CAM-03', 'CAM-04', 'CAM-05', 'CAM-06', 'MIC-03', 'MIC-04', 'MIC-05']);
+    expect(captureDevices.map((row) => row.id)).toEqual(['CAM-06', 'CAM-07', 'CAM-08', 'CAM-09', 'MIC-05', 'MIC-06', 'MIC-07']);
     expect(captureDevices.filter((row) => Array.isArray(row.profiles) && (row.profiles as readonly string[]).length >= 2)).toHaveLength(1);
-    expect(captureDeviceCredentials.map((row) => row.deviceId).sort()).toEqual(['CAM-03', 'CAM-04']);
+    expect(captureDeviceCredentials.map((row) => row.deviceId).sort()).toEqual(['CAM-06', 'CAM-07']);
     expect(captureDeviceCredentials.every((row) => row.secretCiphertext.length >= 33 && row.nonce.length === 12)).toBe(true);
     const rotated = captureDeviceCredentials.map((row) => row.rotatedAt).sort((a, b) => a - b);
     expect(rotated[1]).toBeGreaterThan(rotated[0] ?? 0);

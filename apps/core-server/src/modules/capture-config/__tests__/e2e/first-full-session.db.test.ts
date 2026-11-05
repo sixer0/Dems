@@ -252,7 +252,7 @@ describe('row 89 / C-2 of 088b: the fence door `provideProductionParts` - REAL_P
     const { app, log, target } = await appOn('r89_door_late', { captureMode: 'real', demoControls: false, installationDeviceId: fixture.installationId, captureWorkerPath: fixture.worker('capture-worker'), ...standInPrograms(fixture.programsDir) });
     expect(captureFenceControl(app).operation).toBe('REAL_PRODUCTION');
     // The seed's selector names its development sources, which a production fence refuses; with all four slots unassigned the fence step PASSES (category 1).
-    await target.ownerPool().query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_primary_id = NULL, mic_standby_id = NULL');
+    await target.ownerPool().query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL, mic_01_id = NULL, mic_02_id = NULL, mic_03_id = NULL, mic_04_id = NULL'); // D60 / D61 (2026-11-04): the eight slots of the widened selector; the roles are the numbered channels mic_01_id..mic_04_id (0040)
     // REVISED 2026-11-04 (S99-01, D241): check 4c refuses the PUBLISHED demo password of the seed BEFORE 4d-0 asks the
     // host facts — the case names the host facts as the refusal, so the operators get a password of their own first.
     await ownCredentials(target.ownerPool());
@@ -279,7 +279,7 @@ describe.skipIf(!ASKED)('row 89 / C-8 of 086: `src/index.ts` started as a proces
       await ownCredentials(owner);
       await owner.query('UPDATE public.stt_config SET enabled = false');
       // The seed's selector names development sources, which a production fence refuses: all four slots unassigned (category 1 boots).
-      await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_primary_id = NULL, mic_standby_id = NULL');
+      await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL, mic_01_id = NULL, mic_02_id = NULL, mic_03_id = NULL, mic_04_id = NULL'); // D60 / D61 (2026-11-04): all eight slots unassigned
       expect(target.runtime.database).not.toBe('dems_demo');
       expect(target.runtime.database).toMatch(/^dems_test_/);
       const config = { ...productionConfig(target, fixture, { captureWorkerPath: fixture.worker('capture-worker'), ...standInPrograms(key.programsDir) }), port: 0 as never, logLevel: 'info' as const };
@@ -445,7 +445,10 @@ async function productionRows(owner: Pool, onvifPorts: Readonly<Record<'CAM-11' 
     'INSERT INTO public.capture_audio_inputs (device_id, usb_id, card_id, card_device, input_number, native_channels, updated_at, usb_serial, usb_port) VALUES ($1, $3, $4, 0, 1, $5, $2, $6, $7), ($8, $3, $4, 0, 2, $5, $2, $6, $7)',
     ['MIC-11', at, CARD.usbId, CARD.id, CARD.channels, CARD.serial, CARD.port, 'MIC-12'],
   );
-  await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-11', video_01_profile = 'HEVC_1080P25', video_02_device_id = 'CAM-12', video_02_profile = 'H264_1080P25', mic_primary_id = 'MIC-11', mic_standby_id = 'MIC-12'");
+  // D60 / D61 (2026-11-04): the selector names EIGHT slots. The two production cameras and the two
+  // production microphones take the first tracks and the first channels; the remaining slots are
+  // left UNASSIGNED (category 1 of the fence), never the seed's development built-ins.
+  await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-11', video_01_profile = 'HEVC_1080P25', video_02_device_id = 'CAM-12', video_02_profile = 'H264_1080P25', video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL, mic_01_id = 'MIC-11', mic_02_id = 'MIC-12', mic_03_id = NULL, mic_04_id = NULL");
   await owner.query('UPDATE public.stt_config SET enabled = false');
 }
 

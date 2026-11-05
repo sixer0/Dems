@@ -270,18 +270,23 @@ describe('M4-MT-10: the CHECKs, the unique index and the foreign key of set 4', 
     expect((await owner.query("SELECT count(*)::int AS n FROM capture_devices WHERE id IN ('CAM-72', 'CAM-73') AND onvif_uuid IS NULL")).rows[0]?.n).toBe(2);
   });
 
-  it('session_capture_sources: the four legal rows of a session are accepted', async () => {
+  // D60/D61 (2026-11-04): the start record of a session is EIGHT rows - four video tracks and four
+  // numbered microphone channels (`SOURCE_ROWS_PER_SESSION=8`); the roles died with migration 0040.
+  it('session_capture_sources: the eight legal rows of a session are accepted', async () => {
     const owner = db.ownerPool();
-    for (const slot of ['VIDEO-01', 'VIDEO-02', 'MIC-PRIMARY', 'MIC-STANDBY']) await insertRow(owner, 'session_capture_sources', captureSource(slot));
-    expect((await owner.query('SELECT count(*)::int AS n FROM session_capture_sources')).rows[0]?.n).toBe(4);
+    const devices: Record<string, string> = { 'VIDEO-01': 'CAM-81', 'VIDEO-02': 'CAM-82', 'VIDEO-03': 'CAM-83', 'VIDEO-04': 'CAM-84', 'MIC-01': 'MIC-81', 'MIC-02': 'MIC-82', 'MIC-03': 'MIC-83', 'MIC-04': 'MIC-84' };
+    // The empty database holds no built-in rows: the eight devices of the eight-slot world come first.
+    for (const [slot, id] of Object.entries(devices)) await insertRow(owner, 'capture_devices', captureDevice(id, slot.startsWith('VIDEO-') ? 'CAMERA' : 'MIC'));
+    for (const slot of Object.keys(devices)) await insertRow(owner, 'session_capture_sources', captureSource(slot, { device_id: devices[slot] }));
+    expect((await owner.query('SELECT count(*)::int AS n FROM session_capture_sources')).rows[0]?.n).toBe(8);
   });
 
   it.each([
-    ['a fifth slot', captureSource('VIDEO-03'), SQLSTATE.checkViolation, 'session_capture_sources_pairing_check'],
+    ['a ninth slot', captureSource('MIC-05'), SQLSTATE.checkViolation, 'session_capture_sources_pairing_check'], // D61 (2026-11-04): the value set stops at the four channels; the pairing rule comes first in name order
     ['USB_AUDIO in a VIDEO slot', captureSource('VIDEO-01', { session_id: 'SES-20261001-0002', adapter_kind: 'USB_AUDIO' }), SQLSTATE.checkViolation, 'session_capture_sources_pairing_check'],
-    ['ONVIF_RTSP in a MIC slot', captureSource('MIC-PRIMARY', { session_id: 'SES-20261001-0002', adapter_kind: 'ONVIF_RTSP' }), SQLSTATE.checkViolation, 'session_capture_sources_pairing_check'],
+    ['ONVIF_RTSP in a MIC slot', captureSource('MIC-01', { session_id: 'SES-20261001-0002', adapter_kind: 'ONVIF_RTSP' }), SQLSTATE.checkViolation, 'session_capture_sources_pairing_check'],
     ['SNMP_POE in a VIDEO slot', captureSource('VIDEO-02', { session_id: 'SES-20261001-0002', adapter_kind: 'SNMP_POE' }), SQLSTATE.checkViolation, 'session_capture_sources_pairing_check'],
-    ['SNMP_POE in a MIC slot', captureSource('MIC-STANDBY', { session_id: 'SES-20261001-0002', adapter_kind: 'SNMP_POE' }), SQLSTATE.checkViolation, 'session_capture_sources_pairing_check'],
+    ['SNMP_POE in a MIC slot', captureSource('MIC-02', { session_id: 'SES-20261001-0002', adapter_kind: 'SNMP_POE' }), SQLSTATE.checkViolation, 'session_capture_sources_pairing_check'],
     ['an unknown adapter kind', captureSource('VIDEO-01', { session_id: 'SES-20261001-0002', adapter_kind: 'RTMP' }), SQLSTATE.checkViolation, 'session_capture_sources_adapter_kind_check'],
     ['a second row for one (session, slot)', captureSource('VIDEO-01'), SQLSTATE.uniqueViolation, 'session_capture_sources_pkey'],
     ['an unknown device', captureSource('VIDEO-01', { session_id: 'SES-20261001-0002', device_id: 'CAM-99' }), SQLSTATE.foreignKeyViolation, 'session_capture_sources_device_id_fkey'],
@@ -289,7 +294,7 @@ describe('M4-MT-10: the CHECKs, the unique index and the foreign key of set 4', 
     await expectRefused(() => insertRow(db.ownerPool(), 'session_capture_sources', row), code, constraint);
   });
 
-  it('the slot CHECK is live on its own: with the pairing CHECK set aside, a fifth slot meets session_capture_sources_slot_check', async () => {
+  it('the slot CHECK is live on its own: with the pairing CHECK set aside, a ninth slot meets session_capture_sources_slot_check', async () => {
     // The pairing rule comes first in name order and refuses every unknown slot, so the slot list
     // is proven on a second database where the pairing rule is dropped (an accept/refuse pair per
     // CHECK: a dropped slot CHECK would make this INSERT succeed).
@@ -297,7 +302,7 @@ describe('M4-MT-10: the CHECKs, the unique index and the foreign key of set 4', 
     const owner = other.ownerPool();
     await insertRow(owner, 'capture_devices', captureDevice('CAM-01', 'CAMERA'));
     await owner.query('ALTER TABLE public.session_capture_sources DROP CONSTRAINT session_capture_sources_pairing_check');
-    await expectRefused(() => insertRow(owner, 'session_capture_sources', captureSource('VIDEO-03')), SQLSTATE.checkViolation, 'session_capture_sources_slot_check');
+    await expectRefused(() => insertRow(owner, 'session_capture_sources', captureSource('MIC-05')), SQLSTATE.checkViolation, 'session_capture_sources_slot_check'); // D61 (2026-11-04): the ninth slot of the eight-slot world
     await insertRow(owner, 'session_capture_sources', captureSource('VIDEO-01'));
   });
 });

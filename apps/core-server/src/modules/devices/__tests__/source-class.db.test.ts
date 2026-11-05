@@ -40,7 +40,10 @@ const INSTALLATION = 'DEMS-TEST-D131';
 const fixture = realBootFixture('row140d131', INSTALLATION);
 fixture.provisionKey();
 afterAll(() => fixture.remove());
-const BUILT_INS = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH'];
+// D60 / D61 (2026-11-04, migrations 0039 / 0040): the built-in block is NINE — four cameras
+// (CAM-01..04, the four video tracks), four numbered microphone channels (MIC-01..04) and the
+// switch. Discovered and stored rows take ids past the block (CAM-06+, MIC-06+).
+const BUILT_INS = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH'];
 // Task 4 row 85 (C46): a production boot is held to its host - the two stand-in programs here, the explicit TEST host handed in before each boot.
 const REAL = { captureMode: 'real', demoControls: false, dataDir: fixture.dataDir, mediaStoreDir: fixture.mediaStoreDir, installationDeviceId: INSTALLATION, ...testHostPrograms(fixture.programsDir) } as const;
 
@@ -67,11 +70,16 @@ async function booted(slug: string, overrides: Partial<ConfigInput>, prepare?: (
 }
 
 const localRows = (owner: Pool): Promise<unknown> =>
-  owner.query("INSERT INTO public.capture_devices (id, kind, transport, model, enabled, adapter_kind) VALUES ('CAM-03', 'CAMERA', 'AVFOUNDATION', 'MacBook Air Camera', true, 'LOCAL_DEVICE'), ('MIC-03', 'MIC', 'AVFOUNDATION', 'MacBook Air Microphone', true, 'LOCAL_DEVICE')");
+  // D60 / D61 (2026-11-04): CAM-03 / MIC-03 are BUILT-INS now, so this Mac's own rows take ids past
+  // the built-in block (the rule adoption follows: CAM-05+, MIC-05+).
+  owner.query("INSERT INTO public.capture_devices (id, kind, transport, model, enabled, adapter_kind) VALUES ('CAM-06', 'CAMERA', 'AVFOUNDATION', 'MacBook Air Camera', true, 'LOCAL_DEVICE'), ('MIC-06', 'MIC', 'AVFOUNDATION', 'MacBook Air Microphone', true, 'LOCAL_DEVICE')");
 /** What an adoption would leave: production cameras and microphones, assigned to all four slots. */
 async function productionRows(owner: Pool): Promise<void> {
   await owner.query("INSERT INTO public.capture_devices (id, kind, transport, enabled, adapter_kind) VALUES ('CAM-11', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP'), ('CAM-12', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP'), ('MIC-11', 'MIC', 'USB', true, 'USB_AUDIO'), ('MIC-12', 'MIC', 'USB', true, 'USB_AUDIO')");
-  await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-11', video_02_device_id = 'CAM-12', mic_primary_id = 'MIC-11', mic_standby_id = 'MIC-12'");
+  // D60 / D61 (2026-11-04): the selector names EIGHT slots and the roles became the numbered
+  // channels `mic_01_id`..`mic_04_id` (0040). The two production cameras and the two production
+  // microphones take the first slots; the rest are UNASSIGNED (never the seed's built-ins).
+  await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-11', video_02_device_id = 'CAM-12', video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL, mic_01_id = 'MIC-11', mic_02_id = 'MIC-12', mic_03_id = NULL, mic_04_id = NULL");
 }
 
 /**
@@ -119,10 +127,10 @@ describe('REAL_DEVELOPMENT: the development devices carry the class (the CONTROL
   it('CONTROL - this Mac\'s camera and microphone are listed with adapter LOCAL_DEVICE and class DEVELOPMENT: the reader of the pin does find the member', async () => {
     const core = await booted('d131_dev', { ...REAL, captureWorkerPath: fixture.worker('worker-d131-dev', 'capture-worker/0.4.0'), captureDevSources: true, captureHelperFfmpegPath: '/bin/echo' }, localRows);
     expect(captureFenceControl(core.app).operation).toBe('REAL_DEVELOPMENT');
-    expect(core.marks.filter((mark) => mark.includes('-03'))).toEqual(['CAM-03 LOCAL_DEVICE DEVELOPMENT', 'MIC-03 LOCAL_DEVICE DEVELOPMENT']);
+    expect(core.marks.filter((mark) => mark.includes('-06'))).toEqual(['CAM-06 LOCAL_DEVICE DEVELOPMENT', 'MIC-06 LOCAL_DEVICE DEVELOPMENT']); // D60/D61: this Mac's rows live past the built-in block
     expect(core.wire).toMatch(/"sourceClass":"DEVELOPMENT"/);
     expect(core.wire).not.toMatch(/"sourceClass":"PRODUCTION"/);
-    developmentBuiltIns = core.marks.filter((mark) => /^(CAM|MIC)-0[12] /.test(mark));
+    developmentBuiltIns = core.marks.filter((mark) => /^(CAM|MIC)-0[1-4] /.test(mark)); // D60 / D61: the EIGHT FAKE built-ins
     // Pass D11: the boot step that handed the kinds to the engine ran, after the fence's (which builds the registry).
     expect(core.steps).toContain(SOURCE_FACTS_BOOT_STEP);
     expect(core.steps.indexOf(SOURCE_FACTS_BOOT_STEP)).toBeGreaterThan(core.steps.indexOf('capture.fence'));
@@ -143,10 +151,20 @@ describe('REAL_DEVELOPMENT: the development devices carry the class (the CONTROL
   // so (ux §8f.1: the badge "Test source" is drawn only from a class the Core sent). The slice
   // mapping leaves every built-in id without the two members whatever the operation; the devices
   // module hands the engine the kind the registry holds (integration pass D11). `it.fails` until then.
-  it('the four FAKE built-ins of a development Core carry adapter FAKE and class DEVELOPMENT', () => {
+  it('the eight FAKE built-ins of a development Core carry adapter FAKE and class DEVELOPMENT', () => {
     // Read in the case above, on the booted development Core.
+    // D60 / D61 (2026-11-04): four cameras and four numbered channels — EIGHT FAKE built-ins.
     expect(developmentBuiltIns).not.toBeNull();
-    expect(developmentBuiltIns).toEqual(['CAM-01 FAKE DEVELOPMENT', 'CAM-02 FAKE DEVELOPMENT', 'MIC-01 FAKE DEVELOPMENT', 'MIC-02 FAKE DEVELOPMENT']);
+    expect(developmentBuiltIns).toEqual([
+      'CAM-01 FAKE DEVELOPMENT',
+      'CAM-02 FAKE DEVELOPMENT',
+      'CAM-03 FAKE DEVELOPMENT',
+      'CAM-04 FAKE DEVELOPMENT',
+      'MIC-01 FAKE DEVELOPMENT',
+      'MIC-02 FAKE DEVELOPMENT',
+      'MIC-03 FAKE DEVELOPMENT',
+      'MIC-04 FAKE DEVELOPMENT',
+    ]);
   });
 });
 
@@ -179,14 +197,15 @@ describe('REAL_PRODUCTION: a production device carries PRODUCTION or nothing; no
     expect(captureFenceControl(core.app).operation).toBe('REAL_PRODUCTION');
     // The device list (operation 77 answers the slice; the roster of both clients is drawn from it).
     expect(core.marks).toEqual(['CAM-11 ONVIF_RTSP PRODUCTION', 'CAM-12 ONVIF_RTSP PRODUCTION', 'MIC-11 USB_AUDIO PRODUCTION', 'MIC-12 USB_AUDIO PRODUCTION', 'POE-SWITCH - -']);
-    expect(JSON.stringify(core.state.captureDevices)).not.toMatch(/CAM-0[123]|MIC-0[123]|MacBook/);
-    expect(JSON.stringify(core.app.engine.slice('captureDevices'))).not.toMatch(/CAM-0[123]|MIC-0[123]|MacBook/);
+    expect(JSON.stringify(core.state.captureDevices)).not.toMatch(/CAM-0[1-4]|MIC-0[1-4]|MacBook/); // D60/D61: none of the eight built-in sources is listed
+    expect(JSON.stringify(core.app.engine.slice('captureDevices'))).not.toMatch(/CAM-0[1-4]|MIC-0[1-4]|MacBook/);
     expect(core.wire).not.toMatch(/DEVELOPMENT|LOCAL_DEVICE|MacBook/);
     // Not probed, not registered by the boot: the production registry holds no adapter at all.
     expect(captureFenceControl(core.app).registry()?.list() ?? []).toEqual([]);
     // Nothing was deleted or rewritten: the seven development rows are stored as they were.
     const stored = (await core.owner.query("SELECT id, adapter_kind FROM public.capture_devices WHERE adapter_kind IN ('FAKE', 'LOCAL_DEVICE') ORDER BY id")).rows;
-    expect(stored.map((row: { id: string; adapter_kind: string }) => `${row.id} ${row.adapter_kind}`)).toEqual(['CAM-01 FAKE', 'CAM-02 FAKE', 'CAM-03 LOCAL_DEVICE', 'MIC-01 FAKE', 'MIC-02 FAKE', 'MIC-03 LOCAL_DEVICE', 'POE-SWITCH FAKE']);
+    // D60 / D61 (2026-11-04): ELEVEN rows — the nine built-ins, this Mac's two LOCAL_DEVICE rows.
+    expect(stored.map((row: { id: string; adapter_kind: string }) => `${row.id} ${row.adapter_kind}`)).toEqual(['CAM-01 FAKE', 'CAM-02 FAKE', 'CAM-03 FAKE', 'CAM-04 FAKE', 'CAM-06 LOCAL_DEVICE', 'MIC-01 FAKE', 'MIC-02 FAKE', 'MIC-03 FAKE', 'MIC-04 FAKE', 'MIC-06 LOCAL_DEVICE', 'POE-SWITCH FAKE']);
     // A reload inside the process reads the same list (the rule is applied at every rehydration).
     await core.app.engine.stop();
     await core.app.engine.reload();
@@ -218,9 +237,10 @@ describe('REAL_PRODUCTION: a production device carries PRODUCTION or nothing; no
     const core = await booted('r6903_sim', { demoControls: false }, async (owner) => {
       await localRows(owner);
       await productionRows(owner);
-      await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-01', video_02_device_id = 'CAM-02', mic_primary_id = 'MIC-01', mic_standby_id = 'MIC-02'");
+      await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-01', video_02_device_id = 'CAM-02', video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL, mic_01_id = 'MIC-01', mic_02_id = 'MIC-02', mic_03_id = NULL, mic_04_id = NULL"); // D60/D61: EIGHT slots, the numbered channels
     });
     expect(captureFenceControl(core.app).operation).toBe('SIMULATED');
-    expect(core.state.captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-11', 'CAM-12', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-11', 'MIC-12', 'POE-SWITCH']);
+    // D60 / D61 (2026-11-04): every stored device is listed — the nine built-ins, this Mac's two rows and the four production ones.
+    expect(core.state.captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'CAM-06', 'CAM-11', 'CAM-12', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'MIC-06', 'MIC-11', 'MIC-12', 'POE-SWITCH']);
   });
 });

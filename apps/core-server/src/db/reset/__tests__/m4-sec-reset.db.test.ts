@@ -4,8 +4,9 @@
 //
 //   M4-SEC-RESET-1  the reset-guard exemption cannot erase real evidence: an item with
 //                   `development_sources` NULL blocks, `false` blocks, `true` with one production
-//                   kind among its four source rows blocks, `true` with fewer than four rows
-//                   blocks (a fifth row cannot exist); an all-development item passes, the reset
+//                   kind among its eight source rows blocks (D61, 2026-11-04: SOURCE_ROWS_PER_SESSION=8),
+//                   `true` with fewer than eight rows blocks (a ninth row cannot exist); an
+//                   all-development item passes, the reset
 //                   states how many development packages it erases; as dems_app none of the
 //                   three facts can be changed.
 //   M4-MT-14        an adopted ONVIF_RTSP row and the LOCAL_DEVICE rows survive the permitted
@@ -68,15 +69,19 @@ afterAll(async () => {
   removeScratch();
 });
 
-/** The four source rows of the development shape of D74(2): LOCAL_DEVICE, FAKE, LOCAL_DEVICE, FAKE. */
+/** The EIGHT source rows of the development shape of D74(2) (D61, 2026-11-04: SOURCE_ROWS_PER_SESSION=8): four video tracks and four numbered channels, all LOCAL_DEVICE or FAKE. */
 async function writeDevelopmentSources(owner: Pool): Promise<void> {
   await owner.query('DELETE FROM public.session_capture_sources WHERE session_id = $1', [sessionId]);
   await owner.query(
     `INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at) VALUES
        ($1, 'VIDEO-01', 'CAM-08', 'LOCAL_DEVICE', 1790823600000),
        ($1, 'VIDEO-02', 'CAM-02', 'FAKE', 1790823600000),
-       ($1, 'MIC-PRIMARY', 'MIC-07', 'LOCAL_DEVICE', 1790823600000),
-       ($1, 'MIC-STANDBY', 'MIC-02', 'FAKE', 1790823600000)`,
+       ($1, 'VIDEO-03', 'CAM-03', 'FAKE', 1790823600000),
+       ($1, 'VIDEO-04', 'CAM-04', 'FAKE', 1790823600000),
+       ($1, 'MIC-01', 'MIC-07', 'LOCAL_DEVICE', 1790823600000),
+       ($1, 'MIC-02', 'MIC-02', 'FAKE', 1790823600000),
+       ($1, 'MIC-03', 'MIC-03', 'FAKE', 1790823600000),
+       ($1, 'MIC-04', 'MIC-04', 'FAKE', 1790823600000)`,
     [sessionId],
   );
 }
@@ -137,16 +142,16 @@ describe('M4-SEC-RESET-1: the development-package exemption cannot erase real ev
     await expect(app.query("UPDATE public.session_capture_sources SET adapter_kind = 'FAKE' WHERE session_id = $1", [sessionId])).rejects.toMatchObject({ code: '42501' });
     await expect(app.query('DELETE FROM public.session_capture_sources WHERE session_id = $1', [sessionId])).rejects.toMatchObject({ code: '42501' });
     await expect(app.query("UPDATE public.capture_devices SET adapter_kind = 'FAKE' WHERE id = 'CAM-07'")).rejects.toMatchObject({ code: '42501' });
-    // A fifth source row cannot exist: four slots, one row each (the "more than four" case).
+    // D61 (2026-11-04): a ninth source row cannot exist: eight slots, one row each (the "more than eight" case).
     await expect(
       app.query("INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at) VALUES ($1, 'VIDEO-01', 'CAM-01', 'FAKE', 1)", [sessionId]),
     ).rejects.toMatchObject({ code: '23505' });
     await expect(
-      app.query("INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at) VALUES ($1, 'VIDEO-03', 'CAM-01', 'FAKE', 1)", [sessionId]),
+      app.query("INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at) VALUES ($1, 'VIDEO-05', 'CAM-01', 'FAKE', 1)", [sessionId]),
     ).rejects.toMatchObject({ code: '23514' });
   });
 
-  it('development_sources NULL blocks, although the four source rows are all development kinds', async () => {
+  it('development_sources NULL blocks, although the eight source rows are all development kinds', async () => {
     const flag = await db.ownerPool().query('SELECT development_sources FROM public.evidence_items WHERE id = $1', [evidenceId]);
     expect(flag.rows).toEqual([{ development_sources: null }]);
     const message = await expectBlocked({ realRows: 1, developmentUnproven: 0, developmentPackages: 0 });
@@ -158,18 +163,18 @@ describe('M4-SEC-RESET-1: the development-package exemption cannot erase real ev
     await expectBlocked({ realRows: 1, developmentUnproven: 0, developmentPackages: 0 });
   });
 
-  it('development_sources true with ONE production kind among the four source rows blocks (the cross-check)', async () => {
+  it('development_sources true with ONE production kind among the eight source rows blocks (the cross-check)', async () => {
     const owner = db.ownerPool();
     await owner.query('UPDATE public.evidence_items SET development_sources = true WHERE id = $1', [evidenceId]);
     await owner.query("UPDATE public.session_capture_sources SET device_id = 'CAM-07', adapter_kind = 'ONVIF_RTSP' WHERE session_id = $1 AND slot = 'VIDEO-01'", [sessionId]);
     const message = await expectBlocked({ realRows: 1, developmentUnproven: 1, developmentPackages: 0 });
-    expect(message).toContain('1 of them flagged as development sources without four development source rows');
+    expect(message).toContain('1 of them flagged as development sources without eight development source rows'); // D61 (2026-11-04): SOURCE_ROWS_PER_SESSION=8
   });
 
-  it('development_sources true with fewer than four source rows blocks; with none at all it blocks too', async () => {
+  it('development_sources true with fewer than eight source rows blocks; with none at all it blocks too', async () => {
     const owner = db.ownerPool();
     await writeDevelopmentSources(owner);
-    await owner.query("DELETE FROM public.session_capture_sources WHERE session_id = $1 AND slot = 'MIC-STANDBY'", [sessionId]);
+    await owner.query("DELETE FROM public.session_capture_sources WHERE session_id = $1 AND slot = 'MIC-04'", [sessionId]); // D61 (2026-11-04): the roles became the numbered channels
     await expectBlocked({ realRows: 1, developmentUnproven: 1, developmentPackages: 0 });
     await db.ownerPool().query('DELETE FROM public.session_capture_sources WHERE session_id = $1', [sessionId]);
     await expectBlocked({ realRows: 1, developmentUnproven: 1, developmentPackages: 0 });
@@ -192,14 +197,14 @@ describe('M4-SEC-RESET-1: the development-package exemption cannot erase real ev
 const DEVELOPMENT_SOURCE_ROWS: readonly SessionCaptureSourceRow[] = [
   { slot: 'VIDEO-01', deviceId: 'CAM-08', adapterKind: 'LOCAL_DEVICE' },
   { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },
-  { slot: 'MIC-PRIMARY', deviceId: 'MIC-07', adapterKind: 'LOCAL_DEVICE' },
-  { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' },
+  { slot: 'MIC-01', deviceId: 'MIC-07', adapterKind: 'LOCAL_DEVICE' }, // D61 (2026-11-04): the roles became the numbered channels
+  { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'FAKE' },
 ];
 const PRODUCTION_SOURCE_ROWS: readonly SessionCaptureSourceRow[] = [
   { slot: 'VIDEO-01', deviceId: 'CAM-07', adapterKind: 'ONVIF_RTSP' },
   { slot: 'VIDEO-02', deviceId: 'CAM-07', adapterKind: 'ONVIF_RTSP' },
-  { slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'USB_AUDIO' },
-  { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'USB_AUDIO' },
+  { slot: 'MIC-01', deviceId: 'MIC-01', adapterKind: 'USB_AUDIO' }, // D61 (2026-11-04): the roles became the numbered channels
+  { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'USB_AUDIO' },
 ];
 
 type LooseInput = { tracks: { deviceId: string }[]; audio: { sourceIntervals: { micDeviceId: string }[] } };
@@ -221,7 +226,7 @@ async function packageOnDisk(rows: readonly SessionCaptureSourceRow[]): Promise<
     beforeSeal: (input) => {
       const loose = input as unknown as LooseInput;
       loose.tracks.forEach((track, index) => (track.deviceId = deviceOf(index === 0 ? 'VIDEO-01' : 'VIDEO-02')));
-      loose.audio.sourceIntervals.forEach((interval, index) => (interval.micDeviceId = deviceOf(index === 0 ? 'MIC-PRIMARY' : 'MIC-STANDBY')));
+      loose.audio.sourceIntervals.forEach((interval, index) => (interval.micDeviceId = deviceOf(index === 0 ? 'MIC-01' : 'MIC-02'))); // D61 (2026-11-04): the interval's two-role lane reads the first two channels
     },
   });
   return { built, storeRoot: dirname(built.dir) };
@@ -266,7 +271,7 @@ describe('D98(1): the disk side of the exemption follows a SIGNED development ma
     expect((await guardFacts(development.storeRoot)).blocked).toBe(false);
   });
 
-  it('the same folder BLOCKS when its row is not exempt: flag false, flag NULL, or one production kind among the four rows', async () => {
+  it('the same folder BLOCKS when its row is not exempt: flag false, flag NULL, or one production kind among the eight rows', async () => {
     // A reset attempt closes the pools of the file: the owner pool is asked for anew after each.
     await db.ownerPool().query('UPDATE public.evidence_items SET development_sources = false WHERE id = $1', [evidenceId]);
     await expectBlocked({ realRows: 1, developmentPackages: 0, unreadablePackages: 1 }, development.storeRoot);
@@ -339,7 +344,7 @@ describe('the permitted reset: M4-SEC-RESET-1 (the count is stated) and M4-MT-14
               (SELECT count(*)::int FROM public.evidence_items WHERE integrity_source = 'REAL' AND sealed_at IS NOT NULL) AS real_items`,
       [evidenceId, sessionId],
     );
-    expect(state.rows).toEqual([{ flag: true, sources: 4, real_items: 1 }]);
+    expect(state.rows).toEqual([{ flag: true, sources: 8, real_items: 1 }]); // D61 (2026-11-04): the development shape carries eight source rows
     const devicesBefore = await contractChecksum(owner, 'capture_devices');
     const keptBefore = Object.fromEntries(await Promise.all(KEPT_TABLE_NAMES.map(async (table) => [table, await contractChecksum(owner, table)] as const)));
 
@@ -394,12 +399,17 @@ describe('the permitted reset: M4-SEC-RESET-1 (the count is stated) and M4-MT-14
     }
     const devices = await after.query('SELECT id, adapter_kind FROM public.capture_devices ORDER BY id');
     expect(devices.rows).toEqual([
+      // D60/D61 (2026-11-04): the seed carries NINE built-ins (four cameras, four numbered mic channels, the switch).
       { id: 'CAM-01', adapter_kind: 'FAKE' },
       { id: 'CAM-02', adapter_kind: 'FAKE' },
+      { id: 'CAM-03', adapter_kind: 'FAKE' },
+      { id: 'CAM-04', adapter_kind: 'FAKE' },
       { id: 'CAM-07', adapter_kind: 'ONVIF_RTSP' },
       { id: 'CAM-08', adapter_kind: 'LOCAL_DEVICE' },
       { id: 'MIC-01', adapter_kind: 'FAKE' },
       { id: 'MIC-02', adapter_kind: 'FAKE' },
+      { id: 'MIC-03', adapter_kind: 'FAKE' },
+      { id: 'MIC-04', adapter_kind: 'FAKE' },
       { id: 'MIC-07', adapter_kind: 'LOCAL_DEVICE' },
       { id: 'POE-SWITCH', adapter_kind: 'FAKE' },
     ]);

@@ -598,7 +598,8 @@ export function captureSource(slot: string, overrides: Row = {}): Row {
   return {
     session_id: SESSION_ID,
     slot,
-    device_id: slot.startsWith('VIDEO-') ? (slot === 'VIDEO-02' ? 'CAM-02' : 'CAM-01') : slot === 'MIC-STANDBY' ? 'MIC-02' : 'MIC-01',
+    // D61 (2026-11-04): the mic slots are the four numbered channels and feed their built-in.
+    device_id: slot.startsWith('VIDEO-') ? (slot === 'VIDEO-02' ? 'CAM-02' : 'CAM-01') : ['MIC-02', 'MIC-03', 'MIC-04'].includes(slot) ? slot : 'MIC-01',
     adapter_kind: 'FAKE',
     recorded_at: T,
     ...overrides,
@@ -611,8 +612,9 @@ export function captureConfig(overrides: Row = {}): Row {
     video_01_profile: 'UHD',
     video_02_device_id: 'CAM-02',
     video_02_profile: 'HD',
-    mic_primary_id: 'MIC-01',
-    mic_standby_id: 'MIC-02',
+    // D61 (2026-11-04): the two roles became the four numbered channels (migration 0040 renames).
+    mic_01_id: 'MIC-01',
+    mic_02_id: 'MIC-02',
     revision: 1,
     updated_by: 'OPR-001',
     updated_at: T,

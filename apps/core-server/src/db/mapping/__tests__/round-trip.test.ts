@@ -360,11 +360,11 @@ describe('row 129b: a restart keeps the sealed columns of a v2 item and the orde
     expect(roundTrip(state)).not.toStrictEqual(pickDurable(sealed));
   });
 
-  // D61 (2026-11-04): the swap moved the transcribed channel MIC-01, not a role.
-  it('the selector after MIC-02 became the transcribed channel comes back in input order, equal to the state', () => {
+  // D61 (2026-11-04): the transcribed channel MIC-01 moved to another DEVICE; the lines keep their channels (the engine holds channel order).
+  it('the selector after MIC-02 became the transcribed channel comes back in channel order, equal to the state', () => {
     const state = idleAt(FIXED_NOW);
-    const swapped = { ...state, captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.map((mic) => mic.channel === 'MIC-01' ? { ...mic, channel: 'MIC-02' as const } : mic.channel === 'MIC-02' ? { ...mic, channel: 'MIC-01' as const } : mic) } } as SimState; // D61: only channels 1 and 2 trade places; 3 and 4 stand
-    expect(swapped.captureConfig.mics.map((mic) => mic.inputId)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']); // D61 (2026-11-04): four numbered channels
+    const swapped = { ...state, captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.map((mic) => mic.channel === 'MIC-01' ? { ...mic, inputId: 'MIC-02' as SimState['captureConfig']['mics'][number]['inputId'], deviceId: 'MIC-02' } : mic.channel === 'MIC-02' ? { ...mic, inputId: 'MIC-01' as SimState['captureConfig']['mics'][number]['inputId'], deviceId: 'MIC-01' } : mic) } } as SimState; // D61: only channels 1 and 2 exchange devices; 3 and 4 stand
+    expect(swapped.captureConfig.mics.map((mic) => mic.inputId)).toEqual(['MIC-02', 'MIC-01', 'MIC-03', 'MIC-04']); // D61 (2026-11-04): channel order — the transcribed channel lists first
     expect(roundTrip(swapped)).toStrictEqual(pickDurable(swapped));
   });
 });
