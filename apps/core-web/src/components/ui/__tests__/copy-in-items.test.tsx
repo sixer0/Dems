@@ -7,7 +7,7 @@ import { MotionPolicyProvider, useAmbientSnapshot, type AmbientSnapshot } from '
 import { fakeMatchMedia, memoryStorage } from '@/motion/__tests__/helpers'
 import { AnimatedBeam } from '../animated-beam'
 import { AnimatedListItem } from '../animated-list'
-import { AnimatedNumber } from '../animated-number'
+import { AnimatedNumber, COUNT_UP_FALLBACK_MS } from '../animated-number'
 import { OrbitingCircles } from '../orbiting-circles'
 import { Particles } from '../particles'
 import { Ripple } from '../ripple'
@@ -265,6 +265,79 @@ describe('AnimatedNumber (M-C-02, R4)', () => {
     } finally {
       Reflect.deleteProperty(document, 'visibilityState')
     }
+  })
+
+  // Audit row 109b (U-04b): a view that reports `visibilityState` 'visible' but runs NO animation frames (an embedded or
+  // occluded pane) never finished the count-up - the bench dashboard read "0.0 TB Free" ~10 s after load. jsdom drives
+  // requestAnimationFrame from a 1000/60 ms `setInterval` (Motion keeps its own rAF reference, so the interval is what is
+  // stubbed): no frame ever runs. The final value must come from the timer fallback, after the held beat + the settle time.
+  it('row 109b: a visible view without animation frames shows the final value after the count-up time', async () => {
+    // Let the frame loop of the earlier cases drain first (jsdom clears its frame interval once no callback is pending),
+    // so the next frame request starts a new interval - the one stubbed here.
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 150)))
+    const realSetInterval = globalThis.setInterval
+    // The frame interval is a real one (jsdom can clear it), but its ticks are swallowed while `framesOff` holds.
+    const frames = { off: true }
+    const frameTimer = vi.spyOn(globalThis, 'setInterval').mockImplementation(((handler: TimerHandler, ms?: number, ...args: unknown[]) =>
+      ms === 1000 / 60
+        ? realSetInterval(() => {
+            if (!frames.off) (handler as () => void)()
+          }, ms)
+        : realSetInterval(handler as () => void, ms, ...args)) as typeof setInterval)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const { rerender } = render(withPolicy(<AnimatedNumber value={0.4} from={0} format={(n) => n.toFixed(1)} />))
+      act(() => {
+        vi.advanceTimersByTime(120) // the held beat: the spring is set, but no frame paints it
+      })
+      await flush()
+      expect(frameTimer).toHaveBeenCalled() // frames were asked for and never ran
+      expect(screen.getByText('0.0')).toBeInTheDocument()
+      act(() => {
+        vi.advanceTimersByTime(COUNT_UP_FALLBACK_MS - 1)
+      })
+      expect(screen.getByText('0.0')).toBeInTheDocument()
+      act(() => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(screen.getByText('0.4')).toHaveAttribute('data-count-fallback', 'true')
+      // A later value lands at once as text in this view (no frame-less count-up from the stale picture).
+      rerender(withPolicy(<AnimatedNumber value={0.8} from={0} format={(n) => n.toFixed(1)} />))
+      expect(screen.getByText('0.8')).toHaveAttribute('data-count-fallback', 'true')
+      cleanup()
+      // A value that changes faster than the deadline (write speed, session bytes while recording) does not postpone it.
+      const view = render(withPolicy(<AnimatedNumber value={10} />))
+      for (const next of [20, 30, 40]) {
+        act(() => {
+          vi.advanceTimersByTime(700)
+        })
+        view.rerender(withPolicy(<AnimatedNumber value={next} />))
+      }
+      expect(screen.getByText('10')).toBeInTheDocument() // 2.1 s in: no frame ever painted 20, 30 or 40
+      act(() => {
+        vi.advanceTimersByTime(COUNT_UP_FALLBACK_MS)
+      })
+      expect(screen.getByText('40')).toHaveAttribute('data-count-fallback', 'true')
+    } finally {
+      frames.off = false // the pending frame callbacks run again, so jsdom's interval drains as usual
+      vi.useRealTimers()
+      frameTimer.mockRestore()
+    }
+  })
+
+  it('row 109b: with frames running the fallback stays out (the count-up itself lands the value)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    render(withPolicy(<AnimatedNumber value={42} from={0} />))
+    act(() => {
+      vi.advanceTimersByTime(120)
+    })
+    // Real frames run the counter spring to its value (under 1 s of real time); the (fake) fallback timer has not fired.
+    await realWait(1500)
+    expect(screen.getByText('42')).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(COUNT_UP_FALLBACK_MS)
+    })
+    expect(screen.getByText('42')).not.toHaveAttribute('data-count-fallback')
   })
 })
 

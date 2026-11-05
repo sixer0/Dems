@@ -15,13 +15,15 @@
 // "Real capture" is the console's Live mode (`useRealCapture`, `source-class.ts`). The page tests
 // run on the in-app simulator; the rule is switched through that ONE function (a hoisted flag), so
 // the same mounted page is read in both modes. The Live transport itself is not exercised here.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { en } from '@dems/shared/i18n'
 import { OPERATOR_IDS, type Sim, type SimAlert } from '@dems/shared/sim'
 import { i18n } from '@/i18n'
 import type { CaptureDevice } from '../capture-selector'
-import { BUILT_IN_SOURCE_IDS, drawnByOwnTile, rateAtLimitOf, registeredRoster, rosterCardName, rosterLimitKey, rosterSlotOf, rosterSourceKey } from '../registered-devices-model'
+import { selectSummary, trackStatus } from '../model'
+import { BUILT_IN_SOURCE_IDS, drawnByOwnTile, rateAtLimitOf, registeredRoster, rosterCardName, rosterCardStatus, rosterLimitKey, rosterSlotOf, rosterSourceKey, rosterStateNotChecked } from '../registered-devices-model'
+import { trackReachOf } from '../track-reach'
 import { installDevicesBed, mountDevices } from './search-bed'
 
 const mode = vi.hoisted(() => ({ realCapture: false }))
@@ -286,5 +288,86 @@ describe('the page: Devices & Inputs draws the roster from the Core\'s list', ()
 
     sim.store.setState({ alerts: sim.store.getState().alerts.map((entry) => (entry.id === 'ALR-9' ? { ...entry, active: false, resolvedAt: 2 } : entry)) })
     await waitFor(() => expect(screen.queryByTestId('registered-device-rate-MIC-05')).toBeNull())
+  })
+})
+
+// Audit 2026-11-06 row W2c2 (129b, U-09b; D111): on the bench /devices said "Ready" on the REGISTERED CAMERAS cards while
+// the same cameras' tiles said "Not checked" and the summary "CAMERAS 0/4 - 4 issues" (camera LAN down). The card read the
+// registry row; the tiles and the summary read row 129's `trackStatus`. A card on a line now says what that track's tile says.
+describe('row W2c2 (129b, U-09b): a registered card on a line says what the tile of its track says', () => {
+  installDevicesBed()
+  const BENCH_LINES: Record<string, string> = { 'VIDEO-01': 'CAM-03', 'VIDEO-02': 'CAM-04', 'VIDEO-03': 'CAM-05', 'VIDEO-04': 'CAM-06' }
+  /** The bench Core: ONVIF CAM-03..06 on VIDEO-01..04, registry `online: true`, held open (`sourceOpen`), no `checkedAt`; MIC-05 on channel 1. */
+  const bench = (sim: Sim): void => {
+    const state = sim.store.getState()
+    const cameras = Object.values(BENCH_LINES).map((id) => device(id, 'CAMERA', { adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', sourceOpen: true } as Partial<CaptureDevice>))
+    sim.store.setState({
+      captureDevices: { devices: [...state.captureDevices.devices.filter((entry) => !cameras.some((camera) => camera.id === entry.id)), ...cameras, device('MIC-05', 'MIC', { adapter: 'USB_AUDIO', sourceClass: 'PRODUCTION' })] },
+      captureConfig: {
+        ...state.captureConfig,
+        cameras: state.captureConfig.cameras.map((line) => ({ ...line, deviceId: BENCH_LINES[line.trackId] ?? line.deviceId })),
+        mics: state.captureConfig.mics.map((line) => (line.channel === 'MIC-01' ? { ...line, inputId: 'MIC-05', deviceId: 'MIC-05' } : line)),
+      },
+    })
+  }
+
+  it('model: the card status is the track status - FAULT where the tile reads FAULT, "Not checked" exactly where the tile does', async () => {
+    mode.realCapture = false
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI, bench)
+    // The Core's operation 44 for a source it cannot reach: `online: true`, lens FAULT (row 128); tracks 1-2 down, 3-4 at rest.
+    const base = sim.store.getState()
+    const state = {
+      ...base,
+      cameras: base.cameras.map((camera) => (camera.id === 'VIDEO-01' || camera.id === 'VIDEO-02' ? { ...camera, lens: 'FAULT' as const } : { ...camera, online: true, lens: 'READY' as const })),
+      mics: base.mics.map((mic) => (mic.id === 'AUDIO-01' ? { ...mic, state: 'NO_SIGNAL' as const, clipLatched: false } : mic)),
+    }
+    const cards = registeredRoster({ devices: state.captureDevices.devices, config: state.captureConfig, alerts: state.alerts }, 'CAMERA').filter((card) => card.slot !== null)
+    expect(cards.map((card) => [card.id, card.slot])).toEqual([['CAM-03', 'VIDEO-01'], ['CAM-04', 'VIDEO-02'], ['CAM-05', 'VIDEO-03'], ['CAM-06', 'VIDEO-04']])
+    for (const card of cards) {
+      const track = card.slot as 'VIDEO-01'
+      const tile = trackStatus(state, track)
+      const chip = rosterCardStatus(state, card, true)
+      expect(chip.status ?? 'READY', card.id).toBe(tile)
+      // The tile's "Not checked" rule (camera-tile.tsx: reach NOT_CHECKED and READY) - the card's is the same.
+      expect(chip.notChecked, card.id).toBe(tile === 'READY' && trackReachOf(state, track, true) === 'NOT_CHECKED')
+      // The registry rule alone said "Ready" for every one of them (held open): the defect U-09b.
+      expect(rosterStateNotChecked(card, true), card.id).toBe(false)
+    }
+    expect(cards.map((card) => rosterCardStatus(state, card, true))).toEqual([
+      { status: 'FAULT', notChecked: false },
+      { status: 'FAULT', notChecked: false },
+      { status: null, notChecked: true },
+      { status: null, notChecked: true },
+    ])
+    expect(selectSummary(state)).toMatchObject({ camsOk: 2, camsTotal: 4 })
+    // Registered microphones too: the card on channel 1 says the channel's NO_SIGNAL, as the audio card does.
+    const mic = registeredRoster({ devices: state.captureDevices.devices, config: state.captureConfig, alerts: state.alerts }, 'MIC').find((card) => card.id === 'MIC-05')!
+    expect(rosterCardStatus(state, mic, true).status).toBe(trackStatus(state, 'AUDIO-01'))
+    expect(trackStatus(state, 'AUDIO-01')).toBe('NO_SIGNAL')
+    // A card on no line, and a card with a negative state of its own, keep the registry rule.
+    const offline = { ...cards[0]!, state: 'NOT_REACHABLE' as const }
+    expect(rosterCardStatus(state, offline, true)).toEqual({ status: null, notChecked: false })
+    expect(rosterCardStatus(state, { ...cards[2]!, slot: null }, true)).toEqual({ status: null, notChecked: rosterStateNotChecked(cards[2]!, true) })
+  })
+
+  it('page: a camera the Core states NOT_REACHABLE reads FAULT on its registered card and in its drawer, the same word as its tile', async () => {
+    mode.realCapture = false
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI, bench)
+    act(() =>
+      sim.store.setState((state) => ({
+        captureDevices: { ...state.captureDevices, devices: state.captureDevices.devices.map((entry) => (entry.id === 'CAM-05' ? { ...entry, reach: 'NOT_REACHABLE', checkedAt: state.clock.now } : entry)) },
+      })),
+    )
+    await waitFor(() => expect(screen.getByTestId('camera-tile-VIDEO-03')).toHaveAttribute('data-status', 'FAULT'))
+    const card = screen.getByTestId('registered-device-state-CAM-05')
+    expect(card.textContent).toBe(screen.getByTestId('camera-status-VIDEO-03').textContent)
+    expect(screen.getByTestId('registered-device-CAM-05')).toHaveAttribute('data-status', 'FAULT')
+    // The camera next to it is READY on both.
+    expect(screen.getByTestId('camera-tile-VIDEO-04')).toHaveAttribute('data-status', 'READY')
+    expect(screen.getByTestId('registered-device-state-CAM-06').textContent).toBe(L.state.READY)
+    fireEvent.click(screen.getByTestId('registered-device-view-CAM-05'))
+    const drawer = within(await screen.findByTestId('registered-device-drawer'))
+    expect(drawer.getByTestId('registered-drawer-state')).toHaveAttribute('data-status', 'FAULT')
+    expect(drawer.getByTestId('registered-drawer-state').textContent).toBe(card.textContent)
   })
 })

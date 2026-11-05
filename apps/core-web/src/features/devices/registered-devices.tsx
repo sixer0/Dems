@@ -2,7 +2,8 @@ import { Alert, Button, Chip } from '@heroui/react'
 import { Camera, Mic } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { LOCAL_STATE_VIEW, localStateSentenceKey } from './capture-inputs'
-import { ROSTER_SLOT_KEY, rosterCardName, rosterStateNotChecked, useRegisteredRoster, type RosterCard } from './registered-devices-model'
+import { STATUS_TONE } from './model'
+import { ROSTER_SLOT_KEY, rosterCardName, useRegisteredRoster, useRosterCardStatus, type RosterCard } from './registered-devices-model'
 import { DeviceSourceBadge, LocalSourceOn } from './source-badge'
 import { useRealCapture, useRealCaptureCore, type SourceDeviceKind } from './source-class'
 
@@ -21,19 +22,22 @@ function RegisteredDeviceCard({ card, onView }: { card: RosterCard; onView: (dev
   const name = rosterCardName(t, card, realCapture)
   const view = LOCAL_STATE_VIEW[card.state]
   // Fix wave L (G70c-02): "Ready" only for a source the Core opened or checked.
-  const notChecked = rosterStateNotChecked(card, useRealCaptureCore())
+  // Row W2c2 (129b, U-09b): a card on a line says what the tile of that track says (row 129's `trackStatus`).
+  const { status, notChecked } = useRosterCardStatus(card, useRealCaptureCore())
+  const tone = status === null ? view.tone : STATUS_TONE[status]
+  const word = status === null ? t(view.chip) : t(`devices.status.${status}`)
   const sentenceKey = card.local ? localStateSentenceKey(card.state, card.kind) : null
   const Icon = card.kind === 'CAMERA' ? Camera : Mic
   return (
-    <li className="dev-roster-card" data-testid={`registered-device-${card.id}`} data-state={card.state} data-checked={notChecked ? 'false' : undefined} data-adapter={card.device.adapter ?? undefined}>
+    <li className="dev-roster-card" data-testid={`registered-device-${card.id}`} data-state={card.state} data-status={status ?? undefined} data-checked={notChecked ? 'false' : undefined} data-adapter={card.device.adapter ?? undefined}>
       <div className="dev-roster-head">
         <Icon aria-hidden="true" size={16} strokeWidth={1.6} />
         <span className="dev-tile-name" data-testid={`registered-device-name-${card.id}`}>
           {name}
         </span>
         <span className="dev-roster-id">{card.id}</span>
-        <Chip size="sm" variant="soft" color={notChecked ? 'default' : view.tone} data-testid={`registered-device-state-${card.id}`}>
-          <Chip.Label title={notChecked ? t('web.waveL.state.notCheckedHint') : undefined}>{notChecked ? t('web.waveL.state.notChecked') : t(view.chip)}</Chip.Label>
+        <Chip size="sm" variant="soft" color={notChecked ? 'default' : tone} data-testid={`registered-device-state-${card.id}`}>
+          <Chip.Label title={notChecked ? t('web.waveL.state.notCheckedHint') : undefined}>{notChecked ? t('web.waveL.state.notChecked') : word}</Chip.Label>
         </Chip>
         {/* Decided by the Core: the badge only from a `sourceClass` it sent, in real capture only; 'is on' only from `sourceOpen`. */}
         <DeviceSourceBadge device={card.device} testId={`source-badge-roster-${card.id}`} />

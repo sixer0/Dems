@@ -26,13 +26,15 @@
 import type { TFunction } from 'i18next'
 import { useMemo } from 'react'
 import type { VideoTrackId } from '@dems/shared/domain'
-import { useSim, type MicChannel, type SimAlert } from '@dems/shared/sim' // D61 (2026-11-04): the four microphone channels
+import { audioTrackOfMicChannel, useSim, type MicChannel, type SimAlert, type SimState } from '@dems/shared/sim' // D61 (2026-11-04): the four microphone channels
 import { activeCaptureNotices, micInputName } from '@/lib/capture-notices'
 import { localDeviceState, type LocalDeviceState } from './capture-inputs'
+import { trackStatus, type DeviceStatusCode } from './model'
 import type { CaptureConfig, CaptureDevice } from './capture-selector'
 import { restingSourceChecked } from './own-core-words'
 import { DEVICE_CAMERA } from './sim-adapter'
 import { LOCAL_DEVICE_ADAPTER, TEST_SOURCE_ADAPTER, isDevelopmentSource, isLocalSourceOn, type SourceDeviceKind } from './source-class'
+import { trackReachOf } from './track-reach'
 
 /** The ids the page's own tiles and audio cards already draw (D60, 2026-11-04: four cameras; D61, 2026-11-04: four microphones). Every other camera or microphone of the Core's list is a roster card. */
 // D60 (2026-11-04): the four-track capture surface ships four built-in cameras — the simulator seeds
@@ -218,4 +220,42 @@ export const ROSTER_SLOT_KEY = {
  */
 export function rosterStateNotChecked(card: Pick<RosterCard, 'state' | 'device'>, realCapture: boolean): boolean {
   return realCapture && card.state === 'READY' && !restingSourceChecked(card.device as { sourceOpen?: unknown; checkedAt?: unknown })
+}
+
+/**
+ * Row W2c2 (129b, U-09b): THE STATE CHIP OF A REGISTERED CARD, one statement with the tile of the track it feeds.
+ * On the bench /devices said "Ready" on the registered CAM-03..06 cards while the same cameras' tiles said "Not
+ * checked" and the summary "CAMERAS 0/4 - 4 issues": the card read the registry row (`online`, the notices,
+ * `restingSourceChecked`), the tiles and the summary read row 129's `trackStatus`.
+ *
+ * | Card | The chip says |
+ * |---|---|
+ * | its own state is not READY (a named cause, `online: false`) | that state, as before (a negative fact of the device is never hidden) |
+ * | on a line (`slot`), and `trackStatus` of that track is not READY | the track's status word (`devices.status.*`), the tile's word |
+ * | a camera on a line, READY | "Not checked" exactly when the tile says it (`trackReachOf` === NOT_CHECKED), else "Ready" |
+ * | a microphone on a line, READY, or any card on no line | the registry rule as before (`rosterStateNotChecked`) |
+ *
+ * Flat result (compared shallowly by `useSim`): `status` null = the card's own state (`LOCAL_STATE_VIEW[card.state]`).
+ */
+export interface RosterCardStatus {
+  readonly status: DeviceStatusCode | null
+  readonly notChecked: boolean
+}
+
+export function rosterCardStatus(state: SimState, card: Pick<RosterCard, 'kind' | 'slot' | 'state' | 'device'>, realCapture: boolean): RosterCardStatus {
+  if (card.state !== 'READY' || card.slot === null) return { status: null, notChecked: rosterStateNotChecked(card, realCapture) }
+  if (card.kind === 'CAMERA') {
+    const track = card.slot as VideoTrackId
+    const status = trackStatus(state, track)
+    if (status !== 'READY') return { status, notChecked: false }
+    return { status: null, notChecked: trackReachOf(state, track, realCapture) === 'NOT_CHECKED' }
+  }
+  const status = trackStatus(state, audioTrackOfMicChannel(card.slot as MicChannel))
+  if (status !== 'READY') return { status, notChecked: false }
+  return { status: null, notChecked: rosterStateNotChecked(card, realCapture) }
+}
+
+/** The chip of a card from the replicated state (`rosterCardStatus`); `realCapture` is `useRealCaptureCore()`. */
+export function useRosterCardStatus(card: Pick<RosterCard, 'kind' | 'slot' | 'state' | 'device'>, realCapture: boolean): RosterCardStatus {
+  return useSim((state) => rosterCardStatus(state, card, realCapture))
 }

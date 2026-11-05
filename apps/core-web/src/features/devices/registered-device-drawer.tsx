@@ -6,7 +6,8 @@ import { isProductionCamera, profileWords, storedProfilesOf } from './camera-pro
 import { useTranslation } from 'react-i18next'
 import { LOCAL_STATE_VIEW, localStateSentenceKey } from './capture-inputs'
 import { RateAtLimitWarning } from './registered-devices'
-import { ROSTER_SLOT_KEY, rosterCardName, rosterLimitKey, rosterSourceKey, rosterStateNotChecked, useRosterCard, type RosterCard } from './registered-devices-model'
+import { STATUS_TONE } from './model'
+import { ROSTER_SLOT_KEY, rosterCardName, rosterLimitKey, rosterSourceKey, useRosterCard, useRosterCardStatus, type RosterCard } from './registered-devices-model'
 import { DeviceSourceBadge, LocalSourceOn } from './source-badge'
 import { useRealCapture, useRealCaptureCore } from './source-class'
 
@@ -53,7 +54,9 @@ function Content({ card, name, realCapture }: { card: RosterCard; name: string; 
   const view = LOCAL_STATE_VIEW[card.state]
   // Fix wave L (G70c-02, G75d-06): the state only when checked; the model of a generated source is the dataset's, not a fact.
   const realCaptureCore = useRealCaptureCore()
-  const notChecked = rosterStateNotChecked(card, realCaptureCore)
+  // Row W2c2 (129b, U-09b): the same chip as the card - on a line, the tile's word for that track.
+  const { status, notChecked } = useRosterCardStatus(card, realCaptureCore)
+  const tone = status === null ? view.tone : STATUS_TONE[status]
   const sentenceKey = card.local ? localStateSentenceKey(card.state, card.kind) : null
   const limitKey = rosterLimitKey(card, realCapture)
   const Icon = card.kind === 'CAMERA' ? Camera : Mic
@@ -61,7 +64,7 @@ function Content({ card, name, realCapture }: { card: RosterCard; name: string; 
   return (
     <>
       <Drawer.Header className="dev-drawer-header">
-        <span className="dev-drawer-icon" data-tone={view.tone}>
+        <span className="dev-drawer-icon" data-tone={tone}>
           <Icon aria-hidden="true" size={22} strokeWidth={1.6} />
         </span>
         <div className="dev-drawer-titles">
@@ -72,8 +75,8 @@ function Content({ card, name, realCapture }: { card: RosterCard; name: string; 
           <DeviceSourceBadge device={device} testId="source-badge-registered-drawer" />
           <LocalSourceOn device={device} place="registered-drawer" />
         </div>
-        <Chip size="sm" variant="soft" color={notChecked ? 'default' : view.tone} data-testid="registered-drawer-state" data-checked={notChecked ? 'false' : undefined}>
-          <Chip.Label title={notChecked ? t('web.waveL.state.notCheckedHint') : undefined}>{notChecked ? t('web.waveL.state.notChecked') : t(view.chip)}</Chip.Label>
+        <Chip size="sm" variant="soft" color={notChecked ? 'default' : tone} data-testid="registered-drawer-state" data-status={status ?? undefined} data-checked={notChecked ? 'false' : undefined}>
+          <Chip.Label title={notChecked ? t('web.waveL.state.notCheckedHint') : undefined}>{notChecked ? t('web.waveL.state.notChecked') : status === null ? t(view.chip) : t(`devices.status.${status}`)}</Chip.Label>
         </Chip>
         <Drawer.CloseTrigger aria-label={t('common.actions.close')} />
       </Drawer.Header>
