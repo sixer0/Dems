@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { Socket as DgramSocket, createSocket } from 'node:dgram';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { manualCaptureTimers } from '../../../../../test/support/capture';
 import type { FakeOnvifDiscoveryMode, FakeOnvifStub } from '../../../../../test/support/fake-onvif-stub';
 import { DestinationPurpose, decideDestination, type AllowedDestination, type DestinationContext } from '../../../destination-rule';
@@ -24,6 +24,10 @@ import { DiscoveryNotRunError, WS_DISCOVERY_GROUP, WS_DISCOVERY_REPEAT_MS, type 
 import { LAN_A, LAN_B, LOOPBACK, answerFrom, datagramSockets, delay, installLoopbackGuard, interfaceTable, startFakeOnvif, until, type LoopbackGuard } from './support';
 
 const dgramSocketPrototype = DgramSocket.prototype;
+// The error-path round below walks five sequential scenarios on real timers (~3.3s idle on the
+// bench, 2026-11-05); under the parallel suite it crosses the default 5s and the timeout kills a
+// test whose sockets are all accounted for. The file lifts the ceiling, not any assertion.
+vi.setConfig({ testTimeout: 15_000 });
 const WINDOW_MS = 400;
 let guard: LoopbackGuard;
 let stubs: FakeOnvifStub[] = [];
