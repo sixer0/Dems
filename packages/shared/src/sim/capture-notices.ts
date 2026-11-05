@@ -601,3 +601,74 @@ export function captureReachabilityOf(state: SimState): CaptureSourceReachabilit
   });
   return rows;
 }
+
+/**
+ * WHAT THE DEVICE ASSIGNED TO A SLOT STATES OF ITSELF (audit fix row 128, C-DEV-A; DF-11, U-05,
+ * F-5-02b; decisions D19, D24, D39 (3), D90): the ONE reader of "is the source of this track or
+ * channel there" for every surface that draws a device state - operations 44 / 45 / 46 of the Core
+ * (`modules/devices/status.ts`), the web tiles and chips (row 129) and the pre-check's live view.
+ * Until this row each of them read a different thing: the built-in rows of the hardware slices
+ * (`cameras[].lens` / `online`, `mics[].state`, seeded READY and never re-stated at rest), the
+ * built-in device id, or the registry flag. They disagreed (U-05) and said READY / PASS for a
+ * camera the Core could not reach (F-5-02b).
+ *
+ *   NOT_ASSIGNED   no selector line names the slot: there is no source.
+ *   OFFLINE        the registry does not hold the assigned device, or its `online` flag is false.
+ *                  `online` STAYS THE ENGINE GATE (R14 §3.10): it is what the start rule
+ *                  (`captureReachabilityOf`) and the pre-check run read; this reader only repeats it.
+ *   NOT_REACHABLE  the registry says online, but the Core's last reach reading (`reach`, row 125;
+ *                  written by the preview outcome, row 127) says it could not reach the device.
+ *   REACHABLE      the last reading reached it.
+ *   NOT_CHECKED    online, and no reading states a reach: nothing is claimed either way.
+ *
+ * Pure: it reads the selector lines and the device entries handed in, nothing else. It never
+ * writes `online` and never decides a start: a stale NOT_REACHABLE cannot block a session, because
+ * the start rule does not read `reach`.
+ */
+export const SlotSourceState = {
+  NOT_ASSIGNED: 'NOT_ASSIGNED',
+  OFFLINE: 'OFFLINE',
+  NOT_REACHABLE: 'NOT_REACHABLE',
+  NOT_CHECKED: 'NOT_CHECKED',
+  REACHABLE: 'REACHABLE',
+} as const;
+export type SlotSourceState = (typeof SlotSourceState)[keyof typeof SlotSourceState];
+
+/** The source of one slot as `slotSourceOf` states it. */
+export interface SlotSource {
+  /** The video track (`VIDEO-0N`) or the microphone channel (`MIC-0N`). */
+  readonly slot: CaptureSelectorSlot;
+  /** The assigned device, or null when the slot is not assigned. */
+  readonly deviceId: string | null;
+  readonly state: SlotSourceState;
+  /** When the reach reading was taken; null when none is stated. */
+  readonly checkedAt: EpochMs | null;
+}
+
+/** The selector lines `slotSourceOf` reads (the stored selector, or the one in force). */
+export interface SlotSourceSelector {
+  readonly cameras: readonly Pick<CaptureConfigCamera, 'trackId' | 'deviceId'>[];
+  readonly mics: readonly Pick<CaptureConfigMic, 'channel' | 'deviceId'>[];
+}
+
+/** The device entries `slotSourceOf` reads (`captureDevices.devices`). */
+export type SlotSourceDevice = Pick<CaptureDeviceStatus, 'id' | 'kind' | 'online' | 'reach' | 'checkedAt'>;
+
+/** The source of `slot` (a video track or a microphone channel) by its selector line and its device entry. */
+export function slotSourceOf(selector: SlotSourceSelector, devices: readonly SlotSourceDevice[], slot: CaptureSelectorSlot): SlotSource {
+  const camera = selector.cameras.find((line) => line.trackId === slot);
+  const mic = camera === undefined ? selector.mics.find((line) => line.channel === slot) : undefined;
+  const deviceId = camera?.deviceId ?? mic?.deviceId ?? null;
+  if (deviceId === null) return { slot, deviceId: null, state: SlotSourceState.NOT_ASSIGNED, checkedAt: null };
+  const kind = camera === undefined ? 'MIC' : 'CAMERA';
+  const device = devices.find((entry) => entry.id === deviceId && entry.kind === kind);
+  const checkedAt = device?.checkedAt ?? null;
+  if (device === undefined || device.online !== true) return { slot, deviceId, state: SlotSourceState.OFFLINE, checkedAt };
+  const state = device.reach === 'NOT_REACHABLE' ? SlotSourceState.NOT_REACHABLE : device.reach === 'REACHABLE' ? SlotSourceState.REACHABLE : SlotSourceState.NOT_CHECKED;
+  return { slot, deviceId, state, checkedAt };
+}
+
+/** True when the source of a slot may be drawn ready: online and not stated unreachable (NOT_CHECKED claims nothing against it). */
+export function isSlotSourceUp(source: Pick<SlotSource, 'state'>): boolean {
+  return source.state === SlotSourceState.REACHABLE || source.state === SlotSourceState.NOT_CHECKED;
+}

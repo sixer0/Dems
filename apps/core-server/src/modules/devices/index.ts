@@ -207,7 +207,11 @@ export const devicesModule: FastifyPluginAsync = async (app) => {
   routes.route({
     ...routeOfOperation(operationOf('getAudioStatus')),
     schema: { response: { 200: AudioStatusResponseSchema } },
-    handler: async (): Promise<AudioStatusResponse> => audioStatusOf(app.engine.state(), app.clock.now(), app.engine.meters()),
+    handler: async (): Promise<AudioStatusResponse> => {
+      const state = app.engine.state();
+      // Audit fix row 128 (D24): in a real capture operation the channel state is the assigned device's plus its reach.
+      return audioStatusOf(state, app.clock.now(), app.engine.meters(), captureSlotsOf(state), streamFacts);
+    },
   });
 
   // 46 getVideoStatus

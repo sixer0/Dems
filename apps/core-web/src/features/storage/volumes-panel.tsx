@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { formatWibTime, selectStorage, TB, useSim, type StorageVolume } from '@dems/shared/sim'
 import { toneChipProps, type StatusTone } from '@dems/shared/tokens'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { useMotionPolicy } from '@/motion'
 import { PANEL_BEAT_MS, useDataReady, VOLUME_FILL_MS } from './choreography'
 import { fixed, formatShortBytes, STORAGE_LEVEL_TONE, type StorageLevel } from './model'
@@ -36,6 +37,20 @@ export function VolumesPanel() {
   const volumes = useSim((s) => s.storage.volumes)
   const level = useSim((s) => selectStorage(s).state) as StorageLevel
   const derivedNote = DERIVED_NOTE[useCoreMode()]
+  // Audit row CS2 (O-2, D81): a Core in its own capture measures its evidence volume (CS-09) and nothing else here.
+  const selfCapture = useSelfCaptureCore()
+  if (selfCapture) {
+    const evidence = volumes.find((volume) => volume.kind === 'EVIDENCE')
+    return (
+      <StoragePanel id="volumes" icon={Server} title={t('storage.volumes.panelTitle')} bodyClassName="stor-volumes">
+        {evidence === undefined ? null : <MeasuredVolumeCard volume={evidence} level={level} />}
+        <p className="stor-footnote" data-testid="storage-volumes-measured-note">
+          <Info aria-hidden="true" strokeWidth={1.75} />
+          <span>{t('web.realCore.storage.volumeNote')}</span>
+        </p>
+      </StoragePanel>
+    )
+  }
   return (
     <StoragePanel id="volumes" icon={Server} title={t('storage.volumes.panelTitle')} bodyClassName="stor-volumes">
       {volumes.map((volume) => (
@@ -137,6 +152,48 @@ function VolumeCard({ volume, level }: { volume: StorageVolume; level: StorageLe
           value={`${health.powerOnHours.toLocaleString('en-US')} ${t('storage.units.hours')}`}
         />
       </dl>
+    </article>
+  )
+}
+
+/**
+ * Audit row CS2 (O-2): the evidence volume of a Core in its own capture - only the size and the use it measured
+ * (`totalBytes`, `usedBytes` of slice `storage`, CS-09). No model label (NVMe / HDD), no SMART chip, no temperature,
+ * no wear or power-on figure: the Core reads none of them.
+ */
+function MeasuredVolumeCard({ volume, level }: { volume: StorageVolume; level: StorageLevel }) {
+  const { t } = useTranslation()
+  const percent = volume.totalBytes > 0 ? (volume.usedBytes / volume.totalBytes) * 100 : 0
+  const total = `${fixed(volume.totalBytes / TB, 1)} ${t('storage.units.tb')}`
+  return (
+    <article className="stor-volume" data-testid="storage-volume-measured" data-kind={volume.kind} data-total-bytes={volume.totalBytes} data-used-bytes={volume.usedBytes}>
+      <div className="stor-volume-head">
+        <span className="stor-volume-icon" aria-hidden="true">
+          <Archive strokeWidth={1.75} />
+        </span>
+        <div className="stor-volume-title">
+          <h3>{t('web.realCore.storage.volumeTitle')}</h3>
+          <p>{total}</p>
+        </div>
+        <div className="stor-volume-chips">
+          <Chip size="sm" variant="soft" {...toneChipProps('accent')}>
+            {t('storage.volumes.role.EVIDENCE')}
+          </Chip>
+        </div>
+      </div>
+      <ProgressBar
+        value={percent}
+        className="stor-bar"
+        data-tone={STORAGE_LEVEL_TONE[level]}
+        style={{ ['--stor-fill' as string]: String(percent / 100), ['--stor-fill-transition' as string]: 'none' }}
+        valueLabel={t('storage.volumes.percentUsed', { percent: Math.round(percent) })}
+      >
+        <Label className="stor-bar-label">{t('storage.volumes.usedOf', { used: formatShortBytes(volume.usedBytes), total })}</Label>
+        <ProgressBar.Output className="stor-bar-output" />
+        <ProgressBar.Track className="stor-bar-track">
+          <ProgressBar.Fill className="stor-bar-fill" />
+        </ProgressBar.Track>
+      </ProgressBar>
     </article>
   )
 }

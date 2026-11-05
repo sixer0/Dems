@@ -572,6 +572,14 @@ export const common = {
     // Task 3 M2-W7 (C3 §0; E-12): the PoE cycle of a lost-stream camera (op 48, OD-22).
     poeCycle: 'Power-cycle (PoE)',
   },
+  /**
+   * The sentences under a device-menu item (audit row CS2, O-124-1, D89; cycle 3, D105). NOT in `deviceMenu`: that block is
+   * the vocabulary map whose keys are `DeviceCommand` values (`i18n-vocabulary-sync.test.ts`); a reason is no command.
+   */
+  deviceMenuHint: {
+    // A Core in its own capture refuses operations 48-50 (no device adapter); the item says why.
+    notAvailable: 'Not available on this Core: it has no control of the device for this command.',
+  },
 
   /** Storage vocabulary shared by Dashboard F, Session Monitor S and the Storage page (D28/Q1). */
   storage: {

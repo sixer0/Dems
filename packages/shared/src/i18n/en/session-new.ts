@@ -74,6 +74,9 @@ export const sessionNew = {
     readiness: 'Device Readiness',
     readinessHint: 'Live state of the twelve pre-recording checks. The gate runs them again on the next step.',
     readyCount: '{{ready}} of {{total}} ready',
+    // Audit row CS2 (F-5-02c, D74): the items the header counts but cannot rate, stated beside the count.
+    notReportedCount: '{{count}} not reported',
+    informationalCount: '{{count}} for information',
   },
 
   /** Step 2: the §5.3 pre-recording gate. Checks keyed by sim `PrecheckCheckId`. */

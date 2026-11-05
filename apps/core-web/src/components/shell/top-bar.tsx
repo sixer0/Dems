@@ -14,6 +14,7 @@ import {
 } from '@dems/shared/sim'
 import { useComponentVersionText } from '@/components/component-version-text'
 import { SlidingNumber } from '@/components/ui/sliding-number'
+import { useReportedCoreDeviceId, useSelfCaptureCore } from '@/lib/own-capture'
 import { useProductVersions } from '@/lib/product-versions'
 import { useAmbientLoop, useMotionPolicy } from '@/motion'
 import { BrandEmblem } from './brand-emblem'
@@ -200,24 +201,35 @@ function ClockGroup({ slot, digits, slide }: { slot: string; digits: string; sli
   )
 }
 
-const selectDevice = (s: SimState) => s.device.id
 const selectRoom = (s: SimState) => s.device.name
 
-/** Device ID block with the full identity in a `Tooltip` (serial, firmware, build). */
+/**
+ * Device ID block with the full identity in a `Tooltip` (serial, firmware, build).
+ *
+ * Audit row CS2 (finding U-14c, D88; rule S9 of row 105): the id is the one the Core reports
+ * (`useReportedCoreDeviceId`): on a Core in its own capture whose record still holds the dataset's reserved id it
+ * reads "Not reported", as System > About does. The room line is the model's (`core_device.name` of the seed): such a
+ * Core draws none, as About reads its room "Not reported". The simulated lane is unchanged.
+ */
 function DeviceBlock() {
   const { t } = useTranslation()
-  const deviceId = useSim(selectDevice)
-  const room = useSim(selectRoom)
+  const reportedId = useReportedCoreDeviceId()
+  const selfCapture = useSelfCaptureCore()
+  const deviceId = reportedId ?? t('system.noProducer')
+  const modelRoom = useSim(selectRoom)
+  const room = selfCapture ? null : modelRoom
   const versions = useProductVersions(SOFTWARE_VERSION)
   const versionText = useComponentVersionText()
   return (
     <Tooltip delay={300}>
-      <Tooltip.Trigger className="dems-device-block dems-hide-below-md" aria-label={`${t('shell.topBar.deviceId')} ${deviceId}, ${room}`}>
+      <Tooltip.Trigger className="dems-device-block dems-hide-below-md" aria-label={room === null ? `${t('shell.topBar.deviceId')} ${deviceId}` : `${t('shell.topBar.deviceId')} ${deviceId}, ${room}`}>
         <MonitorSmartphone className="dems-device-icon" aria-hidden="true" size={24} strokeWidth={1.5} />
         <span className="dems-device-text">
           <span className="dems-device-caption">{t('shell.topBar.deviceId')}</span>
-          <span className="dems-device-id">{deviceId}</span>
-          <span className="dems-device-room">{room}</span>
+          <span className="dems-device-id" data-testid="top-bar-device-id" data-reported={reportedId === null ? 'false' : 'true'}>
+            {deviceId}
+          </span>
+          {room === null ? null : <span className="dems-device-room">{room}</span>}
         </span>
       </Tooltip.Trigger>
       <Tooltip.Content placement="bottom" offset={8}>

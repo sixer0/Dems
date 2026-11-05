@@ -210,6 +210,9 @@ export const system = {
     groupApplication: 'Application',
     groupSystem: 'System',
     localNote: 'Saved on this console only (demo).',
+    // Audit row CS2 (U-14b, D74): on a Core in its own capture the preferences are the Core's `settings` slice
+    // (operation 68), shared by every console - not "this console only", and not a demo.
+    localNoteCore: 'Saved on this Core for every console.',
     signedInAs: 'Signed in as {{name}}',
     role: 'Role',
     method: 'Sign-in method',

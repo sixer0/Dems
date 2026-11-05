@@ -4,7 +4,7 @@ import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ApiErrorCode, EXPORT_REASON_MAX_LENGTH, type AuditPage, type EventPage } from '@dems/shared/api'
 import { settle, useCoreActions } from '@dems/shared/live'
-import { EXPORT_REASON_MIN_LENGTH, Permission, useSimInstance, type ExportResult } from '@dems/shared/sim'
+import { CORE_DEVICE_ID_NOT_REPORTED, EXPORT_REASON_MIN_LENGTH, Permission, reportedCoreDeviceIdOf, useSimInstance, type ExportResult } from '@dems/shared/sim'
 import { CoreErrorNoticeKind, useCoreErrorPresenter } from '@/lib/core-errors'
 import { SIGNED_OUT_PAGE } from '@/lib/core-page-walk'
 import { usePendingControl } from '@/lib/pending-control'
@@ -106,14 +106,16 @@ export function ExportLogsDialog({ isOpen, onOpenChange }: ExportLogsDialogProps
       const events = await readAllEvents(readEventPage, { signedIn, onPage: (read) => setPage(auditPages + read + 1) })
       const state = sim.store.getState()
       const versions = productVersionsOf({ ...systemComponents, modelVersion: state.device.softwareVersion })
+      // Audit row CS2 (U-14c, S9): the id the Core reports - never the dataset's reserved id on a Core in its own capture.
+      const deviceId = reportedCoreDeviceIdOf(state) ?? CORE_DEVICE_ID_NOT_REPORTED
       downloadJson(
-        `dems-logs-${state.device.id}-${exportId}.json`,
+        `dems-logs-${deviceId}-${exportId}.json`,
         buildLogExportFile({
           // Closing pass J4, item 3: on a Core in its own capture the file states what it is - no `demo` flag, no "synthetic".
           ownCapture: versions.ownCore,
           exportId,
           reason: exportReason,
-          deviceId: state.device.id,
+          deviceId,
           // Fix wave J round three (JW-26): the file of a Core in its own capture names that Core's version, not the model's.
           softwareVersion: versions.modelVersion ?? versions.coreVersion ?? LOG_EXPORT_VERSION_NOT_REPORTED,
           ...(versions.ownCore ? { components: versions.rows } : {}),

@@ -13,6 +13,7 @@ import { AudioInputErrorCode, createFakeRegistry, type AudioInputAdapter, type C
 import { LIVING_PROGRESS, deviceListText, scriptedDoor, trustedInspector } from '../../capture/adapters/local/__tests__/mic-support';
 import { buildDevelopmentRegistry } from '../../capture/fence';
 import { HELPER, LOCAL, SEEDED } from '../../capture/fence/__tests__/support';
+import { captureDeviceReachTransition } from '../../engine/internal-actions'; // audit fix row 128b: the pure transition of row 127's reach door
 import {
   NoticeReportCode,
   PrecheckReportCode,
@@ -28,6 +29,7 @@ import {
   type NoticeReport,
   type PrecheckSearchOwner,
   type PrecheckSearchSeam,
+  type PrecheckReachReading,
 } from '../index';
 
 const START = Date.UTC(2026, 9, 1, 3, 0, 0);
@@ -103,7 +105,7 @@ function riggedDevelopmentSources() {
   return { probe: probeOfAdapters(adapters), set: (next: string | null) => void (text = next), said, scripted };
 }
 
-function harness(options: { discovery?: PrecheckSearchSeam | null; probe?: CaptureReachabilityProbe } = {}) {
+function harness(options: { discovery?: PrecheckSearchSeam | null; probe?: CaptureReachabilityProbe; noteReach?: (readings: readonly PrecheckReachReading[]) => Promise<unknown>; stateReach?: boolean } = {}) {
   const clock = createManualClock(START);
   const sim = createSim({ clock, storage: null, authStorage: null });
   sim.actions.signIn('budi.santoso', 'demo-2026');
@@ -114,7 +116,9 @@ function harness(options: { discovery?: PrecheckSearchSeam | null; probe?: Captu
   const report = (entry: NoticeReport): void => void reports.push(entry);
   const notifier = createNoDeviceNotifier({ engine: () => simulatorEngine(sim), report });
   let discovery: PrecheckSearchSeam | null = options.discovery ?? null;
-  const gate = createPrecheckGate({ state: () => sim.store.getState(), notifier, probe: () => probe, discovery: () => discovery, report });
+  // Audit fix row 128b: `stateReach` binds the gate's reach seam to the engine door's pure transition (row 127), as `index.ts` does in a unit.
+  const reachSeam = options.noteReach ?? (options.stateReach === true ? async (readings: readonly PrecheckReachReading[]) => { for (const reading of readings) sim.store.setState(captureDeviceReachTransition(sim.store.getState(), reading)); } : undefined);
+  const gate = createPrecheckGate({ state: () => sim.store.getState(), notifier, probe: () => probe, discovery: () => discovery, report, ...(reachSeam === undefined ? {} : { noteReach: reachSeam, now: () => clock.now() }) });
   const state = (): SimState => sim.store.getState();
   const run = (ms: number) => {
     for (let elapsed = 0; elapsed < ms; elapsed += 50) {
@@ -760,5 +764,66 @@ describe('situation C: what the session start calls (rows 71 / 139)', () => {
     await h.notifier.cameraConnected('CAM-02');
     expect(h.notices('CAPTURE_DEVICE_UNREACHABLE', true)).toHaveLength(0);
     expect(h.rowsOf('CAPTURE_DEVICE_UNREACHABLE')).toHaveLength(1);
+  });
+});
+
+// Audit fix row 128b (C-DEV-A; F-5-02b; decision D100 (1), option (a)): a pre-check RUN re-states the REACH of every source
+// its probe asked (REACHABLE / NOT_REACHABLE + checkedAt) through row 127's engine door, BEFORE the hosted action, so the
+// live view's reach rule (`evaluatePrecheck`, shared) never judges a run on a stale reading. `online` is written as before.
+describe('row 128b: the pre-check run re-states reach from its probe', () => {
+  const entry = (h: ReturnType<typeof harness>, id: string) => h.state().captureDevices.devices.find((device) => device.id === id);
+
+  it('a stale NOT_REACHABLE on a camera that answers becomes REACHABLE with the run\'s clock; a stopped camera NOT_REACHABLE (online false as before); the microphones are stated too; all before the action', async () => {
+    const h = harness({ stateReach: true });
+    const stale = START - 60_000;
+    h.sim.store.setState({ captureDevices: { ...h.state().captureDevices, devices: h.state().captureDevices.devices.map((device) => (device.id === 'CAM-01' ? { ...device, reach: 'NOT_REACHABLE', checkedAt: stale } : device)) } });
+    h.cameras.stop('CAM-02');
+    h.sim.actions.createSession(INPUT);
+    const sessionId = h.state().session?.id ?? '';
+    const runAt = h.clock.now();
+    const outcome = await h.gate.beforePrecheck({ sessionId, owner: SUPERVISOR, kind: 'BEGIN' });
+    // Before the hosted action: the readings are stated already.
+    expect(outcome).toMatchObject({ asked: true, unreachable: ['CAM-02'] });
+    expect(entry(h, 'CAM-01')).toMatchObject({ online: true, reach: 'REACHABLE', checkedAt: runAt });
+    expect(entry(h, 'CAM-02')).toMatchObject({ online: false, reach: 'NOT_REACHABLE', checkedAt: runAt });
+    const configured = new Set([...h.state().captureConfig.cameras.map((line) => line.deviceId), ...h.state().captureConfig.mics.map((line) => line.deviceId)]);
+    for (const id of configured) expect(entry(h, id)?.checkedAt, id).toBe(runAt);
+    for (const line of h.state().captureConfig.mics) expect(entry(h, line.deviceId)?.reach, line.deviceId).toBe('REACHABLE');
+    // A device the selector does not name is not stated.
+    for (const device of h.state().captureDevices.devices.filter((candidate) => !configured.has(candidate.id))) expect(device.checkedAt ?? null, device.id).toBeNull();
+    h.sim.actions.beginPrecheck();
+    h.run(5_000);
+    await outcome.settled;
+    expect(h.state().session?.precheck.items.find((item) => item.id === 'LENS_1')).toMatchObject({ status: 'PASS' });
+    expect(h.reports.filter((report) => report.code === PrecheckReportCode.REACH_NOT_WRITTEN)).toEqual([]);
+  });
+
+  it('a reach seam that fails is reported by code with ids only and the run goes on; CONTROL: without the seam no reach is stated; a probe SOURCE that throws (V98-13) states none', async () => {
+    const failing = harness({ noteReach: async () => Promise.reject(new Error('engine not running')) });
+    const run = await failing.precheck();
+    expect(run.outcome.asked).toBe(true);
+    expect(failing.reports.filter((report) => report.code === PrecheckReportCode.REACH_NOT_WRITTEN)).toEqual([expect.objectContaining({ source: 'captureNotices.precheck', deviceId: null, sessionId: run.sessionId, searchId: null })]);
+    expect(failing.state().session?.precheck.outcome).toBe('PASS');
+
+    const plain = harness();
+    await plain.precheck();
+    expect(plain.state().captureDevices.devices.every((device) => (device.reach ?? null) === null && (device.checkedAt ?? null) === null)).toBe(true);
+
+    const noted: PrecheckReachReading[][] = [];
+    const sim = createSim({ clock: createManualClock(START), storage: null, authStorage: null });
+    sim.actions.signIn('budi.santoso', 'demo-2026');
+    sim.actions.createSession(INPUT);
+    const gate = createPrecheckGate({
+      state: () => sim.store.getState(),
+      notifier: createNoDeviceNotifier({ engine: () => simulatorEngineOf(sim), report: () => {} }),
+      probe: () => {
+        throw new Error('the fence offers no adapters');
+      },
+      discovery: () => null,
+      report: () => {},
+      noteReach: async (readings) => void noted.push([...readings]),
+    });
+    expect((await gate.beforePrecheck({ sessionId: sim.store.getState().session?.id ?? '', owner: SUPERVISOR, kind: 'BEGIN' })).asked).toBe(true);
+    expect(noted).toEqual([]);
   });
 });

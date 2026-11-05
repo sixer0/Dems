@@ -48,6 +48,20 @@ describe('the gate (pure)', () => {
     expect(deviceCommandGate({ can: all, recording: false, busy: true })).toEqual({ testSignal: { kind: 'BUSY' }, identify: { kind: 'BUSY' }, restart: { kind: 'BUSY' } })
     expect(deviceCommandGate({ can: all, recording: true, busy: true }).restart).toEqual({ kind: 'RECORDING' })
   })
+
+  // Audit row CS2 (O-124-1, D89): a Core in its own capture refuses operations 48-50 (409 COMMAND_UNSUPPORTED, DEVICE_COMMAND_NOT_AVAILABLE).
+  it('row CS2: on a Core in its own capture every command is NOT_AVAILABLE for every role, recording or not, busy or not; absent = unchanged', () => {
+    const all = holding(Permission.DIAGNOSTICS_RUN, Permission.DEVICE_MANAGE)
+    const notAvailable = { testSignal: { kind: 'NOT_AVAILABLE' }, identify: { kind: 'NOT_AVAILABLE' }, restart: { kind: 'NOT_AVAILABLE' } }
+    for (const can of [all, holding(), holding(Permission.DIAGNOSTICS_RUN)]) {
+      for (const recording of [false, true]) {
+        for (const busy of [false, true]) expect(deviceCommandGate({ can, recording, busy, notAvailable: true })).toEqual(notAvailable)
+      }
+    }
+    // CONTROL: the simulated lane (false or absent) keeps the role, recording and LB-1 rules.
+    expect(deviceCommandGate({ can: all, recording: false, busy: false, notAvailable: false })).toEqual({ testSignal: null, identify: null, restart: null })
+    expect(deviceCommandGate({ can: all, recording: true, busy: false }).restart).toEqual({ kind: 'RECORDING' })
+  })
 })
 
 describe('static: both menus use the one gate', () => {

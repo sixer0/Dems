@@ -41,6 +41,8 @@ export interface Queryable {
 /** An operator row as the rule needs it: who, which role, enabled or not. */
 export interface LockedOperator {
   readonly id: string;
+  /** Row 133 (DF-29): read under the same lock, so the system-principal check needs no second statement. */
+  readonly username: string;
   readonly role: OperatorRole;
   readonly enabled: boolean;
 }
@@ -106,16 +108,17 @@ export async function readUser(db: Queryable, operatorId: string): Promise<Admin
 
 interface LockedRow extends QueryResultRow {
   id: string;
+  username: string;
   role_id: OperatorRole;
   enabled: boolean;
 }
 
-const lockedOf = (row: LockedRow): LockedOperator => ({ id: row.id, role: row.role_id, enabled: row.enabled });
+const lockedOf = (row: LockedRow): LockedOperator => ({ id: row.id, username: row.username, role: row.role_id, enabled: row.enabled });
 
 /** AT-C5: every operator row, in key order, locked until the unit ends. The lock point of RB-8. */
-export const LOCK_OPERATORS = 'SELECT id, role_id, enabled FROM public.operators ORDER BY id FOR UPDATE';
+export const LOCK_OPERATORS = 'SELECT id, username, role_id, enabled FROM public.operators ORDER BY id FOR UPDATE';
 /** One operator row, locked until the unit ends: `enableUser`, which cannot take an administrator away. */
-export const LOCK_OPERATOR = 'SELECT id, role_id, enabled FROM public.operators WHERE id = $1 FOR UPDATE';
+export const LOCK_OPERATOR = 'SELECT id, username, role_id, enabled FROM public.operators WHERE id = $1 FOR UPDATE';
 
 export async function lockOperators(db: Queryable): Promise<LockedOperator[]> {
   return (await db.query<LockedRow>(LOCK_OPERATORS)).rows.map(lockedOf);
@@ -183,6 +186,32 @@ export const READ_USERNAME = 'SELECT username FROM public.operators WHERE id = $
 export async function readUsername(db: Queryable, operatorId: string): Promise<string | null> {
   const { rows } = await db.query<{ username: string }>(READ_USERNAME, [operatorId]);
   return rows[0] === undefined ? null : rows[0].username;
+}
+
+/**
+ * Decision D51 (row 133): is this operator row an account that a purge KEPT, disabled, under its
+ * evidence-chain rows (migration 0043, D38 DR-1)? Such an account is TERMINAL: operation 13 does not
+ * enable it again and the host password command sets no credential of it.
+ *
+ * The schema has no column for it, and none is added (no migration in row 133): the durable mark is
+ * the purge's own announcement, the USER_DELETED row that names the account (written before every
+ * purge, in the same unit, and an append-only hashed row). A row of the operators table that such an
+ * announcement names was kept, because an account that was not kept has no row any more. The one
+ * trap is a reused ID: `NEXT_OPERATOR_ID` hands out the highest number plus one, so after the
+ * highest account went entirely a new account can be born under its ID. That account's USER_CREATED
+ * row is then newer than the old USER_DELETED row, so only an announcement newer than every
+ * USER_CREATED of the same ID counts (a seeded account has no USER_CREATED row: 0).
+ */
+export const READ_PURGE_KEPT =
+  'SELECT EXISTS (SELECT 1 FROM public.audit_log AS d WHERE d.type = $2 AND d.details ->> $4 = $1 ' +
+  'AND d.seq > COALESCE((SELECT max(c.seq) FROM public.audit_log AS c WHERE c.type = $3 AND c.details ->> $4 = $1), 0)) AS "purgeKept"';
+
+/** The types and the detail key the mark reads, bound as parameters (rule 5: no value inside the text). */
+const PURGE_KEPT_MARK = ['USER_DELETED', 'USER_CREATED', 'targetOperatorId'] as const satisfies readonly [AuditType, AuditType, string];
+
+export async function isPurgeKept(db: Queryable, operatorId: string): Promise<boolean> {
+  const { rows } = await db.query<{ purgeKept: boolean }>(READ_PURGE_KEPT, [operatorId, ...PURGE_KEPT_MARK]);
+  return rows[0]?.purgeKept === true;
 }
 
 /**

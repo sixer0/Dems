@@ -1942,7 +1942,7 @@
         "description": "Per-track status for the recorded video tracks (D60, 2026-11-04: VIDEO-01 to VIDEO-04; book §21.2).\n\nNeeds a signed-in operator. Every role may read it: the operation needs no permission.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
         "responses": {
           "200": {
-            "description": "Both video tracks.",
+            "description": "All four video tracks.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -5052,7 +5052,7 @@
           "Administration"
         ],
         "summary": "Assign a role",
-        "description": "Changes the role of an operator. The new permissions apply to that operator's next request (RB-3); the open sessions stay, and their sockets receive `session.updated` within 1 s.\n\nWrites ROLE_CHANGED with the old and the new role; assigning the role the operator already has writes nothing.\n\nRefused with `409 LAST_ADMIN` when it would leave no enabled operator holding USER_ADMIN (RB-8).\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Changes the role of an operator. The new permissions apply to that operator's next request (RB-3); the open sessions stay, and their sockets receive `session.updated` within 1 s.\n\nWrites ROLE_CHANGED with the old and the new role; assigning the role the operator already has writes nothing.\n\nRefused with `409 LAST_ADMIN` when it would leave no enabled operator holding USER_ADMIN (RB-8).\n\nRefused with `409 INVALID_STATE` (details reason `SYSTEM_PRINCIPAL`) when the operator is a system principal, the auto-attach actor `OPR-000` or the username `system`: it stands for the Core itself and is never changed or deleted (DF-29). Nothing is changed.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "200": {
             "description": "The operator after the change.",
@@ -5230,7 +5230,7 @@
             }
           },
           "409": {
-            "description": "The change would leave no enabled operator holding USER_ADMIN (LAST_ADMIN, RB-8). Nothing is changed.",
+            "description": "The change would leave no enabled operator holding USER_ADMIN (LAST_ADMIN, RB-8); or the operator is a system principal (INVALID_STATE, details reason SYSTEM_PRINCIPAL). Nothing is changed.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -5248,6 +5248,19 @@
                       "error": {
                         "code": "LAST_ADMIN",
                         "message": "At least one enabled operator must keep user administration.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "systemPrincipal": {
+                    "summary": "The operator is the system principal OPR-000",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "This operator is a system principal: it stands for the Core itself and is not changed or deleted. Nothing was changed.",
+                        "details": {
+                          "reason": "SYSTEM_PRINCIPAL"
+                        },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
                     }
@@ -5360,7 +5373,7 @@
           "Administration"
         ],
         "summary": "Enable a user",
-        "description": "Lets a disabled operator sign in again. Writes USER_ENABLED; enabling an operator who is already enabled writes nothing.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Lets a disabled operator sign in again. Writes USER_ENABLED; enabling an operator who is already enabled writes nothing.\n\nRefused with `409 INVALID_STATE` (details reason `PURGE_KEPT`) when the account was deleted by `deleteUser` and kept, disabled, only because evidence-chain records name it: such an account is terminal (decision D51). Nothing is changed.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "200": {
             "description": "The operator after the change.",
@@ -5537,6 +5550,36 @@
               }
             }
           },
+          "409": {
+            "description": "The account was deleted and is kept, disabled, under its evidence-chain records (INVALID_STATE, details reason PURGE_KEPT; decision D51). Nothing is changed.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "purgeKept": {
+                    "summary": "The account was deleted and is kept under its evidence records",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "This account was deleted and is kept, disabled, only because evidence records name it. It cannot be enabled again; nothing was changed.",
+                        "details": {
+                          "reason": "PURGE_KEPT"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
           "422": {
             "description": "The body or the path parameter does not match its schema (INVALID_INPUT). Free text that holds U+0000 or an unpaired surrogate is refused here (API-13).",
             "headers": {
@@ -5640,7 +5683,7 @@
           "Administration"
         ],
         "summary": "Disable a user",
-        "description": "Stops an operator from signing in. In the same transaction every open session of that operator is ended and the biometric tokens are revoked; the sockets receive `session.ended` and are closed within 1 s.\n\nWrites USER_DISABLED with the number of sessions ended; disabling an operator who is already disabled writes nothing.\n\nRefused with `409 LAST_ADMIN` when it would leave no enabled operator holding USER_ADMIN (RB-8).\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Stops an operator from signing in. In the same transaction every open session of that operator is ended and the biometric tokens are revoked; the sockets receive `session.ended` and are closed within 1 s.\n\nWrites USER_DISABLED with the number of sessions ended; disabling an operator who is already disabled writes nothing.\n\nRefused with `409 LAST_ADMIN` when it would leave no enabled operator holding USER_ADMIN (RB-8).\n\nRefused with `409 INVALID_STATE` (details reason `SYSTEM_PRINCIPAL`) when the operator is a system principal, the auto-attach actor `OPR-000` or the username `system`: it stands for the Core itself and is never changed or deleted (DF-29). Nothing is changed.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "200": {
             "description": "The operator after the change.",
@@ -5818,7 +5861,7 @@
             }
           },
           "409": {
-            "description": "The change would leave no enabled operator holding USER_ADMIN (LAST_ADMIN, RB-8). Nothing is changed.",
+            "description": "The change would leave no enabled operator holding USER_ADMIN (LAST_ADMIN, RB-8); or the operator is a system principal (INVALID_STATE, details reason SYSTEM_PRINCIPAL). Nothing is changed.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -5836,6 +5879,19 @@
                       "error": {
                         "code": "LAST_ADMIN",
                         "message": "At least one enabled operator must keep user administration.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "systemPrincipal": {
+                    "summary": "The operator is the system principal OPR-000",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "This operator is a system principal: it stands for the Core itself and is not changed or deleted. Nothing was changed.",
+                        "details": {
+                          "reason": "SYSTEM_PRINCIPAL"
+                        },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
                     }
@@ -5947,7 +6003,7 @@
           "Administration"
         ],
         "summary": "Edit a user profile",
-        "description": "Changes the profile of an operator: name, display name, initials, rank. The role is `assignUserRole`, the enabled state is `enableUser` and `disableUser`, and a password is never carried by this operation.\n\nWrites USER_UPDATED with the fields that changed; a request that changes nothing writes no row.\n\nNeeds USER_ADMIN and the vendor `root` account (RB-9 as amended).\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Changes the profile of an operator: name, display name, initials, rank. The role is `assignUserRole`, the enabled state is `enableUser` and `disableUser`, and a password is never carried by this operation.\n\nWrites USER_UPDATED with the fields that changed; a request that changes nothing writes no row.\n\nNeeds USER_ADMIN and the vendor `root` account (RB-9 as amended).\n\nRefused with `409 INVALID_STATE` (details reason `SYSTEM_PRINCIPAL`) when the operator is a system principal, the auto-attach actor `OPR-000` or the username `system`: it stands for the Core itself and is never changed or deleted (DF-29). Nothing is changed.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "200": {
             "description": "The operator after the change.",
@@ -6124,6 +6180,36 @@
               }
             }
           },
+          "409": {
+            "description": "The operator is a system principal (INVALID_STATE, details reason SYSTEM_PRINCIPAL; DF-29). Nothing is changed.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "systemPrincipal": {
+                    "summary": "The operator is the system principal OPR-000",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "This operator is a system principal: it stands for the Core itself and is not changed or deleted. Nothing was changed.",
+                        "details": {
+                          "reason": "SYSTEM_PRINCIPAL"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
           "422": {
             "description": "The body or the path parameter does not match its schema (INVALID_INPUT). Free text that holds U+0000 or an unpaired surrogate is refused here (API-13).",
             "headers": {
@@ -6231,7 +6317,7 @@
           "Administration"
         ],
         "summary": "Delete a user",
-        "description": "Removes an operator and its credential from the unit, ending the open sessions of that operator in the same transaction. The account is purged: the audit rows it wrote, its sign-in rows, its credential and its biometric tokens are removed with it, and the hash chain is re-sealed over what survives (RB-9 as amended by the principal on 2026-11-02). Records of the UNIT are never removed by this — evidence, custody, session records, exports, transcript revisions, capture configuration and the installation acceptance keep their rows and lose their attribution instead. What the amendment costs is stated plainly: after a purge the chain no longer proves that the erased account never existed.\n\nWrites USER_DELETED with the number of sessions ended and whether a credential went with the account.\n\nNeeds USER_ADMIN and the vendor `root` account, and the username repeated in `confirm`.\n\nRefused with `409 LAST_ADMIN` when it would leave no enabled operator holding USER_ADMIN (RB-8), and `409 INVALID_STATE` when the username repeated in `confirm` is not the operator of `{id}`.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Removes an operator and its credential from the unit, ending the open sessions of that operator in the same transaction. The account is purged: the audit rows it wrote, its sign-in rows, its credential and its biometric tokens are removed with it, and the hash chain is re-sealed over what survives (RB-9 as amended by the principal on 2026-11-02). Records of the UNIT are never removed by this — evidence, custody, session records, exports, transcript revisions, capture configuration and the installation acceptance keep their rows and lose their attribution instead. What the amendment costs is stated plainly: after a purge the chain no longer proves that the erased account never existed.\n\nWrites USER_DELETED with the number of sessions ended and whether a credential went with the account.\n\nNeeds USER_ADMIN and the vendor `root` account, and the username repeated in `confirm`.\n\nRefused with `409 LAST_ADMIN` when it would leave no enabled operator holding USER_ADMIN (RB-8), and `409 INVALID_STATE` when the username repeated in `confirm` is not the operator of `{id}`.\n\nRefused with `409 INVALID_STATE` (details reason `ACTIVE_SESSION_PARTY` and the `sessionId`) when the operator takes part in the active session - its investigator, or whoever created, started or stopped it - in any state of that session: a purge never runs under a live recording (decision D43). Nothing is deleted; finish that session first.\n\nRefused with `409 INVALID_STATE` (details reason `SYSTEM_PRINCIPAL`) when the operator is a system principal, the auto-attach actor `OPR-000` or the username `system`: it stands for the Core itself and is never deleted (DF-29). Nothing is deleted.\n\nWhen evidence-chain rows written by the operator survive the purge, the account row stays, disabled, and the answer says `accountKept: true` (decision D38 DR-1); such an account is terminal and is never enabled again (decision D51).\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "200": {
             "description": "What was deleted.",
@@ -6258,7 +6344,8 @@
                       "operatorId": "OPR-003",
                       "username": "rina.wijaya",
                       "sessionsEnded": 0,
-                      "credentialsRemoved": 1
+                      "credentialsRemoved": 1,
+                      "accountKept": false
                     }
                   }
                 }
@@ -6402,7 +6489,7 @@
             }
           },
           "409": {
-            "description": "RB-8: the delete would leave no enabled operator holding USER_ADMIN (LAST_ADMIN); or the username in `confirm` is not the operator of `{id}`; or records of the unit still point at that operator (INVALID_STATE), in which case the refusal text names how many and from which sources. Nothing is deleted in any of these cases.",
+            "description": "RB-8: the delete would leave no enabled operator holding USER_ADMIN (LAST_ADMIN); or the username in `confirm` is not the operator of `{id}`; or the operator takes part in the active session (INVALID_STATE, details reason ACTIVE_SESSION_PARTY; D43); or the operator is a system principal (INVALID_STATE, details reason SYSTEM_PRINCIPAL; DF-29). Nothing is deleted in any of these cases.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -6420,6 +6507,19 @@
                       "error": {
                         "code": "LAST_ADMIN",
                         "message": "At least one enabled operator must keep user administration.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "systemPrincipal": {
+                    "summary": "The operator is the system principal OPR-000",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "This operator is a system principal: it stands for the Core itself and is not changed or deleted. Nothing was changed.",
+                        "details": {
+                          "reason": "SYSTEM_PRINCIPAL"
+                        },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
                     }
@@ -13741,7 +13841,7 @@
           "Device"
         ],
         "summary": "Restart a device",
-        "description": "Restarts a camera, a microphone or another device of the Core (simulated). It is refused while a recording runs, and the platform devices GNSS, TPM and FRONT-PANEL cannot be restarted.\n\nSchema v2 (C3 §3 op 48; OD-22; NM-01): for a **camera** the restart is a PoE power cycle. It is allowed **only when that camera's stream is LOST** — otherwise `409 CAMERA_NOT_LOST` with `details.streamState` — and it requires the body `{ \"confirm\": true }`. A cycle during RECORDING is refused `409 RECORDING_ACTIVE` as before. The `captureConfig` slice marks the gap. Mics and other devices keep the plain restart.\n\nWrites DEVICE_COMMAND with `details.command: RESTART`, or `POE_CYCLE` plus a second CAMERA_POE_CYCLED row for a camera cycle (E-12; the CAMERA_POE_CYCLED detail is `deviceId`, `poePort`, `streamWasLost: true`, `confirmed: true` and the optional gap markers — never a credential).\n\nCore server only: the server runs the shared simulator action `deviceCommand(deviceId, 'RESTART')` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
+        "description": "Restarts a camera, a microphone or another device of the Core (simulated). It is refused while a recording runs, and the platform devices GNSS, TPM and FRONT-PANEL cannot be restarted.\n\nSchema v2 (C3 §3 op 48; OD-22; NM-01): for a **camera** the restart is a PoE power cycle. It is allowed **only when that camera's stream is LOST** — otherwise `409 CAMERA_NOT_LOST` with `details.streamState` — and it requires the body `{ \"confirm\": true }`. A cycle during RECORDING is refused `409 RECORDING_ACTIVE` as before. The `captureConfig` slice marks the gap. Mics and other devices keep the plain restart.\n\nWrites DEVICE_COMMAND with `details.command: RESTART`, or `POE_CYCLE` plus a second CAMERA_POE_CYCLED row for a camera cycle (E-12; the CAMERA_POE_CYCLED detail is `deviceId`, `poePort`, `streamWasLost: true`, `confirmed: true` and the optional gap markers — never a credential).\n\nRow CS2 (decision D89; R-1 routed by D96): a Core in its own capture sends no command to a device. After the permission and device checks (403, 404) and before the recording check, this operation answers `409 COMMAND_UNSUPPORTED` with `details.reason: DEVICE_COMMAND_NOT_AVAILABLE` - the camera PoE cycle included; nothing is changed and nothing is written.\n\nCore server only: the server runs the shared simulator action `deviceCommand(deviceId, 'RESTART')` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
         "responses": {
           "204": {
             "description": "The device restarted, or the camera power-cycled.",
@@ -13897,7 +13997,7 @@
             }
           },
           "409": {
-            "description": "A recording is running (RECORDING_ACTIVE), the device accepts no restart (COMMAND_UNSUPPORTED), or a camera whose stream is not lost was asked for a PoE cycle (CAMERA_NOT_LOST, with `details.streamState: LIVE`; OD-22).",
+            "description": "A recording is running (RECORDING_ACTIVE), the device accepts no restart (COMMAND_UNSUPPORTED; with `details.reason: DEVICE_COMMAND_NOT_AVAILABLE` on a Core in its own capture, which sends no command to a device), or a camera whose stream is not lost was asked for a PoE cycle (CAMERA_NOT_LOST, with `details.streamState: LIVE`; OD-22).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -13933,6 +14033,20 @@
                         "details": {
                           "simCode": "COMMAND_UNSUPPORTED",
                           "event": "deviceCommand"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceCommandNotAvailable": {
+                    "summary": "A Core in its own capture: it sends no command to a device",
+                    "value": {
+                      "error": {
+                        "code": "COMMAND_UNSUPPORTED",
+                        "message": "Device commands (restart, test signal, identify) are not available on this Core.",
+                        "details": {
+                          "simCode": "COMMAND_UNSUPPORTED",
+                          "reason": "DEVICE_COMMAND_NOT_AVAILABLE"
                         },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
@@ -14047,7 +14161,7 @@
           "Device"
         ],
         "summary": "Send a test signal",
-        "description": "Sends a test signal to a device (simulated): a microphone plays a steady tone of -18 dBFS on its meter for two seconds. The platform devices GNSS, TPM and FRONT-PANEL accept no test signal.\n\nWrites DEVICE_COMMAND with `details.command: TEST_SIGNAL`.\n\nCore server only: the server runs the shared simulator action `deviceCommand(deviceId, 'TEST_SIGNAL')` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
+        "description": "Sends a test signal to a device (simulated): a microphone plays a steady tone of -18 dBFS on its meter for two seconds. The platform devices GNSS, TPM and FRONT-PANEL accept no test signal.\n\nWrites DEVICE_COMMAND with `details.command: TEST_SIGNAL`.\n\nRow CS2 (decision D89; R-1 routed by D96): a Core in its own capture sends no command to a device. After the permission and device checks (403, 404) this operation answers `409 COMMAND_UNSUPPORTED` with `details.reason: DEVICE_COMMAND_NOT_AVAILABLE`; nothing is changed and nothing is written.\n\nCore server only: the server runs the shared simulator action `deviceCommand(deviceId, 'TEST_SIGNAL')` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
         "responses": {
           "204": {
             "description": "The test signal was sent.",
@@ -14161,7 +14275,7 @@
             }
           },
           "409": {
-            "description": "The device accepts no test signal (COMMAND_UNSUPPORTED).",
+            "description": "The device accepts no test signal (COMMAND_UNSUPPORTED), or the Core sends no command to a device (`details.reason: DEVICE_COMMAND_NOT_AVAILABLE`: a Core in its own capture).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -14182,6 +14296,20 @@
                         "details": {
                           "simCode": "COMMAND_UNSUPPORTED",
                           "event": "deviceCommand"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceCommandNotAvailable": {
+                    "summary": "A Core in its own capture: it sends no command to a device",
+                    "value": {
+                      "error": {
+                        "code": "COMMAND_UNSUPPORTED",
+                        "message": "Device commands (restart, test signal, identify) are not available on this Core.",
+                        "details": {
+                          "simCode": "COMMAND_UNSUPPORTED",
+                          "reason": "DEVICE_COMMAND_NOT_AVAILABLE"
                         },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
@@ -14276,7 +14404,7 @@
           "Device"
         ],
         "summary": "Identify a device",
-        "description": "Makes the indicator of a device blink three times (simulated). Every device accepts it, the platform devices GNSS, TPM and FRONT-PANEL included.\n\nWrites DEVICE_COMMAND with `details.command: IDENTIFY`.\n\nCore server only: the server runs the shared simulator action `deviceCommand(deviceId, 'IDENTIFY')` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
+        "description": "Makes the indicator of a device blink three times (simulated). Every device accepts it, the platform devices GNSS, TPM and FRONT-PANEL included.\n\nWrites DEVICE_COMMAND with `details.command: IDENTIFY`.\n\nRow CS2 (decision D89; R-1 routed by D96): a Core in its own capture sends no command to a device. After the permission and device checks (403, 404) this operation answers `409 COMMAND_UNSUPPORTED` with `details.reason: DEVICE_COMMAND_NOT_AVAILABLE`; nothing is changed and nothing is written.\n\nCore server only: the server runs the shared simulator action `deviceCommand(deviceId, 'IDENTIFY')` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
         "responses": {
           "204": {
             "description": "The indicator blinks.",
@@ -14380,6 +14508,37 @@
                         "message": "Device CAM-09 not found.",
                         "details": {
                           "simCode": "NOT_FOUND"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The Core sends no command to a device (COMMAND_UNSUPPORTED, `details.reason: DEVICE_COMMAND_NOT_AVAILABLE`: a Core in its own capture).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "deviceCommandNotAvailable": {
+                    "summary": "A Core in its own capture: it sends no command to a device",
+                    "value": {
+                      "error": {
+                        "code": "COMMAND_UNSUPPORTED",
+                        "message": "Device commands (restart, test signal, identify) are not available on this Core.",
+                        "details": {
+                          "simCode": "COMMAND_UNSUPPORTED",
+                          "reason": "DEVICE_COMMAND_NOT_AVAILABLE"
                         },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
@@ -20430,7 +20589,7 @@
           "Device"
         ],
         "summary": "Capture devices",
-        "description": "The capture-device registry: id, kind, model, firmware, host, PoE port, online flag, stream state and capabilities — the field list of `C3 §2.3` op 77. **No credential member exists** (RK-12), and a host is a host only, never a `user:password@` URL (specs C-N8).\n\nFed by supervisor telemetry (`applyCaptureTelemetry`, SH-18). The answer is the `captureDevices` slice in its wire form (API-6); it is its own slice, never the paired-client registry (E-04).\n\nFix wave J round two (finding JW-23): `online` is the registry flag of a device, not a statement that it is reachable now. A Core in its own capture asks a source in a pre-check, at a session start, in a microphone re-scan and - since decisions D51 / D53 - while an operator watches its live preview (`createCameraPreviewSession`) or holds the idle microphone meters (`holdIdleMeters`); a device nobody has asked (a camera registered on a port where nothing answers) reads `online: true` until one of them finds it unreachable. Neither the preview nor the idle meters change this flag. Clients show such a device as \"Not checked\" at rest.\n\nNeeds a signed-in operator. Every role may read it.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "The capture-device registry: id, kind, model, firmware, host, PoE port, online flag, stream state and capabilities — the field list of `C3 §2.3` op 77. **No credential member exists** (RK-12), and a host is a host only, never a `user:password@` URL (specs C-N8).\n\nFed by supervisor telemetry (`applyCaptureTelemetry`, SH-18). The answer is the `captureDevices` slice in its wire form (API-6); it is its own slice, never the paired-client registry (E-04).\n\nFix wave J round two (finding JW-23): `online` is the registry flag of a device, not a statement that it is reachable now. A Core in its own capture asks a source in a pre-check, at a session start, in a microphone re-scan and - since decisions D51 / D53 - while an operator watches its live preview (`createCameraPreviewSession`) or holds the idle microphone meters (`holdIdleMeters`); a device nobody has asked (a camera registered on a port where nothing answers) reads `online: true` until one of them finds it unreachable. Neither the preview nor the idle meters change this flag; a preview states its outcome in `reach` and `checkedAt` (row 125: its first picture states `REACHABLE`, a failure `NOT_REACHABLE`, each with the time of the reading; in memory only, absent after a restart). Clients show a device with no stated `reach` as \"Not checked\" at rest.\n\nNeeds a signed-in operator. Every role may read it.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The capture-devices slice.",
@@ -31492,7 +31651,7 @@
           "Device"
         ],
         "summary": "Open a live camera preview",
-        "description": "Returns a short-lived URL of the registry-external route `GET /preview/{token}`, which streams the camera in the path as motion JPEG (`multipart/x-mixed-replace`, about 8 pictures per second at 640x360; `Cache-Control: no-store`). The token (prefix `cps_`) is a random bearer value bound to the operator, the sign-in session and the camera; it must be opened within 60 s and never enters a log or an audit row. A stream that is open is cut when its sign-in session ends (checked every 10 s).\n\nNeeds SESSION_START, CAPTURE_CONFIG or DEVICE_MANAGE (decision D53: everyone who can start a session). The route `GET /preview/{token}` has the same rule. The camera must be a registered production camera: the Core reads its stored credential for the preview (one CAPTURE_CREDENTIAL_REVEALED row, `reason: PREVIEW_OPEN`, when the stream is started), never returns it.\n\n**Recording always has priority.** A preview yields its camera before a pre-check and before a session opens it, and resumes after the recording's push stands, while viewers remain. Bounds: 1 stream per camera, 4 in all, 4 viewers per camera and 16 in all; over a bound the Core answers `429 RATE_LIMITED` with `details.reason: PREVIEW_LIMIT` (an envelope-level answer) and writes no row. A Core without a live preview answers `409 INVALID_STATE` with `details.reason: PREVIEW_NOT_AVAILABLE`.\n\nWrites CAMERA_PREVIEW_OPENED before the answer: the device, `expiresAt` and the operation - never the token or the URL.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Returns a short-lived URL of the registry-external route `GET /preview/{token}`, which streams the camera in the path as motion JPEG (`multipart/x-mixed-replace`, about 8 pictures per second at 640x360; `Cache-Control: no-store`). The token (prefix `cps_`) is a random bearer value bound to the operator, the sign-in session and the camera; it must be opened within 60 s and never enters a log or an audit row. A stream that is open is cut when its sign-in session ends (checked every 10 s).\n\nNeeds SESSION_START, CAPTURE_CONFIG or DEVICE_MANAGE (decision D53: everyone who can start a session). The route `GET /preview/{token}` has the same rule. The camera must be a registered production camera: the Core reads its stored credential for the preview (one CAPTURE_CREDENTIAL_REVEALED row, `reason: PREVIEW_OPEN`, when the stream is started), never returns it.\n\n**Recording always has priority.** A preview yields its camera before a pre-check and before a session opens it, and resumes after the recording's push stands, while viewers remain. Bounds: 1 stream per camera, 4 in all, 4 viewers per camera and 16 in all; over a bound the Core answers `429 RATE_LIMITED` with `details.reason: PREVIEW_LIMIT` (an envelope-level answer) and writes no row. A Core without a live preview answers `409 INVALID_STATE` with `details.reason: PREVIEW_NOT_AVAILABLE`.\n\nThe outcome is stated on the camera's entry of the `captureDevices` slice (row 125; decisions D19, D24): the first picture sets `reach: REACHABLE`, a failure `reach: NOT_REACHABLE`, each with `checkedAt`. A preview never changes `online`, the registry flag.\n\nWrites CAMERA_PREVIEW_OPENED before the answer: the device, `expiresAt` and the operation - never the token or the URL.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "201": {
             "description": "The live preview session.",
@@ -32943,7 +33102,7 @@
                     },
                     "online": {
                       "type": "boolean",
-                      "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
+                      "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest with no stated `reach` says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                     },
                     "streamState": {
                       "anyOf": [
@@ -33004,7 +33163,7 @@
                     },
                     "online": {
                       "type": "boolean",
-                      "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
+                      "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest with no stated `reach` says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                     }
                   },
                   "required": [
@@ -34917,13 +35076,18 @@
             "type": "integer",
             "minimum": 0,
             "description": "0 or 1: whether a password row went with the account."
+          },
+          "accountKept": {
+            "type": "boolean",
+            "description": "True when evidence-chain rows the operator wrote survive the purge, so the account row stays, disabled and terminal (decisions D38 DR-1, D51): it is never enabled again and gets no password."
           }
         },
         "required": [
           "operatorId",
           "username",
           "sessionsEnded",
-          "credentialsRemoved"
+          "credentialsRemoved",
+          "accountKept"
         ],
         "additionalProperties": false,
         "description": "Response of `POST /api/v1/admin/users/{id}/delete`."
@@ -37312,7 +37476,7 @@
                 },
                 "online": {
                   "type": "boolean",
-                  "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
+                  "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest with no stated `reach` says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                 },
                 "streamState": {
                   "anyOf": [
@@ -37374,7 +37538,7 @@
                 },
                 "online": {
                   "type": "boolean",
-                  "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
+                  "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest with no stated `reach` says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                 }
               },
               "required": [
@@ -37456,7 +37620,7 @@
                 },
                 "online": {
                   "type": "boolean",
-                  "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
+                  "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest with no stated `reach` says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                 },
                 "streamState": {
                   "anyOf": [
@@ -37472,6 +37636,33 @@
                     }
                   ],
                   "description": "Null for a device with no stream (a mic, the PoE switch). Like `online`, not a reading at rest on a Core in its own capture (finding JW-23)."
+                },
+                "checkedAt": {
+                  "description": "Epoch ms of the Core's last reach reading of this device, a success or a failure: the outcome of a live preview (`createCameraPreviewSession`) - its first picture, or its failure. Held in memory only: no database column, never part of a stored snapshot, absent after a restart until the device is read again (decision D29 Q1). Absent or null: not checked since the Core started. It never changes `online`.",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "reach": {
+                  "description": "The outcome of the reading `checkedAt` dates: `REACHABLE` (the device answered - a preview delivered its first picture) or `NOT_REACHABLE` (it did not). Absent or null: not checked. A client prefers a stated `reach` over the word it draws from `online` and opens no automatic preview while it is `NOT_REACHABLE`. Display state only: the session engine and the pre-check still read `online`.",
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "REACHABLE",
+                        "NOT_REACHABLE"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "capabilities": {
                   "type": "array",
@@ -38503,7 +38694,7 @@
                         },
                         "online": {
                           "type": "boolean",
-                          "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
+                          "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest with no stated `reach` says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                         },
                         "streamState": {
                           "anyOf": [
@@ -38564,7 +38755,7 @@
                         },
                         "online": {
                           "type": "boolean",
-                          "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
+                          "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest with no stated `reach` says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                         }
                       },
                       "required": [
@@ -45264,7 +45455,7 @@
               },
               "online": {
                 "type": "boolean",
-                "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
+                "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest with no stated `reach` says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
               },
               "streamState": {
                 "anyOf": [
@@ -45280,6 +45471,33 @@
                   }
                 ],
                 "description": "Null for a device with no stream (a mic, the PoE switch). Like `online`, not a reading at rest on a Core in its own capture (finding JW-23)."
+              },
+              "checkedAt": {
+                "description": "Epoch ms of the Core's last reach reading of this device, a success or a failure: the outcome of a live preview (`createCameraPreviewSession`) - its first picture, or its failure. Held in memory only: no database column, never part of a stored snapshot, absent after a restart until the device is read again (decision D29 Q1). Absent or null: not checked since the Core started. It never changes `online`.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reach": {
+                "description": "The outcome of the reading `checkedAt` dates: `REACHABLE` (the device answered - a preview delivered its first picture) or `NOT_REACHABLE` (it did not). Absent or null: not checked. A client prefers a stated `reach` over the word it draws from `online` and opens no automatic preview while it is `NOT_REACHABLE`. Display state only: the session engine and the pre-check still read `online`.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "REACHABLE",
+                      "NOT_REACHABLE"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "capabilities": {
                 "type": "array",
@@ -45819,7 +46037,7 @@
               },
               "online": {
                 "type": "boolean",
-                "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
+                "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest with no stated `reach` says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
               },
               "streamState": {
                 "anyOf": [
@@ -45835,6 +46053,33 @@
                   }
                 ],
                 "description": "Null for a device with no stream (a mic, the PoE switch). Like `online`, not a reading at rest on a Core in its own capture (finding JW-23)."
+              },
+              "checkedAt": {
+                "description": "Epoch ms of the Core's last reach reading of this device, a success or a failure: the outcome of a live preview (`createCameraPreviewSession`) - its first picture, or its failure. Held in memory only: no database column, never part of a stored snapshot, absent after a restart until the device is read again (decision D29 Q1). Absent or null: not checked since the Core started. It never changes `online`.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reach": {
+                "description": "The outcome of the reading `checkedAt` dates: `REACHABLE` (the device answered - a preview delivered its first picture) or `NOT_REACHABLE` (it did not). Absent or null: not checked. A client prefers a stated `reach` over the word it draws from `online` and opens no automatic preview while it is `NOT_REACHABLE`. Display state only: the session engine and the pre-check still read `online`.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "REACHABLE",
+                      "NOT_REACHABLE"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "capabilities": {
                 "type": "array",
@@ -47362,7 +47607,7 @@
               },
               "online": {
                 "type": "boolean",
-                "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
+                "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest with no stated `reach` says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
               },
               "streamState": {
                 "anyOf": [
@@ -47378,6 +47623,33 @@
                   }
                 ],
                 "description": "Null for a device with no stream (a mic, the PoE switch). Like `online`, not a reading at rest on a Core in its own capture (finding JW-23)."
+              },
+              "checkedAt": {
+                "description": "Epoch ms of the Core's last reach reading of this device, a success or a failure: the outcome of a live preview (`createCameraPreviewSession`) - its first picture, or its failure. Held in memory only: no database column, never part of a stored snapshot, absent after a restart until the device is read again (decision D29 Q1). Absent or null: not checked since the Core started. It never changes `online`.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reach": {
+                "description": "The outcome of the reading `checkedAt` dates: `REACHABLE` (the device answered - a preview delivered its first picture) or `NOT_REACHABLE` (it did not). Absent or null: not checked. A client prefers a stated `reach` over the word it draws from `online` and opens no automatic preview while it is `NOT_REACHABLE`. Display state only: the session engine and the pre-check still read `online`.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "REACHABLE",
+                      "NOT_REACHABLE"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "capabilities": {
                 "type": "array",

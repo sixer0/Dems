@@ -6,6 +6,7 @@ import type { VideoTrackId } from '@dems/shared/domain'
 import { useRetryCooldown } from '@dems/shared/realtime'
 import { PRIMARY_MIC_CHANNEL, selectIsRecording, useSim, type MicChannel } from '@dems/shared/sim' // D61 (2026-11-04): the four microphone channels
 import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { usePendingControl } from '@/lib/pending-control'
 import {
   CAPTURE_SELECTOR_ANCHOR,
@@ -106,11 +107,13 @@ function useFailureNotice(kind: SlotSourceKind): (failure: SelectorFailure) => s
  * The state chips of a selector line. Fix wave I (G70b-06; `source-state.ts`): on a Core in real
  * capture "Stream live" is said only while a session is recording, and a device the Core has not
  * read since it started is "Not checked". A simulated Core is drawn as before.
+ * Row CS2 cycle 2 (D97; register R7 of row 129): the Core's stated `reach` of the device is passed on, so a line the Core
+ * states NOT_REACHABLE reads "Not reachable" here as on the tiles and the Dashboard, whatever `online` says.
  */
 function StateChips({ online, streamState, device }: { online: boolean; streamState?: 'LIVE' | 'LOST' | null; device?: CaptureDevice | undefined }) {
   const realCapture = useRealCaptureCore()
   const recording = useSim(selectIsRecording)
-  return <SourceStateChips state={sourceLineState({ realCapture, recording, online, streamState, checkedAt: checkedAtOf(device) })} />
+  return <SourceStateChips state={sourceLineState({ realCapture, recording, online, streamState, checkedAt: checkedAtOf(device), reach: device?.reach })} />
 }
 
 /** Fix wave L (G75d-06): the id and what may be said after it - on a Core in real capture a generated source is named as generated (`own-core-words.ts`). */
@@ -243,7 +246,9 @@ function CameraSourceRow({
     poeGate.offered && poeGate.block !== null
       ? poeGate.block.kind === 'CHECKING'
         ? t('devices.selector.checking')
-        : poeGate.block.kind === 'RECORDING'
+        : poeGate.block.kind === 'NOT_AVAILABLE'
+          ? t('common.deviceMenuHint.notAvailable')
+          : poeGate.block.kind === 'RECORDING'
           ? t('devices.actions.restartWhileRecording')
           : poeGate.block.kind === 'ROLE'
             ? t('common.rbac.requiresRole', { role: poeGate.block.role ? t(`common.roles.${poeGate.block.role}`) : '' })
@@ -632,6 +637,8 @@ function ReadFailed({ kind, onRetry }: { kind: 'NOT_READY' | 'FAILED'; onRetry: 
 function SelectorBody({ view, commands }: { view: CaptureSelectorView; commands: CaptureSelectorCommands }) {
   const { t } = useTranslation()
   const { read } = view
+  // Audit row CS2 (O-124-1, D89): a Core in its own capture refuses operation 48, so its PoE cycle is not offered as pressable.
+  const selfCapture = useSelfCaptureCore()
 
   if (read.kind === 'WAITING' || read.kind === 'LOADING') {
     // ux §2.2 step 1, §2.5: a skeleton on the panel, and the gated controls say they are being checked.
@@ -703,7 +710,7 @@ function SelectorBody({ view, commands }: { view: CaptureSelectorView; commands:
               block={block}
               commands={commands}
               poe={(busy) =>
-                poeCycleGate({ lost: line?.streamState === 'LOST', resolved: view.resolved, canManage: view.canManageDevices, recording: view.recording, busy })
+                poeCycleGate({ lost: line?.streamState === 'LOST', resolved: view.resolved, canManage: view.canManageDevices, recording: view.recording, busy, notAvailable: selfCapture })
               }
             />
           ))}

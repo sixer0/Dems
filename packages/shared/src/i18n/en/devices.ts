@@ -118,6 +118,14 @@ export const devices = {
     unavailable: 'The live preview of this camera is not available.',
     limit: 'Too many live previews are open. Close one and try again.',
     aria: 'Live preview of {{name}}. {{state}}',
+    /**
+     * Row 125 (DF-12, DF-13; decisions D19, D24): the Core's last reading found the camera unreachable
+     * (`reach: NOT_REACHABLE`), so no automatic preview opens (row 130); `tryAgain` asks once more.
+     * `checkedAt` dates the reading (`checkedAt` of the device entry).
+     */
+    notReachable: 'The camera did not answer. The live preview stays closed until you try again.',
+    tryAgain: 'Try again',
+    checkedAt: 'Checked at {{time}}',
   },
 
   other: {

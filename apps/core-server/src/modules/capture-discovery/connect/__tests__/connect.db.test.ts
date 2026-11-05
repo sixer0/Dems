@@ -53,8 +53,11 @@ import type { Principal } from '../../../../plugins/authenticate';
 import { throttleControl } from '../../../../plugins/throttle';
 import { identityControl } from '../../../identity';
 import {
+  SYSTEM_OPERATOR_ID,
+  SYSTEM_PRINCIPAL_CREATED_REASON,
   UPSERT_CAPTURE_CREDENTIAL,
   captureConnectControl,
+  provisionSystemPrincipal,
   createConnectionTestLimits,
   type CandidateDirectory,
   type CandidateTestRecord,
@@ -800,6 +803,27 @@ describe('task 4 rows 50 and 51: the codec is judged from the stream, and an ado
     // Back to the built-in camera: the blocks after this one read the selector as it was.
     expect((await post(technician, '/api/v1/capture/config', { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-02' }] })).statusCode).toBe(200);
     await guard.app.pipeline.drain();
+  });
+});
+
+// Audit 2026-11-05 row 134 (DF-29; D20(d)): the system principal's row, created as `dems_app` in ONE audited unit; a
+// second call finds it and writes nothing. The seed holds no OPR-000 (the sequence of real operators starts at OPR-001).
+describe('row 134: a creation of the system principal OPR-000 writes its USER_CREATED row, as dems_app', () => {
+  it('missing: CREATED with one USER_CREATED row (actor none); present: nothing written; never a credential row', async () => {
+    const host: Parameters<typeof provisionSystemPrincipal>[0] = { now: () => guard.app.clock.now(), nativeUnit: (label, work) => guard.app.pipeline.run(label, work) };
+    expect(await count('operators', `id = '${SYSTEM_OPERATOR_ID}'`)).toBe(0);
+    const from = (await trail()).length;
+    expect(await provisionSystemPrincipal(host)).toBe('CREATED');
+    await guard.app.pipeline.drain();
+    const row = (await owner.query('SELECT username, role_id, enabled FROM public.operators WHERE id = $1', [SYSTEM_OPERATOR_ID])).rows[0] as Record<string, unknown>;
+    expect(row).toEqual({ username: 'system', role_id: 'TECHNICIAN', enabled: true });
+    expect(await count('operator_credentials', `operator_id = '${SYSTEM_OPERATOR_ID}'`)).toBe(0);
+    const written = await since(from);
+    expect(written.map((entry) => entry.type)).toEqual(['USER_CREATED']);
+    expect(written[0]).toMatchObject({ actorId: null, details: { targetOperatorId: SYSTEM_OPERATOR_ID, role: 'TECHNICIAN', reason: SYSTEM_PRINCIPAL_CREATED_REASON } });
+    expect(await provisionSystemPrincipal(host)).toBe('PRESENT');
+    await guard.app.pipeline.drain();
+    expect(await since(from)).toHaveLength(1);
   });
 });
 

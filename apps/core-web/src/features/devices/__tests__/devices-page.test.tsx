@@ -23,7 +23,7 @@ import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { createAppRouter } from '@/router'
 import { createTestSim, withProviders } from '@/components/composed/__tests__/test-utils'
 import { realCore } from '@/test/real-core-bed'
-import { selectBanner, selectStatusMap, selectSummary } from '../model'
+import { selectBanner, selectStatusMap, selectSummary, trackSourceOf, trackStatus, viewDeviceTarget } from '../model'
 import { OtherDevices, tabletOfflineBodyKey } from '../other-devices'
 import {
   auditRowDevice,
@@ -527,5 +527,99 @@ describe('Simulator device views (W48-1..4, step 54)', () => {
     expect(screen.getByTestId('other-POE-SWITCH')).not.toHaveTextContent('active ·')
     expect(screen.queryByTestId('recording-lamp')).toBeNull()
     expect(screen.getByTestId('other-TABLET')).not.toHaveAttribute('data-reported')
+  })
+})
+
+// Audit 2026-11-05 row 129 (DF-11 web, U-05; D24, D39, D90): the tiles and cards read the TRACK and the source the
+// selector line holds now, with the Core's stated reach (row 125: `captureDevices.devices[].reach`). On the bench the
+// selector holds MIC-03..06 on channels 1-4 and the `mics` rows carry them (row 92), so MIC 1 / MIC 2 read FAULT on
+// /devices (no row named MIC-01 / MIC-02 any more) while the Dashboard read READY. Both now read one `trackStatus`.
+describe('row 129 (DF-11 web, U-05): device state follows the assigned source and its reach', () => {
+  const INPUTS = ['MIC-03', 'MIC-04', 'MIC-05', 'MIC-06'] as const
+  /** The bench Core of U-05: stored READY on every channel, the selector's inputs MIC-03..06 (capture_config, row 92). */
+  const benchSelector = (sim: Sim) =>
+    act(() =>
+      sim.store.setState((state) => {
+        const template = state.captureDevices.devices.find((device) => device.id === 'MIC-01')!
+        const extra = ['MIC-05', 'MIC-06'].filter((id) => !state.captureDevices.devices.some((device) => device.id === id)).map((id) => ({ ...template, id }))
+        return {
+          captureDevices: { ...state.captureDevices, devices: [...state.captureDevices.devices, ...extra] },
+          captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.map((line, index) => ({ ...line, inputId: INPUTS[index]!, deviceId: INPUTS[index]! })) },
+          mics: state.mics.map((mic, index) => ({ ...mic, deviceId: INPUTS[index]!, state: 'READY' as const, clipLatched: false })),
+        }
+      }),
+    )
+  const statedReach = (sim: Sim, deviceId: string, reach: 'REACHABLE' | 'NOT_REACHABLE') =>
+    act(() =>
+      sim.store.setState((state) => ({
+        captureDevices: { ...state.captureDevices, devices: state.captureDevices.devices.map((device) => (device.id === deviceId ? { ...device, reach, checkedAt: state.clock.now } : device)) },
+      })),
+    )
+
+  it('U-05: stored READY on every channel reads READY for MIC 1-4 (no built-in id lookup), banner without a mic issue', async () => {
+    const { sim } = await mountDevices()
+    benchSelector(sim)
+    for (const channel of ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'] as const) {
+      await waitFor(() => expect(screen.getByTestId(`audio-input-${channel}`)).toHaveAttribute('data-status', 'READY'))
+    }
+    expect(selectStatusMap(sim.store.getState())).toMatchObject({ 'MIC-01': 'READY', 'MIC-02': 'READY', 'MIC-03': 'READY', 'MIC-04': 'READY' })
+    expect(screen.getByTestId('devices-banner')).toHaveAttribute('data-kind', 'READY')
+  })
+
+  it('stored READY but the Core states NOT_REACHABLE: the channel and the camera read FAULT, never READY (D24)', async () => {
+    const { sim } = await mountDevices()
+    benchSelector(sim)
+    statedReach(sim, 'MIC-03', 'NOT_REACHABLE') // the input of channel 1
+    statedReach(sim, 'CAM-02', 'NOT_REACHABLE')
+    await waitFor(() => expect(screen.getByTestId('audio-input-AUDIO-01')).toHaveAttribute('data-status', 'FAULT'))
+    expect(screen.getByTestId('audio-input-AUDIO-03')).toHaveAttribute('data-status', 'READY') // MIC-05: no reading stated
+    expect(screen.getByTestId('camera-tile-VIDEO-02')).toHaveAttribute('data-status', 'FAULT')
+    expect(screen.getByTestId('camera-status-VIDEO-02')).toHaveTextContent('FAULT')
+    expect(sim.store.getState().cameras.find((camera) => camera.id === 'VIDEO-02')).toMatchObject({ online: true, lens: 'READY' }) // the stored row still says READY
+    expect(screen.getByTestId('devices-banner')).toHaveAttribute('data-kind', 'CRITICAL')
+    // A stated REACHABLE adds nothing negative: back to READY.
+    statedReach(sim, 'CAM-02', 'REACHABLE')
+    await waitFor(() => expect(screen.getByTestId('camera-tile-VIDEO-02')).toHaveAttribute('data-status', 'READY'))
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('a registry entry offline is not reachable, and an unassigned track reads OFFLINE (no built-in camera stands in)', async () => {
+    const { sim } = await mountDevices()
+    act(() =>
+      sim.store.setState((state) => ({
+        captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.filter((line) => line.trackId !== 'VIDEO-04') },
+        captureDevices: { ...state.captureDevices, devices: state.captureDevices.devices.map((device) => (device.id === 'CAM-03' ? { ...device, online: false } : device)) },
+      })),
+    )
+    await waitFor(() => expect(screen.getByTestId('camera-tile-VIDEO-04')).toHaveAttribute('data-status', 'OFFLINE'))
+    expect(screen.getByTestId('camera-tile-VIDEO-03')).toHaveAttribute('data-status', 'FAULT')
+    expect(screen.getByTestId('camera-tile-VIDEO-01')).toHaveAttribute('data-status', 'READY')
+    expect(selectSummary(sim.store.getState())).toMatchObject({ camsOk: 2, camsTotal: 4 })
+  })
+
+  // The tile's line names `trackSourceOf(...).deviceId` on a Core in real capture (a Live-mode render is the real-core bed's).
+  it('the source of a track is the device its selector line names, null on an unassigned track', () => {
+    const sim = newSim()
+    sim.store.setState((state) => ({
+      captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.flatMap((line) => (line.trackId === 'VIDEO-04' ? [] : line.trackId === 'VIDEO-01' ? [{ ...line, deviceId: 'CAM-03' }] : [line])) },
+    }))
+    const state = sim.store.getState()
+    expect(trackSourceOf(state, 'VIDEO-01')).toEqual({ deviceId: 'CAM-03', reach: 'NOT_STATED' })
+    expect(trackSourceOf(state, 'VIDEO-04')).toEqual({ deviceId: null, reach: 'UNASSIGNED' })
+    expect(trackStatus(state, 'VIDEO-04')).toBe('OFFLINE')
+  })
+})
+
+// Row 129 (controller routing D92): "View device" of the camera search follows the device, as the tiles do.
+describe('row 129 (D92): "View device" opens the drawer of the device, never the built-in track drawer on a real Core', () => {
+  const BUILT_IN = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']
+  it('real capture: CAM-03 (a real camera on VIDEO-01 at the bench) opens the registry drawer; so does any id', () => {
+    expect(viewDeviceTarget('CAM-03', true, BUILT_IN)).toBe('REGISTERED_DRAWER')
+    expect(viewDeviceTarget('CAM-01', true, BUILT_IN)).toBe('REGISTERED_DRAWER')
+    expect(viewDeviceTarget('CAM-07', true, BUILT_IN)).toBe('REGISTERED_DRAWER')
+  })
+  it('simulator: a counted built-in id keeps the built-in drawer, an added device its registry drawer', () => {
+    expect(viewDeviceTarget('CAM-03', false, BUILT_IN)).toBe('BUILT_IN_DRAWER')
+    expect(viewDeviceTarget('CAM-07', false, BUILT_IN)).toBe('REGISTERED_DRAWER')
   })
 })

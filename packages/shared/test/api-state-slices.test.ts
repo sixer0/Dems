@@ -9,7 +9,11 @@ import type { z } from 'zod';
 import {
   AudioSliceSchema,
   AudioStatusResponseSchema,
+  CAPTURE_CONFIG_OPERATIONS,
   CORE_API_EXAMPLES,
+  CORE_API_OPERATIONS,
+  CaptureDeviceReach,
+  CaptureDeviceStatusSchema,
   CORE_API_SCHEMAS,
   DeviceHealthResponseSchema,
   OPENAPI_EXAMPLE_INSTANT,
@@ -1036,5 +1040,48 @@ describe('the OpenAPI documents', () => {
     // The operator of a slice is not the open `Operator` of a REST answer.
     expect(JSON.stringify(all.OperatorsSlice)).not.toContain('#/components/schemas/Operator');
     expect((all.OperatorsSlice as { items: { additionalProperties: boolean } }).items.additionalProperties).toBe(false);
+  });
+});
+
+// Row 125 (DF-12, DF-15; decisions D19, D24, D29 Q1, D38 DR-2; register R1-R4, R8, R10).
+describe('row 125: a capture device states its reach reading; the contract no longer denies preview-driven reach', () => {
+  const camera = () => {
+    const found = idleState().captureDevices.devices.find((entry) => entry.kind === 'CAMERA');
+    if (found === undefined) throw new Error('the idle state holds a camera');
+    return found;
+  };
+
+  it('checkedAt and reach are optional and nullable: absent, null and a stated reading parse', () => {
+    expect(Object.values(CaptureDeviceReach)).toEqual(['REACHABLE', 'NOT_REACHABLE']);
+    const entry = camera();
+    expect('checkedAt' in entry || 'reach' in entry).toBe(false);
+    expect(CaptureDeviceStatusSchema.safeParse(entry).success).toBe(true);
+    expect(CaptureDeviceStatusSchema.safeParse({ ...entry, checkedAt: null, reach: null }).success).toBe(true);
+    expect(CaptureDeviceStatusSchema.safeParse({ ...entry, checkedAt: EXAMPLE_INSTANT_MS, reach: CaptureDeviceReach.REACHABLE }).success).toBe(true);
+    expect(CaptureDeviceStatusSchema.safeParse({ ...entry, checkedAt: EXAMPLE_INSTANT_MS, reach: CaptureDeviceReach.NOT_REACHABLE }).success).toBe(true);
+  });
+
+  it('a reading outside the contract is refused', () => {
+    const entry = camera();
+    for (const bad of [{ reach: 'ONLINE' }, { reach: 'NOT_CHECKED' }, { checkedAt: -1 }, { checkedAt: 1.5 }, { checkedAt: '2026-11-05' }]) {
+      expect(CaptureDeviceStatusSchema.safeParse({ ...entry, ...bad }).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('the entry stays a strict object: an unknown member is refused, so a build that predates checkedAt/reach refuses an entry carrying them (the M3 tablet note)', () => {
+    const entry = camera();
+    expect(CaptureDeviceStatusSchema.safeParse({ ...entry, reachedAt: EXAMPLE_INSTANT_MS }).success).toBe(false);
+    expect(CaptureDeviceStatusSchema.safeParse({ ...entry, checkedAt: EXAMPLE_INSTANT_MS, reach: CaptureDeviceReach.REACHABLE }).success).toBe(true);
+  });
+
+  it('the texts: `online` points at reach/checkedAt, op 77 no longer denies preview-driven reach, op 46 names all four tracks', () => {
+    const online = CaptureDeviceStatusSchema.shape.online.description ?? '';
+    expect(online).toContain('`reach` and `checkedAt`');
+    expect(online).not.toContain('the Core has not checked the source');
+    const op77 = CAPTURE_CONFIG_OPERATIONS.find((operation) => operation.operationId === 'getCaptureDevices');
+    expect(JSON.stringify(op77?.description)).toContain('a preview states its outcome in `reach` and `checkedAt`');
+    const op46 = CORE_API_OPERATIONS.find((operation) => operation.operationId === 'getVideoStatus');
+    expect(JSON.stringify(op46?.responses)).toContain('All four video tracks.');
+    expect(JSON.stringify(op46?.responses)).not.toContain('Both video tracks');
   });
 });

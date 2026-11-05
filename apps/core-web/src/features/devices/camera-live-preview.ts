@@ -13,13 +13,14 @@
  * | `409 PREVIEW_NOT_AVAILABLE` without a cause: asked again after a minute | `previewRefusalOf` |
  * | While a session is being started (CREATE, PRECHECK, ARMED) the Core yields the camera to the recording: the tile says the preview is paused | `isSessionStarting` |
  * | D62 (2026-11-05): on a Devices tile the session opens BY ITSELF when the track is assigned and its selector line reads online - debounced, at most as many as the Core's global pipeline cap (`CAMERA_PREVIEW_LIMITS.pipelines`), closed when the line goes offline or the tab hides | `useAutoPreviewOpen` |
+ * | Row 130 (DF-12, DF-13): never while the Core's last reading of the device says `reach: NOT_REACHABLE`; the operator's "Try again" asks once more | `autoPreviewBlocked`, `usePreviewRetryStanding` |
  *
  * THE URL IS A BEARER VALUE: it is set on the `<img>` and nowhere else - never logged, never put in a
  * record, a storage or a test id.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { SessionState } from '@dems/shared/domain'
-import { CAMERA_PREVIEW_LIMITS, CaptureSourceClass } from '@dems/shared/api'
+import { CAMERA_PREVIEW_LIMITS, CaptureDeviceReach, CaptureSourceClass } from '@dems/shared/api'
 import { useDocumentVisible } from './idle-meter-lease'
 
 /** The first wait before a failed picture is asked for again. */
@@ -205,4 +206,75 @@ export function useAutoPreviewOpen(eligible: boolean): boolean {
     }
   }, [debounced])
   return debounced && hasSlot
+}
+
+// ── Row 130 (DF-12, DF-13; decisions D19, D24; contract row 125): no reach, no automatic preview ─────────
+//
+// Bench 2026-11-05 (re-judges 116/118): with the camera LAN down the console auto-opened 4 previews whose
+// selector lines still read `online` (the REGISTRY flag, which a failed preview never clears) and kept
+// re-asking for them - 32 `CAPTURE_COMPOSITION_PREVIEW_NOTE` warnings on the Core. The Core now states the
+// outcome of its last reading of a device beside that flag (`reach` + `checkedAt` of `captureDevices.devices[]`,
+// row 125); the gate reads it:
+//
+// | Rule | Where |
+// |------|-------|
+// | `reach: NOT_REACHABLE` closes the automatic preview (an open one ends, none opens); absent / null / REACHABLE leave the D62 gate as it was | `autoPreviewBlocked` |
+// | "Try again" (the operator's click) asks ONCE more: the gate opens for this device until the Core states a NEWER reading (`checkedAt` other than the one the click saw); a newer NOT_REACHABLE closes it again, a REACHABLE keeps it open by itself | `requestPreviewRetry` / `usePreviewRetryStanding` |
+// | The retry goes through the same debounce and slot cap as every automatic session | `useAutoPreviewOpen` |
+
+/** Row 130: the Core's last reading found the device unreachable, so no automatic preview opens for it. */
+export function autoPreviewBlocked(device: { readonly reach?: CaptureDeviceReach | null } | undefined): boolean {
+  return device?.reach === CaptureDeviceReach.NOT_REACHABLE
+}
+
+/** Row 130: device id -> the `checkedAt` the operator's "Try again" saw (null: none stated). */
+const previewRetries = new Map<string, number | null>()
+const previewRetryListeners = new Set<() => void>()
+const tellPreviewRetryListeners = () => {
+  for (const listener of [...previewRetryListeners]) listener()
+}
+
+/** Row 130: the operator asks once more for the preview of `deviceId`, whose last reading `checkedAt` dates. */
+export function requestPreviewRetry(deviceId: string, checkedAt: number | null | undefined): void {
+  previewRetries.set(deviceId, checkedAt ?? null)
+  tellPreviewRetryListeners()
+}
+
+/** Row 130: the standing retry of `deviceId` ends (a newer reading answered it). */
+function endPreviewRetry(deviceId: string): void {
+  if (previewRetries.delete(deviceId)) tellPreviewRetryListeners()
+}
+
+/** Row 130: every standing retry ends (test isolation; the store is module state like the D62 slots). */
+export function resetPreviewRetries(): void {
+  if (previewRetries.size === 0) return
+  previewRetries.clear()
+  tellPreviewRetryListeners()
+}
+
+function subscribePreviewRetries(listener: () => void): () => void {
+  previewRetryListeners.add(listener)
+  return () => {
+    previewRetryListeners.delete(listener)
+  }
+}
+
+/** Row 130: the `checkedAt` a standing retry of `deviceId` saw, `undefined` when none stands. */
+function standingRetryOf(deviceId: string): number | null | undefined {
+  return previewRetries.has(deviceId) ? (previewRetries.get(deviceId) ?? null) : undefined
+}
+
+/**
+ * Row 130: whether the operator's "Try again" still stands for `deviceId` - asked, and the Core has stated
+ * no reading newer than the one the click saw. A newer reading ends it (NOT_REACHABLE: the gate is closed
+ * again; REACHABLE: the gate stays open without it).
+ */
+export function usePreviewRetryStanding(deviceId: string, checkedAt: number | null | undefined): boolean {
+  const seen = useSyncExternalStore(subscribePreviewRetries, () => standingRetryOf(deviceId), () => undefined)
+  const now = checkedAt ?? null
+  const standing = seen !== undefined && seen === now
+  useEffect(() => {
+    if (seen !== undefined && seen !== now) endPreviewRetry(deviceId)
+  }, [deviceId, seen, now])
+  return standing
 }

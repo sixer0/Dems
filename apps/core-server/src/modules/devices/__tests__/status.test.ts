@@ -12,6 +12,7 @@ import {
   AUDIO_FLOOR_DBFS,
   AUDIO_NOISE_FLOOR_DBFS,
   FaultKind,
+  captureReachabilityOf, // audit fix row 128: the start rule stays on the registry flag
   clearFaultTransition,
   createManualClock,
   handleSimApiRequest,
@@ -849,5 +850,79 @@ describe('row V7d: operations 44 and 46 say NOT READ where the line does, and fo
     const none = { ...state, captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.filter((line) => line.trackId === 'VIDEO-02') } } as SimState;
     expect(stated(videoStatusOf(committedOf(none)).tracks)).toEqual([['VIDEO-01', null, null], ['VIDEO-02', 'CAM-07', null], ['VIDEO-03', null, null], ['VIDEO-04', null, null]]); // D60 (2026-11-04)
     expect(stated(deviceHealthOf(committedOf(none), NOW).cameras)).toEqual([['VIDEO-01', null, null], ['VIDEO-02', 'CAM-07', null], ['VIDEO-03', null, null], ['VIDEO-04', null, null]]); // D60 (2026-11-04)
+  });
+});
+
+// Audit fix row 128 (C-DEV-A; DF-11 Core, F-5-02b, U-05; decisions D19, D24, D39 (3), D90): operations 44, 45 and 46 of a
+// real capture operation state each track and channel from its ASSIGNED device plus that device's reach (row 125's
+// `captureDevices.devices[].reach`), through the shared `slotSourceOf`. `online` stays the engine gate. Seen RED on: the
+// pre-row `lens: camera.lens, online: camera.online` of `videoTracksOf` and `state: mic.state` of `audioChannelsOf` - the
+// NOT_REACHABLE / OFFLINE cases then read READY / true (the bench's D39 (3) picture).
+describe('row 128: a real capture operation states the assigned device plus its reach - assigned plus unreachable is not READY', () => {
+  const base = committedOf(scenarioState('idle'));
+  /** The state with the device entries changed as `edit` says. */
+  const withDevices = (edit: (device: CommittedState['captureDevices']['devices'][number]) => CommittedState['captureDevices']['devices'][number]): CommittedState => ({
+    ...base,
+    captureDevices: { ...base.captureDevices, devices: base.captureDevices.devices.map(edit) },
+  });
+  const lensOf = (tracks: readonly { readonly trackId: string; readonly lens: string; readonly online: boolean }[]): unknown[] => tracks.map((track) => [track.trackId, track.lens, track.online]);
+  const READY_FOUR = [['VIDEO-01', 'READY', true], ['VIDEO-02', 'READY', true], ['VIDEO-03', 'READY', true], ['VIDEO-04', 'READY', true]];
+
+  it('CONTROL: every assigned device online and not checked (no reach stated) - READY and online on the reads, as the slice says', () => {
+    expect(base.captureConfig.cameras.map((line) => [line.trackId, line.deviceId])).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-02'], ['VIDEO-03', 'CAM-03'], ['VIDEO-04', 'CAM-04']]);
+    expect(base.captureDevices.devices.filter((device) => device.kind === 'CAMERA' && device.online).map((device) => device.id)).toEqual(expect.arrayContaining(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']));
+    expect(lensOf(videoStatusOf(base, undefined, true).tracks)).toEqual(READY_FOUR);
+    expect(lensOf(deviceHealthOf(base, NOW, null, undefined, true).cameras)).toEqual(READY_FOUR);
+    expect(audioStatusOf(base, NOW, null, undefined, true).channels.map((channel) => channel.state)).toEqual(['READY', 'READY', 'READY', 'READY']);
+  });
+
+  it('assigned plus NOT_REACHABLE: that track is lens FAULT on operations 44 and 46 while `online` (the engine gate) stays true; the stored state and the start rule are untouched', () => {
+    const state = deepFreeze(withDevices((device) => (device.id === 'CAM-02' ? { ...device, reach: 'NOT_REACHABLE', checkedAt: FIXED_NOW } : device)));
+    const expected = [['VIDEO-01', 'READY', true], ['VIDEO-02', 'FAULT', true], ['VIDEO-03', 'READY', true], ['VIDEO-04', 'READY', true]];
+    const video = videoStatusOf(state, undefined, true);
+    const health = deviceHealthOf(state, NOW, null, undefined, true);
+    expect(lensOf(video.tracks)).toEqual(expected);
+    expect(lensOf(health.cameras)).toEqual(expected);
+    expect(validateCoreApiResponse('getVideoStatus', 200, video)).toMatchObject({ ok: true });
+    expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
+    // The read writes nothing: the hardware row still says READY / online, the registry flag still says online.
+    expect(state.cameras.find((camera) => camera.id === 'VIDEO-02')).toMatchObject({ lens: 'READY', online: true });
+    expect(state.captureDevices.devices.find((device) => device.id === 'CAM-02')?.online).toBe(true);
+    // `online` stays the engine gate: the start rule reads the registry flag only, so a stale NOT_REACHABLE blocks nothing.
+    expect(captureReachabilityOf(state as unknown as SimState).find((row) => row.slot === 'VIDEO-02')).toMatchObject({ reachable: true, status: 'PASS' });
+    // CONTROL: REACHABLE is READY again.
+    const reached = withDevices((device) => (device.id === 'CAM-02' ? { ...device, reach: 'REACHABLE', checkedAt: FIXED_NOW } : device));
+    expect(lensOf(videoStatusOf(reached, undefined, true).tracks)).toEqual(READY_FOUR);
+  });
+
+  it('assigned device OFFLINE in the registry, or not in the registry at all: not online and lens FAULT; an UNASSIGNED track: not online, lens FAULT, no source', () => {
+    const offline = withDevices((device) => (device.id === 'CAM-03' ? { ...device, online: false } : device));
+    expect(lensOf(videoStatusOf(offline, undefined, true).tracks)).toEqual([['VIDEO-01', 'READY', true], ['VIDEO-02', 'READY', true], ['VIDEO-03', 'FAULT', false], ['VIDEO-04', 'READY', true]]);
+    const unknown: CommittedState = { ...base, captureConfig: { ...base.captureConfig, cameras: base.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-04' ? { ...line, deviceId: 'CAM-99' } : line)) } };
+    expect(lensOf(deviceHealthOf(unknown, NOW, null, undefined, true).cameras)[3]).toEqual(['VIDEO-04', 'FAULT', false]);
+    const unassigned: CommittedState = { ...base, captureConfig: { ...base.captureConfig, cameras: base.captureConfig.cameras.filter((line) => line.trackId !== 'VIDEO-01') } };
+    const track = videoStatusOf(unassigned, undefined, true).tracks[0];
+    expect([track?.trackId, track?.sourceDeviceId, track?.lens, track?.online]).toEqual(['VIDEO-01', null, 'FAULT', false]);
+  });
+
+  it('a microphone channel whose assigned device is offline or NOT_REACHABLE is NO_SIGNAL on operations 44 and 45 (one truth with the pre-check and /devices, U-05); the others stay READY', () => {
+    const line1 = base.captureConfig.mics.find((line) => line.channel === 'MIC-01');
+    const line2 = base.captureConfig.mics.find((line) => line.channel === 'MIC-02');
+    const state = withDevices((device) =>
+      device.id === line1?.deviceId ? { ...device, online: false } : device.id === line2?.deviceId ? { ...device, reach: 'NOT_REACHABLE', checkedAt: FIXED_NOW } : device,
+    );
+    const audio = audioStatusOf(state, NOW, null, undefined, true);
+    expect(audio.channels.map((channel) => [channel.channel, channel.state, channel.noSignal])).toEqual([['MIC-01', 'NO_SIGNAL', true], ['MIC-02', 'NO_SIGNAL', true], ['MIC-03', 'READY', false], ['MIC-04', 'READY', false]]);
+    expect(deviceHealthOf(state, NOW, null, undefined, true).audio.map((channel) => channel.state)).toEqual(['NO_SIGNAL', 'NO_SIGNAL', 'READY', 'READY']);
+    expect(AudioStatusResponseSchema.safeParse(audio).success).toBe(true);
+    // CONTROL: the slice itself is untouched.
+    expect(state.mics.map((mic) => mic.state)).toEqual(['READY', 'READY', 'READY', 'READY']);
+  });
+
+  it('CONTROL: a SIMULATED Core (no flag) answers the slice\'s own values on the same state - the simulator\'s answer, member by member', () => {
+    const state = withDevices((device) => (device.kind === 'CAMERA' || device.kind === 'MIC' ? { ...device, reach: 'NOT_REACHABLE', checkedAt: FIXED_NOW } : device));
+    expect(lensOf(videoStatusOf(state).tracks)).toEqual(READY_FOUR);
+    expect(videoStatusOf(state)).toEqual(simulatorAnswer(state as unknown as SimState, VIDEO));
+    expect(audioStatusOf(state, NOW).channels.map((channel) => channel.state)).toEqual(['READY', 'READY', 'READY', 'READY']);
   });
 });

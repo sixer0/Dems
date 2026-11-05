@@ -4,9 +4,9 @@
  * component only when what it shows changes (03_motion_spec §9.3). The derived devices of the
  * simulator views come from `sim-adapter.ts`.
  */
-import { SessionState } from '@dems/shared/domain'
-import { isHostClockTime, isPlatformNotReported, type SimState } from '@dems/shared/sim'
-import { bookPoe, rearPorts, type DeviceId } from './sim-adapter'
+import { SessionState, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain'
+import { cameraLinesInForce, captureMicLines, isHostClockTime, isPlatformNotReported, isSlotSourceUp, micChannelOfTrack, selectorInForce, slotSourceOf, SlotSourceState, type SimState } from '@dems/shared/sim'
+import { bookPoe, DEVICE_CAMERA, DEVICE_MIC, rearPorts, type DeviceId } from './sim-adapter'
 
 export type DeviceStatusCode =
   | 'READY'
@@ -80,29 +80,85 @@ export type CountedDeviceId = (typeof COUNTED_DEVICES)[number]
 export const OTHER_DEVICES = ['POE-SWITCH', 'REC-INDICATOR', 'TABLET', 'GNSS', 'TPM'] as const satisfies readonly DeviceId[]
 export type OtherDeviceId = (typeof OTHER_DEVICES)[number]
 
-type StatusInput = Pick<SimState, 'cameras' | 'mics' | 'network' | 'session' | 'tabletLink' | 'time' | 'security'>
+type StatusInput = Pick<SimState, 'cameras' | 'mics' | 'network' | 'session' | 'tabletLink' | 'time' | 'security' | 'captureConfig' | 'captureDevices'>
+
+/**
+ * Row 129 (DF-11 web, U-05; decisions D24, D90; register R1-R3): THE SOURCE A TRACK HOLDS NOW and what the Core
+ * states of its reach. The line of the selector in force (the open session's snapshot, else the stored selector)
+ * names the device; the device entry of `captureDevices` carries the Core's reading (`reach` + `checkedAt`, row 125)
+ * and the registry flag `online`.
+ *
+ * | Result | When |
+ * |---|---|
+ * | `UNASSIGNED` | no line holds the track (the selector leaves it empty) |
+ * | `NOT_REACHABLE` | the Core states `reach: NOT_REACHABLE`, or the line or the device reads `online: false` (the start rule `captureReachabilityOf` reads the same flag), or the registry does not hold the device |
+ * | `REACHABLE` | the Core states `reach: REACHABLE` |
+ * | `NOT_STATED` | anything else: no reading is stated, so nothing is added to the track's own state |
+ */
+export type AssignedReach = 'UNASSIGNED' | 'NOT_REACHABLE' | 'REACHABLE' | 'NOT_STATED'
+
+export interface AssignedSource {
+  /** The device the line names, or null on an unassigned track. */
+  readonly deviceId: string | null
+  readonly reach: AssignedReach
+}
+
+type SourceInput = Pick<SimState, 'session' | 'captureConfig' | 'captureDevices'>
+
+export function trackSourceOf(state: SourceInput, trackId: VideoTrackId | AudioTrackId): AssignedSource {
+  // Row 128b (D100 (3)): the shared reader `slotSourceOf` (row 128, `@dems/shared/sim` capture-notices) decides, so the
+  // tiles, the Core's operations 44 / 45 / 46 and the pre-check read ONE rule. This function keeps the web's names.
+  const video = trackId.startsWith('VIDEO-')
+  const slot = video ? (trackId as VideoTrackId) : micChannelOfTrack(trackId as AudioTrackId)
+  const source = slotSourceOf(selectorInForce(state), state.captureDevices.devices, slot)
+  if (source.state === SlotSourceState.NOT_ASSIGNED || source.deviceId === null) return { deviceId: null, reach: 'UNASSIGNED' }
+  // The selector line's own flag still counts, as it did before the delegation (the shared reader reads the registry entry).
+  const lineOnline = video ? cameraLinesInForce(state).find((camera) => camera.trackId === slot)?.online : captureMicLines(state).find((mic) => mic.channel === slot)?.online
+  if (!isSlotSourceUp(source) || lineOnline === false) return { deviceId: source.deviceId, reach: 'NOT_REACHABLE' }
+  return { deviceId: source.deviceId, reach: source.state === SlotSourceState.REACHABLE ? 'REACHABLE' : 'NOT_STATED' }
+}
+
+/**
+ * Row 129 (DF-11 web, U-05): THE STATUS OF A TRACK - one reader for the Devices tiles, the audio cards, the
+ * banner, the summary, the drawer and the Dashboard tiles, so the two pages cannot disagree.
+ *
+ * Until row 129 the Devices page looked a microphone up by the BUILT-IN device id (`MIC-01`) in the `mics` slice,
+ * whose rows carry the device of their channel since row 92 (D39: AUDIO-01..04 = MIC-03..06 on the bench): no row
+ * named MIC-01 / MIC-02 any more, so MIC 1 and MIC 2 read FAULT on /devices while the Dashboard, which reads the
+ * row of the TRACK, read READY (U-05). Both now read the row of the track, then the source the track holds:
+ * an unassigned track is OFFLINE, a source the Core cannot reach is FAULT (never READY), else the track's own state.
+ */
+export function trackStatus(state: Omit<StatusInput, 'network' | 'tabletLink' | 'time' | 'security'>, trackId: VideoTrackId | AudioTrackId): DeviceStatusCode {
+  const source = trackSourceOf(state, trackId)
+  if (source.reach === 'UNASSIGNED') return 'OFFLINE'
+  if (trackId.startsWith('VIDEO-')) {
+    const camera = state.cameras.find((entry) => entry.id === trackId)
+    if (source.reach === 'NOT_REACHABLE') return 'FAULT'
+    return camera && camera.online && camera.lens === 'READY' ? 'READY' : 'FAULT'
+  }
+  const mic = state.mics.find((entry) => entry.id === trackId)
+  if (!mic || source.reach === 'NOT_REACHABLE') return 'FAULT'
+  if (mic.state === 'NO_SIGNAL') return 'NO_SIGNAL'
+  if (mic.state === 'CLIP' || mic.clipLatched) return 'CLIP'
+  return 'READY'
+}
 
 export function deviceStatus(state: StatusInput, id: DeviceId): DeviceStatusCode {
   switch (id) {
+    // D60 (2026-11-04): the four built-in camera ids are the identities of the four video tracks.
+    // Row 129 (DF-11): they read the TRACK and the source it holds (`trackStatus`), never a row found by device id.
     case 'CAM-01':
     case 'CAM-02':
-    // D60 (2026-11-04): the two further built-in cameras read their own track's row.
     case 'CAM-03':
-    case 'CAM-04': {
-      const camera = state.cameras.find((entry) => entry.deviceId === id)
-      return camera && camera.online && camera.lens === 'READY' ? 'READY' : 'FAULT'
-    }
-    // D61 (2026-11-04): any of the four built-in microphones reads its own meter row.
+    case 'CAM-04':
+      return trackStatus(state, DEVICE_CAMERA[id] as VideoTrackId)
+    // D61 (2026-11-04): the four built-in microphone ids are the identities of the four channels (the audio card's
+    // line). Row 129 (U-05): read by the channel's track, as the Dashboard reads it.
     case 'MIC-01':
     case 'MIC-02':
     case 'MIC-03':
-    case 'MIC-04': {
-      const mic = state.mics.find((entry) => entry.deviceId === id)
-      if (!mic) return 'FAULT'
-      if (mic.state === 'NO_SIGNAL') return 'NO_SIGNAL'
-      if (mic.state === 'CLIP' || mic.clipLatched) return 'CLIP'
-      return 'READY'
-    }
+    case 'MIC-04':
+      return trackStatus(state, DEVICE_MIC[id] as AudioTrackId)
     case 'POE-SWITCH':
       return bookPoe(state).cam1Link ? 'ACTIVE' : 'FAULT'
     case 'REC-INDICATOR':
@@ -116,6 +172,22 @@ export function deviceStatus(state: StatusInput, id: DeviceId): DeviceStatusCode
     case 'FRONT-PANEL':
       return 'READY'
   }
+}
+
+/**
+ * Row 129 (controller routing D92; DF-11): WHICH DRAWER "View device" of the camera search opens. The built-in drawer
+ * (`device-drawer.tsx`) shows the TRACK identity CAM-01..04 / MIC-01..04 with the demonstration model's facts. On a
+ * Core in real capture a found camera's id names a REGISTRY device (the bench's CAM-03 is a real camera on VIDEO-01),
+ * so the drawer is the one built from the Core's device list - the same rule as the tiles: the device, never the
+ * built-in row. In the simulator a counted id keeps the built-in drawer; any other built-in source id has no drawer
+ * (the selector is scrolled to, as before row 129).
+ */
+export type ViewDeviceTarget = 'BUILT_IN_DRAWER' | 'REGISTERED_DRAWER' | 'SELECTOR'
+
+export function viewDeviceTarget(deviceId: string, realCaptureCore: boolean, builtInSourceIds: readonly string[]): ViewDeviceTarget {
+  if (realCaptureCore) return 'REGISTERED_DRAWER'
+  if ((COUNTED_DEVICES as readonly string[]).includes(deviceId)) return 'BUILT_IN_DRAWER'
+  return builtInSourceIds.includes(deviceId) ? 'SELECTOR' : 'REGISTERED_DRAWER'
 }
 
 export type StatusMap = Record<CountedDeviceId, DeviceStatusCode>

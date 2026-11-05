@@ -51,6 +51,16 @@ describe('the rule', () => {
     expect(sourceLineState({ ...real, checkedAt: 1_791_636_968_000 })).toEqual({ reach: 'REACHABLE', stream: null })
   })
 
+  // Row 129 (register R7; contract row 125): a stated reach is preferred over the word drawn from `online`.
+  it('row 129 - a stated NOT_REACHABLE is said although the line reads online and checked; a stated REACHABLE counts as checked', () => {
+    expect(sourceLineState({ ...real, reach: 'NOT_REACHABLE', checkedAt: 1_791_000_000_000 })).toEqual({ reach: 'NOT_REACHABLE', stream: null })
+    expect(sourceLineState({ ...real, reach: 'NOT_REACHABLE', checkedAt: null })).toEqual({ reach: 'NOT_REACHABLE', stream: null })
+    expect(sourceLineState({ ...real, reach: 'REACHABLE' })).toEqual({ reach: 'REACHABLE', stream: null })
+    expect(sourceLineState({ ...real, reach: null })).toEqual({ reach: 'NOT_CHECKED', stream: null })
+    // CONTROL: the simulated lane ignores it.
+    expect(sourceLineState({ ...real, realCapture: false, reach: 'NOT_REACHABLE' })).toEqual({ reach: 'ONLINE', stream: 'LIVE' })
+  })
+
   it('CONTROL - simulated capture is drawn as before, whatever `checkedAt` says', () => {
     const simulated = { ...real, realCapture: false }
     expect(sourceLineState(simulated)).toEqual({ reach: 'ONLINE', stream: 'LIVE' })

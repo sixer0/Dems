@@ -31,13 +31,15 @@ import {
   STOPPED_LIMIT,
   SetPasswordExit,
   connectionFileOf,
-  isSystemPrincipal,
   runSetPasswordCommand,
   type SetPasswordPorts,
 } from '../../cli/operator-set-password-command';
 import type { SecretLine, SecretPromptPort } from '../../cli/secret-prompt';
 import { SELECT_STORED_HASH_SETS } from '../../src/capture/boot';
 import { CONNECTION_FILE_KEYS, CONNECTION_FILE_NAME } from '../../src/config';
+// D38 DR-4 (row 133): the system-principal predicate lives in the admin rule; D51: the purge-kept mark in its statements.
+import { isSystemPrincipal } from '../../src/modules/admin/rule';
+import { READ_PURGE_KEPT } from '../../src/modules/admin/statements';
 import { createSystemClock } from '../../src/core/clock';
 import { UNIT_STATEMENTS } from '../../src/core/unit-of-work';
 import { DB_CONTRACT_REVISION, DB_SCHEMA_VERSION } from '../../src/db/schema/meta';
@@ -94,6 +96,8 @@ interface World {
   identity?: { readonly role: string; readonly database: string; readonly superuser: boolean | null } | null;
   /** Row 215c: an injected failure of the pool. A statement this answers an error for is rejected with it. */
   fail?: (text: string) => Error | undefined;
+  /** Row 133 (D51): the operator IDs a purge kept, disabled, under their evidence-chain rows. */
+  purgeKept?: readonly string[];
 }
 
 let demoSet: PasswordHashRecord;
@@ -164,6 +168,7 @@ function scripted(state: World): { readonly pool: Pool; readonly inner: StandInD
       const withSet = state.operators.filter((operator) => operator.set !== null);
       return answer([...withSet.filter((operator) => operator.role === 'SUPERVISOR'), ...withSet.filter((operator) => operator.role !== 'SUPERVISOR')].map(columns));
     }
+    if (text === READ_PURGE_KEPT) return answer([{ purgeKept: (state.purgeKept ?? []).includes(String(values[0])) }]);
     if (text === SELECT_STORED_HASH_SETS) return answer(state.operators.filter((operator) => operator.set !== null).map(columns));
     if (text === SET_CREDENTIAL) {
       const operator = state.operators.find((candidate) => candidate.operator_id === values[0]);
@@ -661,6 +666,34 @@ describe('refused before the first prompt (SX-01, SX-12, R-X2-8)', () => {
   });
 });
 
+describe('row 133 (decision D51): a purge-kept account is terminal - no password, not even by the D56 create path', () => {
+  it('the named operator that a purge kept (no credential row left) is refused before any prompt; nothing is written', async () => {
+    const state = world({ purgeKept: ['OPR-004'] });
+    state.operators.push({ operator_id: 'OPR-004', username: 'gone.officer', role: 'INVESTIGATOR', set: null });
+    const r = rig({ state, typed: [runValue(), runValue()] });
+    const run = await runSetPasswordCommand(r.args('--username', 'gone.officer'), r.ports);
+    expect(run.code).toBe(SetPasswordExit.REFUSED);
+    expect(run.lines).toEqual([
+      'operator:set-password: REFUSED (PURGE_KEPT) gone.officer (OPR-004) was deleted and is kept, disabled, only because evidence-chain records name it. It never signs in again, so this command sets no password of it. Nothing was changed.',
+    ]);
+    expect(r.asks).toEqual([]);
+    expect(wrote(r.database.sent)).toBe(false);
+    expect(state.operators.find((operator) => operator.operator_id === 'OPR-004')?.set).toBeNull();
+    // The mark is asked of this operator's ID, once.
+    expect(r.database.sent.filter((statement) => statement.text === READ_PURGE_KEPT).map((statement) => statement.values[0])).toEqual(['OPR-004']);
+  });
+
+  it('CONTROL: the same account not marked by a purge goes on to the D56 create path (the word is asked)', async () => {
+    const state = world();
+    state.operators.push({ operator_id: 'OPR-004', username: 'new.officer', role: 'INVESTIGATOR', set: null });
+    const r = rig({ state, word: 'no' });
+    const run = await runSetPasswordCommand(r.args('--username', 'new.officer'), r.ports);
+    expect(run.lines.join('\n')).not.toMatch(/PURGE_KEPT/);
+    expect(run.lines.join('\n')).toMatch(/REFUSED \(NOT_CONFIRMED\)/);
+    expect(r.asks).toHaveLength(1);
+  });
+});
+
 describe('row 215c, review F-03: the refusals that had no test, each through an injected failure of a port the command has', () => {
   /** An error as a driver gives it: a code, and a text that must reach no line and no log. */
   function failing(code: string | null): { readonly error: Error; readonly text: string } {
@@ -942,7 +975,7 @@ describe('one operator, one unit of work: the statement order (SX-01, SX-02, SX-
     ]);
     // Before the unit: the pre-checks, in order, and the session question once already.
     const before = r.database.sent.slice(0, r.database.sent.findIndex((statement) => statement.text === UNIT_STATEMENTS.begin)).map((statement) => statement.text);
-    expect(before).toEqual([SESSION_IDENTITY, 'SELECT schema_version, contract_revision FROM schema_meta', SELECT_REASON_CONSTRAINTS, OTHER_SESSIONS, SELECT_OPERATOR_BY_USERNAME]);
+    expect(before).toEqual([SESSION_IDENTITY, 'SELECT schema_version, contract_revision FROM schema_meta', SELECT_REASON_CONSTRAINTS, OTHER_SESSIONS, SELECT_OPERATOR_BY_USERNAME, READ_PURGE_KEPT]);
     // The credential: the hash set of the hasher, stamped with the RAISED clock (the stored state was ahead of the host).
     const update = r.database.sent.find((statement) => statement.text === SET_CREDENTIAL) as Sent;
     expect(update.values.slice(0, 5)).toEqual(['OPR-002', 'argon2id', 19_456, 2, 1]);

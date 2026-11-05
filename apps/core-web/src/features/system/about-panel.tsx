@@ -1,9 +1,9 @@
 import { Chip } from '@heroui/react'
 import { Fingerprint } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { DEVICE_ID, useSim, type DeviceIdentity, type SimState } from '@dems/shared/sim'
+import { useSim, type DeviceIdentity, type SimState } from '@dems/shared/sim'
 import { ComponentVersionRows } from '@/components/component-versions'
-import { usePlatformNotReported, useSelfCaptureCore } from '@/lib/own-capture'
+import { usePlatformNotReported, useReportedCoreDeviceId, useSelfCaptureCore } from '@/lib/own-capture'
 import { useProductVersions } from '@/lib/product-versions'
 import { SystemPanel } from './panel'
 import { releaseInfo } from './sim-adapter'
@@ -46,6 +46,8 @@ const selectAbout = (s: SimState) => ({
  * read `system.noProducer` (S7). The device id is the Core's stored record (`core_device.id`, replicated); the
  * dataset's id `DEVICE_ID` (a reserved installation id, never an installation's) reads `system.noProducer` there
  * (S9). The simulated lane is unchanged: the chip and every model value stay.
+ * Audit row CS2 (U-14c): the S9 rule is the one reader `useReportedCoreDeviceId` (shared `reportedCoreDeviceIdOf`), which the
+ * shell top bar and the other surfaces that print the id read too.
  */
 export function AboutPanel({ anchorId }: { anchorId: string }) {
   const { t } = useTranslation()
@@ -56,7 +58,7 @@ export function AboutPanel({ anchorId }: { anchorId: string }) {
   // Row 105 (D25 N3, S7/S9): what a Core in its own capture has no producer for reads "Not reported"; the device id is its stored record unless that is the dataset's reserved id.
   const notReported = t('system.noProducer')
   const modelValue = (value: string): string => (selfCapture ? notReported : value)
-  const deviceIdReported = !(selfCapture && device.id === DEVICE_ID)
+  const reportedId = useReportedCoreDeviceId()
   // Fix wave J round three (JW-26): on a Core in its own capture `device.softwareVersion`, the identity's two
   // version fields and the update slice are the demonstration model's. They are not drawn there; the
   // components are listed by name with the versions the Core (operation 64) and this console state.
@@ -65,7 +67,7 @@ export function AboutPanel({ anchorId }: { anchorId: string }) {
   const drift = device.identity.coreSoftwareVersion !== device.softwareVersion || about.updateVersion !== device.softwareVersion
 
   const summary: { key: string; label: string; value: string; mono?: boolean }[] = [
-    { key: 'deviceId', label: t('system.about.deviceId'), value: deviceIdReported ? device.id : notReported, mono: deviceIdReported },
+    { key: 'deviceId', label: t('system.about.deviceId'), value: reportedId ?? notReported, mono: reportedId !== null },
     { key: 'room', label: t('system.about.room'), value: modelValue(device.room) },
     { key: 'model', label: t('system.about.model'), value: modelValue(device.productName) },
     ...(versions.modelVersion !== null ? [{ key: 'release', label: t('system.about.softwareRelease'), value: `v${versions.modelVersion}`, mono: true }] : []),

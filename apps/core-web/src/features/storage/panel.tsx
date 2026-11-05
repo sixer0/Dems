@@ -28,8 +28,10 @@ export interface StoragePanelProps {
  * their SMART health). On such a Core each draws "Not reported" (`NoProducerNotice`, register S7) in place of
  * its header figure and its body; the simulated lane is unchanged. The retention calculator is not here: it
  * computes from the operator's own inputs and the capacity the Core states (no chip, no notice).
+ * Audit row CS2 (O-2, D81): 'volumes' left this set - the evidence volume's size and use ARE measured by such a Core
+ * (CS-09, `applyStorageVolumeTransition`), so `VolumesPanel` draws that measured volume and says what is not reported.
  */
-const NO_PRODUCER_BLOCKS: ReadonlySet<string> = new Set(['usage', 'volumes'])
+const NO_PRODUCER_BLOCKS: ReadonlySet<string> = new Set(['usage'])
 
 /**
  * One Storage panel: a kit `Card` (the bronze-edged L2 surface) with the mockup's panel header

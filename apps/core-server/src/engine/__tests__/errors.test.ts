@@ -98,7 +98,11 @@ describe('simRefusal: the table of spec §7.2', () => {
     const restart = simRefusal(new SimTransitionError(null, 'restartServices', 'this Core restarts no services from the console', SimErrorCode.COMMAND_UNSUPPORTED, 'SERVICES_RESTART_NOT_AVAILABLE'));
     expect([restart?.statusCode, restart?.code, restart?.message]).toEqual([409, 'COMMAND_UNSUPPORTED', 'Restarting services is not available on this Core.']);
     expect(restart?.details).toMatchObject({ simCode: 'COMMAND_UNSUPPORTED', event: 'restartServices', reason: 'SERVICES_RESTART_NOT_AVAILABLE' });
-    expect(Object.keys(SIM_REFUSAL_REASON_TEXT).sort()).toEqual(['COMPOSITE_ENCODER_NOT_SELECTED', 'SERVICES_RESTART_NOT_AVAILABLE', 'UPDATER_NOT_AVAILABLE']);
+    // Audit row CS2 (O-124-1, D89): operations 48-50 on a Core in its own capture name their own sentence.
+    const command = simRefusal(new SimTransitionError(null, 'deviceCommand', 'this Core sends no command to a device', SimErrorCode.COMMAND_UNSUPPORTED, 'DEVICE_COMMAND_NOT_AVAILABLE'));
+    expect([command?.statusCode, command?.code, command?.message]).toEqual([409, 'COMMAND_UNSUPPORTED', 'Device commands (restart, test signal, identify) are not available on this Core.']);
+    expect(command?.details).toMatchObject({ simCode: 'COMMAND_UNSUPPORTED', event: 'deviceCommand', reason: 'DEVICE_COMMAND_NOT_AVAILABLE' });
+    expect(Object.keys(SIM_REFUSAL_REASON_TEXT).sort()).toEqual(['COMPOSITE_ENCODER_NOT_SELECTED', 'DEVICE_COMMAND_NOT_AVAILABLE', 'SERVICES_RESTART_NOT_AVAILABLE', 'UPDATER_NOT_AVAILABLE']);
     // CONTROL: the same code without such a reason keeps the sentence of the table, and a module's own wording still wins.
     expect(simRefusal(new SimTransitionError(null, 'deviceCommand', 'GNSS accepts IDENTIFY only', SimErrorCode.COMMAND_UNSUPPORTED))?.message).toBe(SIM_REFUSAL_RULES.COMMAND_UNSUPPORTED.message);
     expect(simRefusal(new SimTransitionError(null, 'x', 'y', SimErrorCode.COMMAND_UNSUPPORTED, 'UPDATER_NOT_AVAILABLE'), 'own words')?.message).toBe('own words');

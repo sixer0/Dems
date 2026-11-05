@@ -58,7 +58,7 @@ async function openAsRoot(script?: (bed: LiveTestBed) => void) {
     script: (bed) => {
       bed.fake.answer('createUser', () => one({ ...seededUsers(bed)[0]!, id: 'OPR-006', username: NEW_OPERATOR.username, name: 'Sari Melati', displayName: 'Sari Melati', initials: 'SM', lastSignInAt: null, activeSessions: 0, roleChangedAt: null }))
       bed.fake.answer('updateUser', () => one({ ...seededUsers(bed).find((user) => user.id === 'OPR-003')!, name: 'Sari M. Halim', initials: 'SH' }))
-      bed.fake.answer('deleteUser', { status: 200, body: { operatorId: 'OPR-003', username: 'rina.wijaya', sessionsEnded: 1, credentialsRemoved: 1 } })
+      bed.fake.answer('deleteUser', { status: 200, body: { operatorId: 'OPR-003', username: 'rina.wijaya', sessionsEnded: 1, credentialsRemoved: 1, accountKept: false } })
       script?.(bed)
     },
   })

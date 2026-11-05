@@ -27,7 +27,8 @@ import {
   type CaptureStoreReader,
 } from '../index';
 
-const seededDevices: readonly CaptureDeviceRecord[] = [
+// Audit fix row 128b (D92 rule): the seed writes the model's rows with adapter kind FAKE (the column default); see `seededDevices` below.
+const seededModelRows: readonly Omit<CaptureDeviceRecord, 'adapterKind'>[] = [
   { id: 'CAM-01', kind: 'CAMERA', transport: 'RTSP', model: 'Dual-lens IP camera DL-2', firmware: '3.8.14', address: '127.0.0.1:8554', poePort: 'POE_CAM_1', enabled: true },
   { id: 'CAM-02', kind: 'CAMERA', transport: 'RTSP', model: 'Dual-lens IP camera DL-2', firmware: '3.8.14', address: '127.0.0.1:8555', poePort: 'POE_CAM_1', enabled: true },
   // D60 (2026-11-04): the seed writes FOUR built-in cameras - the two single-lens lines of the four-track capture surface.
@@ -40,6 +41,7 @@ const seededDevices: readonly CaptureDeviceRecord[] = [
   { id: 'MIC-04', kind: 'MIC', transport: 'USB', model: 'USB condenser microphone UM-4', firmware: '1.04', address: null, poePort: null, enabled: true },
   { id: 'POE-SWITCH', kind: 'POE', transport: 'SNMP', model: 'PoE+ switch PS-8', firmware: '2.4.1', address: '127.0.0.1', poePort: null, enabled: true },
 ];
+const seededDevices: readonly CaptureDeviceRecord[] = seededModelRows.map((device) => ({ ...device, adapterKind: 'FAKE' }));
 
 /** The selector row as the seed writes it (CODE-valid profile; dbc-3 §E.3 site config; D60 (2026-11-04): all four video slots). */
 const seededConfig = {
@@ -388,7 +390,7 @@ describe('an unassigned selector slot is an absent line, and the boot step passe
 // stream as the row layer does (`db/mapping/rows.ts`): null - NOT READ - at rest, whatever its `enabled` flag; only the
 // built-in cameras of the demonstration model keep LIVE / LOST from the flag (the cases above, unedited). Mutations: v7d_op44_not_read.md.
 describe('row V7d: a registered camera is NOT READ (null) on both slices the builders make, never LIVE / LOST from `enabled`', () => {
-  const registered = (enabled: boolean): CaptureDeviceRecord => ({ id: 'CAM-07', kind: 'CAMERA', transport: 'RTSP', model: null, firmware: null, address: '192.0.2.17', poePort: null, enabled });
+  const registered = (enabled: boolean): CaptureDeviceRecord => ({ id: 'CAM-07', kind: 'CAMERA', transport: 'RTSP', model: null, firmware: null, address: '192.0.2.17', poePort: null, enabled, adapterKind: 'ONVIF_RTSP' });
 
   it('on its selector line and on its registry entry, enabled or not; CONTROL: the built-in CAM-01 beside it keeps LIVE, and LOST when disabled', () => {
     for (const enabled of [true, false]) {
@@ -410,5 +412,28 @@ describe('row V7d: a registered camera is NOT READ (null) on both slices the bui
         ['CAM-07', enabled, null],
       ]);
     }
+  });
+});
+
+// Audit fix row 128b (D100 (2); the D92 rule of row 128): the model's LIVE / LOST is keyed on a built-in id AND adapter FAKE,
+// never on the id alone. The bench holds REAL ONVIF cameras under the built-in ids CAM-03 / CAM-04.
+describe('row 128b: a REAL ONVIF camera under a built-in id (CAM-03) is NOT READ on both slices, never the model LIVE / LOST', () => {
+  it('real ONVIF CAM-03 on VIDEO-03 and in the registry: streamState null, enabled or not; CONTROL: the FAKE CAM-03 keeps LIVE / LOST; no adapter kind is no model row; the store reads adapter_kind', async () => {
+    for (const enabled of [true, false]) {
+      const real = seededDevices.map((device) => (device.id === 'CAM-03' ? { ...device, adapterKind: 'ONVIF_RTSP', address: '192.0.2.33', enabled } : device));
+      expect(captureConfigSliceOf(seededConfig, real, false).cameras.find((line) => line.deviceId === 'CAM-03'), `enabled ${enabled}`).toMatchObject({ trackId: 'VIDEO-03', online: enabled, streamState: null });
+      expect(captureDevicesSliceOf(real).devices.find((device) => device.id === 'CAM-03'), `enabled ${enabled}`).toMatchObject({ online: enabled, streamState: null });
+      // CONTROL: the same id with the model's adapter states the model's value; the other built-in cameras are untouched.
+      const model = seededDevices.map((device) => (device.id === 'CAM-03' ? { ...device, enabled } : device));
+      expect(captureDevicesSliceOf(model).devices.find((device) => device.id === 'CAM-03')?.streamState).toBe(enabled ? 'LIVE' : 'LOST');
+      expect(captureConfigSliceOf(seededConfig, real, false).cameras.find((line) => line.deviceId === 'CAM-01')?.streamState).toBe('LIVE');
+    }
+    expect(captureDevicesSliceOf(seededDevices.map((device) => (device.id === 'CAM-04' ? { ...device, adapterKind: null } : device))).devices.find((device) => device.id === 'CAM-04')?.streamState).toBeNull();
+
+    expect(READ_CAPTURE_STATE).toContain("'adapterKind', d.adapter_kind");
+    const loaded = await createCaptureConfigStore().load(readerReturning({ config: seededConfig, devices: seededDevices.map((device) => (device.id === 'CAM-03' ? { ...device, adapterKind: 'ONVIF_RTSP' } : device)), session_open: false }));
+    expect(loaded.captureDevices.devices.find((device) => device.id === 'CAM-03')?.streamState).toBeNull();
+    expect(loaded.captureConfig.cameras.find((line) => line.deviceId === 'CAM-03')?.streamState).toBeNull();
+    expect(loaded.captureDevices.devices.find((device) => device.id === 'CAM-01')?.streamState).toBe('LIVE');
   });
 });

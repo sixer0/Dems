@@ -1201,14 +1201,16 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
       beginPrecheck: [404, 409], retryPrecheck: [404, 409], acknowledgePrecheckWarnings: [404, 409], cancelSession: [404, 409],
       recoverSession: [404, 409], addSessionMarker: [404, 409], addSessionNote: [404, 409], takeSessionSnapshot: [404, 409],
       getEvidence: [404], verifyEvidence: [404, 409], archiveEvidence: [404, 409],
-      restartDevice: [404, 409], testDeviceSignal: [404, 409], identifyDevice: [404],
+      restartDevice: [404, 409], testDeviceSignal: [404, 409], identifyDevice: [404, 409], // Row CS2 (R-1, D96): op 50 gains the own-capture 409
       restartServices: [409], startSoftwareUpdate: [409],
     };
     for (const [, operationId] of CONTRACT_C_OPERATIONS) expect(specific(operationId), operationId).toEqual(EXPECTED[operationId] ?? []);
     // The codes each 409 names, as the hosted simulator action raises them (01_specs §7.2).
     const codes = (operationId: string) => findCoreApiOperation(operationId)!.responses[409]?.description.match(/[A-Z][A-Z_]{4,}/g) ?? [];
-    expect(codes('restartDevice')).toEqual(['RECORDING_ACTIVE', 'COMMAND_UNSUPPORTED', 'CAMERA_NOT_LOST']);
-    expect(codes('testDeviceSignal')).toEqual(['COMMAND_UNSUPPORTED']);
+    // Row CS2 (D89; R-1 routed by D96): a Core in its own capture sends no command to a device (ops 48-50).
+    expect(codes('restartDevice')).toEqual(['RECORDING_ACTIVE', 'COMMAND_UNSUPPORTED', 'DEVICE_COMMAND_NOT_AVAILABLE', 'CAMERA_NOT_LOST']);
+    expect(codes('testDeviceSignal')).toEqual(['COMMAND_UNSUPPORTED', 'DEVICE_COMMAND_NOT_AVAILABLE']);
+    expect(codes('identifyDevice')).toEqual(['COMMAND_UNSUPPORTED', 'DEVICE_COMMAND_NOT_AVAILABLE']);
     expect(codes('archiveEvidence')).toEqual(['RECORDED', 'NOT_SEALED']);
     // Fix wave J (truth rule 3a): a never-sealed item has nothing to verify.
     expect(codes('verifyEvidence')).toEqual(['RECORDED', 'NOT_SEALED']);

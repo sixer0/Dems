@@ -33,7 +33,7 @@ import {
 import { VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain' // D60 (2026-11-04)
 import type { MicChannel } from '@dems/shared/sim' // D61 (2026-11-04): the four microphone channels
 import { micChannelChipKey } from '@/features/devices/capture-selector' // D61: the channel chip words of the selector
-import { CameraPreview } from '@/features/devices/camera-preview'
+import { ReachGatedCameraPreview } from '@/features/devices/reach-gated-preview'
 import { PrecheckSearchActions } from '@/features/devices/precheck-search'
 import { isGeneratedSource } from '@/features/devices/own-core-words'
 import { PrecheckSourceMarks } from '@/features/devices/source-badge'
@@ -470,8 +470,9 @@ function PreviewTile({ cameraId }: { cameraId: VideoTrackId }) {
   // literal `1080p / 25`, so a track with another picture, no rate or no statement read `1080p • 25 fps` here. On a Core
   // in real capture the "No preview" tile states the stored stream statement itself (`camera-preview.tsx`).
   const facts = useTrackFacts(cameraId)
+  // Row 130b (D95): a camera the Core found NOT_REACHABLE asks for no preview here; "Try again" asks once (W3 row 158 inherits this mount).
   return (
-    <CameraPreview
+    <ReachGatedCameraPreview
       cameraId={cameraId}
       variant="tile"
       label={label}

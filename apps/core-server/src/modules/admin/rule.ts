@@ -14,8 +14,30 @@
  * applied by stage 6; this is a rule about the data the operations change.
  */
 import { isVendorRoot, VENDOR_ROOT_USERNAME } from '@dems/shared/sim';
+import { UNATTRIBUTED_OPERATOR_ID } from '@dems/shared/sim';
 import type { OperatorRole } from '@dems/shared/sim';
 import type { ActiveSessionParties, LockedOperator } from './statements';
+
+// ── The system principals (DF-29, decision D20(d); D38 DR-4: defined here, once) ──────────────
+
+/**
+ * THE SYSTEM PRINCIPALS (DF-29, decision D20(d), 2026-11-05). `OPR-000` is the operator id the
+ * auto-attach path acts as (`SYSTEM_OPERATOR_ID` of `capture-discovery/connect`, the same value as
+ * the shared `UNATTRIBUTED_OPERATOR_ID`; the sequence of real operators starts at OPR-001). The D62
+ * installer provisions its row as `system` WITHOUT a credential: "it can never sign in". A row is a
+ * system principal by its reserved id OR by the reserved username (any case), so a row provisioned
+ * under another id is held as well. The row itself is never touched: adoption needs it as its actor
+ * key, and the audit rows it wrote (CAPTURE_CONNECTION_TESTED, CAPTURE_CANDIDATE_ADOPTED) stay.
+ *
+ * Two places refuse it, both through this one predicate (decision D38 DR-4, row 133): the host
+ * command `operator:set-password` (no credential is ever written for it) and the units of this
+ * module (no role change, no disable, no profile edit, no purge of it).
+ */
+export const SYSTEM_PRINCIPAL_OPERATOR_IDS: readonly string[] = Object.freeze([UNATTRIBUTED_OPERATOR_ID]);
+export const SYSTEM_PRINCIPAL_USERNAMES: readonly string[] = Object.freeze(['system']);
+export function isSystemPrincipal(operator: { readonly operatorId: string; readonly username: string }): boolean {
+  return SYSTEM_PRINCIPAL_OPERATOR_IDS.includes(operator.operatorId) || SYSTEM_PRINCIPAL_USERNAMES.includes(operator.username.toLowerCase());
+}
 
 /**
  * The username of the vendor account that alone may create, edit or delete an operator (RB-9 as

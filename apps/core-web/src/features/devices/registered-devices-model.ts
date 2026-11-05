@@ -13,7 +13,7 @@
  *
  * | Fact of a card | From (never client state) |
  * |---|---|
- * | which devices | `captureDevices.devices` of kind CAMERA / MIC whose id is not one of the four built-in ids |
+ * | which devices | `captureDevices.devices` of kind CAMERA / MIC, except a built-in id that stands on its OWN line - the one device the page's tile already draws (`drawnByOwnTile`; audit row 131, DF-16) |
  * | development badge, kind text | `sourceClass`, `adapter` of the device (ux §8f.1 "Decided by the Core") |
  * | 'is on' | `sourceOpen` of the device (SEC35-44 (4)) — an OPTIONAL member of the shared `captureDevices` slice (`packages/shared/src/api/state-slices.ts`): absent or false = nothing is drawn |
  * | used as | the selector line that names the device (`captureConfig`, operation 76) |
@@ -31,6 +31,7 @@ import { activeCaptureNotices, micInputName } from '@/lib/capture-notices'
 import { localDeviceState, type LocalDeviceState } from './capture-inputs'
 import type { CaptureConfig, CaptureDevice } from './capture-selector'
 import { restingSourceChecked } from './own-core-words'
+import { DEVICE_CAMERA } from './sim-adapter'
 import { LOCAL_DEVICE_ADAPTER, TEST_SOURCE_ADAPTER, isDevelopmentSource, isLocalSourceOn, type SourceDeviceKind } from './source-class'
 
 /** The ids the page's own tiles and audio cards already draw (D60, 2026-11-04: four cameras; D61, 2026-11-04: four microphones). Every other camera or microphone of the Core's list is a roster card. */
@@ -65,6 +66,26 @@ export interface RosterCard {
 /** What the roster reads of an alert: identifiers, the kind, and `params` as untrusted data. */
 type AlertLike = Pick<SimAlert, 'id' | 'kind' | 'active' | 'params' | 'target'>
 
+/**
+ * Audit row 131 (DF-16, U-09): TRUE only for the device the page's own tile or audio card draws -
+ * a built-in id (`CAM-0n` / `MIC-0n`) standing on the line its id names (`CAM-0n` on `VIDEO-0n`,
+ * `DEVICE_CAMERA`; `MIC-0n` on channel `MIC-0n`). Such a device appears once, as that tile, and is
+ * no roster card.
+ *
+ * Why the line and not the id alone: the built-in ids are the DEMONSTRATION MODEL's seed, but a real
+ * Core mints its registry ids from the same pattern, so a real camera or microphone can carry one
+ * (the bench Core of 2026-11-05: ONVIF cameras `CAM-03`/`CAM-04` on VIDEO-01/02, USB microphones
+ * `MIC-03`/`MIC-04` on channels 1/2). The earlier rule - built-in id AND on any line - dropped
+ * exactly the devices feeding the tracks from "Registered cameras / microphones". A built-in id on
+ * another line, or on none (Fix wave L, G70c-08), is a registered device like any other.
+ */
+export function drawnByOwnTile(config: Pick<CaptureConfig, 'cameras' | 'mics'>, device: Pick<CaptureDevice, 'id' | 'kind'>): boolean {
+  if (!BUILT_IN_SOURCE_IDS.includes(device.id)) return false
+  const slot = rosterSlotOf(config, device)
+  if (slot === null) return false
+  return device.kind === 'CAMERA' ? (DEVICE_CAMERA as Readonly<Record<string, string | undefined>>)[device.id] === slot : slot === device.id
+}
+
 /** The selector line that names a device: a camera by its track, a microphone by its role. */
 export function rosterSlotOf(config: Pick<CaptureConfig, 'cameras' | 'mics'>, device: Pick<CaptureDevice, 'id' | 'kind'>): RosterSlot | null {
   if (device.kind === 'CAMERA') {
@@ -84,7 +105,8 @@ export function rateAtLimitOf(alerts: readonly AlertLike[], deviceId: string): b
 
 /**
  * The roster of one kind, in the Core's order. Pure: the three slices in, the cards out.
- * A device of another kind (the PoE switch) and the four built-in ids are not part of it.
+ * A device of another kind (the PoE switch) and a built-in device on its own line (`drawnByOwnTile`) are
+ * not part of it; every other camera or microphone of the Core's list is, exactly once.
  */
 export function registeredRoster(
   input: { readonly devices: readonly CaptureDevice[]; readonly config: Pick<CaptureConfig, 'cameras' | 'mics'>; readonly alerts: readonly AlertLike[] },
@@ -94,7 +116,8 @@ export function registeredRoster(
   return input.devices
     // Fix wave L (G70c-08): a built-in source that left its line is a registered source on no track - it gets its card
     // (while `CAM-05` fed Camera 2, the unassigned `CAM-02` was on no tile and on no card).
-    .filter((device) => device.kind === kind && (!BUILT_IN_SOURCE_IDS.includes(device.id) || rosterSlotOf(input.config, device) === null))
+    // Audit row 131 (DF-16): only a built-in id on its OWN line is the tile's; one on another line is a card.
+    .filter((device) => device.kind === kind && !drawnByOwnTile(input.config, device))
     .map((device): RosterCard => {
       const notice = unreachable.find((entry) => entry.kind === 'UNREACHABLE' && entry.deviceId === device.id)
       const cause = notice !== undefined && notice.kind === 'UNREACHABLE' ? notice.cause : null

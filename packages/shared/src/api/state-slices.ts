@@ -238,7 +238,7 @@ export const CaptureConfigCameraSchema = z
     trackId: videoTrackId(),
     deviceId: label().describe('The capture device feeding this track (`CAM-01`/`CAM-02`).'),
     profile: label().describe('Media profile code; an open set (OD-05/OD-06).'),
-    online: z.boolean().describe('On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means "registered and not found unreachable at the last check" - never "reachable now": a client at rest says "Not checked", not "Online" or "Ready" (finding JW-23). In Simulated mode it is the demonstration model\'s value.'),
+    online: z.boolean().describe('On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means "registered and not found unreachable at the last check" - never "reachable now": a client at rest with no stated `reach` says "Not checked", not "Online" or "Ready" (finding JW-23). In Simulated mode it is the demonstration model\'s value.'),
     streamState: z
       .enum(CaptureStreamState)
       .nullable()
@@ -259,7 +259,7 @@ export const CaptureConfigMicSchema = z
     inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The mic input, `MIC-NN`: a built-in `MIC-01`..`MIC-04`, or a microphone registered later (D115 (2)).'),
     deviceId: label().describe('The microphone behind the input: the device of the same ID (D106 (4)).'),
     transport: label().describe('Open set (`CODE`): USB, embedded RTSP, ... (OD-06).'),
-    online: z.boolean().describe('On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means "registered and not found unreachable at the last check" - never "reachable now": a client at rest says "Not checked", not "Online" or "Ready" (finding JW-23). In Simulated mode it is the demonstration model\'s value.'),
+    online: z.boolean().describe('On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means "registered and not found unreachable at the last check" - never "reachable now": a client at rest with no stated `reach` says "Not checked", not "Online" or "Ready" (finding JW-23). In Simulated mode it is the demonstration model\'s value.'),
   })
   .describe('One microphone slot of the device selector.');
 export type CaptureConfigMicBody = z.output<typeof CaptureConfigMicSchema>;
@@ -1193,6 +1193,14 @@ export const CaptureDeviceProfileSchema = z
 export type CaptureDeviceProfileBody = z.output<typeof CaptureDeviceProfileSchema>;
 
 /**
+ * Row 125 (DF-12; decisions D19, D24, D29 Q1, D38 DR-2; register R3): the outcome of the Core's last reach
+ * reading of a capture device - the words of the web's `SourceReach`. It stands BESIDE `online` (the registry
+ * flag the session engine reads), never in its place.
+ */
+export const CaptureDeviceReach = { REACHABLE: 'REACHABLE', NOT_REACHABLE: 'NOT_REACHABLE' } as const;
+export type CaptureDeviceReach = (typeof CaptureDeviceReach)[keyof typeof CaptureDeviceReach];
+
+/**
  * One device of the capture registry. The field list is `C3 §2.3`: **no credential** member exists
  * here at all (RK-12), and `host` is a host or address only, never a `user:password@` URL (C-N8).
  */
@@ -1204,8 +1212,21 @@ export const CaptureDeviceStatusSchema = z
     firmware: text().nullable(),
     host: text().nullable().describe('Host or address only; never a credential URL (C-N8).'),
     poePort: text().nullable(),
-    online: z.boolean().describe('On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means "registered and not found unreachable at the last check" - never "reachable now": a client at rest says "Not checked", not "Online" or "Ready" (finding JW-23). In Simulated mode it is the demonstration model\'s value.'),
+    online: z.boolean().describe('On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Neither the live preview nor the idle microphone meters change this flag; a preview states its outcome in `reach` and `checkedAt` of the device entry of `captureDevices` (row 125; decisions D19, D24). Outside those moments the flag is no reading, so `true` means "registered and not found unreachable at the last check" - never "reachable now": a client at rest with no stated `reach` says "Not checked", not "Online" or "Ready" (finding JW-23). In Simulated mode it is the demonstration model\'s value.'),
     streamState: z.enum(CaptureStreamState).nullable().describe('Null for a device with no stream (a mic, the PoE switch). Like `online`, not a reading at rest on a Core in its own capture (finding JW-23).'),
+    // Row 125 (DF-12; decisions D19, D24, D29 Q1, D38 DR-2; register R1, R2, R4): the Core's live reach reading, in memory only.
+    checkedAt: z
+      .number()
+      .int()
+      .nonnegative()
+      .nullable()
+      .optional()
+      .describe('Epoch ms of the Core\'s last reach reading of this device, a success or a failure: the outcome of a live preview (`createCameraPreviewSession`) - its first picture, or its failure. Held in memory only: no database column, never part of a stored snapshot, absent after a restart until the device is read again (decision D29 Q1). Absent or null: not checked since the Core started. It never changes `online`.'),
+    reach: z
+      .enum(CaptureDeviceReach)
+      .nullable()
+      .optional()
+      .describe('The outcome of the reading `checkedAt` dates: `REACHABLE` (the device answered - a preview delivered its first picture) or `NOT_REACHABLE` (it did not). Absent or null: not checked. A client prefers a stated `reach` over the word it draws from `online` and opens no automatic preview while it is `NOT_REACHABLE`. Display state only: the session engine and the pre-check still read `online`.'),
     capabilities: z.array(label()).describe('Capability codes the adapters reported; an open set.'),
     adapter: z
       .string()

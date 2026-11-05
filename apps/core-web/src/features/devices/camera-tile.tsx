@@ -4,14 +4,14 @@ import { useTranslation } from 'react-i18next'
 import type { VideoTrackId } from '@dems/shared/domain'
 import { selectCameraById, selectIsRecording, useSim } from '@dems/shared/sim'
 import { useMotionPolicy } from '@/motion'
-import { CameraPreview } from './camera-preview'
+import { CameraPreview, CameraPreviewTryAgain } from './camera-preview'
 import { useTrackReach } from './track-reach'
 import { TrackUnreachableMark } from './capture-notices'
 import { useDeviceActions, useDevicePending } from './context'
 import { DeviceMenu, IdentifyRing } from './device-menu'
 import { useDeviceLabels } from './labels'
 import { useDeviceWords } from './live'
-import { deviceStatus, STATUS_SEVERITY, STATUS_TONE } from './model'
+import { STATUS_SEVERITY, STATUS_TONE, trackStatus, trackSourceOf } from './model'
 import { CAMERA_DEVICE, CAMERA_TRACK_POE_PORT } from './sim-adapter'
 import { TrackSourceMarks } from './source-badge'
 import { useRealCaptureCore } from './source-class'
@@ -49,7 +49,11 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
   // LB-1 (plan row W70): the kebab's Button drops `aria-busy`, so the head that holds it carries it.
   const busy = useDevicePending(deviceId)
   const camera = useSim((s) => selectCameraById(s, cameraId))
-  const status = useSim((s) => (deviceId ? deviceStatus(s, deviceId) : 'OFFLINE'))
+  // Row 129 (DF-11 web; D24): the status of the TRACK and of the source it holds now (`trackStatus`): an unassigned
+  // track reads OFFLINE, a source the Core cannot reach reads FAULT - never the built-in row's READY.
+  const status = useSim((s) => trackStatus(s, cameraId))
+  // Row 129: the device the selector line names (null: the track is not assigned), said on a Core in real capture.
+  const assignedId = useSim((s) => trackSourceOf(s, cameraId).deviceId)
   const name = deviceId ? labels.name(deviceId) : t(`common.tracks.${cameraId}`)
   const tone = STATUS_TONE[status]
   // Row 54 (P12-F08): the format is what the camera slice states. A stream that states no rate (`fps` null)
@@ -96,6 +100,9 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
           <span className="dev-tile-sub">
             {/* Fix wave L (G75d-06): "Lens 1" is the dataset's dual-lens camera; a Core in real capture names the track only. */}
             {realCapture ? cameraId : `${t('devices.cameras.lens', { number: lens })} · ${cameraId}`}
+            {/* Row 129 (DF-11 web): on a Core in real capture the tile names the camera the track holds, or that it holds none. */}
+            {realCapture && assignedId !== null ? <span data-testid={`camera-line-device-${cameraId}`}>{` · ${assignedId}`}</span> : null}
+            {realCapture && assignedId === null ? <span data-testid={`camera-line-empty-${cameraId}`}>{` · ${t('common.captureSlot.notAssigned')}`}</span> : null}
           </span>
         </div>
         <div className="dev-tile-chips">
@@ -152,6 +159,8 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
         />
         {deviceId ? <IdentifyRing deviceId={deviceId} /> : null}
       </button>
+      {/* Row 129 (request of row 130, D19): the manual "Try again" of the preview gate, OUTSIDE the media button (no button in a button). */}
+      <CameraPreviewTryAgain cameraId={cameraId} />
 
       <dl className="dev-cam-meta">
         {/* Fix wave K (C-2, ruling D222 (2)): the format of the simulator's camera record is no fact of the source behind the track on a Core in real capture. */}

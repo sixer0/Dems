@@ -182,6 +182,7 @@ export const DeletedUserSchema = z
     username: apiText().describe('The username that was deleted, for the caller\'s list.'),
     sessionsEnded: count().describe('Open sessions of that operator ended by this call.'),
     credentialsRemoved: count().describe('0 or 1: whether a password row went with the account.'),
+    accountKept: z.boolean().describe('True when evidence-chain rows the operator wrote survive the purge, so the account row stays, disabled and terminal (decisions D38 DR-1, D51): it is never enabled again and gets no password.'),
   })
   .describe('Response of `POST /api/v1/admin/users/{id}/delete`.');
 export type DeletedUser = z.output<typeof DeletedUserSchema>;
@@ -212,8 +213,9 @@ const USER_ADMIN_ROOT = { ...USER_ADMIN, conditions: [CoreApiAccessCondition.VEN
 const OPERATOR_PARAM = { name: 'id', description: 'Operator ID `OPR-NNN`.', pattern: OPERATOR_ID_PATTERN } as const;
 
 const UNKNOWN_OPERATOR = { description: 'No operator has this ID (NOT_FOUND).', schema: 'ApiError' } as const;
-const LAST_ADMIN = {
-  description: 'The change would leave no enabled operator holding USER_ADMIN (LAST_ADMIN, RB-8). Nothing is changed.',
+/** Operations 12 and 14 (row 133, DF-29): RB-8, or the operator is a system principal. Replaces the former `LAST_ADMIN` response of both. */
+const LAST_ADMIN_OR_SYSTEM_PRINCIPAL = {
+  description: 'The change would leave no enabled operator holding USER_ADMIN (LAST_ADMIN, RB-8); or the operator is a system principal (INVALID_STATE, details reason SYSTEM_PRINCIPAL). Nothing is changed.',
   schema: 'ApiError',
 } as const;
 
@@ -272,6 +274,7 @@ export const ADMINISTRATION_OPERATIONS = [
       'Changes the role of an operator. The new permissions apply to that operator\'s next request (RB-3); the open sessions stay, and their sockets receive `session.updated` within 1 s.',
       'Writes ROLE_CHANGED with the old and the new role; assigning the role the operator already has writes nothing.',
       'Refused with `409 LAST_ADMIN` when it would leave no enabled operator holding USER_ADMIN (RB-8).',
+      'Refused with `409 INVALID_STATE` (details reason `SYSTEM_PRINCIPAL`) when the operator is a system principal, the auto-attach actor `OPR-000` or the username `system`: it stands for the Core itself and is never changed or deleted (DF-29). Nothing is changed.',
       CORE_SERVER_NOTE,
     ].join('\n\n'),
     source: backendSource(SECTION, 12),
@@ -283,7 +286,7 @@ export const ADMINISTRATION_OPERATIONS = [
       401: NOT_SIGNED_IN,
       403: notPermitted(Permission.USER_ADMIN),
       404: UNKNOWN_OPERATOR,
-      409: LAST_ADMIN,
+      409: LAST_ADMIN_OR_SYSTEM_PRINCIPAL,
       422: INVALID_INPUT,
     },
     access: USER_ADMIN,
@@ -299,6 +302,7 @@ export const ADMINISTRATION_OPERATIONS = [
     summary: 'Enable a user',
     description: [
       'Lets a disabled operator sign in again. Writes USER_ENABLED; enabling an operator who is already enabled writes nothing.',
+      'Refused with `409 INVALID_STATE` (details reason `PURGE_KEPT`) when the account was deleted by `deleteUser` and kept, disabled, only because evidence-chain records name it: such an account is terminal (decision D51). Nothing is changed.',
       CORE_SERVER_NOTE,
     ].join('\n\n'),
     source: backendSource(SECTION, 13),
@@ -310,6 +314,7 @@ export const ADMINISTRATION_OPERATIONS = [
       401: NOT_SIGNED_IN,
       403: notPermitted(Permission.USER_ADMIN),
       404: UNKNOWN_OPERATOR,
+      409: { description: 'The account was deleted and is kept, disabled, under its evidence-chain records (INVALID_STATE, details reason PURGE_KEPT; decision D51). Nothing is changed.', schema: 'ApiError' },
       422: INVALID_INPUT,
     },
     access: USER_ADMIN,
@@ -327,6 +332,7 @@ export const ADMINISTRATION_OPERATIONS = [
       'Stops an operator from signing in. In the same transaction every open session of that operator is ended and the biometric tokens are revoked; the sockets receive `session.ended` and are closed within 1 s.',
       'Writes USER_DISABLED with the number of sessions ended; disabling an operator who is already disabled writes nothing.',
       'Refused with `409 LAST_ADMIN` when it would leave no enabled operator holding USER_ADMIN (RB-8).',
+      'Refused with `409 INVALID_STATE` (details reason `SYSTEM_PRINCIPAL`) when the operator is a system principal, the auto-attach actor `OPR-000` or the username `system`: it stands for the Core itself and is never changed or deleted (DF-29). Nothing is changed.',
       CORE_SERVER_NOTE,
     ].join('\n\n'),
     source: backendSource(SECTION, 14),
@@ -338,7 +344,7 @@ export const ADMINISTRATION_OPERATIONS = [
       401: NOT_SIGNED_IN,
       403: notPermitted(Permission.USER_ADMIN),
       404: UNKNOWN_OPERATOR,
-      409: LAST_ADMIN,
+      409: LAST_ADMIN_OR_SYSTEM_PRINCIPAL,
       422: INVALID_INPUT,
     },
     access: USER_ADMIN,
@@ -393,6 +399,7 @@ export const ADMINISTRATION_OPERATIONS = [
       'Changes the profile of an operator: name, display name, initials, rank. The role is `assignUserRole`, the enabled state is `enableUser` and `disableUser`, and a password is never carried by this operation.',
       'Writes USER_UPDATED with the fields that changed; a request that changes nothing writes no row.',
       'Needs USER_ADMIN and the vendor `root` account (RB-9 as amended).',
+      'Refused with `409 INVALID_STATE` (details reason `SYSTEM_PRINCIPAL`) when the operator is a system principal, the auto-attach actor `OPR-000` or the username `system`: it stands for the Core itself and is never changed or deleted (DF-29). Nothing is changed.',
       CORE_SERVER_NOTE,
     ].join('\n\n'),
     source: backendSource(SECTION, 16),
@@ -406,6 +413,7 @@ export const ADMINISTRATION_OPERATIONS = [
       // identity rule the unit applies on top of it. The identity refusal writes no audit row.
       403: notPermitted(Permission.USER_ADMIN, 'or the signed-in account is not the vendor root account, the second gate of the narrowed rule (NOT_PERMITTED; no audit row)'),
       404: UNKNOWN_OPERATOR,
+      409: { description: 'The operator is a system principal (INVALID_STATE, details reason SYSTEM_PRINCIPAL; DF-29). Nothing is changed.', schema: 'ApiError' },
       422: INVALID_INPUT,
     },
     access: USER_ADMIN_ROOT,
@@ -424,6 +432,9 @@ export const ADMINISTRATION_OPERATIONS = [
       'Writes USER_DELETED with the number of sessions ended and whether a credential went with the account.',
       'Needs USER_ADMIN and the vendor `root` account, and the username repeated in `confirm`.',
       'Refused with `409 LAST_ADMIN` when it would leave no enabled operator holding USER_ADMIN (RB-8), and `409 INVALID_STATE` when the username repeated in `confirm` is not the operator of `{id}`.',
+      'Refused with `409 INVALID_STATE` (details reason `ACTIVE_SESSION_PARTY` and the `sessionId`) when the operator takes part in the active session - its investigator, or whoever created, started or stopped it - in any state of that session: a purge never runs under a live recording (decision D43). Nothing is deleted; finish that session first.',
+      'Refused with `409 INVALID_STATE` (details reason `SYSTEM_PRINCIPAL`) when the operator is a system principal, the auto-attach actor `OPR-000` or the username `system`: it stands for the Core itself and is never deleted (DF-29). Nothing is deleted.',
+      'When evidence-chain rows written by the operator survive the purge, the account row stays, disabled, and the answer says `accountKept: true` (decision D38 DR-1); such an account is terminal and is never enabled again (decision D51).',
       CORE_SERVER_NOTE,
     ].join('\n\n'),
     source: backendSource(SECTION, 17),
@@ -437,7 +448,7 @@ export const ADMINISTRATION_OPERATIONS = [
       // identity rule the unit applies on top of it. The identity refusal writes no audit row.
       403: notPermitted(Permission.USER_ADMIN, 'or the signed-in account is not the vendor root account, the second gate of the narrowed rule (NOT_PERMITTED; no audit row)'),
       404: UNKNOWN_OPERATOR,
-      409: { description: 'RB-8: the delete would leave no enabled operator holding USER_ADMIN (LAST_ADMIN); or the username in `confirm` is not the operator of `{id}`; or records of the unit still point at that operator (INVALID_STATE), in which case the refusal text names how many and from which sources. Nothing is deleted in any of these cases.', schema: 'ApiError' },
+      409: { description: 'RB-8: the delete would leave no enabled operator holding USER_ADMIN (LAST_ADMIN); or the username in `confirm` is not the operator of `{id}`; or the operator takes part in the active session (INVALID_STATE, details reason ACTIVE_SESSION_PARTY; D43); or the operator is a system principal (INVALID_STATE, details reason SYSTEM_PRINCIPAL; DF-29). Nothing is deleted in any of these cases.', schema: 'ApiError' },
       422: INVALID_INPUT,
     },
     access: USER_ADMIN_ROOT,
@@ -546,6 +557,20 @@ const LAST_ADMIN_EXAMPLE = {
     value: apiErrorExample('LAST_ADMIN', 'At least one enabled operator must keep user administration.'),
   },
 } as const;
+/** Row 133 (DF-29): the refusal of a system principal, as the unit answers it. */
+const SYSTEM_PRINCIPAL_EXAMPLE = {
+  systemPrincipal: {
+    summary: 'The operator is the system principal OPR-000',
+    value: apiErrorExample('INVALID_STATE', 'This operator is a system principal: it stands for the Core itself and is not changed or deleted. Nothing was changed.', { reason: 'SYSTEM_PRINCIPAL' }),
+  },
+} as const;
+/** Row 133 (D51): the refusal to enable a purge-kept account. */
+const PURGE_KEPT_EXAMPLE = {
+  purgeKept: {
+    summary: 'The account was deleted and is kept under its evidence records',
+    value: apiErrorExample('INVALID_STATE', 'This account was deleted and is kept, disabled, only because evidence records name it. It cannot be enabled again; nothing was changed.', { reason: 'PURGE_KEPT' }),
+  },
+} as const;
 const denied = (operationId: string) => ({
   notPermitted: notPermittedExample(operationId, 'USER_ADMIN', 'INVESTIGATOR'),
   ...BASIC_403,
@@ -590,7 +615,7 @@ export const ADMINISTRATION_EXAMPLES: Readonly<Record<string, OperationExamples>
       401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
       403: denied('assignUserRole'),
       404: NOT_FOUND,
-      409: LAST_ADMIN_EXAMPLE,
+      409: { ...LAST_ADMIN_EXAMPLE, ...SYSTEM_PRINCIPAL_EXAMPLE },
       422: { invalidInput: ERROR_EXAMPLES.invalidInput },
     },
   },
@@ -605,6 +630,7 @@ export const ADMINISTRATION_EXAMPLES: Readonly<Record<string, OperationExamples>
       401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
       403: denied('enableUser'),
       404: NOT_FOUND,
+      409: PURGE_KEPT_EXAMPLE,
       422: { invalidInput: ERROR_EXAMPLES.invalidInput },
     },
   },
@@ -624,7 +650,7 @@ export const ADMINISTRATION_EXAMPLES: Readonly<Record<string, OperationExamples>
       401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
       403: denied('disableUser'),
       404: NOT_FOUND,
-      409: LAST_ADMIN_EXAMPLE,
+      409: { ...LAST_ADMIN_EXAMPLE, ...SYSTEM_PRINCIPAL_EXAMPLE },
       422: { invalidInput: ERROR_EXAMPLES.invalidInput },
     },
   },
@@ -686,6 +712,7 @@ export const ADMINISTRATION_EXAMPLES: Readonly<Record<string, OperationExamples>
       401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
       403: denied('updateUser'),
       404: NOT_FOUND,
+      409: SYSTEM_PRINCIPAL_EXAMPLE,
       422: { invalidInput: ERROR_EXAMPLES.invalidInput },
     },
   },
@@ -701,14 +728,14 @@ export const ADMINISTRATION_EXAMPLES: Readonly<Record<string, OperationExamples>
       200: {
         deleted: {
           summary: 'The account and its credential are gone; the audit rows stay',
-          value: { operatorId: 'OPR-003', username: 'rina.wijaya', sessionsEnded: 0, credentialsRemoved: 1 } satisfies DeletedUser,
+          value: { operatorId: 'OPR-003', username: 'rina.wijaya', sessionsEnded: 0, credentialsRemoved: 1, accountKept: false } satisfies DeletedUser,
         },
       },
       400: { invalidJson: ERROR_EXAMPLES.invalidJson },
       401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
       403: denied('deleteUser'),
       404: NOT_FOUND,
-      409: LAST_ADMIN_EXAMPLE,
+      409: { ...LAST_ADMIN_EXAMPLE, ...SYSTEM_PRINCIPAL_EXAMPLE },
       422: { invalidInput: ERROR_EXAMPLES.invalidInput },
     },
   },

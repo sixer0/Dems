@@ -883,6 +883,27 @@ const BUILT_IN_CAPABILITIES: ReadonlyMap<string, readonly string[]> = new Map(
   DEFAULT_CAPTURE_DEVICES.devices.map((device) => [device.id, device.capabilities] as const),
 );
 
+/**
+ * THE ADAPTER KIND OF A DEMONSTRATION-MODEL DEVICE (audit fix row 128, controller routing D92 of row
+ * 131's U-09 finding): the built-in devices of the model are the test sources, kind `FAKE` (the
+ * default `adapterKindOf` writes for an entry that names no adapter, and what the seed inserts).
+ */
+const BUILT_IN_MODEL_ADAPTER_KIND: CaptureAdapterKindValue = 'FAKE';
+
+/**
+ * Whether a registry row is a device OF THE DEMONSTRATION MODEL (audit fix row 128; D92; U-09):
+ * a built-in id AND the model's adapter kind `FAKE`. Never the id alone. Since D60 / D61 the
+ * built-in ids reach CAM-03 / CAM-04 and MIC-03 / MIC-04, and a production registry holds REAL
+ * devices under those ids (the bench: ONVIF CAM-03 / CAM-04, USB MIC-03 / MIC-04). Keyed on the id
+ * alone, those rows read back in the model's shape - no `adapter`, no `sourceClass`, the model's
+ * LIVE / LOST stream state and capabilities - and the console could not tell them from the model's
+ * devices (`registered-devices-model.ts`). A row of the model in the simulated lane is unchanged:
+ * the seed inserts it with `FAKE` and the engine writes `FAKE` for an entry that names no adapter.
+ */
+function isBuiltInModelRow(row: Pick<CaptureDeviceRow, 'id' | 'adapterKind'>): boolean {
+  return BUILT_IN_CAPABILITIES.has(row.id) && row.adapterKind === BUILT_IN_MODEL_ADAPTER_KIND;
+}
+
 /*
  * The six slot columns of the selector row may each be NULL, an UNASSIGNED slot (schema set A,
  * task 4 row 17). `CaptureConfigRow` states it since integration pass I-6 removed the type seam of
@@ -992,14 +1013,16 @@ function adapterKindOf(device: CaptureDevicesSlice['devices'][number]): CaptureA
  * change of a row.
  */
 export function captureDevicesToRows(slice: CaptureDevicesSlice, config: CaptureConfigSlice): CaptureDeviceRow[] {
-  const transportOf = (deviceId: string): string =>
-    config.mics.find((mic) => mic.deviceId === deviceId)?.transport ?? BUILT_IN_TRANSPORTS.get(deviceId) ?? NEUTRAL_TRANSPORT;
+  // Audit fix row 128 (D92): the model's topology transport only for an entry of the model (no adapter named, or FAKE) -
+  // a real device under a built-in id keeps the transport its registry row holds (the column-set path never writes it).
+  const transportOf = (device: CaptureDevicesSlice['devices'][number]): string =>
+    config.mics.find((mic) => mic.deviceId === device.id)?.transport ?? (adapterKindOf(device) === BUILT_IN_MODEL_ADAPTER_KIND ? BUILT_IN_TRANSPORTS.get(device.id) : undefined) ?? NEUTRAL_TRANSPORT;
   return [...slice.devices]
     .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
     .map((device) => ({
       id: storableText(device.id, `capture_devices.id (${device.id})`),
       kind: device.kind,
-      transport: storableText(transportOf(device.id), `capture_devices.transport (${device.id})`),
+      transport: storableText(transportOf(device), `capture_devices.transport (${device.id})`),
       model: storableTextOrNull(device.model, `capture_devices.model (${device.id})`),
       firmware: storableTextOrNull(device.firmware, `capture_devices.firmware (${device.id})`),
       address: storableTextOrNull(device.host, `capture_devices.address (${device.id})`),
@@ -1020,6 +1043,8 @@ export function captureDevicesToRows(slice: CaptureDevicesSlice, config: Capture
 
 /** One registry row plus the selector fact it needs, back to a slice device (SH-18 keeps the order). */
 function captureDeviceFromRow(row: CaptureDeviceRow): Omit<CaptureDevicesSlice['devices'][number], never> {
+  // Audit fix row 128 (D92; U-09): the model's shape for a device OF THE MODEL only (built-in id AND FAKE), never by id alone.
+  const model = isBuiltInModelRow(row);
   return {
     id: row.id,
     kind: row.kind,
@@ -1028,14 +1053,14 @@ function captureDeviceFromRow(row: CaptureDeviceRow): Omit<CaptureDevicesSlice['
     host: row.address,
     poePort: row.poePort,
     online: row.enabled,
-    streamState: row.kind === 'CAMERA' ? (BUILT_IN_CAPABILITIES.has(row.id) ? (row.enabled ? 'LIVE' : 'LOST') : null) : null,
-    capabilities: [...(BUILT_IN_CAPABILITIES.get(row.id) ?? (row.kind === 'CAMERA' ? ADOPTED_CAMERA_CAPABILITIES : row.kind === 'MIC' && row.adapterKind === REGISTERED_MICROPHONE_ADAPTER_KIND ? REGISTERED_MICROPHONE_CAPABILITIES : []))],
+    streamState: row.kind === 'CAMERA' ? (model ? (row.enabled ? 'LIVE' : 'LOST') : null) : null,
+    capabilities: [...((model ? BUILT_IN_CAPABILITIES.get(row.id) : undefined) ?? (row.kind === 'CAMERA' ? ADOPTED_CAMERA_CAPABILITIES : row.kind === 'MIC' && row.adapterKind === REGISTERED_MICROPHONE_ADAPTER_KIND ? REGISTERED_MICROPHONE_CAPABILITIES : []))],
     // A device that operation 96 registered (the INTERNAL action `registerCaptureDevice`, row 132)
     // carries its adapter and the class derived from it, and reads back exactly as it was
     // registered: no stream until a track is assigned, the one capability of a camera. The
     // built-in devices keep the shape they had: they gain the two members with the rows that
     // surface them (136 / 139).
-    ...(BUILT_IN_CAPABILITIES.has(row.id) ? {} : { adapter: row.adapterKind, sourceClass: DEVELOPMENT_ADAPTER_KINDS.has(row.adapterKind) ? ('DEVELOPMENT' as const) : ('PRODUCTION' as const) }),
+    ...(model ? {} : { adapter: row.adapterKind, sourceClass: DEVELOPMENT_ADAPTER_KINDS.has(row.adapterKind) ? ('DEVELOPMENT' as const) : ('PRODUCTION' as const) }),
     // Task 4 row V7 (decisions C36, C117; the blocking request lines of row W5): a REGISTERED camera
     // states the profile list its row holds, so that the slice and operation 77 carry it to the
     // clients. The list is read as the Core's own rule reads it (`storedProfilesOf` of the capture
@@ -1053,7 +1078,7 @@ function captureDeviceFromRow(row: CaptureDeviceRow): Omit<CaptureDevicesSlice['
 function storedProfilesOfRow(row: CaptureDeviceRow): { profiles?: NonNullable<CaptureDevicesSlice['devices'][number]['profiles']> } {
   if (row.kind !== 'CAMERA') return {};
   const profiles = captureDeviceProfilesOf(row.profiles) ?? [];
-  return BUILT_IN_CAPABILITIES.has(row.id) && profiles.length === 0 ? {} : { profiles };
+  return isBuiltInModelRow(row) && profiles.length === 0 ? {} : { profiles };
 }
 
 /** What `registerCaptureDevice` gives a camera it registers (`packages/shared/src/sim/capture-registry.ts`). */
@@ -1113,7 +1138,8 @@ export function captureConfigFromRow(row: CaptureConfigRow, devices: readonly Ca
     // (`captureDeviceFromRow`): NULL - NOT READ - for a registered camera, since a restart reads no
     // stream; the two built-in cameras of the demonstration model keep the model's value from the
     // registry flag. Until this row every line said LIVE / LOST from `enabled`.
-    const streamState: CaptureConfigSlice['cameras'][number]['streamState'] = BUILT_IN_CAPABILITIES.has(device.id) ? (device.enabled ? 'LIVE' : 'LOST') : null;
+    // Audit fix row 128 (D92): the model's LIVE / LOST for a camera OF THE MODEL only (built-in id AND FAKE), never by id alone.
+    const streamState: CaptureConfigSlice['cameras'][number]['streamState'] = isBuiltInModelRow(device) ? (device.enabled ? 'LIVE' : 'LOST') : null;
     return [{ trackId, deviceId, profile, online: device.enabled, streamState }];
   };
   const mic = (channel: 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04', deviceId: string | null): CaptureConfigSlice['mics'] => {

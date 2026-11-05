@@ -12,6 +12,7 @@ import { DbfsMeter } from '@/components/composed'
 import { micTrackChannelChip } from '@/features/devices/capture-selector' // Row 108 (DF-17): the channel chip words of a meter track
 import { CameraPreview } from '@/features/devices/camera-preview'
 import { useTrackReach } from '@/features/devices/track-reach'
+import { trackStatus, type DeviceStatusCode } from '@/features/devices/model' // Row 129 (U-05): the one track status of both pages
 import { MicSourceMarks, TrackSourceMarks } from '@/features/devices/source-badge'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useDeviceCommandGate } from '@/lib/device-command-gate'
@@ -41,8 +42,8 @@ const selectCamera = (id: VideoTrackId) => (s: SimState) => {
   if (!camera) return null
   return {
     deviceId: camera.deviceId,
-    online: camera.online,
-    lens: camera.lens,
+    // Row 129 (DF-11 web, U-05): the Devices page's own reader - the track and the source it holds now.
+    status: trackStatus(s, id),
     resolution: camera.resolution,
     fps: camera.fps,
     recording: camera.recState === 'REC',
@@ -64,7 +65,9 @@ const selectMic = (id: AudioTrackId) => (s: SimState) => {
   const standbyInputId = s.session?.state === 'RECORDING' ? (audioPairInForce(s).standbyInputId ?? null) : null
   // Row 108: the pair is compared with the input behind the tile's channel, not with the snapshot's device id.
   const source = activeInputId === null || inputId === null ? null : activeInputId === inputId ? ('ACTIVE' as const) : standbyInputId === inputId ? ('STANDBY' as const) : null
-  return { deviceId: mic.deviceId, state: mic.state, clipLatched: mic.clipLatched, channel, source }
+  // Row 129 (U-05): the status is the Devices page's (`trackStatus`: the channel's row, then the input it holds and
+  // its reach), and the marks follow that input - not the snapshot's device id.
+  return { deviceId: mic.deviceId, inputId, status: trackStatus(s, id), channel, source }
 }
 
 /**
@@ -250,7 +253,7 @@ function DeviceMenu({ name, control }: { name: string; control: DeviceCommandCon
   )
 }
 
-function TileHead({ tone, name, state, deviceId, camera = false }: { tone: StatusTone; name: string; state: string; deviceId: string; camera?: boolean }) {
+function TileHead({ tone, name, state, status, deviceId, camera = false }: { tone: StatusTone; name: string; state: string; status: DeviceStatusCode; deviceId: string; camera?: boolean }) {
   const { t } = useTranslation()
   const control = useDeviceCommand(deviceId, name, camera)
   // LB-1: the kit's Button does not pass `aria-busy` on, so the head of the tile carries it: the
@@ -260,7 +263,8 @@ function TileHead({ tone, name, state, deviceId, camera = false }: { tone: Statu
       <StatusDot tone={tone} className="mt-1" />
       <div className="min-w-0 flex-1">
         <div className="dems-tile-name">{name}</div>
-        <div className={`dems-tile-state ${TONE_TEXT_CLASS[tone]}`} data-testid={`tile-state-${deviceId}`}>
+        {/* Row 129 (U-05): `data-status` is the Devices page's code for the same track (its tile / card `data-status`). */}
+        <div className={`dems-tile-state ${TONE_TEXT_CLASS[tone]}`} data-testid={`tile-state-${deviceId}`} data-status={status}>
           {state}
         </div>
       </div>
@@ -315,13 +319,17 @@ function CameraTile({ cameraId, index, beatMs }: { cameraId: VideoTrackId; index
   // Fix wave J (JW-23 (4)): "READY" of a source the Core never checked (a camera on a dead port) reads "Not checked".
   const reach = useTrackReach(cameraId)
   if (!camera) return null
-  const fault = !camera.online || camera.lens === 'FAULT'
-  const notChecked = reach === 'NOT_CHECKED' && !fault && !camera.recording
+  // Row 129 (DF-11 web, U-05): FAULT and OFFLINE are the Devices tile's words for the same track (`trackStatus`).
+  const fault = camera.status === 'FAULT'
+  const offline = camera.status === 'OFFLINE'
+  const notChecked = reach === 'NOT_CHECKED' && !fault && !offline && !camera.recording
   // REC is a state here (red dot, "REC"); the elapsed timer lives on the ring and in panel D.
-  const tone: StatusTone = fault || camera.recording ? 'danger' : notChecked ? 'default' : 'success'
+  const tone: StatusTone = fault || camera.recording ? 'danger' : offline ? 'warning' : notChecked ? 'default' : 'success'
   const state = fault
     ? t('common.status.noSignal')
-    : camera.recording
+    : offline
+      ? t('devices.status.OFFLINE')
+      : camera.recording
       ? t('common.enums.trackRecState.REC')
       : notChecked
         ? t('web.source.notChecked')
@@ -329,7 +337,7 @@ function CameraTile({ cameraId, index, beatMs }: { cameraId: VideoTrackId; index
   const name = t(CAMERA_NAME_KEY[cameraId])
   return (
     <Tile index={index} beatMs={beatMs} testId={`device-tile-${cameraId}`}>
-      <TileHead tone={tone} name={name} state={state} deviceId={camera.deviceId} camera />
+      <TileHead tone={tone} name={name} state={state} status={camera.status} deviceId={camera.deviceId} camera />
       {/* Pass D2 (ux §8f.2, WB-02): the one badge of the camera that feeds this track; nothing unless the Core sent the development class. */}
       <TrackSourceMarks trackId={cameraId} place={`dashboard-${cameraId}`} />
       {/* The format chip sits top-left: bottom-left would cover the DEMO OSD line of the loop (N-39-3, P13). */}
@@ -347,22 +355,31 @@ function CameraTile({ cameraId, index, beatMs }: { cameraId: VideoTrackId; index
   )
 }
 
+/** Row 129: the tone of a microphone tile per track status (CLIP stays red on the Dashboard, as before). */
+const MIC_TILE_TONE: Partial<Record<DeviceStatusCode, StatusTone>> = {
+  READY: 'success',
+  NO_SIGNAL: 'warning',
+  CLIP: 'danger',
+  FAULT: 'danger',
+  OFFLINE: 'warning',
+}
+
 function MicTile({ channel, index, beatMs }: { channel: AudioTrackId; index: number; beatMs: number }) {
   const { t } = useTranslation()
   const mic = useSim(useMemo(() => selectMic(channel), [channel]))
   // Wave H driver B (G75-04; ux §8e.2 "no meters"): no live level while the cameras connect or for a failed start.
   const noLevels = useSim((s) => noLiveLevelsOf(s.session))
   if (!mic) return null
-  const clip = mic.state === 'CLIP' || mic.clipLatched
-  const tone: StatusTone = clip ? 'danger' : mic.state === 'NO_SIGNAL' ? 'warning' : 'success'
-  const state = t(`common.enums.micState.${clip ? 'CLIP' : mic.state}`)
+  // Row 129 (U-05): the Devices card's status of this channel; a meter state keeps the meter's own words.
+  const tone: StatusTone = MIC_TILE_TONE[mic.status] ?? 'warning'
+  const state = mic.status === 'READY' || mic.status === 'NO_SIGNAL' || mic.status === 'CLIP' ? t(`common.enums.micState.${mic.status}`) : t(`devices.status.${mic.status}`)
   const name = t(MIC_NAME_KEY[channel])
   const channelChip = mic.channel ? micTrackChannelChip(mic.channel) : null
   return (
     <Tile index={index} beatMs={beatMs} testId={`device-tile-${channel}`}>
-      <TileHead tone={tone} name={name} state={state} deviceId={mic.deviceId} />
+      <TileHead tone={tone} name={name} state={state} status={mic.status} deviceId={mic.deviceId} />
       {/* Pass D2 (ux §8f.2, WB-02): the one badge of the microphone behind this tile. */}
-      <MicSourceMarks inputId={mic.deviceId} place={`dashboard-${channel}`} />
+      {mic.inputId === null ? null : <MicSourceMarks inputId={mic.inputId} place={`dashboard-${channel}`} />}
       <div className="dems-mic-body" data-channel={mic.channel ?? undefined}>
         {mic.source ? (
           <Chip size="sm" variant="soft" color={mic.source === 'ACTIVE' ? 'accent' : 'default'} className="dems-mic-role" data-testid={`device-tile-source-${channel}`} data-source={mic.source}>

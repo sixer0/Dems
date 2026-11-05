@@ -71,7 +71,7 @@ import { useDeviceLabels } from './labels'
 import { DEVICE_COMMAND_OF, useDeviceWords } from './live'
 import { MicRescan } from './mic-rescan'
 import { PANEL_BEAT_MS, ROW_STAGGER_MS, useHeroBloomDelayMs, useStaggerVariants } from './motion'
-import { COUNTED_DEVICES } from './model'
+import { viewDeviceTarget } from './model'
 import { OtherDevices } from './other-devices'
 import { DevicesPanel } from './panel'
 import { PortMap } from './port-map'
@@ -217,14 +217,17 @@ export function DevicesPage() {
   // draws (CAM-01, CAM-02). Row 140: an added or local device (`CAM-03`, `MIC-03`) opens its own
   // details, built from the Core's device list; the drawer shows nothing for an id that list does
   // not hold, so the selector (where a registered camera is an option) is scrolled to as before.
+  // Row 129 (controller routing D92): on a Core in real capture a found id names a registry device (the bench's real
+  // CAM-03), so it opens the drawer built from the Core's device list - never the built-in track drawer (`viewDeviceTarget`).
   const viewDevice = useCallback((deviceId: string) => {
-    if ((COUNTED_DEVICES as readonly string[]).includes(deviceId)) {
+    const target = viewDeviceTarget(deviceId, realCaptureCore, BUILT_IN_SOURCE_IDS)
+    if (target === 'BUILT_IN_DRAWER') {
       setDrawerId(deviceId as DeviceId)
       return
     }
-    if (!BUILT_IN_SOURCE_IDS.includes(deviceId)) setRegisteredId(deviceId)
+    if (target === 'REGISTERED_DRAWER') setRegisteredId(deviceId)
     document.getElementById(CAPTURE_SELECTOR_ANCHOR)?.scrollIntoView?.({ block: 'start' })
-  }, [])
+  }, [realCaptureCore])
   const camerasStagger = useStaggerVariants(PANEL_BEAT_MS.cameras, ROW_STAGGER_MS)
   const audioStagger = useStaggerVariants(PANEL_BEAT_MS.audio, ROW_STAGGER_MS)
 

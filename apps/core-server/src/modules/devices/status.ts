@@ -39,12 +39,16 @@ import {
   micInputOfChannel,
   noSignalFrame,
   silentFrame,
+  isSlotSourceUp,
+  slotSourceOf,
+  SlotSourceState,
   storageSummary,
   systemStatus,
   toWibIso,
   type AudioFrame,
   type MicStatus,
   type SimState,
+  type SlotSourceDevice,
 } from '@dems/shared/sim';
 import type { EngineHost, EngineMeterFrame } from '../../engine';
 
@@ -209,6 +213,37 @@ export function withCameraStreamFacts(cameras: CommittedState['cameras'], slots:
 const NO_STREAM_STATEMENT = Object.freeze({ resolution: null, fps: null, codec: null } as const);
 
 /**
+ * THE DEVICE STATE OF A TRACK FROM ITS ASSIGNED DEVICE PLUS REACH (audit fix row 128, C-DEV-A;
+ * DF-11 Core, F-5-02b, U-05; decisions D19, D24, D39 (3), D90; contract row 125).
+ *
+ * Before this row a real capture operation answered `lens` and `online` of a track from the
+ * hardware slice's own row - the BUILT-IN camera of the track, seeded `online: true, lens: READY`
+ * and never re-stated at rest. The bench's stored rows therefore said READY with the camera LAN
+ * down (D39 (3)). Now, in a real capture operation only, the shared `slotSourceOf` decides:
+ *
+ *   `online`  true only when the hardware row says online AND the assigned device is in the
+ *             registry with its `online` flag set - exactly the two flags the engine gate reads
+ *             (pre-check LENS: `camera.online`; start rule: `captureDevices[].online`). `online`
+ *             STAYS THE ENGINE GATE: this read repeats it and never writes or widens it. An
+ *             unassigned track (no source) is not online.
+ *   `lens`    READY only when online, the hardware row says READY, and the last reach reading did
+ *             not say NOT_REACHABLE (`reach`, written by the preview outcome, row 127). A device
+ *             with no reading (NOT_CHECKED) keeps READY: nothing is claimed against it.
+ *
+ * A SIMULATED Core (`devices` null) answers the slice's own values, as the simulator does.
+ */
+export function trackSourceStatusOf(
+  camera: Pick<CommittedState['cameras'][number], 'id' | 'lens' | 'online'>,
+  slots: Pick<CaptureSlots, 'cameras' | 'mics'>,
+  devices: readonly SlotSourceDevice[] | null,
+): Pick<VideoTrackStatus, 'lens' | 'online'> {
+  if (devices === null) return { lens: camera.lens, online: camera.online };
+  const source = slotSourceOf(slots, devices, camera.id);
+  const online = camera.online && source.state !== SlotSourceState.NOT_ASSIGNED && source.state !== SlotSourceState.OFFLINE;
+  return { lens: online && camera.lens === 'READY' && isSlotSourceUp(source) ? 'READY' : 'FAULT', online };
+}
+
+/**
  * Operation 46, and `cameras` of operation 44: one entry per video track.
  *
  * Task 4 row 53: `streamFacts` (true in a real capture operation, handed in by the routes) makes
@@ -228,18 +263,20 @@ const NO_STREAM_STATEMENT = Object.freeze({ resolution: null, fps: null, codec: 
  * built-in camera of the hardware slice (`deviceId`, a fact of the unit's own port) never stands
  * in for it. `tracks` stays one entry per track.
  */
-export function videoTracksOf(cameras: CommittedState['cameras'], slots: CaptureSlots = BUILTIN_SLOTS, streamFacts = false): VideoTrackStatus[] {
+export function videoTracksOf(cameras: CommittedState['cameras'], slots: CaptureSlots = BUILTIN_SLOTS, streamFacts = false, devices: readonly SlotSourceDevice[] | null = null): VideoTrackStatus[] {
   // Task 4 row 53: in a real capture operation the picture, the rate and the codec of a track are the STORED statement of its stream.
   return (streamFacts ? withCameraStreamFacts(cameras, slots) : cameras).map((camera) => {
     const slot = slots.cameras.find((entry) => entry.trackId === camera.id);
+    // Audit fix row 128 (D24): in a real capture operation the state is the ASSIGNED device's plus its reach.
+    const { lens, online } = trackSourceStatusOf(camera, slots, streamFacts ? devices : null);
     return {
       trackId: camera.id,
       deviceId: camera.deviceId,
       sourceDeviceId: slot?.deviceId ?? null,
       streamState: slot?.streamState ?? null,
       name: camera.name,
-      lens: camera.lens,
-      online: camera.online,
+      lens,
+      online,
       recState: camera.recState,
       resolution: camera.resolution,
       fps: camera.fps,
@@ -272,7 +309,7 @@ export function videoTracksOf(cameras: CommittedState['cameras'], slots: Capture
  * the in-app simulator answers them; `clip` is the latch of the committed `mics` slice, which a
  * command changes between two frames. Without one: `stateLevelsOf`.
  */
-export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame: EngineMeterFrame | null = null, slots: CaptureSlots = BUILTIN_SLOTS): AudioChannelStatus[] {
+export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame: EngineMeterFrame | null = null, slots: CaptureSlots = BUILTIN_SLOTS, devices: readonly SlotSourceDevice[] | null = null): AudioChannelStatus[] {
   // The slot's channel is read through a destructured map, not a member access on the line: the
   // static guard of the folder (M3) forbids the token that could be read as naming an RBAC role,
   // and the mic's numbered channel is a capture fact of the selector, never an access rule (row 52).
@@ -284,13 +321,18 @@ export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame:
     const line = lineOf.get(inputId);
     if (line === undefined) return [];
     const live = frame?.audio.inputs[inputId];
-    const levels: ChannelLevels = live === undefined ? stateLevelsOf(mic, at) : { dbfs: live.dbfs, peak: live.peak, clip: mic.clipLatched, noSignal: live.noSignal, ...(live.notMeasured === true ? { notMeasured: true as const } : {}) };
+    // Audit fix row 128 (D24; U-05): in a real capture operation a channel whose ASSIGNED device is not
+    // online in the registry, or was last read NOT_REACHABLE, is not READY - unless a measured frame of
+    // that very input says otherwise (a level the Core measures now is the device answering).
+    const measured = live !== undefined && live.notMeasured !== true;
+    const heard = devices === null || measured ? mic : micOfSource(mic, slotSourceOf(slots, devices, line.lineChannel));
+    const levels: ChannelLevels = live === undefined ? stateLevelsOf(heard, at) : { dbfs: live.dbfs, peak: live.peak, clip: mic.clipLatched, noSignal: live.noSignal, ...(live.notMeasured === true ? { notMeasured: true as const } : {}) };
     return [{
       inputId,
       deviceId: line.deviceId,
       name: mic.name,
       channel: line.lineChannel, // D61 (2026-11-04): the entry names its channel (was the PRIMARY/STANDBY capture role)
-      state: mic.state,
+      state: heard.state,
       recState: mic.recState,
       dbfs: levels.dbfs,
       peak: levels.peak,
@@ -302,6 +344,16 @@ export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame:
       phantom: mic.phantom,
     }];
   });
+}
+
+/**
+ * The mic row as its assigned device states it (audit fix row 128): NO_SIGNAL when the device is not
+ * online in the registry or was last read NOT_REACHABLE (`MicState` has no "unreachable"; NO_SIGNAL
+ * is what the pre-check and the clients already draw for a channel that delivers nothing). The SAME
+ * row otherwise.
+ */
+function micOfSource<M extends Pick<MicStatus, 'state' | 'clipLatched'>>(mic: M, source: ReturnType<typeof slotSourceOf>): M {
+  return isSlotSourceUp(source) || mic.state === MicState.NO_SIGNAL ? mic : { ...mic, state: MicState.NO_SIGNAL };
 }
 
 /**
@@ -350,13 +402,29 @@ export function storageStatusOf(state: Pick<CommittedState, 'storage' | 'storage
 }
 
 /** Operation 45: the four mic inputs (D61, 2026-11-04) and the input whose audio feeds the transcribed track `AUDIO-01` right now. */
-export function audioStatusOf(state: Pick<CommittedState, 'mics'> & Partial<Pick<CommittedState, 'captureConfig'>>, now: number, frame: EngineMeterFrame | null = null, slots: CaptureSlots = captureSlotsOf(state)): AudioStatusResponse {
-  return { channels: audioChannelsOf(state.mics, now, frame, slots), activeInputId: activeInputOf(frame, slots) };
+export function audioStatusOf(
+  state: Pick<CommittedState, 'mics'> & Partial<Pick<CommittedState, 'captureConfig' | 'captureDevices'>>,
+  now: number,
+  frame: EngineMeterFrame | null = null,
+  slots: CaptureSlots = captureSlotsOf(state),
+  realCapture = false,
+): AudioStatusResponse {
+  // Audit fix row 128: in a real capture operation the channel state is the assigned device's (`audioChannelsOf`).
+  return { channels: audioChannelsOf(state.mics, now, frame, slots, realCapture ? devicesOf(state) : null), activeInputId: activeInputOf(frame, slots) };
 }
 
 /** Operation 46. */
-export function videoStatusOf(state: Pick<CommittedState, 'cameras'> & Partial<Pick<CommittedState, 'captureConfig'>>, slots: CaptureSlots = captureSlotsOf(state), streamFacts = false): VideoStatusResponse {
-  return { tracks: videoTracksOf(state.cameras, slots, streamFacts) };
+export function videoStatusOf(state: Pick<CommittedState, 'cameras'> & Partial<Pick<CommittedState, 'captureConfig' | 'captureDevices'>>, slots: CaptureSlots = captureSlotsOf(state), streamFacts = false): VideoStatusResponse {
+  return { tracks: videoTracksOf(state.cameras, slots, streamFacts, devicesOf(state)) };
+}
+
+/**
+ * The registry entries of a committed state (audit fix row 128). A state that holds no registry (a
+ * partial state of a test) holds no device: every assigned source then reads OFFLINE in a real
+ * capture operation - never READY by default.
+ */
+function devicesOf(state: Partial<Pick<CommittedState, 'captureDevices'>>): readonly SlotSourceDevice[] {
+  return state.captureDevices?.devices ?? [];
 }
 
 /**
@@ -372,8 +440,9 @@ export function deviceHealthOf(state: CommittedState, now: number, frame: Engine
     device: { id: state.device.id, name: state.device.name, softwareVersion: state.device.softwareVersion },
     systemState: system.state,
     flags: system.flags.map((flag) => ({ id: flag.id, severity: flag.severity, message: flag.message })),
-    cameras: videoTracksOf(state.cameras, slots, streamFacts),
-    audio: audioChannelsOf(state.mics, now, frame, slots),
+    // Audit fix row 128 (D24): in a real capture operation the tracks and the channels state their ASSIGNED device plus its reach.
+    cameras: videoTracksOf(state.cameras, slots, streamFacts, devicesOf(state)),
+    audio: audioChannelsOf(state.mics, now, frame, slots, streamFacts ? devicesOf(state) : null),
     activeInputId: activeInputOf(frame, slots),
     storage: storageStatusOf(state),
     time: {

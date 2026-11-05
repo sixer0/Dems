@@ -2,16 +2,16 @@
 // case E4). No database and no app: the rows are given, the change is applied in memory, the
 // enabled holders are counted. That the rows are the locked, committed ones is the database
 // test's subject (`last-admin.db.test.ts`).
-import { OperatorRole, Permission, ROLE_PERMISSIONS } from '@dems/shared/sim';
+import { OperatorRole, Permission, ROLE_PERMISSIONS, UNATTRIBUTED_OPERATOR_ID } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
-import { administratorsOf, applyChange, leavesNoAdministrator, partyOfActiveSession, type OperatorChange } from '../rule';
+import { administratorsOf, applyChange, isSystemPrincipal, leavesNoAdministrator, partyOfActiveSession, SYSTEM_PRINCIPAL_OPERATOR_IDS, SYSTEM_PRINCIPAL_USERNAMES, type OperatorChange } from '../rule';
 import type { LockedOperator } from '../statements';
 
 /** The roles that hold USER_ADMIN in the shared table: SUPERVISOR alone. */
 const holds = (role: OperatorRole, permission: Permission): boolean => (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(permission);
 const ADMIN_ROLES: ReadonlySet<string> = new Set(Object.values(OperatorRole).filter((role) => holds(role, Permission.USER_ADMIN)));
 
-const operator = (id: string, role: OperatorRole, enabled = true): LockedOperator => ({ id, role, enabled });
+const operator = (id: string, role: OperatorRole, enabled = true): LockedOperator => ({ id, username: `user.${id.toLowerCase()}`, role, enabled });
 
 /** The seeded three. */
 const SEEDED: readonly LockedOperator[] = [operator('OPR-001', 'INVESTIGATOR'), operator('OPR-002', 'SUPERVISOR'), operator('OPR-003', 'TECHNICIAN')];
@@ -136,5 +136,24 @@ describe('D43: a party of the active session', () => {
     expect(partyOfActiveSession(null, 'OPR-003')).toEqual([]);
     // An empty column never matches anything.
     expect(partyOfActiveSession({ ...session, createdBy: null, startedBy: null }, 'OPR-004')).toEqual([]);
+  });
+});
+
+describe('DF-29 / D20(d): the system principals, defined here once (decision D38 DR-4, row 133)', () => {
+  it('the reserved id is the shared UNATTRIBUTED_OPERATOR_ID (OPR-000, the auto-attach actor); the reserved username is `system`; both lists are frozen', () => {
+    expect(UNATTRIBUTED_OPERATOR_ID).toBe('OPR-000');
+    expect(SYSTEM_PRINCIPAL_OPERATOR_IDS).toEqual([UNATTRIBUTED_OPERATOR_ID]);
+    expect(SYSTEM_PRINCIPAL_USERNAMES).toEqual(['system']);
+    expect(Object.isFrozen(SYSTEM_PRINCIPAL_OPERATOR_IDS)).toBe(true);
+    expect(Object.isFrozen(SYSTEM_PRINCIPAL_USERNAMES)).toBe(true);
+  });
+
+  it('a row is a system principal by the reserved id OR the reserved username in any case; real operators and look-alikes are not', () => {
+    expect(isSystemPrincipal({ operatorId: 'OPR-000', username: 'system' })).toBe(true);
+    expect(isSystemPrincipal({ operatorId: 'OPR-000', username: 'anything' })).toBe(true);
+    expect(isSystemPrincipal({ operatorId: 'OPR-123', username: 'SYSTEM' })).toBe(true);
+    expect(isSystemPrincipal({ operatorId: 'OPR-001', username: 'root' })).toBe(false);
+    expect(isSystemPrincipal({ operatorId: 'OPR-0001', username: 'systemd' })).toBe(false);
+    expect(isSystemPrincipal({ operatorId: 'OPR-002', username: '' })).toBe(false);
   });
 });

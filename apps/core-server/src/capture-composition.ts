@@ -96,6 +96,7 @@
  *
  * It logs codes and device ids only: never an address, a path or a credential.
  */
+import { CaptureDeviceReach } from '@dems/shared/api';
 import { CaptureUnreachableCause, isSessionActive } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import { CapturePhase, INTERFACE_FILE_COMMAND, createSystemTimers, type CaptureTimers, type HostCommandRunner } from './capture';
@@ -106,6 +107,7 @@ import {
   captureFenceControl,
   createAlsaConfigWriter,
   createIdleMeters,
+  createMpjpegParser,
   createPreviewManager,
   createPreviewOpener,
   CAMERA_PREVIEW_CODECS,
@@ -143,6 +145,7 @@ import {
   type OnvifStreamLocator,
   type CameraPreviewCodec,
   type PreviewManager,
+  type PreviewOpener,
   type PreviewStream,
   type ProductionCaptureParts,
   type ProductionDoor,
@@ -154,6 +157,7 @@ import { cameraPreview, type CameraPreviewProvision } from './camera-preview';
 import { captureNotices, probeOfAdapters } from './capture-notices';
 import { sessionCapture, type RelayIngestReport, type RelayIngestReports } from './capture-session';
 import { coreCredentialStore } from './credential-store';
+import { noteCaptureDeviceReachIn, type CaptureDeviceReachReading } from './engine';
 import { hostAliasSocketTransportOf } from './host-alias-socket';
 import { captureCameraNetworkControl, captureFactoryScanControl, captureHostAliasControl, captureNetworkConfigControl } from './modules/capture-config';
 import { wireCaptureCredentialHolders, type CaptureCredentialHolders, type CaptureCredentialHoldersDependencies } from './modules/capture-config/credential-holders';
@@ -189,6 +193,8 @@ export const CaptureCompositionCode = {
   MIC_LOSS_WATCH_REPORT: 'CAPTURE_COMPOSITION_MIC_LOSS_WATCH_REPORT',
   /** Decisions D51 / D53: a note of the preview manager (its own `PREVIEW_*` code, the device and a code word are in the context). */
   PREVIEW_NOTE: 'CAPTURE_COMPOSITION_PREVIEW_NOTE',
+  /** Audit row 127 (DF-12): the engine did not take a reach reading of a preview (the device, the reach and a code word are in the context). */
+  PREVIEW_REACH_NOT_WRITTEN: 'CAPTURE_COMPOSITION_PREVIEW_REACH_NOT_WRITTEN',
   /** Decisions D51 / D53: a notice of the idle meters (its own code, the device and a detail word are in the context). */
   IDLE_METER_NOTICE: 'CAPTURE_COMPOSITION_IDLE_METER_NOTICE',
   /** The pre-check asked a camera before the capture fence offered its adapters: the camera reads as unreachable. */
@@ -417,6 +423,155 @@ export interface MicLossWatchBundle {
   readonly report: (entry: { readonly code: string; readonly deviceId: string | null; readonly detail: string }) => void;
 }
 
+// ── The outcome of a live preview (audit row 127: DF-12, DF-13; decisions D19, D24, D90) ────────────
+
+/**
+ * How long one note of the preview manager stands for its repeats: a note of the same device and the same reason
+ * within this window is counted, not logged; the first one after it is logged with the count (`collapsed`). The
+ * restart window of the manager (`PREVIEW_RESTART_WINDOW_MS`, 5 min): one line per camera and cause per window.
+ */
+export const PREVIEW_NOTE_COLLAPSE_MS = 5 * 60_000;
+/**
+ * A reach reading equal to the last one written for the device is written again only after this long (a fresh
+ * `checkedAt`). Short on purpose: the console's "Try again" (row 130) keeps its gate open until the Core states a
+ * NEWER `checkedAt`, so a retry that fails must be dated within seconds; within one restart cycle of the manager
+ * (restart delay 2 s, 3 restarts) it bounds the writes to about two per device.
+ */
+export const PREVIEW_REACH_REFRESH_MS = 5_000;
+/** At most this many device-and-reason keys are held; the oldest goes first. */
+export const PREVIEW_NOTE_KEYS_KEPT = 256;
+/** The label of the engine unit that takes one reach reading. */
+export const PREVIEW_REACH_UNIT = 'capture.previewReach';
+
+/**
+ * The notes of the preview manager that are a FAILED reading of the camera: no picture came (an open refused, a
+ * credential refused, the restart bound reached) or the pipeline ended by itself. Each one makes the device
+ * `NOT_REACHABLE` (it clears `REACHABLE`). `PREVIEW_RESTARTING`, `PREVIEW_NOT_REAPED` and
+ * `PREVIEW_PAUSE_ENDED_BY_ITSELF` say nothing new about the camera.
+ */
+export const PREVIEW_FAILURE_NOTES: ReadonlySet<string> = new Set(['PREVIEW_OPEN_REFUSED', 'PREVIEW_ENDED', 'PREVIEW_UNAVAILABLE', 'PREVIEW_AUTH_REFUSED']);
+
+export interface PreviewNoteEntry {
+  readonly code: string;
+  readonly deviceId: string;
+  readonly reason: string | null;
+}
+
+export interface PreviewOutcomeDependencies {
+  /** The server clock, in milliseconds: `checkedAt` and the windows. */
+  readonly now: () => number;
+  /** Hands one reach reading to the engine. A rejection is reported and the reading is not taken as written. */
+  readonly write: (reading: CaptureDeviceReachReading) => Promise<unknown> | void;
+  /** One collapsed note to the log (warn): the first of its window, with the count of the repeats of the window before. */
+  readonly log: (context: { readonly note: string; readonly deviceId: string; readonly reason: string | null; readonly collapsed: number }) => void;
+  /** The engine did not take a reading. */
+  readonly notWritten: (context: { readonly deviceId: string; readonly reach: CaptureDeviceReach; readonly reason: string | null }) => void;
+}
+
+export interface PreviewOutcome {
+  /** The opener of the manager, watched: the first picture of each open is a `REACHABLE` reading of that device. */
+  opener(open: PreviewOpener): PreviewOpener;
+  /** The `report` of the manager: a failure note is a `NOT_REACHABLE` reading; every note is collapsed per device and reason. */
+  note(entry: PreviewNoteEntry): void;
+}
+
+/**
+ * THE OUTCOME OF A LIVE PREVIEW (audit row 127; DF-12, DF-13; decisions D19, D24): the preview manager tells nobody
+ * what it learnt of a camera, and logged every attempt (32 warn lines in 6 s for 4 cameras on a link that was down,
+ * finding F-9-06). Here:
+ *
+ * - the FIRST PICTURE of an open (the first whole JPEG of the `mpjpeg` stream, read by the manager's own parser
+ *   until it arrives) writes `checkedAt` and `reach: REACHABLE` on the device entry of `captureDevices`;
+ * - a FAILURE note writes `reach: NOT_REACHABLE` with its `checkedAt` (a `REACHABLE` is cleared);
+ * - a reading equal to the last one written for the device is not written again within `PREVIEW_REACH_REFRESH_MS`;
+ * - every note is logged ONCE per device and reason in `PREVIEW_NOTE_COLLAPSE_MS`; the repeats are counted into the
+ *   next line of that key. A picture of the device ends its keys: a failure after a recovery is logged at once.
+ *
+ * `online` is never touched (the registry flag the session engine and the pre-check read). Nothing here throws.
+ */
+export function createPreviewOutcome(dependencies: PreviewOutcomeDependencies): PreviewOutcome {
+  const { now } = dependencies;
+  /** The last reading handed to the engine per device. */
+  const written = new Map<string, { readonly reach: CaptureDeviceReach; readonly at: number }>();
+  /** Per device and reason: when its line was logged and how many repeats were counted since. */
+  const collapsed = new Map<string, { readonly deviceId: string; readonly at: number; repeats: number }>();
+
+  const read = (deviceId: string, reach: CaptureDeviceReach): void => {
+    const at = now();
+    const last = written.get(deviceId);
+    if (last !== undefined && last.reach === reach && at - last.at < PREVIEW_REACH_REFRESH_MS) return;
+    const entry = { reach, at };
+    written.set(deviceId, entry);
+    const failed = (error: unknown): void => {
+      // Not taken: the next reading of the device is written, whatever the window.
+      if (written.get(deviceId) === entry) written.delete(deviceId);
+      const code = (error as { code?: unknown } | null)?.code;
+      try {
+        dependencies.notWritten({ deviceId, reach, reason: typeof code === 'string' ? code : null });
+      } catch {
+        // A sink never stops the preview.
+      }
+    };
+    try {
+      void Promise.resolve(dependencies.write({ deviceId, reach, checkedAt: at })).catch(failed);
+    } catch (error) {
+      failed(error);
+    }
+  };
+
+  const forgetNotesOf = (deviceId: string): void => {
+    for (const [key, held] of collapsed) if (held.deviceId === deviceId) collapsed.delete(key);
+  };
+
+  return {
+    opener: (open) => (deviceId, operatorId, onChunk, signal) => {
+      let pictured = false;
+      const parser = createMpjpegParser(() => {
+        if (pictured) return;
+        pictured = true;
+        forgetNotesOf(deviceId);
+        read(deviceId, CaptureDeviceReach.REACHABLE);
+      });
+      return open(
+        deviceId,
+        operatorId,
+        (bytes) => {
+          if (!pictured) {
+            try {
+              parser.push(bytes);
+            } catch {
+              // The watch never stops the stream.
+            }
+          }
+          onChunk(bytes);
+        },
+        signal,
+      );
+    },
+    note: (entry) => {
+      if (PREVIEW_FAILURE_NOTES.has(entry.code)) read(entry.deviceId, CaptureDeviceReach.NOT_REACHABLE);
+      const key = `${entry.deviceId}\u0000${entry.reason ?? entry.code}`;
+      const at = now();
+      const held = collapsed.get(key);
+      if (held !== undefined && at - held.at < PREVIEW_NOTE_COLLAPSE_MS) {
+        held.repeats += 1;
+        return;
+      }
+      if (held !== undefined) collapsed.delete(key);
+      else if (collapsed.size >= PREVIEW_NOTE_KEYS_KEPT) {
+        const oldest = collapsed.keys().next().value;
+        if (oldest !== undefined) collapsed.delete(oldest);
+      }
+      collapsed.set(key, { deviceId: entry.deviceId, at, repeats: 0 });
+      try {
+        dependencies.log({ note: entry.code, deviceId: entry.deviceId, reason: entry.reason, collapsed: held?.repeats ?? 0 });
+      } catch {
+        // A sink never stops the preview.
+      }
+    },
+  };
+}
+
 // ── The starter of a live preview (decisions D51 / D53) ───────────────────────────────────────
 
 const isPreviewCodec = (codec: string | null): codec is CameraPreviewCodec => codec !== null && (CAMERA_PREVIEW_CODECS as readonly string[]).includes(codec);
@@ -544,6 +699,8 @@ export interface ProductionCapturePorts extends Pick<CaptureCredentialHoldersDep
   publishLevels?(levels: readonly IdleMeterLevel[]): void;
   /** `cameraPreview(app).provide`: the manager and the meters to the API unit. */
   provideCameraPreview?(provision: CameraPreviewProvision): void;
+  /** Audit row 127 (DF-12): one reach reading of a preview into the engine (`noteCaptureDeviceReachIn` in a unit). Absent: no reading is kept. */
+  noteDeviceReach?(reading: CaptureDeviceReachReading): Promise<unknown>;
   /** Called before the pre-check reads a camera: the pre-check waits for it. */
   providePrecheckYield?(beforeCamera: (deviceId: string) => Promise<void>): void;
 }
@@ -662,11 +819,18 @@ export function composeProductionCapture(ports: ProductionCapturePorts, input: P
   };
 
   // 12. THE LIVE CAMERA PREVIEW (decisions D51 / D53). Built before the bundles: the camera bundle's stream yields to it.
+  // Audit row 127 (DF-12, DF-13): its outcome is the device's reach, and its notes are collapsed per device and reason.
+  const previewOutcome = createPreviewOutcome({
+    now: ports.now,
+    write: (reading) => ports.noteDeviceReach?.(reading),
+    log: (context) => ports.report('warn', CaptureCompositionCode.PREVIEW_NOTE, context),
+    notWritten: (context) => ports.report('warn', CaptureCompositionCode.PREVIEW_REACH_NOT_WRITTEN, context),
+  });
   const preview = createPreviewManager({
     timers,
     now: ports.now,
-    open: createPreviewOpener({ timers, credentials: holders.cameraPreview, locator, stream: stored.previewStream, storedAddress, start: input.previewStarter ?? productPreviewStarterOf(ports, timers) }),
-    report: (entry) => ports.report('warn', CaptureCompositionCode.PREVIEW_NOTE, { note: entry.code, deviceId: entry.deviceId, reason: entry.reason }),
+    open: previewOutcome.opener(createPreviewOpener({ timers, credentials: holders.cameraPreview, locator, stream: stored.previewStream, storedAddress, start: input.previewStarter ?? productPreviewStarterOf(ports, timers) })),
+    report: (entry) => previewOutcome.note(entry),
   });
   /** True while a session is active; a port that throws counts as active, a composition without the port as idle. */
   const sessionActiveNow = (): boolean => {
@@ -1088,6 +1252,11 @@ export function composeProductionCaptureOf(app: FastifyInstance, input: Producti
         void app.engine.applyCaptureTelemetry({ levels: levels.map((level) => ({ role: level.role, dbfs: level.dbfs, clipped: level.clipped })), ingest: [], fragments: [] }).catch(() => undefined);
       },
       provideCameraPreview: (provision) => cameraPreview(app).provide(provision),
+      // Audit row 127 (DF-12; D19, D24): the preview's reach reading in a unit of its own; no engine running: nothing is kept.
+      noteDeviceReach: async (reading) => {
+        if (!app.seams.has('engine') || !app.engine.running) return;
+        await app.engine.run(PREVIEW_REACH_UNIT, (scope) => noteCaptureDeviceReachIn(scope, reading));
+      },
       // THE PRE-CHECK YIELD: the probe the pre-check reads is the fence's of this moment (as `registerCaptureNotices` hands it),
       // with the yield of the camera's live preview before each camera read. A fence that offers no adapters yet: unreachable.
       providePrecheckYield: (beforeCamera) => {

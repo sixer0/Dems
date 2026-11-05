@@ -15,6 +15,9 @@ import {
   activeCaptureNotice,
   captureReachabilityOf,
   createManualClock,
+  SlotSourceState, // audit fix row 128
+  isSlotSourceUp,
+  slotSourceOf,
   createSim,
   evaluatePrecheck,
   isCaptureNotice,
@@ -640,5 +643,113 @@ describe('row V7d: a camera that answered a check was not read - a registered ca
     expect(of(faulted)).toEqual({ entry: 'LOST', line: 'LOST', online: true });
     faulted.sim.actions.clearCaptureWarning(FAULT);
     expect(of(faulted)).toEqual({ entry: null, line: null, online: true });
+  });
+});
+
+// Audit fix row 128 (C-DEV-A; DF-11, U-05, F-5-02b; D19, D24, D90): `slotSourceOf` is the one reader of "is the source of
+// this slot there" - the assigned device plus its reach (row 125). It never touches the start rule (`online` stays the gate).
+describe('row 128: slotSourceOf states the assigned device plus its reach', () => {
+  const selector = {
+    cameras: [{ trackId: 'VIDEO-01' as const, deviceId: 'CAM-05' }, { trackId: 'VIDEO-02' as const, deviceId: 'CAM-06' }],
+    mics: [{ channel: 'MIC-01' as const, deviceId: 'MIC-05' }],
+  };
+  const devices = [
+    { id: 'CAM-05', kind: 'CAMERA' as const, online: true, reach: 'NOT_REACHABLE' as const, checkedAt: START },
+    { id: 'CAM-06', kind: 'CAMERA' as const, online: true },
+    { id: 'MIC-05', kind: 'MIC' as const, online: false, reach: 'REACHABLE' as const, checkedAt: START },
+  ];
+
+  it('NOT_REACHABLE, NOT_CHECKED, OFFLINE (the registry flag wins over a stated reach), NOT_ASSIGNED; only REACHABLE / NOT_CHECKED are up', () => {
+    expect(slotSourceOf(selector, devices, 'VIDEO-01')).toEqual({ slot: 'VIDEO-01', deviceId: 'CAM-05', state: SlotSourceState.NOT_REACHABLE, checkedAt: START });
+    expect(slotSourceOf(selector, devices, 'VIDEO-02')).toEqual({ slot: 'VIDEO-02', deviceId: 'CAM-06', state: SlotSourceState.NOT_CHECKED, checkedAt: null });
+    expect(slotSourceOf(selector, devices, 'MIC-01')).toMatchObject({ deviceId: 'MIC-05', state: SlotSourceState.OFFLINE });
+    expect(slotSourceOf(selector, devices, 'VIDEO-03')).toEqual({ slot: 'VIDEO-03', deviceId: null, state: SlotSourceState.NOT_ASSIGNED, checkedAt: null });
+    // A device of the other kind under the same id is not the source (CONTROL: kind is part of the match).
+    expect(slotSourceOf(selector, [{ id: 'CAM-06', kind: 'MIC', online: true }], 'VIDEO-02').state).toBe(SlotSourceState.OFFLINE);
+    expect(slotSourceOf(selector, [{ ...devices[0]!, reach: 'REACHABLE' }], 'VIDEO-01').state).toBe(SlotSourceState.REACHABLE);
+    expect(Object.values(SlotSourceState).filter((state) => isSlotSourceUp({ state }))).toEqual(['NOT_CHECKED', 'REACHABLE']);
+  });
+
+  it('the start rule is untouched: a NOT_REACHABLE camera whose registry flag is online still passes `captureReachabilityOf` (online stays the engine gate)', () => {
+    const h = harness();
+    h.sim.store.setState({ captureDevices: { ...h.state().captureDevices, devices: h.state().captureDevices.devices.map((device) => (device.id === 'CAM-02' ? { ...device, reach: 'NOT_REACHABLE', checkedAt: START } : device)) } });
+    expect(captureReachabilityOf(h.state()).find((row) => row.deviceId === 'CAM-02')).toMatchObject({ reachable: true, status: 'PASS' });
+    expect(slotSourceOf(h.state().captureConfig, h.state().captureDevices.devices, 'VIDEO-02').state).toBe(SlotSourceState.NOT_REACHABLE);
+  });
+});
+
+// Audit fix row 128b (C-DEV-A; F-5-02b; decision D100 (1), option (a)): the pre-check's live view reads the REACH of the
+// assigned source through `slotSourceOf` (row 128). An assigned source the Core states NOT_REACHABLE reads WARN, never PASS
+// and never BLOCK; the start rule (`captureReachabilityOf`, `online`) is unchanged, so a stale reach never blocks a start.
+// The Core half (the run's probe re-states reach before the action) is `apps/core-server/src/capture-notices/__tests__/notices.test.ts`.
+describe('row 128b: the pre-check live view reads reach (WARN on NOT_REACHABLE); the start rule does not', () => {
+  const withReach = (state: SimState, deviceId: string, reach: 'REACHABLE' | 'NOT_REACHABLE' | null, online = true): Pick<SimState, 'captureDevices'> => ({
+    captureDevices: { ...state.captureDevices, devices: state.captureDevices.devices.map((device) => (device.id === deviceId ? { ...device, online, reach, checkedAt: reach === null ? null : START } : device)) },
+  });
+  const sourceOf = (state: SimState, slot: 'VIDEO-02' | 'MIC-01' | 'MIC-02'): string => {
+    const line = slot.startsWith('VIDEO-') ? state.captureConfig.cameras.find((camera) => camera.trackId === slot) : state.captureConfig.mics.find((mic) => mic.channel === slot);
+    if (line === undefined) throw new Error(`the seeded selector holds no line for ${slot}`);
+    return line.deviceId;
+  };
+
+  it('REAL capture: a camera stated NOT_REACHABLE reads WARN UNREACHABLE (oneCamera), a microphone channel WARN (noStandby, channel 1 too - never BLOCK); REACHABLE and no reading read PASS', () => {
+    const h = ownCaptureBed.bed({ capture: 'external' });
+    expect(isOwnCaptureCoreState(h.state())).toBe(true);
+    const cam = sourceOf(h.state(), 'VIDEO-02');
+    const primary = sourceOf(h.state(), 'MIC-01');
+    const second = sourceOf(h.state(), 'MIC-02');
+    // CONTROL: no reading states anything - the items are what they were.
+    expect(evaluatePrecheck(h.state(), 'LENS_2')).toMatchObject({ status: 'PASS', value: 'READY' });
+    expect(evaluatePrecheck(h.state(), 'MIC_PRIMARY').status).not.toBe('BLOCK');
+
+    h.sim.store.setState(withReach(h.state(), cam, 'NOT_REACHABLE'));
+    expect(evaluatePrecheck(h.state(), 'LENS_2')).toEqual({
+      status: 'WARN',
+      value: 'UNREACHABLE',
+      reason: `${cam} was not reachable at the last check`,
+      reasonCode: null,
+      params: { deviceId: cam, deviceKind: 'CAMERA', rule: CaptureStartRule.ONE_CAMERA },
+    });
+    // The other tracks are not touched.
+    expect(evaluatePrecheck(h.state(), 'LENS_1')).toMatchObject({ status: 'PASS' });
+    // The clients' sentence exists under that rule.
+    expect(en.common.captureNotice.start[CaptureStartRule.ONE_CAMERA]).toContain('{{device}}');
+
+    // A later reading that reached it: PASS again (what the pre-check run's probe states, row 128b Core half).
+    h.sim.store.setState(withReach(h.state(), cam, 'REACHABLE'));
+    expect(evaluatePrecheck(h.state(), 'LENS_2')).toMatchObject({ status: 'PASS', value: 'READY' });
+
+    h.sim.store.setState(withReach(h.state(), primary, 'NOT_REACHABLE'));
+    expect(evaluatePrecheck(h.state(), 'MIC_PRIMARY')).toMatchObject({ status: 'WARN', value: 'UNREACHABLE', reasonCode: null, params: { deviceId: primary, deviceKind: 'MIC', rule: CaptureStartRule.NO_STANDBY } });
+    if (second !== primary) {
+      h.sim.store.setState(withReach(h.state(), second, 'NOT_REACHABLE'));
+      expect(evaluatePrecheck(h.state(), 'MIC_STANDBY')).toMatchObject({ status: 'WARN', value: 'UNREACHABLE', params: { deviceId: second, deviceKind: 'MIC', rule: CaptureStartRule.NO_STANDBY } });
+    }
+  });
+
+  it('the start rule is unchanged: a stale NOT_REACHABLE keeps every row of captureReachabilityOf reachable, and a pre-check run on it ends WARN, never BLOCK; an offline device keeps the start rule item (online stays the gate)', () => {
+    const h = ownCaptureBed.bed({ capture: 'external' });
+    const cam = sourceOf(h.state(), 'VIDEO-02');
+    const primary = sourceOf(h.state(), 'MIC-01');
+    h.sim.store.setState(withReach(h.state(), cam, 'NOT_REACHABLE'));
+    h.sim.store.setState(withReach(h.state(), primary, 'NOT_REACHABLE'));
+    expect(captureReachabilityOf(h.state()).every((row) => row.reachable && row.status === 'PASS')).toBe(true);
+    h.armed();
+    expect(h.state().session?.precheck.items.find((item) => item.id === 'LENS_2')).toMatchObject({ status: 'WARN', value: 'UNREACHABLE' });
+    expect(h.state().session?.precheck.items.find((item) => item.id === 'MIC_PRIMARY')).toMatchObject({ status: 'WARN', value: 'UNREACHABLE' });
+    expect(h.state().session?.precheck.outcome).toBe('WARN');
+
+    // The registry flag says offline: the start rule's own item decides (BLOCK for channel 1), the reach rule adds nothing.
+    const off = ownCaptureBed.bed({ capture: 'external' });
+    off.sim.store.setState(withReach(off.state(), primary, 'NOT_REACHABLE', false));
+    expect(evaluatePrecheck(off.state(), 'MIC_PRIMARY')).toMatchObject({ status: 'BLOCK', value: 'UNREACHABLE', params: { deviceId: primary, rule: captureReachabilityOf(off.state()).find((row) => row.slot === 'MIC-01')?.rule } });
+  });
+
+  it('CONTROL: the simulated lane on the same reach is unchanged (PASS) - the rule applies to a Core in its own capture only', () => {
+    const h = ownCaptureBed.bed({ capture: 'simulated' });
+    expect(isOwnCaptureCoreState(h.state())).toBe(false);
+    const cam = sourceOf(h.state(), 'VIDEO-02');
+    h.sim.store.setState(withReach(h.state(), cam, 'NOT_REACHABLE'));
+    expect(evaluatePrecheck(h.state(), 'LENS_2')).toMatchObject({ status: 'PASS', value: 'READY' });
   });
 });

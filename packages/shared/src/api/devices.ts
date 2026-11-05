@@ -358,6 +358,7 @@ export const DEVICE_OPERATIONS = [
       'Restarts a camera, a microphone or another device of the Core (simulated). It is refused while a recording runs, and the platform devices GNSS, TPM and FRONT-PANEL cannot be restarted.',
       'Schema v2 (C3 §3 op 48; OD-22; NM-01): for a **camera** the restart is a PoE power cycle. It is allowed **only when that camera\'s stream is LOST** — otherwise `409 CAMERA_NOT_LOST` with `details.streamState` — and it requires the body `{ "confirm": true }`. A cycle during RECORDING is refused `409 RECORDING_ACTIVE` as before. The `captureConfig` slice marks the gap. Mics and other devices keep the plain restart.',
       'Writes DEVICE_COMMAND with `details.command: RESTART`, or `POE_CYCLE` plus a second CAMERA_POE_CYCLED row for a camera cycle (E-12; the CAMERA_POE_CYCLED detail is `deviceId`, `poePort`, `streamWasLost: true`, `confirmed: true` and the optional gap markers — never a credential).',
+      'Row CS2 (decision D89; R-1 routed by D96): a Core in its own capture sends no command to a device. After the permission and device checks (403, 404) and before the recording check, this operation answers `409 COMMAND_UNSUPPORTED` with `details.reason: DEVICE_COMMAND_NOT_AVAILABLE` - the camera PoE cycle included; nothing is changed and nothing is written.',
       commandNote(DeviceCommand.RESTART),
     ].join('\n\n'),
     source: backendSource(SECTION, 48),
@@ -371,7 +372,7 @@ export const DEVICE_OPERATIONS = [
       404: UNKNOWN_DEVICE,
       409: {
         description:
-          'A recording is running (RECORDING_ACTIVE), the device accepts no restart (COMMAND_UNSUPPORTED), or a camera whose stream is not lost was asked for a PoE cycle (CAMERA_NOT_LOST, with `details.streamState: LIVE`; OD-22).',
+          'A recording is running (RECORDING_ACTIVE), the device accepts no restart (COMMAND_UNSUPPORTED; with `details.reason: DEVICE_COMMAND_NOT_AVAILABLE` on a Core in its own capture, which sends no command to a device), or a camera whose stream is not lost was asked for a PoE cycle (CAMERA_NOT_LOST, with `details.streamState: LIVE`; OD-22).',
         schema: 'ApiError',
       },
       422: INVALID_PATH_PARAMETER,
@@ -390,6 +391,7 @@ export const DEVICE_OPERATIONS = [
     description: [
       'Sends a test signal to a device (simulated): a microphone plays a steady tone of -18 dBFS on its meter for two seconds. The platform devices GNSS, TPM and FRONT-PANEL accept no test signal.',
       'Writes DEVICE_COMMAND with `details.command: TEST_SIGNAL`.',
+      'Row CS2 (decision D89; R-1 routed by D96): a Core in its own capture sends no command to a device. After the permission and device checks (403, 404) this operation answers `409 COMMAND_UNSUPPORTED` with `details.reason: DEVICE_COMMAND_NOT_AVAILABLE`; nothing is changed and nothing is written.',
       commandNote(DeviceCommand.TEST_SIGNAL),
     ].join('\n\n'),
     source: backendSource(SECTION, 49),
@@ -399,7 +401,7 @@ export const DEVICE_OPERATIONS = [
       401: NOT_SIGNED_IN,
       403: notPermitted(Permission.DIAGNOSTICS_RUN),
       404: UNKNOWN_DEVICE,
-      409: { description: 'The device accepts no test signal (COMMAND_UNSUPPORTED).', schema: 'ApiError' },
+      409: { description: 'The device accepts no test signal (COMMAND_UNSUPPORTED), or the Core sends no command to a device (`details.reason: DEVICE_COMMAND_NOT_AVAILABLE`: a Core in its own capture).', schema: 'ApiError' },
       422: INVALID_PATH_PARAMETER,
     },
     access: DIAGNOSTICS_RUN,
@@ -416,6 +418,7 @@ export const DEVICE_OPERATIONS = [
     description: [
       'Makes the indicator of a device blink three times (simulated). Every device accepts it, the platform devices GNSS, TPM and FRONT-PANEL included.',
       'Writes DEVICE_COMMAND with `details.command: IDENTIFY`.',
+      'Row CS2 (decision D89; R-1 routed by D96): a Core in its own capture sends no command to a device. After the permission and device checks (403, 404) this operation answers `409 COMMAND_UNSUPPORTED` with `details.reason: DEVICE_COMMAND_NOT_AVAILABLE`; nothing is changed and nothing is written.',
       commandNote(DeviceCommand.IDENTIFY),
     ].join('\n\n'),
     source: backendSource(SECTION, 50),
@@ -425,6 +428,8 @@ export const DEVICE_OPERATIONS = [
       401: NOT_SIGNED_IN,
       403: notPermitted(Permission.DIAGNOSTICS_RUN),
       404: UNKNOWN_DEVICE,
+      // Row CS2 (D89; R-1 routed by D96): the own-capture refusal; every device accepts IDENTIFY otherwise.
+      409: { description: 'The Core sends no command to a device (COMMAND_UNSUPPORTED, `details.reason: DEVICE_COMMAND_NOT_AVAILABLE`: a Core in its own capture).', schema: 'ApiError' },
       422: INVALID_PATH_PARAMETER,
     },
     access: DIAGNOSTICS_RUN,
@@ -540,7 +545,7 @@ export const CAPTURE_CONFIG_OPERATIONS = [
     description: [
       'The capture-device registry: id, kind, model, firmware, host, PoE port, online flag, stream state and capabilities — the field list of `C3 §2.3` op 77. **No credential member exists** (RK-12), and a host is a host only, never a `user:password@` URL (specs C-N8).',
       'Fed by supervisor telemetry (`applyCaptureTelemetry`, SH-18). The answer is the `captureDevices` slice in its wire form (API-6); it is its own slice, never the paired-client registry (E-04).',
-      'Fix wave J round two (finding JW-23): `online` is the registry flag of a device, not a statement that it is reachable now. A Core in its own capture asks a source in a pre-check, at a session start, in a microphone re-scan and - since decisions D51 / D53 - while an operator watches its live preview (`createCameraPreviewSession`) or holds the idle microphone meters (`holdIdleMeters`); a device nobody has asked (a camera registered on a port where nothing answers) reads `online: true` until one of them finds it unreachable. Neither the preview nor the idle meters change this flag. Clients show such a device as "Not checked" at rest.',
+      'Fix wave J round two (finding JW-23): `online` is the registry flag of a device, not a statement that it is reachable now. A Core in its own capture asks a source in a pre-check, at a session start, in a microphone re-scan and - since decisions D51 / D53 - while an operator watches its live preview (`createCameraPreviewSession`) or holds the idle microphone meters (`holdIdleMeters`); a device nobody has asked (a camera registered on a port where nothing answers) reads `online: true` until one of them finds it unreachable. Neither the preview nor the idle meters change this flag; a preview states its outcome in `reach` and `checkedAt` (row 125: its first picture states `REACHABLE`, a failure `NOT_REACHABLE`, each with the time of the reading; in memory only, absent after a restart). Clients show a device with no stated `reach` as "Not checked" at rest.',
       'Needs a signed-in operator. Every role may read it.',
       SIM_V2_NOTE,
     ].join('\n\n'),
@@ -712,6 +717,7 @@ export const CAPTURE_PREVIEW_OPERATIONS = [
       `Returns a short-lived URL of the registry-external route \`GET /preview/{token}\`, which streams the camera in the path as motion JPEG (\`multipart/x-mixed-replace\`, about ${String(CAMERA_PREVIEW_PICTURE.fps)} pictures per second at ${String(CAMERA_PREVIEW_PICTURE.width)}x${String(CAMERA_PREVIEW_PICTURE.height)}; \`Cache-Control: no-store\`). The token (prefix \`${CAMERA_PREVIEW_TOKEN_PREFIX}\`) is a random bearer value bound to the operator, the sign-in session and the camera; it must be opened within ${String(CAMERA_PREVIEW_SESSION_TTL_MS / 1000)} s and never enters a log or an audit row. A stream that is open is cut when its sign-in session ends (checked every 10 s).`,
       'Needs SESSION_START, CAPTURE_CONFIG or DEVICE_MANAGE (decision D53: everyone who can start a session). The route `GET /preview/{token}` has the same rule. The camera must be a registered production camera: the Core reads its stored credential for the preview (one CAPTURE_CREDENTIAL_REVEALED row, `reason: PREVIEW_OPEN`, when the stream is started), never returns it.',
       `**Recording always has priority.** A preview yields its camera before a pre-check and before a session opens it, and resumes after the recording's push stands, while viewers remain. Bounds: ${String(CAMERA_PREVIEW_LIMITS.pipelinesPerCamera)} stream per camera, ${String(CAMERA_PREVIEW_LIMITS.pipelines)} in all, ${String(CAMERA_PREVIEW_LIMITS.viewersPerCamera)} viewers per camera and ${String(CAMERA_PREVIEW_LIMITS.viewers)} in all; over a bound the Core answers \`429 RATE_LIMITED\` with \`details.reason: ${CAMERA_PREVIEW_LIMIT_REASON}\` (an envelope-level answer) and writes no row. A Core without a live preview answers \`409 INVALID_STATE\` with \`details.reason: ${CAMERA_PREVIEW_NOT_AVAILABLE_REASON}\`.`,
+      'The outcome is stated on the camera\'s entry of the `captureDevices` slice (row 125; decisions D19, D24): the first picture sets `reach: REACHABLE`, a failure `reach: NOT_REACHABLE`, each with `checkedAt`. A preview never changes `online`, the registry flag.',
       'Writes CAMERA_PREVIEW_OPENED before the answer: the device, `expiresAt` and the operation - never the token or the URL.',
       CORE_SERVER_NOTE,
     ].join('\n\n'),
@@ -768,6 +774,11 @@ const BODY_REFUSALS = {
 const NOT_FOUND = {
   notFound: simRefusalExample('Unknown device', 'NOT_FOUND', `Device ${STATE_EXAMPLE_IDS.unknownDeviceId} not found.`, 'NOT_FOUND'),
 } as const;
+/** Row CS2 (D89; R-1 routed by D96): ops 48-50 on a Core in its own capture - the shape of op 66's `servicesRestartNotAvailable` (row 104c2). */
+const deviceCommandNotAvailable = () =>
+  simRefusalExample('A Core in its own capture: it sends no command to a device', 'COMMAND_UNSUPPORTED', 'Device commands (restart, test signal, identify) are not available on this Core.', 'COMMAND_UNSUPPORTED', {
+    reason: 'DEVICE_COMMAND_NOT_AVAILABLE',
+  });
 const unsupported = (command: DeviceCommand) =>
   simRefusalExample(
     `${STATE_EXAMPLE_IDS.platformDeviceId} accepts IDENTIFY only`,
@@ -819,6 +830,7 @@ export const DEVICE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
           { from: 'RECORDING', event: 'deviceCommand' },
         ),
         commandUnsupported: unsupported(DeviceCommand.RESTART),
+        deviceCommandNotAvailable: deviceCommandNotAvailable(),
       },
       422: BAD_PATH,
     },
@@ -830,7 +842,7 @@ export const DEVICE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
       // Every seeded role holds DIAGNOSTICS_RUN, so no seeded operator can be shown as refused for it.
       403: BASIC_403_EXAMPLES,
       404: NOT_FOUND,
-      409: { commandUnsupported: unsupported(DeviceCommand.TEST_SIGNAL) },
+      409: { commandUnsupported: unsupported(DeviceCommand.TEST_SIGNAL), deviceCommandNotAvailable: deviceCommandNotAvailable() },
       422: BAD_PATH,
     },
   },
@@ -840,6 +852,7 @@ export const DEVICE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
       401: SIGNED_OUT,
       403: BASIC_403_EXAMPLES,
       404: NOT_FOUND,
+      409: { deviceCommandNotAvailable: deviceCommandNotAvailable() },
       422: BAD_PATH,
     },
   },

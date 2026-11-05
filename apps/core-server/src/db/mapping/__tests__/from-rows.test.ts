@@ -616,3 +616,42 @@ describe('row 92: the hardware mic rows name the device their channel holds in c
     expect(deviceOf(fromRows(rows).mics)).toEqual([['AUDIO-01', 'MIC-01'], ['AUDIO-02', 'MIC-02'], ['AUDIO-03', 'MIC-03'], ['AUDIO-04', 'MIC-04']]);
   });
 });
+
+// Audit fix row 128 (controller routing D92 of row 131's U-09; decisions D60, D61): a registry row is read back in the
+// demonstration model's shape only when it is a device OF THE MODEL - a built-in id AND adapter FAKE - never by the id alone.
+// Seen RED on: the pre-row `BUILT_IN_CAPABILITIES.has(row.id)` keys of `captureDeviceFromRow` / `captureConfigFromRow` (the
+// real CAM-03 then read back without `adapter` / `sourceClass`, with the model's LIVE and its capabilities).
+describe('capture_devices: a REAL device under a built-in id keeps its adapter and source class (row 128, D92, U-09)', () => {
+  const stored = asStored(toRows(idle(), context));
+  /** The bench's picture: the registry holds a real ONVIF CAM-03 and a real USB MIC-03 under built-in ids. */
+  const bench = {
+    ...stored,
+    captureDevices: stored.captureDevices.map((row) =>
+      row.id === 'CAM-03' ? { ...row, adapterKind: 'ONVIF_RTSP' as const, transport: 'RTSP', address: '192.0.2.33', profiles: ['H264_1080P25'] } : row.id === 'MIC-03' ? { ...row, adapterKind: 'USB_AUDIO' as const, transport: 'USB' } : row,
+    ),
+  };
+
+  it('a real ONVIF CAM-03 keeps adapter + sourceClass PRODUCTION, states NOT READ at rest and the adopted capability; a real USB MIC-03 keeps its adapter too', () => {
+    const back = fromRows(bench);
+    expect(back.captureDevices.devices.find((device) => device.id === 'CAM-03')).toMatchObject({ adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', streamState: null, capabilities: ['VIDEO'], profiles: [expect.objectContaining({ code: 'H264_1080P25' })] });
+    expect(back.captureDevices.devices.find((device) => device.id === 'MIC-03')).toMatchObject({ adapter: 'USB_AUDIO', sourceClass: 'PRODUCTION', capabilities: ['AUDIO'] });
+    expect(back.captureConfig.cameras.find((line) => line.trackId === 'VIDEO-03')?.streamState).toBeNull();
+    // The write back keeps the stored facts: the adapter the row holds, and the registry's transport (no model topology).
+    const again = toRows({ ...idle(), captureDevices: back.captureDevices, captureConfig: back.captureConfig } as SimState, context).captureDevices;
+    expect(again.find((row) => row.id === 'CAM-03')).toMatchObject({ adapterKind: 'ONVIF_RTSP' });
+    expect(again.find((row) => row.id === 'MIC-03')).toMatchObject({ adapterKind: 'USB_AUDIO' });
+  });
+
+  it('CONTROL (the simulated lane\'s rule holds): the seeded model rows are FAKE and read back in the model\'s shape - no adapter, no class, LIVE, the round trip unchanged', () => {
+    expect(stored.captureDevices.filter((row) => row.kind !== 'POE').map((row) => [row.id, row.adapterKind]).sort()).toEqual(
+      ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'].map((id) => [id, 'FAKE']),
+    );
+    const back = fromRows(stored);
+    for (const device of back.captureDevices.devices.filter((entry) => entry.kind !== 'POE')) {
+      expect(device, device.id).not.toHaveProperty('adapter');
+      expect(device, device.id).not.toHaveProperty('sourceClass');
+    }
+    expect(back.captureConfig.cameras.map((line) => line.streamState)).toEqual(['LIVE', 'LIVE', 'LIVE', 'LIVE']);
+    expect(back.captureDevices).toEqual(idle().captureDevices);
+  });
+});

@@ -545,6 +545,9 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     signInRowsRemoved: count(REQUIRED),
     recordsLeftUnattributed: count(REQUIRED),
     credentialsRemoved: count(REQUIRED),
+    // R-1 (decision D51, row 133): the account was kept, disabled, under its evidence-chain rows
+    // (migration 0043, D38 DR-1). Optional: the rows written before row 133 do not carry it.
+    accountKept: flag(OPTIONAL),
     reason: reasonText(OPTIONAL),
   },
   [AuditType.BIOMETRIC_ENROLLMENT_CHANGED]: {

@@ -192,6 +192,29 @@ describe('the read (WB-11, E-17; ux §2.5, §2.7)', () => {
     expect(within(panel).getByTestId('selector-reason-MIC-01')).toHaveAttribute('data-block', 'LOCKED')
     expect(requests('getCaptureConfig')).toHaveLength(1)
   })
+
+  // Row CS2 cycle 2 (D97; register R7 of row 129, contract row 125 `captureDevices.devices[].reach`): on a Core in real capture
+  // the selector line follows the Core's stated reach, as the tiles and the Dashboard do - a stated NOT_REACHABLE is the fault
+  // word even while the registry flag `online` is true.
+  const realCaptureCameras = (reach: 'NOT_REACHABLE' | null) => (created: LiveTestBed): void => {
+    const devices = created.core.served.captureDevices.devices
+    created.core.served.captureDevices = {
+      devices: devices.map((device) => ({ ...device, sourceClass: 'PRODUCTION', ...(device.id === 'CAM-01' && reach !== null ? { reach, checkedAt: Date.now() } : {}) })),
+    } as typeof created.core.served.captureDevices
+  }
+  it('a camera the Core states NOT_REACHABLE reads "not reachable" on its selector line although `online` is true', async () => {
+    const { panel } = await liveSelector(TECHNICIAN, realCaptureCameras('NOT_REACHABLE'))
+    await within(panel).findByTestId('selector-ready')
+    const line = within(panel).getByTestId('selector-camera-VIDEO-01')
+    expect(line).toHaveAttribute('data-device', 'CAM-01')
+    await waitFor(() => expect(within(line).getByTestId('source-state-chips')).toHaveAttribute('data-reach', 'NOT_REACHABLE'))
+  })
+  it('CONTROL - the same real-capture Core with no stated reach keeps "not checked" on that line', async () => {
+    const { panel } = await liveSelector(TECHNICIAN, realCaptureCameras(null))
+    await within(panel).findByTestId('selector-ready')
+    const line = within(panel).getByTestId('selector-camera-VIDEO-01')
+    await waitFor(() => expect(within(line).getByTestId('source-state-chips')).toHaveAttribute('data-reach', 'NOT_CHECKED'))
+  })
 })
 
 describe('an edit (C3 §2.3 ops 79, 80; ux §2.2 steps 4-5; PE-127-07)', () => {

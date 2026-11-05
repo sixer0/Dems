@@ -521,3 +521,57 @@ describe('row 109 (DF-18): the storage headline says the same free space as the 
     }
   })
 })
+
+// Audit 2026-11-05 row 129 (DF-11 web, U-05; D24, D90): the Dashboard tiles read the Devices page's `trackStatus` - the
+// track's row, then the source its selector line holds and the reach the Core states for it. U-05 (test/122_ui_w1.md):
+// the Dashboard said MIC 1-4 READY while /devices said MIC 1 / MIC 2 FAULT for the same bench state.
+describe('row 129 (U-05): the Dashboard tiles agree with /devices', () => {
+  const INPUTS = ['MIC-03', 'MIC-04', 'MIC-05', 'MIC-06'] as const
+  const benchSelector = (sim: Sim) =>
+    act(() =>
+      sim.store.setState((state) => {
+        const template = state.captureDevices.devices.find((device) => device.id === 'MIC-01')!
+        const extra = ['MIC-05', 'MIC-06'].filter((id) => !state.captureDevices.devices.some((device) => device.id === id)).map((id) => ({ ...template, id }))
+        return {
+          captureDevices: { ...state.captureDevices, devices: [...state.captureDevices.devices, ...extra] },
+          captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.map((line, index) => ({ ...line, inputId: INPUTS[index]!, deviceId: INPUTS[index]! })) },
+          mics: state.mics.map((mic, index) => ({ ...mic, deviceId: INPUTS[index]!, state: 'READY' as const, clipLatched: false })),
+        }
+      }),
+    )
+  const tileState = (deviceId: string) => screen.getByTestId(`tile-state-${deviceId}`)
+
+  it('stored READY everywhere: MIC 1-4 READY, as /devices reads them', async () => {
+    const { sim } = mount()
+    await findPanel('e')
+    benchSelector(sim)
+    for (const deviceId of INPUTS) {
+      await waitFor(() => expect(tileState(deviceId)).toHaveAttribute('data-status', 'READY'))
+      expect(tileState(deviceId)).toHaveTextContent('READY')
+    }
+  })
+
+  it('stored READY but live NOT_REACHABLE: the mic and the camera tile say FAULT / No signal, never READY; an unassigned track says OFFLINE', async () => {
+    const { sim } = mount()
+    await findPanel('e')
+    benchSelector(sim)
+    act(() =>
+      sim.store.setState((state) => ({
+        captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.filter((line) => line.trackId !== 'VIDEO-04') },
+        captureDevices: {
+          ...state.captureDevices,
+          devices: state.captureDevices.devices.map((device) => (device.id === 'MIC-03' || device.id === 'CAM-02' ? { ...device, reach: 'NOT_REACHABLE' as const, checkedAt: state.clock.now } : device)),
+        },
+      })),
+    )
+    await waitFor(() => expect(tileState('MIC-03')).toHaveAttribute('data-status', 'FAULT'))
+    expect(tileState('MIC-03')).toHaveTextContent('FAULT')
+    expect(tileState('MIC-05')).toHaveAttribute('data-status', 'READY')
+    expect(tileState('CAM-02')).toHaveAttribute('data-status', 'FAULT')
+    expect(tileState('CAM-02')).toHaveTextContent('No signal')
+    expect(tileState('CAM-04')).toHaveAttribute('data-status', 'OFFLINE')
+    expect(tileState('CAM-04')).toHaveTextContent('OFFLINE')
+    expect(tileState('CAM-01')).toHaveAttribute('data-status', 'READY')
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+})

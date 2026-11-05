@@ -62,7 +62,7 @@ export const READ_CAPTURE_STATE =
   'FROM public.capture_config c LIMIT 1) AS config, ' +
   "(SELECT COALESCE(json_agg(json_build_object(" +
   "'id', d.id, 'kind', d.kind, 'transport', d.transport, 'model', d.model, 'firmware', d.firmware, " +
-  "'address', d.address, 'poePort', d.poe_port, 'enabled', d.enabled) ORDER BY d.id), '[]'::json) " +
+  "'address', d.address, 'poePort', d.poe_port, 'enabled', d.enabled, 'adapterKind', d.adapter_kind) ORDER BY d.id), '[]'::json) " + // adapterKind: audit fix row 128b (D92 rule)
   'FROM public.capture_devices d) AS devices, ' +
   // Fix wave L (re-check 70 note G70c-04): ONE rule for "a session is open" - `isSessionActive` of the session machine, which
   // operation 76 answers `locked` with: a session that is not SEALED. The row of the last session stays in the table after its
@@ -157,6 +157,8 @@ function recordsOf(value: unknown): readonly CaptureDeviceRecord[] {
       address: textOrNull('address'),
       poePort: textOrNull('poePort'),
       enabled: row.enabled,
+      // Audit fix row 128b (D100 (2)): the D92 rule needs the adapter kind; absent is null (no model row).
+      adapterKind: textOrNull('adapterKind'),
     };
   });
 }

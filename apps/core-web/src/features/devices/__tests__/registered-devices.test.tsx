@@ -21,7 +21,7 @@ import { en } from '@dems/shared/i18n'
 import { OPERATOR_IDS, type Sim, type SimAlert } from '@dems/shared/sim'
 import { i18n } from '@/i18n'
 import type { CaptureDevice } from '../capture-selector'
-import { BUILT_IN_SOURCE_IDS, rateAtLimitOf, registeredRoster, rosterCardName, rosterLimitKey, rosterSlotOf, rosterSourceKey } from '../registered-devices-model'
+import { BUILT_IN_SOURCE_IDS, drawnByOwnTile, rateAtLimitOf, registeredRoster, rosterCardName, rosterLimitKey, rosterSlotOf, rosterSourceKey } from '../registered-devices-model'
 import { installDevicesBed, mountDevices } from './search-bed'
 
 const mode = vi.hoisted(() => ({ realCapture: false }))
@@ -85,6 +85,46 @@ describe('the roster (D137 (2)): built from the Core\'s device list, never from 
   it('"is on" only from `sourceOpen: true` of a LOCAL device; an absent member, false, or a test source is not on', () => {
     const on = (patch: object) => registeredRoster({ ...input, devices: [{ ...LOCAL_MIC, ...patch } as CaptureDevice] }, 'MIC')[0]?.sourceOn
     expect([on({}), on({ sourceOpen: false }), on({ sourceOpen: true }), on({ sourceOpen: true, adapter: 'FAKE' })]).toEqual([false, false, true, false])
+  })
+})
+
+// Audit row 131 (DF-16, U-09): a real Core mints its registry ids from the built-in pattern, so a real device can carry a
+// built-in id. The bench Core of 2026-11-05 (capture_devices + capture_config read back): ONVIF CAM-03/04 feed VIDEO-01/02,
+// CAM-05/06 feed VIDEO-03/04; USB MIC-03..06 feed channels 1-4; the development rows CAM-01/02, MIC-01/02 are not listed in
+// REAL_PRODUCTION, and the Core states no `adapter` / `sourceClass` for an id of the built-in set (rows.ts). "Registered
+// cameras" read only CAM-05/06 and "Registered microphones" only MIC-05/06.
+describe('registry ids equal to built-in ids (audit row 131, DF-16): every registered device is listed exactly once', () => {
+  const real = (id: string, kind: CaptureDevice['kind'], adapter: string) => device(id, kind, BUILT_IN_SOURCE_IDS.includes(id) ? {} : { adapter, sourceClass: 'PRODUCTION' })
+  const BENCH_DEVICES = [real('CAM-03', 'CAMERA', 'ONVIF_RTSP'), real('CAM-04', 'CAMERA', 'ONVIF_RTSP'), real('CAM-05', 'CAMERA', 'ONVIF_RTSP'), real('CAM-06', 'CAMERA', 'ONVIF_RTSP'), real('MIC-03', 'MIC', 'USB_AUDIO'), real('MIC-04', 'MIC', 'USB_AUDIO'), real('MIC-05', 'MIC', 'USB_AUDIO'), real('MIC-06', 'MIC', 'USB_AUDIO')]
+  const BENCH_CONFIG = {
+    cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-03' }, { trackId: 'VIDEO-02', deviceId: 'CAM-04' }, { trackId: 'VIDEO-03', deviceId: 'CAM-05' }, { trackId: 'VIDEO-04', deviceId: 'CAM-06' }],
+    mics: [{ channel: 'MIC-01', inputId: 'MIC-03', deviceId: 'MIC-03' }, { channel: 'MIC-02', inputId: 'MIC-04', deviceId: 'MIC-04' }, { channel: 'MIC-03', inputId: 'MIC-05', deviceId: 'MIC-05' }, { channel: 'MIC-04', inputId: 'MIC-06', deviceId: 'MIC-06' }],
+  } as unknown as Parameters<typeof rosterSlotOf>[0]
+  const roster = (kind: 'CAMERA' | 'MIC', devices: readonly CaptureDevice[], config = BENCH_CONFIG) => registeredRoster({ devices, config, alerts: [] }, kind).map((card) => [card.id, card.slot])
+
+  it('U-09: the bench Core lists CAM-03..06 and MIC-03..06, each once, with the line it feeds', () => {
+    expect(roster('CAMERA', BENCH_DEVICES)).toEqual([['CAM-03', 'VIDEO-01'], ['CAM-04', 'VIDEO-02'], ['CAM-05', 'VIDEO-03'], ['CAM-06', 'VIDEO-04']])
+    expect(roster('MIC', BENCH_DEVICES)).toEqual([['MIC-03', 'MIC-01'], ['MIC-04', 'MIC-02'], ['MIC-05', 'MIC-03'], ['MIC-06', 'MIC-04']])
+  })
+
+  it('with the development rows listed too (REAL_DEVELOPMENT): CAM-01/02 and MIC-01/02 on no line are cards as well - no id twice, none lost', () => {
+    const devices = [device('CAM-01', 'CAMERA'), device('CAM-02', 'CAMERA'), device('MIC-01', 'MIC'), device('MIC-02', 'MIC'), ...BENCH_DEVICES]
+    for (const kind of ['CAMERA', 'MIC'] as const) {
+      const ids = registeredRoster({ devices, config: BENCH_CONFIG, alerts: [] }, kind).map((card) => card.id)
+      expect(ids, kind).toEqual(devices.filter((entry) => entry.kind === kind).map((entry) => entry.id))
+      expect(new Set(ids).size, kind).toBe(ids.length)
+    }
+  })
+
+  it('drawnByOwnTile: only a built-in id on the line its id names is the tile\'s (the demonstration seed); any other line, no line, or a minted id is not', () => {
+    const SEED_CONFIG = {
+      cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }, { trackId: 'VIDEO-03', deviceId: 'CAM-03' }, { trackId: 'VIDEO-04', deviceId: 'CAM-04' }],
+      mics: [{ channel: 'MIC-01', inputId: 'MIC-01', deviceId: 'MIC-01' }, { channel: 'MIC-02', inputId: 'MIC-02', deviceId: 'MIC-02' }, { channel: 'MIC-03', inputId: 'MIC-03', deviceId: 'MIC-03' }, { channel: 'MIC-04', inputId: 'MIC-04', deviceId: 'MIC-04' }],
+    } as unknown as Parameters<typeof rosterSlotOf>[0]
+    expect(BUILT_INS.filter((entry) => entry.kind !== 'POE').every((entry) => drawnByOwnTile(SEED_CONFIG, entry))).toBe(true)
+    expect(roster('CAMERA', BUILT_INS, SEED_CONFIG)).toEqual([])
+    expect(roster('MIC', BUILT_INS, SEED_CONFIG)).toEqual([])
+    expect([drawnByOwnTile(BENCH_CONFIG, device('CAM-03', 'CAMERA')), drawnByOwnTile(BENCH_CONFIG, device('MIC-04', 'MIC')), drawnByOwnTile(BENCH_CONFIG, device('CAM-05', 'CAMERA')), drawnByOwnTile(BENCH_CONFIG, device('CAM-01', 'CAMERA'))]).toEqual([false, false, false, false])
   })
 })
 

@@ -2,14 +2,26 @@ import { useCallback, useEffect, useId, useImperativeHandle, useRef, useState } 
 import { Video, VideoOff } from 'lucide-react'
 import { sourceDeviceText } from './own-core-words'
 import { cameraCaptureFaultOf, trackFaultText, useStatedFormat } from './stream-facts'
-import { checkedAtOf, sourceLineState } from './source-state'
+import { sourceLineState } from './source-state'
 import { useTranslation } from 'react-i18next'
+import { formatClock } from '@dems/shared/realtime'
 import { selectIsRecording, useSim, cameraLinesInForce } from '@dems/shared/sim'
 import { CameraFeed, RecIndicator, type CameraFeedProps } from '@/components/media'
 import { cn } from '@/lib/utils'
 import { useRealCaptureCore, useTrackDevice } from './source-class'
 import { useWebLive } from '@/runtime'
-import { isLivePreviewDevice, isSessionStarting, PREVIEW_FIRST_FRAME_MS, previewPathOf, previewRefusalOf, previewRetryDelayMs, useAutoPreviewOpen } from './camera-live-preview'
+import {
+  autoPreviewBlocked,
+  isLivePreviewDevice,
+  isSessionStarting,
+  PREVIEW_FIRST_FRAME_MS,
+  previewPathOf,
+  previewRefusalOf,
+  previewRetryDelayMs,
+  requestPreviewRetry,
+  useAutoPreviewOpen,
+  usePreviewRetryStanding,
+} from './camera-live-preview'
 import { reportDevicesError } from './report'
 import { deferEffectStart } from '@/lib/effect-start'
 
@@ -71,9 +83,46 @@ export function CameraPreview({ livePreview = false, autoPreview = false, ...pro
  */
 function AutoLivePreview({ deviceId, ...feed }: CameraPreviewProps & { deviceId: string }) {
   const online = useSim((state) => cameraLinesInForce(state).find((line) => line.trackId === feed.cameraId)?.online === true)
-  const open = useAutoPreviewOpen(online)
+  // Row 130 (DF-12, DF-13): `online` is the registry flag, which a failed preview never clears - the Core's stated
+  // reach closes the gate (no token, no stream, no Core note per attempt); the operator's "Try again" asks once more.
+  const device = useTrackDevice(feed.cameraId)
+  const blocked = autoPreviewBlocked(device)
+  const retrying = usePreviewRetryStanding(deviceId, device?.checkedAt)
+  const open = useAutoPreviewOpen(online && (!blocked || retrying))
   if (!open) return <NoPreviewTile {...feed} />
   return <LivePreview {...feed} deviceId={deviceId} />
+}
+
+/**
+ * Row 130 (DF-12, DF-13; i18n keys of row 125): the operator's way to ask ONCE more for the automatic preview
+ * of a track whose camera the Core's last reading found unreachable. Drawn only on a Core in real capture, for a
+ * production camera with a stated `reach: NOT_REACHABLE`, while no retry stands: the sentence, the time of the
+ * reading ("Checked at …", `checkedAt`) and a "Try again" button (`requestPreviewRetry`). The retry runs through
+ * the same debounce and slot cap as the automatic preview; a newer unreachable reading draws this again.
+ *
+ * It is its own button, so the caller places it OUTSIDE any clickable tile (the Devices tile's media area is a
+ * button that opens the drawer, and a button inside a button is invalid).
+ */
+export function CameraPreviewTryAgain({ cameraId, className }: { readonly cameraId: CameraFeedProps['cameraId']; readonly className?: string }) {
+  const { t } = useTranslation()
+  const realCapture = useRealCaptureCore()
+  const device = useTrackDevice(cameraId)
+  const online = useSim((state) => cameraLinesInForce(state).find((line) => line.trackId === cameraId)?.online === true)
+  const deviceId = device?.id ?? ''
+  const retrying = usePreviewRetryStanding(deviceId, device?.checkedAt)
+  if (!realCapture || device === undefined || !isLivePreviewDevice(device) || !online || !autoPreviewBlocked(device) || retrying) return null
+  const checkedAt = device.checkedAt ?? null
+  return (
+    <div className={cn('flex flex-wrap items-center gap-2 text-xs', className)} data-testid={`camera-preview-try-again-${cameraId}`} data-camera={cameraId}>
+      <span role="status">
+        {t('devices.preview.notReachable')}
+        {checkedAt === null ? null : ` ${t('devices.preview.checkedAt', { time: formatClock(checkedAt) })}`}
+      </span>
+      <button type="button" className="underline underline-offset-2" onClick={() => requestPreviewRetry(device.id, checkedAt)}>
+        {t('devices.preview.tryAgain')}
+      </button>
+    </div>
+  )
 }
 
 /**
@@ -319,7 +368,10 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, form
   const recording = useSim(selectIsRecording)
   const name = source === null ? track : `${track} · ${source}`
   // Fix wave L (G70c-02): the word under "No preview" follows the rule of a source line - "Online" was said of sources nobody opened.
-  const reach = line === undefined ? null : sourceLineState({ realCapture: true, recording, online: line.online, streamState: line.streamState, checkedAt: checkedAtOf(device) })
+  // Row 130 (DF-12; contract row 125): the checkedAt reader uses the shared member, and a stated reach is preferred over
+  // the word drawn from the registry flag - the Core's NOT_REACHABLE reading says "Not reachable" though `online` stays true.
+  const unreachable = autoPreviewBlocked(device)
+  const reach = line === undefined ? null : sourceLineState({ realCapture: true, recording, online: line.online && !unreachable, streamState: line.streamState, checkedAt: device?.checkedAt })
   // Task 4 row W5 (review 060d Q-01): a camera the Core holds an ACTIVE capture fault about (it stopped delivering
   // inside the session) is not "Stream live" - its line still reads LIVE while the relay re-opens it. The fault is
   // said in the state's place and goes when the Core resolves it.
@@ -360,7 +412,8 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, form
         data-testid="camera-no-preview"
         data-camera={cameraId}
         // Row W6 (line 569): the Core's null stream state has its own value - an unread stream is not 'ONLINE'.
-        data-state={line === undefined ? 'NOT_ASSIGNED' : !line.online ? 'OFFLINE' : line.streamState === 'LOST' ? 'LOST' : line.streamState === null ? 'NOT_READ' : 'ONLINE'}
+        // Row 130: a stated NOT_REACHABLE of the Core's last reading has its own value (the registry flag still reads online).
+        data-state={line === undefined ? 'NOT_ASSIGNED' : !line.online ? 'OFFLINE' : unreachable ? 'NOT_REACHABLE' : line.streamState === 'LOST' ? 'LOST' : line.streamState === null ? 'NOT_READ' : 'ONLINE'}
         data-fault={line === undefined ? undefined : (raised ?? undefined)}
         // Fix wave L (G89c-08): in a Dashboard tile (variant `tile`) the four lines fit the short stage at 1440 x 900 - a small icon and tight lines.
         className={cn(

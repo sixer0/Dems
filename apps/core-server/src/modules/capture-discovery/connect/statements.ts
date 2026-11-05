@@ -67,3 +67,30 @@ export async function insertCaptureCredential(db: Queryable, row: CaptureCredent
 export async function upsertCaptureCredential(db: Queryable, row: CaptureCredentialRow): Promise<void> {
   await db.query(UPSERT_CAPTURE_CREDENTIAL, valuesOf(row));
 }
+
+// ── Audit 2026-11-05 row 134 (DF-29; D20(d), D29 Q4): THE SYSTEM PRINCIPAL'S OWN ROW ──────────────
+//
+// The auto-attach flows act as `OPR-000` (`SYSTEM_OPERATOR_ID` of `./index.ts`); its `operators` row is the actor key
+// of their audit rows and of the adoption. Until now only a hand-run installer step put that row in, outside every
+// audited path. This ONE statement is the place that may create it, and it creates nothing else: the reserved id,
+// the reserved username `system`, the role `TECHNICIAN`, `enabled` true - never a credential (the row can never sign
+// in; `operator:set-password` refuses it, row 132). On a conflict of the id it does NOTHING, so an existing row (the
+// production one, enabled or not) is never changed, re-enabled or replaced; the username `system` held by another
+// id fails the unit (23505) and nothing is written. It reads nothing back (the folder's rule: no read statement here,
+// `connect/__tests__/service.test.ts` NOCRED static half): the row count alone says whether THIS call inserted.
+// No statement of this file updates, disables or deletes an operator. The runtime role holds INSERT on
+// `public.operators` since migration 0035.
+
+/** The creation of the system principal's row: `$1` the reserved id, `$2` the role, `$3` the instant. */
+export const INSERT_SYSTEM_PRINCIPAL =
+  'INSERT INTO public.operators (id, username, rank, name, display_name, initials, role_id, enabled, role_changed_at, created_at, updated_at) ' +
+  "VALUES ($1, 'system', NULL, 'System', 'System', 'SYS', $2, true, $3, $3, $3) ON CONFLICT (id) DO NOTHING";
+
+/** What `insertSystemPrincipal` found: the row created by THIS call, or there already (never touched). */
+export type SystemPrincipalRow = 'CREATED' | 'PRESENT';
+
+/** One unit of work: insert the row when it is missing. Writes no audit row: the caller does, in the same unit. Throws the driver's error (23505: the username is held by another id). */
+export async function insertSystemPrincipal(db: Queryable, operatorId: string, role: string, at: number): Promise<SystemPrincipalRow> {
+  const inserted = await db.query(INSERT_SYSTEM_PRINCIPAL, [operatorId, role, at]);
+  return inserted.rowCount === 1 ? 'CREATED' : 'PRESENT';
+}

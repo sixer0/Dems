@@ -158,6 +158,9 @@ export const enWeb = {
         bannerFree: '{{free}} free',
         writeSpeed: 'This Core does not measure a write speed.',
         estRemaining: 'No estimate: this Core does not measure a write speed to compute one from.',
+        // Audit row CS2 (O-2, D81): the Volumes block of a Core in its own capture shows the evidence volume it measured.
+        volumeTitle: 'Evidence volume',
+        volumeNote: 'Size and use as this Core measured them. This Core reports no SMART health, no temperature and no system volume.',
       },
       keys: {
         developmentChip: 'DEVELOPMENT KEY',

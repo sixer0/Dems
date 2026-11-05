@@ -10,7 +10,7 @@ import { useCoreActions } from '@dems/shared/live'
 import { selectSystemState, useSim } from '@dems/shared/sim'
 import { GlowRing } from '@/components/composed'
 import { RecIndicator, useSimSecond, type CameraFeedHandle } from '@/components/media'
-import { CameraPreview } from '@/features/devices/camera-preview'
+import { ReachGatedCameraPreview } from '@/features/devices/reach-gated-preview'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
@@ -158,7 +158,8 @@ export function LiveFeedPanel({
       <TrackSourceMarks trackId={feed.activeCameraId} place={`monitor-${feed.activeCameraId}`} />
       <div className="sm-feed-stage" ref={stageRef}>
         <div className="sm-feed-frame" data-idle={live ? undefined : 'true'}>
-          <CameraPreview
+          {/* Row 130b (D95): no preview is asked for a camera the Core found NOT_REACHABLE; "Try again" asks once. */}
+          <ReachGatedCameraPreview
             ref={feedRef}
             cameraId={feed.activeCameraId}
             variant="feed"
@@ -219,7 +220,7 @@ export function LiveFeedPanel({
         <Modal.Container size="full" placement="center" className="sm-fullscreen-container">
           <Modal.Dialog aria-label={label} className="sm-fullscreen-dialog">
             <div className="sm-fullscreen-frame">
-              <CameraPreview
+              <ReachGatedCameraPreview
                 cameraId={feed.activeCameraId}
                 variant="feed"
                 label={label}

@@ -10,12 +10,12 @@
 //     purge is the same check boot check B-8 runs — a seal that only LOOKS consistent fails here;
 //   * the loss is asserted too: after a purge the log no longer mentions the account at all, which
 //     is exactly what the amendment asked for and what an append-only chain used to prove otherwise.
-import { OPERATOR_IDS, verifyAuditChain, type AuditLogSlice, type PurgedRange, type AuditRow } from '@dems/shared/sim';
+import { OPERATOR_IDS, OperatorRole, verifyAuditChain, type AuditLogSlice, type PurgedRange, type AuditRow } from '@dems/shared/sim';
 import type { Pool } from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { engineApp, seedScenario, stateChanges } from '../support/engine';
-import { deleteUser } from '../../src/modules/admin/changes';
-import { PURGE_KEPT_AUDIT_TYPES, purgeForecast, purgeOperator, resealChain } from '../../src/modules/admin/statements';
+import { assignUserRole, deleteUser, disableUser, enableUser, updateUser } from '../../src/modules/admin/changes';
+import { PURGE_KEPT_AUDIT_TYPES, isPurgeKept, purgeForecast, purgeOperator, resealChain } from '../../src/modules/admin/statements';
 import { readHead } from '../support/core';
 import { useTestDatabase } from '../helpers/db';
 import {
@@ -438,3 +438,63 @@ describe('row 95: a purge of the live session\'s investigator is refused (D43)',
     expect(host.app.readiness.snapshot().engine).toBe(true);
   }, 300_000);
 });
+
+// Row 133 (DF-29, decision D20(d); decision D51) through the module's own units on a hosted engine:
+// the system principal OPR-000 is never re-roled, disabled, edited or purged, and an account a purge
+// kept (D38 DR-1) is terminal - operation 13 refuses it, read from the USER_DELETED mark.
+describe('row 133: the system principal is never changed or purged; a purge-kept account is never enabled again', () => {
+  it('four 409 SYSTEM_PRINCIPAL refusals with the row untouched; then a kept purge, R-1/R-2 say so, and enableUser is 409 PURGE_KEPT', async () => {
+    const lane = await db.another({ template: 'schema', slug: 'purge_system_kept' });
+    await seedScenario(lane, 'recording');
+    const laneOwner = lane.ownerPool();
+    const rootId = OPERATOR_IDS.ANDI;
+    const target = OPERATOR_IDS.RINA;
+    await laneOwner.query('UPDATE public.operators SET username = $2 WHERE id = $1', [rootId, 'root']);
+    // The installer's row, as production holds it (D62): provisioned without a credential.
+    if ((await laneOwner.query("SELECT 1 FROM public.operators WHERE id = 'OPR-000'")).rows.length === 0) {
+      await insertRow(laneOwner, 'operators', operator('OPR-000', 'system', 'TECHNICIAN'));
+    }
+    // One evidence-chain row of the target before the engine starts, so its purge KEEPS the account.
+    // Cycle 3 (F-DBW2-2): stamped AT the newest stored instant, never after it. The fixture's default
+    // (`T + seq`) lies ahead of the engine's manual clock (FIXED_NOW), and the D110 floor guard then
+    // refuses the boot (ENGINE_CLOCK_WITHOUT_FLOOR) - by design; the guard is not touched.
+    const { rows: newest } = await laneOwner.query<{ at: string | null }>('SELECT max(at)::text AS at FROM public.audit_log');
+    const stampAt = Number(newest[0]?.at ?? 0);
+    await appendAuditRows(lane.appPool(), 1, { actorId: target, type: 'SESSION_CREATED', category: 'SESSION', message: 'session created', at: stampAt });
+    const host = await engineApp(lane, db.run.dataDir);
+    await host.engine.reload();
+    await host.drive(1_000);
+    const actor = { operatorId: rootId, deviceId: null };
+    const systemRow = async () => (await laneOwner.query("SELECT row_to_json(o)::text AS row FROM public.operators AS o WHERE id = 'OPR-000'")).rows[0]?.row as string | undefined;
+    const before = await systemRow();
+    expect(before).toBeDefined();
+
+    const refused = (call: () => Promise<unknown>) => call().then(() => null, (error: unknown) => error as { statusCode?: number; code?: string; details?: Record<string, unknown> });
+    for (const call of [
+      () => assignUserRole(host.app, actor, 'OPR-000', OperatorRole.SUPERVISOR, 'row 133 lane test'),
+      () => disableUser(host.app, actor, 'OPR-000', 'row 133 lane test'),
+      () => updateUser(host.app, actor, 'OPR-000', { displayName: 'Changed' }, 'row 133 lane test'),
+      () => deleteUser(host.app, actor, 'OPR-000', { confirm: 'system' }, 'row 133 lane test'),
+    ]) {
+      expect(await refused(call)).toMatchObject({ statusCode: 409, code: 'INVALID_STATE', details: { reason: 'SYSTEM_PRINCIPAL' } });
+    }
+    await host.app.pipeline.drain();
+    expect(await systemRow()).toBe(before);
+    expect(await countOf(laneOwner, "SELECT count(*)::text AS n FROM public.audit_log WHERE details ->> 'targetOperatorId' = 'OPR-000'")).toBe(0);
+
+    // D51: the kept purge, then the refusal of operation 13.
+    expect(await isPurgeKept(lane.appPool(), target)).toBe(false);
+    const outcome = await deleteUser(host.app, actor, target, { confirm: 'rina.wijaya' }, 'row 133 lane test');
+    await host.app.pipeline.drain();
+    expect(outcome.deleted.accountKept).toBe(true);
+    expect(await countOf(laneOwner, `SELECT count(*)::text AS n FROM public.operators WHERE id = '${target}' AND NOT enabled`)).toBe(1);
+    expect(await countOf(laneOwner, `SELECT count(*)::text AS n FROM public.audit_log WHERE type = 'USER_DELETED' AND details ->> 'targetOperatorId' = '${target}' AND details ->> 'accountKept' = 'true'`)).toBe(1);
+    expect(await isPurgeKept(lane.appPool(), target)).toBe(true);
+    expect(await isPurgeKept(lane.appPool(), rootId)).toBe(false);
+    expect(await refused(() => enableUser(host.app, actor, target, 'row 133 lane test'))).toMatchObject({ statusCode: 409, code: 'INVALID_STATE', details: { reason: 'PURGE_KEPT' } });
+    await host.app.pipeline.drain();
+    expect(await countOf(laneOwner, `SELECT count(*)::text AS n FROM public.operators WHERE id = '${target}' AND NOT enabled`)).toBe(1);
+    expect(host.app.readiness.snapshot().engine).toBe(true);
+  }, 300_000);
+});
+

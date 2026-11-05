@@ -252,6 +252,8 @@ describe('operation 13 enableUser: one unit, then the mirror', () => {
       STAGE_4,
       ...UNIT_OPENS,
       'unit  admin LOCK_OPERATOR',
+      // Row 133 (D51): a disabled account is asked for the purge-kept mark before the compare-and-set.
+      'unit  admin READ_PURGE_KEPT',
       'unit  admin ENABLE_OPERATOR',
       'unit  INSERT audit_log USER_ENABLED',
       'unit  admin READ_USER',
@@ -319,6 +321,7 @@ describe('M13: what one command costs on this host', () => {
     console.info(`[w33] a unit opens with ${open} statements (BEGIN and the core's own)`);
     expect(changed.statements).toBe(1 + (open + 6 + 1) + (open + 1 + 1));
     expect(report('disableUser (a change, no open session)', disable).statements).toBe(1 + (open + 7 + 1) + (open + 1 + 1));
-    expect(report('enableUser (a change)', enable).statements).toBe(1 + (open + 4 + 1) + (open + 1 + 1));
+    // Row 133 / D51: + READ_PURGE_KEPT (the purge-kept mark is asked before the compare-and-set).
+    expect(report('enableUser (a change)', enable).statements).toBe(1 + (open + 5 + 1) + (open + 1 + 1));
   });
 });

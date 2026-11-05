@@ -34,6 +34,10 @@ import {
   SECURITY_NOT_REPORTED_PRECHECK_RULE,
   UPDATER_NOT_AVAILABLE_REASON,
   SERVICES_RESTART_NOT_AVAILABLE_REASON,
+  DEVICE_COMMAND_NOT_AVAILABLE_REASON,
+  DEVICE_ID,
+  DeviceCommand,
+  reportedCoreDeviceIdOf,
   isDiagnosticNotReported,
   isLevelNotMeasured,
   isOwnCaptureCoreState,
@@ -625,6 +629,66 @@ describe('platform security not reported, and the restart fault', () => {
       expect(h.sim.actions.restartServices()).toBeGreaterThan(0);
       expect(h.state().audit.total).toBe(before + 1);
       expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'DEVICE_COMMAND', details: { scope: 'CORE_SERVICES' } });
+    });
+  });
+
+  // Audit row CS2 (finding O-124-1, ruling D89): operations 48-50 ran the simulator's device command on a Core in its own
+  // capture and wrote "(simulated)" DEVICE_COMMAND rows into the production chain (seq 463 TEST_SIGNAL, seq 1409 IDENTIFY).
+  describe('row CS2: no simulated device command on a Core in its own capture', () => {
+    const technician = (h: ReturnType<typeof bed>): void => {
+      h.sim.actions.signOut();
+      h.sim.actions.signIn('rina.wijaya', 'demo-2026');
+    };
+    const commands = [DeviceCommand.TEST_SIGNAL, DeviceCommand.IDENTIFY, DeviceCommand.RESTART] as const;
+
+    it('O-124-1: every command (test signal, identify, restart) on a camera, a microphone and a platform device is refused before any change - no row, no tone', () => {
+      const h = bed({ capture: 'external' });
+      expect(isOwnCaptureCoreState(h.state())).toBe(true);
+      technician(h);
+      for (const deviceId of ['CAM-02', 'MIC-01', 'GNSS']) {
+        for (const command of deviceId === 'GNSS' ? [DeviceCommand.IDENTIFY] : commands) {
+          const before = h.state();
+          let thrown: unknown = null;
+          try {
+            h.sim.actions.deviceCommand(deviceId, command);
+          } catch (error) {
+            thrown = error;
+          }
+          expect(thrown, `${deviceId} ${command}`).toMatchObject({ name: 'SimTransitionError', code: 'COMMAND_UNSUPPORTED', reason: DEVICE_COMMAND_NOT_AVAILABLE_REASON, event: 'deviceCommand' });
+          expect(h.state()).toBe(before);
+        }
+      }
+      expect(h.state().audit.rows.some((row) => row.type === 'DEVICE_COMMAND' || /simulated/i.test(row.message))).toBe(false);
+    });
+
+    it('O-124-1: the permission and the device lookup still answer first (NOT_PERMITTED, NOT_FOUND)', () => {
+      const h = bed({ capture: 'external' }); // signed in as an INVESTIGATOR: no DEVICE_MANAGE
+      expect(() => h.sim.actions.deviceCommand('CAM-02', DeviceCommand.RESTART)).toThrow(expect.objectContaining({ code: 'NOT_PERMITTED' }));
+      technician(h);
+      expect(() => h.sim.actions.deviceCommand('NO-SUCH-DEVICE', DeviceCommand.IDENTIFY)).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
+    });
+
+    it('O-124-1 CONTROL - the simulated device keeps its demonstration commands: one "(simulated)" DEVICE_COMMAND row each', () => {
+      const h = bed();
+      expect(isOwnCaptureCoreState(h.state())).toBe(false);
+      technician(h);
+      for (const command of commands) {
+        const before = h.state().audit.total;
+        h.sim.actions.deviceCommand('CAM-02', command);
+        expect(h.state().audit.total).toBe(before + 1);
+        expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'DEVICE_COMMAND', deviceId: 'CAM-02', details: { command } });
+        expect(h.state().audit.rows.at(-1)?.message).toContain('simulated');
+      }
+    });
+
+    it('U-14c: the reported device id is "not reported" (null) for the dataset\'s reserved id on a Core in its own capture only', () => {
+      const own = bed({ capture: 'external' }).state();
+      expect(own.device.id).toBe(DEVICE_ID);
+      expect(reportedCoreDeviceIdOf(own)).toBeNull();
+      expect(reportedCoreDeviceIdOf({ ...own, device: { ...own.device, id: 'DEMS-BENCH-01' } })).toBe('DEMS-BENCH-01');
+      // CONTROL: the simulated lane keeps the dataset's id.
+      const simulated = bed().state();
+      expect(reportedCoreDeviceIdOf(simulated)).toBe(DEVICE_ID);
     });
   });
 

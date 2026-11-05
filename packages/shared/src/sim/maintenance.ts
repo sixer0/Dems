@@ -207,6 +207,11 @@ export const IDENTIFY_PERIOD_MS = 500;
  * - IDENTIFY (DIAGNOSTICS_RUN; step 54, SIM-GAP-W48-5): the indicator blinks 3× at 2 Hz; every
  *   device accepts it, including the platform devices GNSS, TPM and FRONT-PANEL.
  * - RESTART (DEVICE_MANAGE, TECHNICIAN): refused while recording (D79).
+ * - On a Core in its own capture (`isOwnCaptureCoreState`; audit row CS2, finding O-124-1, ruling D89) every
+ *   command is REFUSED (`COMMAND_UNSUPPORTED`, `DEVICE_COMMAND_NOT_AVAILABLE_REASON`): the Core has no adapter
+ *   that restarts, tones or blinks a real device, so it never writes a "(simulated)" DEVICE_COMMAND row into
+ *   its production chain. After the permission and the device lookup, before any change or audit row - the
+ *   order of operations 66 and 67.
  */
 export function deviceCommandTransition(
   state: SimState,
@@ -224,6 +229,9 @@ export function deviceCommandTransition(
   if (!device && !platformName) throw new SimNotFoundError('device', deviceId);
   if (!device && command !== DeviceCommand.IDENTIFY) {
     throw new SimTransitionError(null, 'deviceCommand', `${deviceId} accepts IDENTIFY only`, SimErrorCode.COMMAND_UNSUPPORTED);
+  }
+  if (isOwnCaptureCoreState(state)) {
+    throw new SimTransitionError(state.session?.state ?? null, 'deviceCommand', 'this Core sends no command to a device', SimErrorCode.COMMAND_UNSUPPORTED, DEVICE_COMMAND_NOT_AVAILABLE_REASON);
   }
   if (command === DeviceCommand.RESTART && state.session?.state === SessionState.RECORDING) {
     throw new SimTransitionError(state.session.state, 'deviceCommand', 'restart is unavailable while recording', SimErrorCode.RECORDING_ACTIVE);
@@ -253,6 +261,12 @@ export function deviceCommandTransition(
     }),
   };
 }
+
+/**
+ * `details.reason` of the refusal of operations 48, 49 and 50 on a Core in its own capture (audit row CS2; finding
+ * O-124-1, ruling D89): no real adapter restarts, tones or blinks a device of such a Core.
+ */
+export const DEVICE_COMMAND_NOT_AVAILABLE_REASON = 'DEVICE_COMMAND_NOT_AVAILABLE';
 
 /** The scope tag of a Core services restart (DEVICE_COMMAND `details.scope`). */
 export const SERVICES_RESTART_SCOPE = 'CORE_SERVICES';

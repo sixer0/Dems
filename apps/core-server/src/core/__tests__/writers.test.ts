@@ -499,7 +499,7 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
       // RB-9 as amended (02-11-2026): the three key lists of the vendor-only operations.
       USER_CREATED: ['targetOperatorId', 'role', 'reason'],
       USER_UPDATED: ['targetOperatorId', 'fields', 'reason'],
-      USER_DELETED: ['targetOperatorId', 'role', 'sessionsEnded', 'auditRowsRemoved', 'signInRowsRemoved', 'recordsLeftUnattributed', 'credentialsRemoved', 'reason'],
+      USER_DELETED: ['targetOperatorId', 'role', 'sessionsEnded', 'auditRowsRemoved', 'signInRowsRemoved', 'recordsLeftUnattributed', 'credentialsRemoved', 'accountKept', 'reason'], // R-1 (row 133, D51): accountKept, optional
       BIOMETRIC_ENROLLMENT_CHANGED: ['enabled', 'deviceId'],
       CAPTURE_CONFIG_CHANGED: ['operationId', 'scope', 'field', 'trackId', 'channel', 'inputId', 'deviceId', 'from', 'to', 'permission'], // D61 (2026-11-04): a mic row names its numbered channel
       AUDIO_SOURCE_SWITCHED: ['fromInput', 'toInput', 'fromMs', 'toMs', 'sendingDeviceId'],

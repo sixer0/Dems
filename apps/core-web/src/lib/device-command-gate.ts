@@ -17,10 +17,16 @@
  * | Test signal | 49 `testDeviceSignal` | DIAGNOSTICS_RUN | a command of the device is out (LB-1) |
  * | Identify | 50 `identifyDevice` | DIAGNOSTICS_RUN | a command of the device is out (LB-1) |
  * | Restart | 48 `restartDevice` | DEVICE_MANAGE | a command is out; a recording is running (409 `RECORDING_ACTIVE`) |
+ *
+ * Audit row CS2 (finding O-124-1, ruling D89): a Core in its own capture (`useSelfCaptureCore`, the one rule; the Core's
+ * `isOwnCaptureCoreState`) refuses all three with 409 `COMMAND_UNSUPPORTED` / `DEVICE_COMMAND_NOT_AVAILABLE` - it has no
+ * adapter that restarts, tones or blinks a device. Each item is then disabled with that reason (`NOT_AVAILABLE`), the
+ * first and lasting block: no press, no toast, no request. The simulated lane is unchanged.
  */
 import { useTranslation } from 'react-i18next'
 import { OperatorRole, Permission, selectCan, selectIsRecording, useSim } from '@dems/shared/sim'
 import { requiredRoleForPermission } from '@/lib/core-errors'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 
 export type DeviceCommandKey = 'testSignal' | 'identify' | 'restart'
 
@@ -36,6 +42,7 @@ export type DeviceCommandBlock =
   | { readonly kind: 'BUSY' }
   | { readonly kind: 'ROLE'; readonly permission: Permission; readonly role: OperatorRole | null }
   | { readonly kind: 'RECORDING' }
+  | { readonly kind: 'NOT_AVAILABLE' }
 
 export interface DeviceCommandGateInput {
   /** Whether the session holds a permission (the hint of the Core in Live mode, the simulator's table otherwise). */
@@ -44,14 +51,18 @@ export interface DeviceCommandGateInput {
   readonly recording: boolean
   /** A command of this device is out (LB-1). */
   readonly busy: boolean
+  /** The Core runs its own capture: it refuses every device command (audit row CS2). Absent: false. */
+  readonly notAvailable?: boolean
 }
 
 /** The block of each command, by the rules above; pure. */
-export function deviceCommandGate({ can, recording, busy }: DeviceCommandGateInput): Readonly<Record<DeviceCommandKey, DeviceCommandBlock | null>> {
+export function deviceCommandGate({ can, recording, busy, notAvailable = false }: DeviceCommandGateInput): Readonly<Record<DeviceCommandKey, DeviceCommandBlock | null>> {
   // The lasting reasons first (the role, a recording), so their sentence stays under the item while a
   // command is out; BUSY only blocks an item that is otherwise offered.
   const blockOf = (key: DeviceCommandKey): DeviceCommandBlock | null => {
     const permission = DEVICE_COMMAND_PERMISSION[key]
+    // Row CS2: what the Core refuses for every role and in every state is said first.
+    if (notAvailable) return { kind: 'NOT_AVAILABLE' }
     if (!can(permission)) return { kind: 'ROLE', permission, role: requiredRoleForPermission(permission) }
     if (key === 'restart' && recording) return { kind: 'RECORDING' }
     if (busy) return { kind: 'BUSY' }
@@ -73,11 +84,13 @@ export function useDeviceCommandGate(busy: boolean): DeviceCommandGateView {
   const canTest = useSim((s) => selectCan(s, Permission.DIAGNOSTICS_RUN))
   const canManage = useSim((s) => selectCan(s, Permission.DEVICE_MANAGE))
   const recording = useSim(selectIsRecording)
+  const notAvailable = useSelfCaptureCore()
   const held: Partial<Record<Permission, boolean>> = { [Permission.DIAGNOSTICS_RUN]: canTest, [Permission.DEVICE_MANAGE]: canManage }
-  const blocks = deviceCommandGate({ can: (permission) => held[permission] === true, recording, busy })
+  const blocks = deviceCommandGate({ can: (permission) => held[permission] === true, recording, busy, notAvailable })
   const reasonOf = (key: DeviceCommandKey): string | null => {
     const block = blocks[key]
     if (block === null || block.kind === 'BUSY') return null
+    if (block.kind === 'NOT_AVAILABLE') return t('common.deviceMenuHint.notAvailable')
     if (block.kind === 'RECORDING') return t('devices.actions.restartWhileRecording')
     return t('common.rbac.requiresRole', { role: block.role ? t(`common.roles.${block.role}`) : '' })
   }

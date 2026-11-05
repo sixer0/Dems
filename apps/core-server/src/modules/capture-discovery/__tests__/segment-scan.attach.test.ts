@@ -25,15 +25,27 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
 import { ApiErrorCode, CAPTURE_DISCOVERY_RESULT_TTL_MS, CaptureConnectionOutcome, CaptureDiscoveryReason, CaptureDiscoveryTrigger } from '@dems/shared/api';
+import { OperatorRole, Permission } from '@dems/shared/sim';
 import { afterAll, describe, expect, it } from 'vitest';
 import { CREDENTIAL_MARK, sealCredential, type CameraCandidate, type SealedCredential } from '../../../capture/adapters';
 import { Secret } from '../../../config';
-import type { AuditEntry, UnitContext } from '../../../core';
+import { detailRulesOf, type AuditEntry, type UnitContext } from '../../../core';
 import { ApiFailure } from '../../../plugins/error-envelope';
 import { createCredentialStore } from '../../../credential-store';
 import { createCandidateStore, type CandidateStore } from '../store';
 import { AUTOATTACH_MAX_ATTACH_ATTEMPTS, SYSTEM_OWNER_SESSION_ID, autoSearchIdOf, createSegmentSweeper, foundOfProbe, type SegmentAttach, type SegmentSweepOptions } from '../segment-scan';
-import { AUTOATTACH_TEST_PACING_CAP_MS, candidateDirectoryOf, createConnectionTestLimits, registerCaptureConnectRoutes, type CaptureConnectControl } from '../connect';
+import {
+  AUTOATTACH_TEST_PACING_CAP_MS,
+  INSERT_SYSTEM_PRINCIPAL,
+  SYSTEM_OPERATOR_ID,
+  SYSTEM_OPERATOR_PERMISSIONS,
+  SYSTEM_OPERATOR_PRINCIPAL,
+  SYSTEM_PRINCIPAL_CREATED_REASON,
+  candidateDirectoryOf,
+  createConnectionTestLimits,
+  registerCaptureConnectRoutes,
+  type CaptureConnectControl,
+} from '../connect';
 
 // The sealing runs on the Core's own store (fix F-M4's rule: the connect flow takes no other answer); its key
 // files live in a directory of this file, removed at the end - the idiom of `connect/__tests__/service.test.ts`.
@@ -63,6 +75,10 @@ interface AttachWorld {
   readonly audit: AuditEntry[];
   /** Row 103: every app log line and error-log row of the world, as handed to the logger. */
   readonly lines: unknown[];
+  /** Row 134: the `operators` rows the fake unit holds, by id (the production world has OPR-000, enabled). */
+  readonly operators: Map<string, { enabled: boolean; role: unknown }>;
+  /** Row 134: the labels of the native units the world ran, in order. */
+  readonly units: string[];
   readonly connect: CaptureConnectControl;
   readonly store: CandidateStore;
   advance(ms: number): void;
@@ -74,8 +90,8 @@ interface AttachWorld {
  * fake registrar), and the limits are the REAL ones on this world's manual clock. The capture operation reads
  * REAL_DEVELOPMENT (`captureDevSources`), so no destination rule binds the fake tester.
  */
-function world(segmentCidr: string | null = SEGMENT): AttachWorld {
-  const state: Mutable<Omit<AttachWorld, 'connect' | 'store' | 'advance'>> = { nowMs: T0, waits: [], testerCalls: [], audit: [], lines: [] };
+function world(segmentCidr: string | null = SEGMENT, operators: Map<string, { enabled: boolean; role: unknown }> = new Map([[SYSTEM_OPERATOR_ID, { enabled: true, role: 'TECHNICIAN' }]])): AttachWorld {
+  const state: Mutable<Omit<AttachWorld, 'connect' | 'store' | 'advance'>> = { nowMs: T0, waits: [], testerCalls: [], audit: [], lines: [], operators, units: [] };
   const store = createCandidateStore({ randomBytes: counterBytes() });
   const slices = () => ({
     session: null,
@@ -86,7 +102,19 @@ function world(segmentCidr: string | null = SEGMENT): AttachWorld {
     id: 1,
     audit: { append: async (entry: AuditEntry) => (state.audit.push(entry), {} as never) },
     events: { append: async () => ({}) },
-    query: async () => ({ rows: [], rowCount: 0 }),
+    // Row 134: the system principal's INSERT answers from `state.operators` as PostgreSQL does: ON CONFLICT (id) DO
+    // NOTHING inserts nothing for an existing id (row count 0); the username `system` held by another id (`HELD`) is a
+    // unique violation, 23505. Every other statement answers none.
+    query: async (text: string, values: readonly unknown[] = []) => {
+      if (text === INSERT_SYSTEM_PRINCIPAL) {
+        const id = String(values[0]);
+        if (state.operators.has(id)) return { rows: [], rowCount: 0 };
+        if (state.operators.has('HELD')) throw Object.assign(new Error('duplicate key value violates unique constraint "operators_username_key"'), { code: '23505' });
+        state.operators.set(id, { enabled: true, role: values[1] });
+        return { rows: [], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    },
     afterCommit: (task: () => void) => task(),
     db: {},
   } as unknown as UnitContext;
@@ -101,7 +129,7 @@ function world(segmentCidr: string | null = SEGMENT): AttachWorld {
       state: () => slices() as never,
       run: async (_label: string, work: (scope: unknown) => Promise<unknown>) => ({ value: await work({ pending: () => slices(), unit, command: async () => undefined }), epoch: 1, revision: 1 }),
     },
-    pipeline: { run: async (_label: string, work: (u: UnitContext) => Promise<unknown>) => await work(unit) },
+    pipeline: { run: async (label: string, work: (u: UnitContext) => Promise<unknown>) => (state.units.push(label), await work(unit)) },
     withTypeProvider: () => ({ route: () => undefined }),
   };
   const connect = registerCaptureConnectRoutes(app as never, { limits: createConnectionTestLimits({ now: () => state.nowMs }) });
@@ -569,5 +597,84 @@ describe('row 103 (DF-26, D23 (3)): the default camera credential is never logge
     const flow = ok.connect.systemFlow(ACCOUNT, { wait: async () => undefined });
     expect((await flow.testCandidate(seedCandidate(ok.store, ok.nowMs))).outcome).toBe(CaptureConnectionOutcome.REACHABLE);
     expect(ok.testerCalls).toEqual([{ host: HOST, credential: true }]);
+  });
+});
+
+// ── Audit 2026-11-05 row 134 (DF-29; D20(d), D29 Q4): the system principal, least privilege and audited creation ──
+//
+// The principal the SYSTEM flow acts as holds ONE permission in code, whatever its database role grants. Its
+// `operators` row - the actor key of every row the flow writes - is created by the flow itself when it is missing,
+// in ONE unit with its `USER_CREATED` row, before the first step; a row that is there is never changed.
+
+describe('row 134: the auto-attach principal OPR-000 holds only CAPTURE_CONFIG, and a creation of its row is audited', () => {
+  it('the principal is OPR-000, role TECHNICIAN, with exactly [CAPTURE_CONFIG] - frozen, so nothing widens it at run time', () => {
+    expect(SYSTEM_OPERATOR_ID).toBe('OPR-000');
+    expect(SYSTEM_OPERATOR_PRINCIPAL).toMatchObject({ kind: 'OPERATOR', operatorId: 'OPR-000', sessionId: SYSTEM_OWNER_SESSION_ID, deviceId: null, role: OperatorRole.TECHNICIAN });
+    expect(SYSTEM_OPERATOR_PRINCIPAL.permissions).toEqual([Permission.CAPTURE_CONFIG]);
+    expect(SYSTEM_OPERATOR_PRINCIPAL.permissions).toBe(SYSTEM_OPERATOR_PERMISSIONS);
+    // What the TECHNICIAN role grants in the database beside it is NOT carried by the principal.
+    for (const wider of Object.values(Permission).filter((permission) => permission !== Permission.CAPTURE_CONFIG)) {
+      expect(SYSTEM_OPERATOR_PRINCIPAL.permissions).not.toContain(wider);
+    }
+    expect(Object.isFrozen(SYSTEM_OPERATOR_PRINCIPAL)).toBe(true);
+    expect(Object.isFrozen(SYSTEM_OPERATOR_PRINCIPAL.permissions)).toBe(true);
+    expect(() => (SYSTEM_OPERATOR_PRINCIPAL.permissions as Permission[]).push(Permission.CAPTURE_CONFIG)).toThrow(TypeError);
+  });
+
+  it('a MISSING row is created with ONE USER_CREATED row in its own unit before the first step; the attach still adopts; a second step writes nothing more', async () => {
+    const w = world(SEGMENT, new Map());
+    const candidateId = seedCandidate(w.store, w.nowMs);
+    const flow = w.connect.systemFlow(ACCOUNT, { wait: async (ms) => void w.advance(ms) });
+    expect((await flow.testCandidate(candidateId)).outcome).toBe(CaptureConnectionOutcome.REACHABLE);
+    expect(w.operators.get(SYSTEM_OPERATOR_ID)).toEqual({ enabled: true, role: OperatorRole.TECHNICIAN });
+    const created = w.audit.filter((entry) => entry.type === 'USER_CREATED');
+    expect(created).toEqual([
+      {
+        type: 'USER_CREATED',
+        message: `Operator ${SYSTEM_OPERATOR_ID} created with role ${OperatorRole.TECHNICIAN}`,
+        actorId: null,
+        deviceId: null,
+        details: { targetOperatorId: SYSTEM_OPERATOR_ID, role: OperatorRole.TECHNICIAN, reason: SYSTEM_PRINCIPAL_CREATED_REASON },
+      },
+    ]);
+    // Before the first step's own row, and in a unit of its own label.
+    expect(w.audit.findIndex((entry) => entry.type === 'USER_CREATED')).toBeLessThan(w.audit.findIndex((entry) => entry.type === 'CAPTURE_CONNECTION_TESTED'));
+    expect(w.units[0]).toBe('captureConnect.systemPrincipal.provision');
+    // The row the writer gets is one the server's detail rules take: every key known, every value accepted, every required key there.
+    const rules = detailRulesOf('USER_CREATED');
+    expect(rules).toBeDefined();
+    for (const [key, value] of Object.entries(created[0]!.details ?? {})) expect(rules?.[key]?.accepts(value), key).toBe(true);
+    for (const [key, rule] of Object.entries(rules ?? {})) if (rule.required) expect(Object.keys(created[0]!.details ?? {}), key).toContain(key);
+    // The adoption still runs under the principal (F-2a-05: the actor key is there), and no second creation is written.
+    expect((await flow.adoptCandidate(candidateId)).deviceId).toBe('CAM-03');
+    expect(w.audit.some((entry) => entry.type === 'CAPTURE_CANDIDATE_ADOPTED')).toBe(true);
+    expect(w.audit.filter((entry) => entry.type === 'USER_CREATED')).toHaveLength(1);
+    expect(w.units.filter((label) => label === 'captureConnect.systemPrincipal.provision')).toHaveLength(1);
+    expect(JSON.stringify(w.audit)).not.toContain(ACCOUNT.secret);
+  });
+
+  it('an EXISTING row (the production one) is never touched, enabled or DISABLED: no audit row, no change; a username held by another id refuses the step before anything is sent, said and persisted', async () => {
+    const present = world();
+    expect((await present.connect.systemFlow(ACCOUNT, { wait: async () => undefined }).testCandidate(seedCandidate(present.store, present.nowMs))).outcome).toBe(CaptureConnectionOutcome.REACHABLE);
+    expect(present.audit.some((entry) => entry.type === 'USER_CREATED')).toBe(false);
+    expect(present.operators.get(SYSTEM_OPERATOR_ID)).toEqual({ enabled: true, role: 'TECHNICIAN' });
+
+    const disabled = world(SEGMENT, new Map([[SYSTEM_OPERATOR_ID, { enabled: false, role: 'TECHNICIAN' }]]));
+    const disabledFlow = disabled.connect.systemFlow(ACCOUNT, { wait: async (ms) => void disabled.advance(ms) });
+    const disabledId = seedCandidate(disabled.store, disabled.nowMs);
+    await disabledFlow.testCandidate(disabledId);
+    await disabledFlow.adoptCandidate(disabledId);
+    // Never re-enabled (and never disabled or deleted by the Core): the row is as the world held it.
+    expect(disabled.operators.get(SYSTEM_OPERATOR_ID)).toEqual({ enabled: false, role: 'TECHNICIAN' });
+    expect(disabled.audit.some((entry) => entry.type === 'USER_CREATED')).toBe(false);
+
+    const held = world(SEGMENT, new Map([['HELD', { enabled: true, role: 'INVESTIGATOR' }]]));
+    const heldError: unknown = await held.connect.systemFlow(ACCOUNT, { wait: async () => undefined }).testCandidate(seedCandidate(held.store, held.nowMs)).then(() => null, (caught: unknown) => caught);
+    expect((heldError as { code?: unknown } | null)?.code).toBe('23505');
+    expect(held.testerCalls).toEqual([]);
+    expect(held.operators.has(SYSTEM_OPERATOR_ID)).toBe(false);
+    expect(held.audit).toEqual([]);
+    expect(held.lines.some((line) => (line as { fields?: { code?: unknown } }).fields?.code === 'SYSTEM_PRINCIPAL_UNCHECKED')).toBe(true);
+    expect(held.lines.some((line) => (line as { level?: unknown; source?: unknown }).level === 'error' && (line as { source?: unknown }).source === 'captureConnect.systemPrincipal')).toBe(true);
   });
 });

@@ -5,7 +5,7 @@
 // another or dropped). Each block keeps the note of the round that wrote it; the SIMULATED lane has a
 // control in every block.
 import { describe, afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, within, act, configure } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within, act, configure } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE, SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, CORE_NOT_RUNNING_FAULT_EXAMPLE, START_REFUSED_SESSION_KEY_EXAMPLE, CORE_API_EXAMPLES, EVIDENCE_SEALED_PROFILE_EXAMPLE, EVIDENCE_STREAM_PROFILE_NOTICE_EXAMPLE } from '@dems/shared/api'
@@ -37,7 +37,7 @@ import { sourceLineState } from '@/features/devices/source-state'
 import { readDetailFacts } from '@/features/evidence/item-facts'
 import { coreVerifyOutcomes, itemsWithoutVerifyRow } from '@/features/security-audit/core-verify-rows'
 import { type TFunction } from 'i18next'
-import { DEMO_NOW, mount, newSim, page, realCore, useRealCorePages } from '@/test/real-core-bed'
+import { DEMO_NOW, FIND, mount, newSim, page, realCore, useRealCorePages } from '@/test/real-core-bed'
 
 // Fix wave I, driver B - findings G75b-06 (web half) and G75b-08 of re-gate 75 (`gateway_check/10b_m5_regate.md`).
 //
@@ -1572,7 +1572,8 @@ describe("the Core's own fact, \"Not reported\", or nothing: hashes, verify rows
       expect(chippedBlocks()).toEqual([])
       cleanup()
       mount('/storage', 'idle', realCore)
-      expect(await page('no-producer-volumes')).toHaveTextContent(NOT_REPORTED)
+      // Audit row CS2 (O-2): the volumes block shows the evidence volume the Core measured (below); the usage series stays "Not reported".
+      expect(await page('storage-volume-measured')).toBeInTheDocument()
       expect(await page('no-producer-usage')).toHaveTextContent(NOT_REPORTED)
       expect(chippedBlocks()).toEqual([])
       cleanup()
@@ -1580,6 +1581,116 @@ describe("the Core's own fact, \"Not reported\", or nothing: hashes, verify rows
       await page('page-storage')
       expect(document.querySelector('[data-synthetic-block]')).toBeNull()
       expect(document.querySelector('[data-no-producer-block]')).toBeNull()
+    })
+  })
+
+  // Audit row CS2 (rulings D74, D81, D88, D89): the C-SYN leftovers the W1 re-judges found on the REAL_PRODUCTION console.
+  describe('row CS2: the top bar id, the settings wording, the readiness count, the measured volume and the device commands', () => {
+    const NOT_REPORTED = en.system.noProducer
+    const withRecord = (id: string) => (sim: Sim) => {
+      realCore(sim)
+      sim.store.setState({ device: { ...sim.store.getState().device, id } })
+    }
+
+    it('U-14c: the top bar of a Core in its own capture prints no reserved id - "Not reported" - and no model room', async () => {
+      const sim = mount('/storage', 'idle', realCore)
+      const header = await page('top-bar')
+      const id = await within(header).findByTestId('top-bar-device-id', {}, FIND)
+      expect(id).toHaveTextContent(NOT_REPORTED)
+      expect(id).toHaveAttribute('data-reported', 'false')
+      expect(header).not.toHaveTextContent(DEVICE_ID)
+      expect(header).not.toHaveTextContent(sim.store.getState().device.name)
+      expect(getMissingI18nKeys()).toEqual([])
+    })
+    it('U-14c (S9): a Core whose record is its installation id shows that id in the top bar, System > About and the settings', async () => {
+      mount('/system', 'idle', withRecord('DEMS-BENCH-01'))
+      expect(await within(await page('top-bar')).findByTestId('top-bar-device-id', {}, FIND)).toHaveTextContent('DEMS-BENCH-01')
+      expect(await page('system-about-deviceId')).toHaveTextContent('DEMS-BENCH-01')
+      expect(await page('system-settings-about-body')).toHaveTextContent('DEMS-BENCH-01')
+    })
+    it('U-14c: the settings "About DEMS" line of a Core in its own capture names no reserved id', async () => {
+      mount('/system', 'idle', realCore)
+      const body = await page('system-settings-about-body')
+      expect(body).not.toHaveTextContent(DEVICE_ID)
+      expect(body).toHaveTextContent(NOT_REPORTED)
+    })
+    it('CONTROL - the simulated lane keeps the dataset id and the room in the top bar', async () => {
+      const sim = mount('/storage', 'idle')
+      const id = await within(await page('top-bar')).findByTestId('top-bar-device-id', {}, FIND)
+      expect(id).toHaveTextContent(DEVICE_ID)
+      expect(id).toHaveAttribute('data-reported', 'true')
+      expect(screen.getByTestId('top-bar')).toHaveTextContent(sim.store.getState().device.name)
+    })
+
+    it('U-14b: /system settings of a Core in its own capture say no demo word - no presentation switch, the preferences are the Core\'s', async () => {
+      mount('/system', 'idle', realCore)
+      const root = await page('page-system')
+      await within(root).findByTestId('system-settings-local-note', {}, FIND)
+      expect(within(root).queryByTestId('system-presentation-mode')).toBeNull()
+      expect(root).not.toHaveTextContent(en.system.settings.presentationModeHint)
+      expect(root).not.toHaveTextContent(en.system.settings.localNote)
+      expect(within(root).getByTestId('system-settings-local-note')).toHaveTextContent(en.system.settings.localNoteCore)
+    })
+    it('CONTROL - the simulated lane keeps the presentation switch and "Saved on this console only (demo)."', async () => {
+      mount('/system', 'idle')
+      const root = await page('page-system')
+      expect(await within(root).findByTestId('system-presentation-mode', {}, FIND)).toBeInTheDocument()
+      expect(within(root).getByTestId('system-settings-local-note')).toHaveTextContent(en.system.settings.localNote)
+    })
+
+    it('F-5-02c: /session/new counts over the twelve listed checks and states the unrated ones beside the count', async () => {
+      mount('/session/new', 'idle', realCore)
+      const card = await page('sn-readiness')
+      const count = within(card).getByTestId('sn-readiness-count').textContent ?? ''
+      expect(within(card).getAllByRole('listitem')).toHaveLength(12)
+      expect(count).toMatch(/^\d+ of 12 ready/)
+      const notReported = within(card).queryAllByTestId('sn-readiness-not-reported').length
+      const notes = within(card).queryAllByTestId('sn-readiness-host-clock').length
+      expect(notReported).toBeGreaterThan(0)
+      expect(count).toContain(`${notReported} not reported`)
+      if (notes > 0) expect(count).toContain(`${notes} for information`)
+      else expect(count).not.toContain('for information')
+    })
+    it('CONTROL - the simulated lane reads "N of 12 ready" and nothing beside it', async () => {
+      mount('/session/new', 'idle')
+      const card = await page('sn-readiness')
+      expect(within(card).getByTestId('sn-readiness-count').textContent).toMatch(/^\d+ of 12 ready$/)
+    })
+
+    it('O-2: Storage > Volumes of a Core in its own capture shows the measured evidence volume, and no SMART, temperature or system volume', async () => {
+      const sim = mount('/storage', 'idle', realCore)
+      const evidence = sim.store.getState().storage.volumes.find((volume) => volume.kind === 'EVIDENCE')!
+      const card = await page('storage-volume-measured')
+      expect(card).toHaveAttribute('data-total-bytes', String(evidence.totalBytes))
+      expect(card).toHaveAttribute('data-used-bytes', String(evidence.usedBytes))
+      expect(card).toHaveTextContent(enWeb.web.realCore.storage.volumeTitle)
+      const panel = screen.getByTestId('storage-panel-volumes')
+      expect(within(panel).queryByTestId('no-producer-volumes')).toBeNull()
+      expect(within(panel).getByTestId('storage-volumes-measured-note')).toHaveTextContent(enWeb.web.realCore.storage.volumeNote)
+      for (const model of [en.storage.volumes.kind.SYSTEM, en.storage.volumes.kind.EVIDENCE, en.storage.volumes.temperature, en.storage.volumes.smart.PASSED, en.storage.volumes.derivedNote]) expect(panel).not.toHaveTextContent(model)
+      expect(within(panel).queryByTestId('storage-volume-NVME-SYS')).toBeNull()
+    })
+    it('CONTROL - the simulated lane keeps both volume cards with their health', async () => {
+      mount('/storage', 'idle')
+      expect(await page('storage-volume-NVME-SYS')).toBeInTheDocument()
+      expect(await page('storage-volume-HDD-EVIDENCE')).toBeInTheDocument()
+      expect(screen.queryByTestId('storage-volume-measured')).toBeNull()
+    })
+
+    it('O-124-1: the Devices menu of a Core in its own capture disables test signal, identify and restart with the reason - nothing is sent', async () => {
+      const sim = mount('/devices', 'idle', realCore, OPERATOR_IDS.RINA)
+      fireEvent.click(await page('device-menu-CAM-02'))
+      for (const name of [/Test signal/, /Identify/, /Restart/]) {
+        const item = await screen.findByRole('menuitem', { name }, FIND)
+        expect(item).toHaveAttribute('aria-disabled', 'true')
+        expect(item).toHaveTextContent(en.common.deviceMenuHint.notAvailable)
+      }
+      expect(sim.store.getState().audit.rows.some((row) => row.type === 'DEVICE_COMMAND')).toBe(false)
+    })
+    it('CONTROL - the simulated lane keeps the three commands offered to a TECHNICIAN', async () => {
+      mount('/devices', 'idle', () => undefined, OPERATOR_IDS.RINA)
+      fireEvent.click(await page('device-menu-CAM-02'))
+      for (const name of [/Test signal/, /Identify/, /Restart/]) expect(await screen.findByRole('menuitem', { name }, FIND)).not.toHaveAttribute('aria-disabled', 'true')
     })
   })
 

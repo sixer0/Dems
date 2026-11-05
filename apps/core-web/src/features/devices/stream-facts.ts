@@ -130,7 +130,7 @@ export function trackFactsOf(state: FactsState, cameraId: VideoTrackId, realCapt
   const reach =
     line === undefined
       ? null
-      : sourceLineState({ realCapture: true, recording: state.session?.state === 'RECORDING', online: line.online, streamState: line.streamState, checkedAt: checkedAtOf(device) })
+      : sourceLineState({ realCapture: true, recording: state.session?.state === 'RECORDING', online: line.online, streamState: line.streamState, checkedAt: checkedAtOf(device), reach: device?.reach })
   const noticed =
     line !== undefined &&
     activeCaptureNotices(state.alerts).some((notice) => notice.kind === 'UNREACHABLE' && notice.deviceKind === 'CAMERA' && notice.deviceId === line.deviceId)

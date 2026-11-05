@@ -67,6 +67,22 @@ export interface PrecheckGateOptions {
   /** Read at every run. Null: no discovery service. */
   readonly discovery: () => PrecheckSearchSeam | null;
   readonly report: (report: NoticeReport) => void;
+  /**
+   * Audit fix row 128b (F-5-02b; decision D100 (1), option (a)): states what THIS RUN's probe read as the REACH of every
+   * asked device (`REACHABLE` / `NOT_REACHABLE` + `checkedAt`) - through the engine's reach door of row 127
+   * (`noteCaptureDeviceReachIn`), before the hosted action - so the reach the checks read is never older than the run.
+   * Absent: no reach is stated (the predecessor's run). A failure is reported (`REACH_NOT_WRITTEN`) and the run goes on.
+   */
+  readonly noteReach?: (readings: readonly PrecheckReachReading[]) => Promise<unknown>;
+  /** The server clock of a reach reading (epoch ms). Absent: `Date.now`. */
+  readonly now?: () => number;
+}
+
+/** Audit fix row 128b: one reach reading of a pre-check run (the form of the engine's `CaptureDeviceReachReading`, row 127). */
+export interface PrecheckReachReading {
+  readonly deviceId: string;
+  readonly reach: 'REACHABLE' | 'NOT_REACHABLE';
+  readonly checkedAt: number;
 }
 
 export interface PrecheckRun {
@@ -102,6 +118,8 @@ export const PrecheckReportCode = {
   /** The SOURCE of the probe threw (verification finding V98-13): the run is judged with every configured source not reachable. */
   PROBE_SOURCE_FAILED: 'CAPTURE_PRECHECK_PROBE_SOURCE_FAILED',
   SEARCH_FAILED: 'CAPTURE_PRECHECK_SEARCH_FAILED',
+  /** Audit fix row 128b: the run's reach readings could not be stated (the run itself goes on). */
+  REACH_NOT_WRITTEN: 'CAPTURE_PRECHECK_REACH_NOT_WRITTEN',
 } as const;
 
 const SOURCE = 'captureNotices.precheck';
@@ -204,6 +222,19 @@ export function createPrecheckGate(options: PrecheckGateOptions): PrecheckGate {
       const rule = new Map<string, CaptureSourceReachability>();
       // `captureReachabilityOf` reads the selector and `captureDevices` only.
       for (const row of captureReachabilityOf(read as SimState)) if (!row.reachable) rule.set(row.deviceId, row);
+
+      // Audit fix row 128b (F-5-02b; D100 (1)): the REACH of every asked device, from this run's readings, so a stale
+      // reading (a preview's, row 127) never decides the run's items. Not when the probe itself could not be made
+      // (V98-13): nothing was asked, so nothing was reached or missed - those sources already read not online.
+      if (options.noteReach !== undefined && sourceFailure === null) {
+        const checkedAt = (options.now ?? Date.now)();
+        const reach: PrecheckReachReading[] = [...cameraIds, ...micIds].map((deviceId) => ({ deviceId, reach: readings.get(deviceId)?.reachable === true ? 'REACHABLE' : 'NOT_REACHABLE', checkedAt }));
+        try {
+          await options.noteReach(reach);
+        } catch (err) {
+          report({ source: SOURCE, code: PrecheckReportCode.REACH_NOT_WRITTEN, deviceId: null, ...ids, err });
+        }
+      }
 
       // 2. Before the action: what the checks read.
       const unreachableCameras: string[] = [];

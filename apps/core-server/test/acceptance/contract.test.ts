@@ -1987,6 +1987,28 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     // RB-8 stands over the delete too: the last enabled USER_ADMIN holder cannot go.
     await expectCall(main, 'deleteUser', supervisor, 'the last holder of USER_ADMIN cannot be deleted', { id: operatorIdOf('SUPERVISOR'), payload: { confirm: 'root', reason: 'Acceptance walk of the RB-9 trio' } }, 409, 'LAST_ADMIN');
 
+    // Row 133 cycle 3 (decision D107, finding F-DBW2-1): the two 409s row 133 documented, PRODUCED here.
+    // (a) D51: an account whose purge KEEPS it (it wrote an evidence-chain row, D38 DR-1) is terminal - op 13 refuses it.
+    //     The evidence-chain row is written through the Core's own unit of work (one of the simulator's types, as the
+    //     purge db test does), so the chain and the engine's ring stay one; the purge re-seals and the engine adopts it (row 94).
+    const keptCreated = await expectCall(main, 'createUser', supervisor, 'an account that will write an evidence-chain row', { payload: { ...NEW, username: 'w52.kept' } }, 200);
+    const keptId = bodyOf<{ id: string }>(keptCreated).id;
+    await main.app.pipeline.run('w52.fixture.keptRow', (unit) => unit.audit.append({ type: 'AUDIT_EXPORTED', message: 'Audit log exported.', actorId: keptId, deviceId: null, details: {} }));
+    await main.app.pipeline.drain();
+    const keptPurge = await expectCall(main, 'deleteUser', supervisor, 'its purge keeps the account, disabled (D38 DR-1)', { id: keptId, payload: { confirm: 'w52.kept', reason: 'Acceptance walk of D51' } }, 200);
+    expect(bodyOf<{ accountKept: boolean }>(keptPurge).accountKept).toBe(true);
+    const terminal = await expectCall(main, 'enableUser', supervisor, 'a purge-kept account is terminal (D51)', { id: keptId, payload: { reason: 'Acceptance walk of D51' } }, 409, 'INVALID_STATE');
+    expect(detailsOf(terminal)['reason']).toBe('PURGE_KEPT');
+    // (b) DF-29: the system principal OPR-000 is never edited. The seed holds no such row, so the installer's row (D62:
+    //     `system`, no credential) is put in for this one call and taken out again; a refusal writes nothing that names it.
+    const systemInserted = (await owner().query(
+      "INSERT INTO public.operators (id, username, name, display_name, initials, role_id, enabled, created_at, updated_at) SELECT 'OPR-000', 'system', 'System', 'System', 'SYS', 'TECHNICIAN', true, created_at, created_at FROM public.operators WHERE id = $1 ON CONFLICT DO NOTHING RETURNING id",
+      [operatorIdOf('SUPERVISOR')],
+    )).rows.length;
+    const systemEdit = await expectCall(main, 'updateUser', supervisor, 'the system principal OPR-000 is never edited (DF-29)', { id: 'OPR-000', payload: { name: 'Renamed System', reason: 'Acceptance walk of DF-29' } }, 409, 'INVALID_STATE');
+    expect(detailsOf(systemEdit)['reason']).toBe('SYSTEM_PRINCIPAL');
+    if (systemInserted === 1) await owner().query("DELETE FROM public.operators WHERE id = 'OPR-000'");
+
     // ── 115 and the preview route's issuer: refusals first, then one session with the manager of production
     // capture taken from the composition's place (its parts are doubles of this file; the stream itself, the
     // token's binding and the cut rules are `src/camera-preview`'s own tests).
@@ -2760,6 +2782,13 @@ describe('operations 72 and 75: a scenario load and a reset, through the real ro
 // the camera-search area of this file produces both with real requests. The entry
 // `'startCaptureDiscovery 422'` was taken out with that row, as this comment announced.
 const LANDED_UNANSWERED: Readonly<Record<string, string>> = {};
+// Row 133 cycle 3 (decision D107, finding F-DBW2-1): a documented response that only a Core in its OWN capture
+// answers (op 50's 409 COMMAND_UNSUPPORTED / DEVICE_COMMAND_NOT_AVAILABLE, rows 125 cycle 2 and CS2). This file
+// runs the simulated lane, where `isOwnCaptureCoreState` is false, so the cell cannot be produced here; the refusal
+// itself is held by the unit tests of the devices module. A produced cell makes the entry `stale` and fails.
+const OWN_CAPTURE_ONLY: Readonly<Record<string, string>> = {
+  'identifyDevice 409': 'refused only on an own-capture Core; the acceptance harness runs the simulated lane',
+};
 const NOT_PRODUCED: Readonly<Record<string, string>> = {
   ...Object.fromEntries(
     UNROUTED_OPERATIONS.flatMap((operation) =>
@@ -2767,6 +2796,7 @@ const NOT_PRODUCED: Readonly<Record<string, string>> = {
     ),
   ),
   ...LANDED_UNANSWERED,
+  ...OWN_CAPTURE_ONLY,
 };
 
 /**

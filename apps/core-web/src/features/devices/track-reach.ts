@@ -15,6 +15,6 @@ export function useTrackReach(cameraId: CameraFeedProps['cameraId']): SourceReac
   const device = useTrackDevice(cameraId)
   const recording = useSim(selectIsRecording)
   if (!realCapture || line === undefined) return null
-  return sourceLineState({ realCapture: true, recording, online: line.online, streamState: line.streamState, checkedAt: checkedAtOf(device) }).reach
+  return sourceLineState({ realCapture: true, recording, online: line.online, streamState: line.streamState, checkedAt: checkedAtOf(device), reach: device?.reach }).reach
 }
 

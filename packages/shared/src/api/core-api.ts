@@ -1048,7 +1048,7 @@ const OPERATION_TABLE = [
     coreServerDescription: [...VIDEO_STATUS_TEXT, READ_FOR_EVERY_ROLE, CORE_SERVER_ANSWERS].join('\n\n'),
     source: 'Design book §21.2',
     responses: {
-      200: { description: 'Both video tracks.', schema: 'VideoStatusResponse' },
+      200: { description: 'All four video tracks.', schema: 'VideoStatusResponse' },
       ...CORE_SERVER_READ_REFUSALS,
     },
     access: AUTHENTICATED_ACCESS,

@@ -62,6 +62,12 @@ export interface CaptureDeviceRecord {
   readonly address: string | null;
   readonly poePort: string | null;
   readonly enabled: boolean;
+  /**
+   * Audit fix row 128b (D100 (2); D92): the row's adapter kind (`capture_devices.adapter_kind`, NOT NULL, default
+   * `FAKE`). With the id it decides whether the row is a device of the demonstration model. Null when the reader did
+   * not carry it: then the row is no model row (NOT READ, never the model's LIVE / LOST).
+   */
+  readonly adapterKind: string | null;
 }
 
 /** What a slice that refuses to build says: the code names it, the detail lists identifiers only. */
@@ -85,9 +91,23 @@ export class CaptureSliceError extends Error {
  */
 const BUILT_IN_DEVICE_IDS: ReadonlySet<string> = new Set(DEFAULT_CAPTURE_DEVICES.devices.map((device) => device.id));
 
-/** A camera's stream state at rest, as these builders state it: the model's for a built-in camera, NOT READ (null) for any other. */
+/** The adapter kind of the demonstration model's rows (the column default; `db/mapping/rows.ts` `BUILT_IN_MODEL_ADAPTER_KIND`). */
+const BUILT_IN_MODEL_ADAPTER_KIND = 'FAKE';
+
+/**
+ * Audit fix row 128b (D100 (2); the D92 rule of row 128, `db/mapping/rows.ts` `isBuiltInModelRow`): a row is a device OF
+ * THE DEMONSTRATION MODEL when its id is a built-in one AND its adapter kind is `FAKE` - never by the id alone. Since
+ * D60 / D61 the built-in ids reach CAM-03 / CAM-04 and MIC-03 / MIC-04, and a production registry holds REAL devices
+ * under them (the bench: ONVIF CAM-03 / CAM-04). Keyed on the id alone, those stated the model's LIVE on the lines of
+ * operations 76 / 77 while the Core could not reach them.
+ */
+function isBuiltInModelRecord(device: Pick<CaptureDeviceRecord, 'id' | 'adapterKind'>): boolean {
+  return BUILT_IN_DEVICE_IDS.has(device.id) && device.adapterKind === BUILT_IN_MODEL_ADAPTER_KIND;
+}
+
+/** A camera's stream state at rest, as these builders state it: the model's for a camera of the model (built-in id AND FAKE, row 128b), NOT READ (null) for any other. */
 function streamStateAtRest(device: CaptureDeviceRecord): 'LIVE' | 'LOST' | null {
-  if (!BUILT_IN_DEVICE_IDS.has(device.id)) return null;
+  if (!isBuiltInModelRecord(device)) return null;
   return device.enabled ? 'LIVE' : 'LOST';
 }
 

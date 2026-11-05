@@ -37,6 +37,7 @@
  * session ID, a search ID): never a label, an address or anything a caller sent.
  */
 import type { FastifyInstance } from 'fastify';
+import { noteCaptureDeviceReachIn, type EngineUnit } from '../engine'; // audit fix row 128b (D100 (1)): row 127's reach door
 import { sessionCapture } from '../capture-session';
 import { captureFenceControl } from '../capture/fence';
 import type { Principal } from '../plugins/authenticate';
@@ -57,6 +58,7 @@ export {
   type PrecheckRun,
   type PrecheckSearchOwner,
   type PrecheckSearchSeam,
+  type PrecheckReachReading, // audit fix row 128b
 } from './precheck';
 export {
   CAPTURE_PRECHECK_PROBE_TIMEOUT_MS,
@@ -115,7 +117,17 @@ export interface CaptureNotices {
 }
 
 /** What `captureNotices` needs of the app: its seams, read at every call. */
-export type CaptureNoticesApp = Pick<FastifyInstance, 'stages' | 'seams' | 'log' | 'errorLog'> & { readonly engine: NoticeEngine & { state(): PrecheckGateState & SessionStartState } };
+export type CaptureNoticesApp = Pick<FastifyInstance, 'stages' | 'seams' | 'log' | 'errorLog'> & {
+  readonly engine: NoticeEngine & {
+    state(): PrecheckGateState & SessionStartState;
+    /** Audit fix row 128b: the unit the pre-check run's reach readings are stated in. Optional: a test's stand-in has none (no reach is stated then). */
+    run?<Value>(label: string, work: (scope: EngineUnit) => Promise<Value> | Value): Promise<unknown>;
+    readonly running?: boolean;
+  };
+};
+
+/** Audit fix row 128b: the label of the unit in which a pre-check run states the reach of its probed devices. */
+export const PRECHECK_REACH_UNIT = 'capture.precheckReach';
 
 const FAILED = 'a no-device notice could not be written';
 const GATE_FAILED = 'the pre-check gate could not finish';
@@ -177,7 +189,7 @@ export function captureNotices(app: CaptureNoticesApp): CaptureNotices {
     app.log.error({ err: failure.err, code: failure.code, ...context }, FAILED);
     app.errorLog.append({ level: 'error', source: failure.source, message: FAILED, ...describeError(failure.err), code: failure.code, context });
   };
-  const engine = (): (NoticeEngine & { state(): PrecheckGateState & SessionStartState }) | null => (app.seams.has('engine') ? app.engine : null);
+  const engine = (): CaptureNoticesApp['engine'] | null => (app.seams.has('engine') ? app.engine : null); // row 128b: the app's engine type (it carries `run`)
   const notifier = createNoDeviceNotifier({ engine, report });
   const gate = createPrecheckGate({
     state: () => {
@@ -194,6 +206,15 @@ export function captureNotices(app: CaptureNoticesApp): CaptureNotices {
     probe: probeOrThrow,
     discovery: () => discovery,
     report,
+    // Audit fix row 128b (F-5-02b; D100 (1), option (a)): the run's reach readings through row 127's engine door, all in
+    // one unit of their own, before the hosted action. No engine running (or a stand-in without units): nothing is stated.
+    noteReach: async (readings) => {
+      const host = engine();
+      if (host === null || host.run === undefined || host.running !== true) return;
+      await host.run(PRECHECK_REACH_UNIT, async (scope) => {
+        for (const reading of readings) await noteCaptureDeviceReachIn(scope, reading);
+      });
+    },
   });
 
   // The engine throws while it is not running: the watch reports that itself.

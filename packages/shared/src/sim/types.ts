@@ -772,6 +772,13 @@ export interface CaptureDeviceStatus {
   online: boolean;
   /** Null for a device that carries no stream (the PoE switch, a mic). */
   streamState: CaptureStreamState | null;
+  /**
+   * Row 125 (DF-12; decisions D19, D24, D29 Q1, D38 DR-2): epoch ms of the Core's last reach reading of this
+   * device (a success or a failure). In memory only: never stored, absent after a restart. Absent or null: not checked.
+   */
+  checkedAt?: EpochMs | null;
+  /** The outcome of the reading `checkedAt` dates (`CaptureDeviceReach` of the contract). Absent or null: not checked. Never changes `online`. */
+  reach?: 'REACHABLE' | 'NOT_REACHABLE' | null;
   /** Capability codes the adapters reported (open set). */
   capabilities: string[];
   /**

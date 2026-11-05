@@ -15,7 +15,14 @@
  *                          the live biometric tokens revoked; USER_DISABLED with the number of
  *                          sessions ended; the operator as answered.
  *   admin.enableUser       lock the one operator row; unknown: 404; enabled already: nothing;
+ *                          a purge-kept account: 409 (decision D51, row 133);
  *                          the flag (compare-and-set); USER_ENABLED; the operator as answered.
+ *
+ * DF-29 (decision D20(d), row 133): a SYSTEM PRINCIPAL (`isSystemPrincipal` of `./rule`, the
+ * auto-attach actor `OPR-000`) is refused 409 `INVALID_STATE` by the role change, the disable, the
+ * profile edit and the purge, right after the 404 (and, for the vendor trio, after the identity
+ * gate). Enabling it is left as it was: that cannot give it a way to sign in (it has no credential,
+ * and the host command refuses to write one).
  *
  * A REFUSAL THROWS inside the unit, so the unit rolls back and nothing is stored: "409
  * `LAST_ADMIN` changes nothing" is the transaction's property, not a promise of the code. Neither
@@ -45,7 +52,7 @@ import type { UnitContext } from '../../core';
 import { CoreError } from '../../core';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { revokeBiometricTokens } from '../identity/biometric';
-import { isVendorRoot, leavesNoAdministrator, partyOfActiveSession, VENDOR_ROOT_USERNAME } from './rule';
+import { isSystemPrincipal, isVendorRoot, leavesNoAdministrator, partyOfActiveSession, VENDOR_ROOT_USERNAME } from './rule';
 import {
   assignRole,
   purgeForecast,
@@ -57,6 +64,7 @@ import {
   disableOperator,
   enableOperator,
   insertOperator,
+  isPurgeKept,
   lockOperator,
   lockOperators,
   nextOperatorId,
@@ -125,6 +133,33 @@ function lockedRowChanged(): Error {
   return new Error('an operator row changed under the lock of the unit that changes it');
 }
 
+/** The `details.reason` of the DF-29 refusal: the operator is a system principal. */
+export const SYSTEM_PRINCIPAL_REASON = 'SYSTEM_PRINCIPAL';
+/** The `details.reason` of the D51 refusal: the account was purged and kept, disabled, under its evidence rows. */
+export const PURGE_KEPT_REASON = 'PURGE_KEPT';
+
+/**
+ * 409 of DF-29 (decision D20(d), row 133): the operator is a system principal (`OPR-000`, the
+ * auto-attach actor). It stands for the Core itself: no role change, no disable, no profile edit
+ * and no purge of it, because adoption needs its row as its actor key and the audit rows it wrote
+ * are evidence of what the Core did. Nothing was changed.
+ */
+export function systemPrincipalRefused(): ApiFailure {
+  return new ApiFailure(409, ApiErrorCode.INVALID_STATE, 'This operator is a system principal: it stands for the Core itself and is not changed or deleted. Nothing was changed.', {
+    details: { reason: SYSTEM_PRINCIPAL_REASON },
+  });
+}
+
+/**
+ * 409 of decision D51 (row 133): the account was purged and kept, disabled, only because
+ * evidence-chain rows name it (migration 0043, D38 DR-1). It is terminal: it is not enabled again.
+ */
+export function purgeKeptRefused(): ApiFailure {
+  return new ApiFailure(409, ApiErrorCode.INVALID_STATE, 'This account was deleted and is kept, disabled, only because evidence records name it. It cannot be enabled again; nothing was changed.', {
+    details: { reason: PURGE_KEPT_REASON },
+  });
+}
+
 /** Operation 12. */
 export function assignUserRole(
   app: FastifyInstance,
@@ -138,6 +173,8 @@ export function assignUserRole(
     const operators = await lockOperators(unit);
     const target = operators.find((operator) => operator.id === operatorId);
     if (target === undefined) throw unknownOperator();
+    // DF-29 (row 133): from the row the lock just read - no second statement after the lock point.
+    if (isSystemPrincipal({ operatorId, username: target.username })) throw systemPrincipalRefused();
     if (target.role === role) return { user: await userOf(unit, operatorId), changed: false };
 
     const administratorRoles = await readRolesHolding(unit, ADMINISTRATION_PERMISSION);
@@ -169,6 +206,8 @@ export function disableUser(app: FastifyInstance, actor: Actor, operatorId: stri
     const operators = await lockOperators(unit);
     const target = operators.find((operator) => operator.id === operatorId);
     if (target === undefined) throw unknownOperator();
+    // DF-29 (row 133): from the row the lock just read - no second statement after the lock point.
+    if (isSystemPrincipal({ operatorId, username: target.username })) throw systemPrincipalRefused();
     if (!target.enabled) return { user: await userOf(unit, operatorId), changed: false };
 
     const administratorRoles = await readRolesHolding(unit, ADMINISTRATION_PERMISSION);
@@ -205,6 +244,8 @@ export function enableUser(app: FastifyInstance, actor: Actor, operatorId: strin
     const target = await lockOperator(unit, operatorId);
     if (target === null) throw unknownOperator();
     if (target.enabled) return { user: await userOf(unit, operatorId), changed: false };
+    // Decision D51 (row 133): a purge-kept account is terminal. Read under this unit's lock of the row.
+    if (await isPurgeKept(unit, operatorId)) throw purgeKeptRefused();
 
     if (!(await enableOperator(unit, operatorId, now))) throw lockedRowChanged();
     await unit.audit.append({
@@ -308,6 +349,7 @@ export function updateUser(app: FastifyInstance, actor: Actor, operatorId: strin
     if (target === null) throw unknownOperator();
     await requireVendorRoot(unit, actor.operatorId);
     const before = await userOf(unit, operatorId);
+    if (isSystemPrincipal({ operatorId, username: before.username })) throw systemPrincipalRefused();
 
     const name = input.name ?? null;
     const displayName = input.displayName ?? null;
@@ -364,6 +406,8 @@ export function deleteUser(app: FastifyInstance, actor: Actor, operatorId: strin
     await requireVendorRoot(unit, actor.operatorId);
 
     const before = await userOf(unit, operatorId);
+    // DF-29 (row 133): never a system principal, before the confirmation is even compared.
+    if (isSystemPrincipal({ operatorId, username: before.username })) throw systemPrincipalRefused();
     if (input.confirm.trim().toLowerCase() !== before.username) throw deleteNotConfirmed();
 
     // RB-8 first: a delete that would leave no enabled holder of user administration is refused.
@@ -408,6 +452,8 @@ export function deleteUser(app: FastifyInstance, actor: Actor, operatorId: strin
         signInRowsRemoved: forecast.signInRows,
         credentialsRemoved: forecast.credentialsRemoved,
         recordsLeftUnattributed: unattributed,
+        // R-1 (D51, row 133): the kept account is stated as a detail too, not only in the message.
+        accountKept: forecast.accountKept,
         ...reasonDetail(reason),
       },
     });
@@ -425,7 +471,7 @@ export function deleteUser(app: FastifyInstance, actor: Actor, operatorId: strin
       if (sessionsEnded.length > 0) app.publish({ kind: 'session.ended', sessionIds: sessionsEnded, reason: 'USER_DISABLED' });
       app.publish({ kind: 'admin.changed', resource: 'USERS' });
     });
-    return { deleted: { operatorId, username: before.username, sessionsEnded: sessionsEnded.length, credentialsRemoved: erased.credentialsRemoved }, changed: true };
+    return { deleted: { operatorId, username: before.username, sessionsEnded: sessionsEnded.length, credentialsRemoved: erased.credentialsRemoved, accountKept: erased.accountKept }, changed: true };
   });
 }
 

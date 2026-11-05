@@ -117,7 +117,7 @@ import { withActorScope } from './actor-scope';
 import { changedSlices, changesRecords, deltaOps } from './delta';
 import { EngineError, engineNotReady, operatorRequired, simCodeOf, simRefusal } from './errors';
 import { isHostedAction, type HostedActionArguments, type HostedActionName, type HostedActionResult } from './hosted-actions';
-import { bindInternalActions } from './internal-actions';
+import { bindInternalActions, captureDeviceReachTransition } from './internal-actions';
 import {
   CAPTURE_FAULT_KINDS,
   READ_SESSION_HAS_FRAGMENT,
@@ -880,6 +880,8 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
         // Capture block (blueprint row 71): the two in-unit doors of the session wiring.
         markCaptureConnecting: (sessionId) => markCaptureConnectingInScope(scope, sessionId),
         switchCaptureAudioSource: (change) => switchCaptureAudioSourceInScope(scope, change),
+        // Audit row 127 (DF-12; D19, D24): a preview's outcome as the device's reach; published, no row written.
+        noteCaptureDeviceReach: (reading) => applyCaptureTransition(scope, (state) => captureDeviceReachTransition(state, reading)),
       },
     );
   }

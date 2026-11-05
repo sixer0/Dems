@@ -494,8 +494,17 @@ function InfoAside({ control, investigators }: { control: Control<SessionCreateF
   const readiness: (PrecheckEvaluation['status'] | 'NOT_REPORTED' | 'NOTE')[] = stated.map((status, index) =>
     PRECHECK_ORDER[index] === 'SECURITY' && status !== 'BLOCK' && platformNotReported ? 'NOT_REPORTED' : PRECHECK_ORDER[index] === 'TIME' && status === 'WARN' && hostClock ? 'NOTE' : status,
   )
-  const reported = readiness.filter((status) => status !== 'NOT_REPORTED' && status !== 'NOTE')
-  const ready = reported.filter((status) => status === 'PASS').length
+  // Audit row CS2 (F-5-02c, D74): the header counts over EVERY listed check (twelve, as the footer says) and states the items it
+  // cannot rate beside the count ("9 of 12 ready · 1 not reported · 1 for information"). It read "9 of 10 ready" under twelve
+  // rows. On the simulated lane no row is NOT_REPORTED or NOTE, so the sentence is the same as before.
+  const ready = readiness.filter((status) => status === 'PASS').length
+  const notReportedCount = readiness.filter((status) => status === 'NOT_REPORTED').length
+  const noteCount = readiness.filter((status) => status === 'NOTE').length
+  const readyCountText = [
+    t('sessionNew.preview.readyCount', { ready, total: readiness.length }),
+    ...(notReportedCount > 0 ? [t('sessionNew.preview.notReportedCount', { count: notReportedCount })] : []),
+    ...(noteCount > 0 ? [t('sessionNew.preview.informationalCount', { count: noteCount })] : []),
+  ].join(' · ')
   const investigator = investigators.find((operator) => operator.id === values.investigatorId)
   const empty = <span className="sn-muted">{t('sessionNew.preview.empty')}</span>
   const subjectTone = values.subjectType ? toneChipProps(SUBJECT_TONE[values.subjectType]) : null
@@ -541,7 +550,7 @@ function InfoAside({ control, investigators }: { control: Control<SessionCreateF
           <h2 className="sn-card-title">{t('sessionNew.preview.readiness')}</h2>
           <DemoMark block="precheck-readiness" />
           <span className="sn-card-meta" data-testid="sn-readiness-count">
-            {t('sessionNew.preview.readyCount', { ready, total: reported.length })}
+            {readyCountText}
           </span>
         </header>
         <ul className="sn-readiness">

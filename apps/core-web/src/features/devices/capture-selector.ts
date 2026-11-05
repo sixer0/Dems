@@ -144,6 +144,8 @@ export function poeCycleGate(input: {
   readonly canManage: boolean
   readonly recording: boolean
   readonly busy: boolean
+  /** Audit row CS2 (O-124-1): the Core runs its own capture and refuses operation 48 - the cycle is NOT_AVAILABLE. Absent: false. */
+  readonly notAvailable?: boolean
 }): PoeCycleGate {
   if (!input.lost) return { offered: false }
   if (!input.resolved) return { offered: true, block: { kind: 'CHECKING' } }
@@ -151,6 +153,7 @@ export function poeCycleGate(input: {
     can: (permission) => permission === Permission.DEVICE_MANAGE && input.canManage,
     recording: input.recording,
     busy: input.busy,
+    notAvailable: input.notAvailable === true,
   })
   return { offered: true, block: blocks.restart }
 }

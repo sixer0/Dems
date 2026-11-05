@@ -36,7 +36,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const revoked = vi.hoisted(() => vi.fn(async (): Promise<number> => 0));
 vi.mock('../../identity/biometric', () => ({ revokeBiometricTokens: revoked }));
 
-const { createUser, deleteUser, updateUser } = await import('../changes');
+const { assignUserRole, createUser, deleteUser, disableUser, enableUser, updateUser } = await import('../changes');
 const store = await import('../statements');
 
 const NOW = 1_791_000_000_000;
@@ -111,6 +111,8 @@ interface World {
   keptRows: Map<string, number>;
   /** Row 95 (D43): the one row of `active_session`, or null when no session is active. */
   activeSession: { id: string; investigator_id: string; created_by: string | null; started_by: string | null; stopped_by: string | null } | null;
+  /** Row 133 (D51): the operators a purge kept, disabled, as the USER_DELETED mark answers them. */
+  purgeKept: Set<string>;
 }
 
 /** What one run of one unit left behind: the committed rows, the rows it tried to audit, its publications. */
@@ -156,8 +158,8 @@ async function run<Result>(
     query: async (text: string, values: readonly unknown[] = []) => {
       queries.push({ text, values: [...values] });
       const answer = (rows: readonly unknown[]) => ({ rows, rowCount: rows.length });
-      if (text === store.LOCK_OPERATORS) return answer(ordered().map(({ id, role_id, enabled }) => ({ id, role_id, enabled })));
-      if (text === store.LOCK_OPERATOR) return answer(ordered().filter((row) => row.id === values[0]).map(({ id, role_id, enabled }) => ({ id, role_id, enabled })));
+      if (text === store.LOCK_OPERATORS) return answer(ordered().map(({ id, username, role_id, enabled }) => ({ id, username, role_id, enabled })));
+      if (text === store.LOCK_OPERATOR) return answer(ordered().filter((row) => row.id === values[0]).map(({ id, username, role_id, enabled }) => ({ id, username, role_id, enabled })));
       if (text === store.READ_USERNAME) return answer(ordered().filter((row) => row.id === values[0]).map(({ username }) => ({ username })));
       if (text === store.USERNAME_TAKEN) return answer(ordered().filter((row) => row.username === values[0]).map(() => ({ '?column?': 1 })));
       if (text === store.NEXT_OPERATOR_ID) {
@@ -167,6 +169,14 @@ async function run<Result>(
       if (text === store.READ_ROLES_HOLDING) return answer([...administratorRoles()].map((role) => ({ role_id: role })));
       if (text === store.READ_USER) return answer([userRow(String(values[0]))].filter((row) => row !== null));
       if (text === store.READ_ACTIVE_SESSION_PARTIES) return answer(world.activeSession === null ? [] : [world.activeSession]);
+      if (text === store.READ_PURGE_KEPT) return answer([{ purgeKept: world.purgeKept.has(String(values[0])) }]);
+      if (text === store.ENABLE_OPERATOR) {
+        const row = world.operators.get(String(values[0]));
+        if (row === undefined || row.enabled) return answer([]);
+        world.operators.set(row.id, { ...row, enabled: true });
+        written.push(text);
+        return answer([{ id: row.id }]);
+      }
       if (text === store.REFERENCED_BY) return answer(world.references.map((row) => ({ source: row.source, count: row.n })));
       // The purge statements of the delete (migration 0036). The account of these tests wrote no row
       // of the chain, so the forecast, the erasure and the re-seal all agree on an empty history: the
@@ -298,6 +308,7 @@ const world = (
     readonly references?: Array<{ source: string; n: number }>;
     readonly keptRows?: Record<string, number>;
     readonly activeSession?: World['activeSession'];
+    readonly purgeKept?: readonly string[];
   } = {},
 ): World => ({
   operators: new Map(operators.map((operator) => [operator.id, seed(operator)])),
@@ -306,6 +317,7 @@ const world = (
   references: options.references ?? [],
   keptRows: new Map(Object.entries(options.keptRows ?? {})),
   activeSession: options.activeSession ?? null,
+  purgeKept: new Set(options.purgeKept ?? []),
 });
 
 const actor = (operatorId: string) => ({ operatorId, deviceId: DEVICE });
@@ -516,6 +528,9 @@ describe('deleteUser: never under the active session (D43), and the account kept
     expect(row.type).toBe('USER_DELETED');
     expect(row.message).toMatch(/; evidence-chain rows kept, account kept disabled$/);
     expect(row.details['recordsLeftUnattributed']).toBe(0);
+    // R-1 / R-2 (D51, row 133): the detail and the answer say it as well, not only the message.
+    expect(row.details['accountKept']).toBe(true);
+    expect((built.result as { deleted: { accountKept: boolean } }).deleted.accountKept).toBe(true);
     // And without kept rows the account goes, and the references count as before.
     const gone = await run(world([ROOT, SUPERVISOR, TARGET], { references: [{ source: 'evidence_items', n: 2 }] }), (app) =>
       deleteUser(app, actor(ROOT.id), TARGET.id, remove(TARGET.username), undefined),
@@ -524,6 +539,95 @@ describe('deleteUser: never under the active session (D43), and the account kept
     const goneRow = gone.audit[0] as { message: string; details: Record<string, unknown> };
     expect(goneRow.message).not.toMatch(/account kept/);
     expect(goneRow.details['recordsLeftUnattributed']).toBe(2);
+    expect(goneRow.details['accountKept']).toBe(false);
+    expect((gone.result as { deleted: { accountKept: boolean } }).deleted.accountKept).toBe(false);
+  });
+});
+
+describe('DF-29 (row 133): a system principal is never edited, disabled, re-roled or purged', () => {
+  const SYSTEM = { id: 'OPR-000', username: 'system', role: OperatorRole.TECHNICIAN };
+  const AS_SYSTEM_NAME = { id: 'OPR-009', username: 'system', role: OperatorRole.TECHNICIAN };
+  const refusals = (who: { id: string; username: string }): ReadonlyArray<readonly [string, Work]> => [
+    ['assignUserRole', (app: FastifyInstance) => assignUserRole(app, actor(ROOT.id), who.id, OperatorRole.SUPERVISOR, undefined)],
+    ['assignUserRole (the role it already has)', (app: FastifyInstance) => assignUserRole(app, actor(ROOT.id), who.id, OperatorRole.TECHNICIAN, undefined)],
+    ['disableUser', (app: FastifyInstance) => disableUser(app, actor(ROOT.id), who.id, undefined)],
+    ['updateUser', (app: FastifyInstance) => updateUser(app, actor(ROOT.id), who.id, edit(), undefined)],
+    ['deleteUser', (app: FastifyInstance) => deleteUser(app, actor(ROOT.id), who.id, remove(who.username), 'not wanted')],
+  ];
+
+  it.each([...refusals(SYSTEM), ...refusals(AS_SYSTEM_NAME)].map(([name, work], index) => [`${name} #${index}`, work] as const))(
+    '%s: 409 INVALID_STATE with reason SYSTEM_PRINCIPAL; no row, no write, no publication, no token revoked',
+    async (_name, work) => {
+      const { SYSTEM_PRINCIPAL_REASON } = await import('../changes');
+      const before = world([ROOT, SUPERVISOR, SYSTEM, AS_SYSTEM_NAME], { credentials: [ROOT.id, SUPERVISOR.id] });
+      let caught: unknown;
+      const built = await run(before, async (app) => {
+        try {
+          return await work(app);
+        } catch (error) {
+          caught = error;
+          throw error;
+        }
+      });
+      expect(built.failure).toEqual({ status: 409, code: ApiErrorCode.INVALID_STATE });
+      expect(built.failureMessage).toMatch(/system principal/);
+      expect((caught as { details?: unknown }).details).toEqual({ reason: SYSTEM_PRINCIPAL_REASON });
+      expect(built.audit).toEqual([]);
+      expect(built.written).toEqual([]);
+      expect(built.published).toEqual([]);
+      expect(built.world.operators.get(SYSTEM.id)).toEqual(before.operators.get(SYSTEM.id));
+      expect(built.world.operators.get(AS_SYSTEM_NAME.id)).toEqual(before.operators.get(AS_SYSTEM_NAME.id));
+      expect(revoked.mock.calls).toEqual([]);
+    },
+  );
+
+  it('the identity gate still comes first: a non-root caller of the trio is 403 NOT_PERMITTED, not told the row is a system principal', async () => {
+    const built = await run(world([ROOT, SUPERVISOR, SYSTEM]), (app) => deleteUser(app, actor(SUPERVISOR.id), SYSTEM.id, remove(SYSTEM.username), undefined));
+    expect(built.failure).toEqual({ status: 403, code: ApiErrorCode.NOT_PERMITTED });
+  });
+
+  it('CONTROL: the same calls on an ordinary technician are not refused for it', async () => {
+    const TECH = { id: 'OPR-004', username: 'budi.tech', role: OperatorRole.TECHNICIAN };
+    const built = await run(world([ROOT, SUPERVISOR, TECH]), (app) => updateUser(app, actor(ROOT.id), TECH.id, edit(), undefined));
+    expect(built.failure).toBeNull();
+    const gone = await run(world([ROOT, SUPERVISOR, TECH]), (app) => deleteUser(app, actor(ROOT.id), TECH.id, remove(TECH.username), undefined));
+    expect(gone.failure).toBeNull();
+    expect(gone.world.operators.has(TECH.id)).toBe(false);
+  });
+});
+
+describe('D51 (row 133): a purge-kept account is terminal - operation 13 does not enable it', () => {
+  const KEPT = { id: 'OPR-004', username: 'gone.officer', role: OperatorRole.INVESTIGATOR, enabled: false };
+
+  it('enableUser of a purge-kept account is 409 INVALID_STATE with reason PURGE_KEPT; the row stays disabled, nothing written', async () => {
+    const { PURGE_KEPT_REASON } = await import('../changes');
+    const before = world([ROOT, SUPERVISOR, KEPT], { credentials: [ROOT.id, SUPERVISOR.id], purgeKept: [KEPT.id] });
+    let caught: unknown;
+    const built = await run(before, async (app) => {
+      try {
+        return await enableUser(app, actor(ROOT.id), KEPT.id, 'back');
+      } catch (error) {
+        caught = error;
+        throw error;
+      }
+    });
+    expect(built.failure).toEqual({ status: 409, code: ApiErrorCode.INVALID_STATE });
+    expect((caught as { details?: unknown }).details).toEqual({ reason: PURGE_KEPT_REASON });
+    expect(built.world.operators.get(KEPT.id)?.enabled).toBe(false);
+    expect(built.audit).toEqual([]);
+    expect(built.written).toEqual([]);
+    expect(built.published).toEqual([]);
+  });
+
+  it('CONTROL: an ordinary disabled account is enabled (USER_ENABLED, one write); an enabled one is a no-op before the mark is asked', async () => {
+    const built = await run(world([ROOT, SUPERVISOR, KEPT], { purgeKept: [] }), (app) => enableUser(app, actor(ROOT.id), KEPT.id, undefined));
+    expect(built.failure).toBeNull();
+    expect(built.world.operators.get(KEPT.id)?.enabled).toBe(true);
+    expect(built.written).toEqual([store.ENABLE_OPERATOR]);
+    expect((built.audit[0] as { type: string }).type).toBe('USER_ENABLED');
+    const noop = await run(world([ROOT, SUPERVISOR, { ...KEPT, enabled: true }], { purgeKept: [KEPT.id] }), (app) => enableUser(app, actor(ROOT.id), KEPT.id, undefined));
+    expect(noop.failure).toBeNull();
+    expect(noop.written).toEqual([]);
   });
 });
 

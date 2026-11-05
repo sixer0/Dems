@@ -18,8 +18,9 @@
  * Both return THE SAME state when nothing changes, write no audit row and raise no event: the rows
  * of a revision are operation 85's, and a volume figure is a measurement, not an act of an operator.
  */
+import { DEVICE_ID } from './dataset';
 import { storageStateFor } from './selectors';
-import type { CaptureDeviceStatus, CaptureSourceFact, EvidenceTranscriptSummary, PrecheckItem, SecuritySlice, SimState, StorageVolumeInput, TimeSlice, TranscriptRevisionNote, UpdateSlice } from './types';
+import type { CaptureDeviceStatus, CaptureSourceFact, DeviceSlice, EvidenceTranscriptSummary, PrecheckItem, SecuritySlice, SimState, StorageVolumeInput, TimeSlice, TranscriptRevisionNote, UpdateSlice } from './types';
 
 const wholeBytes = (value: number): boolean => Number.isSafeInteger(value) && value >= 0;
 
@@ -229,6 +230,20 @@ export function ownCaptureCoreFactsTransition(state: SimState): SimState {
  */
 export function isOwnCaptureCoreState(state: { readonly time?: Pick<TimeSlice, 'hostClock'> | null; readonly security?: Pick<SecuritySlice, 'platformNotReported'> | null } | null | undefined): boolean {
   return state?.time?.hostClock === true || state?.security?.platformNotReported === true;
+}
+
+/**
+ * THE ONE READER OF "WHICH DEVICE ID DOES THIS CORE REPORT" (audit row CS2, finding U-14c; rule S9 of row 105, D88).
+ * The device id of the state is the Core's stored record (`core_device.id`, replicated into `device.id`). On a Core
+ * in its own capture (`isOwnCaptureCoreState`) a record that still holds the dataset's reserved id (`DEVICE_ID`,
+ * `DEMS-IR-01`: the seed's, never an installation's) is not this installation's id: `null` = "Not reported".
+ * Every other case answers the record as it is - the simulated lane keeps the dataset's id.
+ */
+/** What a FILE the console writes (a log or audit export) states as `deviceId` when `reportedCoreDeviceIdOf` is null. */
+export const CORE_DEVICE_ID_NOT_REPORTED = 'not-reported';
+
+export function reportedCoreDeviceIdOf(state: { readonly device: Pick<DeviceSlice, 'id'>; readonly time?: Pick<TimeSlice, 'hostClock'> | null; readonly security?: Pick<SecuritySlice, 'platformNotReported'> | null }): string | null {
+  return isOwnCaptureCoreState(state) && state.device.id === DEVICE_ID ? null : state.device.id;
 }
 
 /** The sentence of the pre-check TIME item of a Core in its own capture (English fallback; a client words it from the rule). */

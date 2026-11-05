@@ -21,7 +21,7 @@ import { usePendingControl } from '@/lib/pending-control'
 import { CAMERA_SEARCH_ANCHOR } from '@/features/devices/camera-search'
 import { CAPTURE_SELECTOR_ANCHOR } from '@/features/devices/capture-selector'
 import { useComponentVersionText } from '@/components/component-version-text'
-import { useOwnCaptureCore } from '@/lib/own-capture'
+import { useOwnCaptureCore, useReportedCoreDeviceId, useSelfCaptureCore } from '@/lib/own-capture'
 import { useProductVersions } from '@/lib/product-versions'
 import { useMotionPolicy } from '@/motion'
 import { useSystemLiveMode } from './live'
@@ -39,7 +39,6 @@ const selectDeviceSettings = (s: SimState) => ({
   timeSource: s.time.source,
   product: s.device.productName,
   version: s.device.softwareVersion,
-  deviceId: s.device.id,
 })
 
 function ItemTitle({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
@@ -117,6 +116,13 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
   const versions = useProductVersions(device.version)
   const versionText = useComponentVersionText()
   const hostClock = useOwnCaptureCore()
+  // Audit row CS2 (U-14b, D74; U-14c, D88): on a Core in its own capture this panel says no demo word - the sign-in page
+  // of such a console offers no demo operators, so the presentation switch (which only hides demo hints) is not drawn, and
+  // the preferences are the Core's `settings` slice (operation 68) shared by every console, not "this console only (demo)".
+  // The device id is the one the Core reports (S9), "Not reported" for the dataset's reserved id.
+  const selfCapture = useSelfCaptureCore()
+  const localNote = selfCapture ? t('system.settings.localNoteCore') : t('system.settings.localNote')
+  const reportedDeviceId = useReportedCoreDeviceId() ?? t('system.noProducer')
   // The simulator's settings slice (step 54, W52-2), mirrored to localStorage.
   const [prefs, updatePrefs] = useConsolePrefs()
 
@@ -146,13 +152,15 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
             onChange={(on) => m.setReducedOverride(on)}
             testId="system-reduce-motion"
           />
-          <ToggleRow
-            label={t('system.settings.presentationMode')}
-            hint={t('system.settings.presentationModeHint')}
-            isSelected={presentation}
-            onChange={(on) => setPresentationModeEverywhere(actions, on, live, onPresentationFail)}
-            testId="system-presentation-mode"
-          />
+          {selfCapture ? null : (
+            <ToggleRow
+              label={t('system.settings.presentationMode')}
+              hint={t('system.settings.presentationModeHint')}
+              isSelected={presentation}
+              onChange={(on) => setPresentationModeEverywhere(actions, on, live, onPresentationFail)}
+              testId="system-presentation-mode"
+            />
+          )}
           <RadioGroup
             value={prefs.timeFormat}
             onChange={(value) => updatePrefs({ timeFormat: value === '12' ? '12' : '24' })}
@@ -176,7 +184,7 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
                 <Label>{t('system.settings.timeFormat12')}</Label>
               </Radio.Content>
             </Radio>
-            <Description>{t('system.settings.localNote')}</Description>
+            <Description data-testid="system-settings-local-note">{localNote}</Description>
           </RadioGroup>
         </Item>
 
@@ -198,7 +206,7 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
             </Checkbox.Content>
           </Checkbox>
           <p className="sys-muted sys-small">
-            {t('system.settings.notifyCriticalAlways')} {t('system.settings.localNote')}
+            {t('system.settings.notifyCriticalAlways')} {localNote}
           </p>
         </Item>
 
@@ -293,8 +301,8 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
           {/* Fix wave J round three (JW-26): the model's version is not this Core's - name the components instead. */}
           <p className="sys-mono" data-testid="system-settings-about-body">
             {versions.modelVersion !== null
-              ? t('system.settings.aboutBody', { product: device.product, version: versions.modelVersion, deviceId: device.deviceId })
-              : [...versions.rows.filter((row) => row.id === 'core' || row.id === 'webConsole').map((row) => versionText(row).line), device.deviceId].join(' · ')}
+              ? t('system.settings.aboutBody', { product: device.product, version: versions.modelVersion, deviceId: reportedDeviceId })
+              : [...versions.rows.filter((row) => row.id === 'core' || row.id === 'webConsole').map((row) => versionText(row).line), reportedDeviceId].join(' · ')}
           </p>
           <Button size="sm" variant="ghost" className="sys-link-button" onPress={() => jumpTo(aboutAnchor, m.reduced)}>
             {t('system.settings.goToAbout')}

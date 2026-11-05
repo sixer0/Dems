@@ -114,6 +114,8 @@ export const SIM_REFUSAL_REASON_TEXT: Readonly<Record<string, string>> = Object.
   UPDATER_NOT_AVAILABLE: 'Software update is not available on this Core.',
   // Row 104c2 (RT-1, D81): operation 66 on a Core in its own capture.
   SERVICES_RESTART_NOT_AVAILABLE: 'Restarting services is not available on this Core.',
+  // Audit row CS2 (O-124-1, D89): operations 48, 49 and 50 on a Core in its own capture.
+  DEVICE_COMMAND_NOT_AVAILABLE: 'Device commands (restart, test signal, identify) are not available on this Core.',
   COMPOSITE_ENCODER_NOT_SELECTED: 'Composite video is not available in this build.',
 });
 

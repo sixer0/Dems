@@ -59,6 +59,7 @@ import { coreCredentialStore, isStoreSealedSecret } from '../../../credential-st
 import type { Principal } from '../../../plugins/authenticate';
 import { notSignedIn } from '../../../plugins/authenticate';
 import { ApiFailure } from '../../../plugins/error-envelope';
+import { describeError } from '../../../plugins/logger';
 import { routeOfOperation } from '../../../plugins/permission-guard';
 import { SYSTEM_OWNER_SESSION_ID, ipInSegment, segmentCidrOctets } from '../segment-scan';
 import { createConnectionTestLimits, type ConnectionTestLimits } from './limits';
@@ -78,6 +79,7 @@ import {
   type DeviceRegistrar,
   type OperatorCredential,
 } from './service';
+import { insertSystemPrincipal, type SystemPrincipalRow } from './statements';
 
 export { CONNECTION_TEST_BOUNDS, createConnectionTestLimits, type ConnectionTestBounds, type ConnectionTestLimits, type ConnectionTestRefusal, type GuardVerdict } from './limits';
 export {
@@ -93,7 +95,7 @@ export {
   type DeviceRegistrar,
   type SealedCameraSecret,
 } from './service';
-export { INSERT_CAPTURE_CREDENTIAL, UPSERT_CAPTURE_CREDENTIAL } from './statements';
+export { INSERT_CAPTURE_CREDENTIAL, INSERT_SYSTEM_PRINCIPAL, UPSERT_CAPTURE_CREDENTIAL, type SystemPrincipalRow } from './statements';
 
 /**
  * The longest account name the table takes (`capture_device_credentials_username_check`). ONE bound
@@ -233,12 +235,20 @@ function credentialOf(body: { readonly username: string; readonly secret: string
  * do, with the actor `OPR-000` - the operator id the audit writer and the table take for a
  * system-written row when a hosted flow demands an actor (the bare audit rows of the sweep itself
  * carry none: `actorId: null`, the FAULT_CLEARED precedent). The D62 installer provisions that one
- * row in `operators` (no credential: it can never sign in); without it the adoption transaction
+ * row in `operators` (no credential: it can never sign in) - and since audit row 134 the SYSTEM flow creates it,
+ * with its `USER_CREATED` audit row, when it is missing (`provisionSystemPrincipal` below); without it the adoption transaction
  * fails its actor key at the database, the sweep says so at warn and nothing else moves. Its role
  * and permission state what the flows ask for and nothing more; no request ever resolves to this
  * principal.
  */
 export const SYSTEM_OPERATOR_ID = 'OPR-000';
+/**
+ * Audit 2026-11-05 row 134 (DF-29; D20(d), D29 Q4 "OPR-000 restricted in code, no new role"): THE LEAST PRIVILEGE OF
+ * THE SYSTEM PRINCIPAL, held in code. Whatever the TECHNICIAN role grants in the database (MAINTENANCE,
+ * DEVICE_MANAGE, CAPTURE_COMMISSION among them), the principal the Core acts as here carries ONE permission:
+ * `CAPTURE_CONFIG`, the one operations 95, 96 and 78 ask for. The list is frozen, so no caller can widen it at run time.
+ */
+export const SYSTEM_OPERATOR_PERMISSIONS: readonly Permission[] = Object.freeze([Permission.CAPTURE_CONFIG]);
 const SYSTEM_CALLER: ConnectCaller = Object.freeze({
   principal: Object.freeze({
     kind: 'OPERATOR',
@@ -246,9 +256,39 @@ const SYSTEM_CALLER: ConnectCaller = Object.freeze({
     sessionId: SYSTEM_OWNER_SESSION_ID,
     deviceId: null,
     role: OperatorRole.TECHNICIAN,
-    permissions: [Permission.CAPTURE_CONFIG],
+    permissions: SYSTEM_OPERATOR_PERMISSIONS,
   }) as Extract<Principal, { kind: 'OPERATOR' }>,
 });
+
+const SYSTEM_PRINCIPAL_SOURCE = 'captureConnect.systemPrincipal';
+/** The `reason` of the `USER_CREATED` row that records a creation of the system principal's row (an existing detail key: no new audit type, no new detail). */
+export const SYSTEM_PRINCIPAL_CREATED_REASON = 'System principal of camera auto-attach, created by the Core on first use (D62); no credential: it never signs in';
+
+/**
+ * Audit 2026-11-05 row 134 (DF-29; D20(d) "creation recorded in the audit chain going forward"): THE AUDITED CREATION
+ * of the system principal's `operators` row. ONE unit: the row is inserted only when it is missing, and the same unit
+ * appends `USER_CREATED` (actor none - the Core itself, the FAULT_CLEARED precedent; `targetOperatorId` OPR-000, role
+ * TECHNICIAN, the fixed reason above), so a row without its audit entry cannot be committed. A row that is there
+ * already - the production one, put in by the D62 installer - is never touched: not replaced, not re-enabled, not
+ * disabled, not deleted; no audit row is written for it. The answer says what the unit did. The username `system`
+ * held by another id fails the unit (unique violation): nothing is written, the error reaches the caller.
+ */
+export async function provisionSystemPrincipal(host: Pick<ConnectHost, 'now' | 'nativeUnit'>): Promise<SystemPrincipalRow> {
+  return await host.nativeUnit(`${SYSTEM_PRINCIPAL_SOURCE}.provision`, async (unit) => {
+    const role = SYSTEM_CALLER.principal.role;
+    const row = await insertSystemPrincipal(unit, SYSTEM_OPERATOR_ID, role, host.now());
+    if (row === 'CREATED') {
+      await unit.audit.append({
+        type: 'USER_CREATED',
+        message: `Operator ${SYSTEM_OPERATOR_ID} created with role ${role}`,
+        actorId: null,
+        deviceId: null,
+        details: { targetOperatorId: SYSTEM_OPERATOR_ID, role, reason: SYSTEM_PRINCIPAL_CREATED_REASON },
+      });
+    }
+    return row;
+  });
+}
 
 /** D62 (2026-11-05): the principal of the SYSTEM caller - the same one `systemFlow` runs operations 95 and 96 under, handed to the selector action of operation 78 by the sweep's wiring. */
 export const SYSTEM_OPERATOR_PRINCIPAL: Extract<Principal, { kind: 'OPERATOR' }> = SYSTEM_CALLER.principal;
@@ -324,6 +364,9 @@ export function registerCaptureConnectRoutes(app: FastifyInstance, options: Capt
         if (candidate !== null && outOfScope(candidate.camera)) {
           throw new ApiFailure(409, ApiErrorCode.INVALID_STATE, 'This device cannot be tested.', { details: { reason: CaptureDiscoveryReason.CANDIDATE_NOT_TESTABLE } });
         }
+        // Audit 2026-11-05 row 134 (DF-29): the actor row of the steps below is there before the first one runs - created,
+        // with its USER_CREATED row, when it is missing (`provisionSystemPrincipal`); once found, not asked again.
+        if (!systemPrincipalFound) await findSystemPrincipal();
         if (candidate !== null) {
           const refusal = control.limits.refusal(candidate.camera.host, SYSTEM_OWNER_SESSION_ID);
           if (refusal !== null && refusal.reason === CaptureDiscoveryReason.CONNECTION_TEST_RATE_LIMITED && refusal.retryAfterMs > 0 && refusal.retryAfterMs <= AUTOATTACH_TEST_PACING_CAP_MS) {
@@ -346,6 +389,25 @@ export function registerCaptureConnectRoutes(app: FastifyInstance, options: Capt
     },
   };
   controls.set(app.stages, control);
+
+  // Audit 2026-11-05 row 134 (DF-29): the system principal's row, made sure of once per process by the SYSTEM flow only
+  // (no route, no boot step: with SMART ATTACH off nothing is written). Present (enabled or not): found, nothing
+  // changed - the Core never enables, disables or deletes it. A unit that fails (the username `system` held by another
+  // id, a database fault): said at warn and in the persistent error log, the step is not run, and the next step asks again.
+  let systemPrincipalFound = false;
+  const findSystemPrincipal = async (): Promise<void> => {
+    let row: SystemPrincipalRow;
+    try {
+      row = await provisionSystemPrincipal(host);
+    } catch (error) {
+      const message = 'the system principal of camera auto-attach could not be made sure of';
+      app.log.warn({ code: 'SYSTEM_PRINCIPAL_UNCHECKED', operatorId: SYSTEM_OPERATOR_ID, source: SYSTEM_PRINCIPAL_SOURCE }, message);
+      app.errorLog.append({ level: 'error', source: SYSTEM_PRINCIPAL_SOURCE, message, ...describeError(error), context: { operatorId: SYSTEM_OPERATOR_ID } });
+      throw error;
+    }
+    if (row === 'CREATED') app.log.info({ code: 'SYSTEM_PRINCIPAL_CREATED', operatorId: SYSTEM_OPERATOR_ID, source: SYSTEM_PRINCIPAL_SOURCE }, 'the system principal of camera auto-attach was created and audited');
+    systemPrincipalFound = true;
+  };
 
   // THE CORE CREDENTIAL STORE (row 84; D80(7): one store, no second one). An app without a data
   // directory has none, and a credential write answers 503 (`CREDENTIAL_STORE_NOT_READY`). A store

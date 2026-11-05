@@ -18,7 +18,7 @@
  * The host binds what the function does when it builds a unit's scope (`bindInternalActions`).
  * A scope the host did not build - a test double - has no binding, and the call says so.
  */
-import type { CaptureDeviceStatus, ReaddressCaptureDeviceInput, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput, StoreCaptureDeviceProfilesInput } from '@dems/shared/sim';
+import type { CaptureDeviceStatus, ReaddressCaptureDeviceInput, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput, SimState, StoreCaptureDeviceProfilesInput } from '@dems/shared/sim';
 import type { AudioSourceSwitch, AudioSourceSwitched } from './capture-session';
 import { EngineError } from './errors';
 import type { EngineUnit } from './types';
@@ -35,6 +35,38 @@ export interface InternalActions {
   markCaptureConnecting(sessionId: string): Promise<boolean>;
   /** Blueprint row 71 (capture session): see `switchCaptureAudioSourceIn`. */
   switchCaptureAudioSource(change: AudioSourceSwitch): Promise<AudioSourceSwitched | null>;
+  /** Audit row 127 (DF-12; decisions D19, D24, D90): see `noteCaptureDeviceReachIn`. */
+  noteCaptureDeviceReach(reading: CaptureDeviceReachReading): Promise<boolean>;
+}
+
+/**
+ * Audit row 127 (DF-12; decisions D19, D24, D90; contract of row 125): one reach reading of a capture device - the
+ * outcome of a live preview. `REACHABLE`: its first picture arrived; `NOT_REACHABLE`: it failed. `checkedAt` is the
+ * server clock of the reading (epoch ms).
+ */
+export interface CaptureDeviceReachReading {
+  readonly deviceId: string;
+  readonly reach: 'REACHABLE' | 'NOT_REACHABLE';
+  readonly checkedAt: number;
+}
+
+/**
+ * Audit row 127: THE PURE TRANSITION of a reach reading. `checkedAt` and `reach` of that device in
+ * `captureDevices.devices[]` - nothing else: `online` (the registry flag the session engine and the pre-check read)
+ * and `streamState` stay as they are, `captureConfig` is not touched. Returns THE SAME state for a device the Core
+ * does not hold or a reading the entry states already, so nothing is published. The two members are no column of
+ * `capture_devices` (`captureDevicesToRows` names neither): the change set of the engine writes no row for them -
+ * memory only, absent after a restart (decision D29 Q1).
+ */
+export function captureDeviceReachTransition(state: SimState, reading: CaptureDeviceReachReading): SimState {
+  const devices = state.captureDevices.devices;
+  const index = devices.findIndex((device) => device.id === reading.deviceId);
+  if (index < 0) return state;
+  const device = devices[index] as CaptureDeviceStatus;
+  if (device.reach === reading.reach && device.checkedAt === reading.checkedAt) return state;
+  const next = devices.slice();
+  next[index] = { ...device, reach: reading.reach, checkedAt: reading.checkedAt };
+  return { ...state, captureDevices: { ...state.captureDevices, devices: next } };
 }
 
 const bound = new WeakMap<EngineUnit, InternalActions>();
@@ -147,4 +179,16 @@ export function switchCaptureAudioSourceIn(unit: EngineUnit, change: AudioSource
   const actions = bound.get(unit);
   if (actions === undefined) return Promise.reject(new EngineError('ENGINE_ACTION_NOT_HOSTED', NOT_A_HOST_UNIT));
   return actions.switchCaptureAudioSource(change);
+}
+
+/**
+ * Audit row 127 (DF-12, DF-13; decisions D19, D24, D90): the outcome of a live preview becomes the reach of that
+ * device - `captureDeviceReachTransition` in the unit, published with it. Writes no audit row and no table row: a
+ * reach reading is display state (the device tile, the automatic preview gate of the clients), never evidence.
+ * Resolves true when the entry changed; false for a device the Core does not hold or a reading it states already.
+ */
+export function noteCaptureDeviceReachIn(unit: EngineUnit, reading: CaptureDeviceReachReading): Promise<boolean> {
+  const actions = bound.get(unit);
+  if (actions === undefined) return Promise.reject(new EngineError('ENGINE_ACTION_NOT_HOSTED', NOT_A_HOST_UNIT));
+  return actions.noteCaptureDeviceReach(reading);
 }

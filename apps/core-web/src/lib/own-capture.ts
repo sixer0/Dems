@@ -7,7 +7,7 @@
  * What a surface does with it: beside such a session it states only what the Core knows - no
  * "integrity checks passing", no write speed, no time source read from a constant.
  */
-import { captureFactsOf, isHostClockTime, isPlatformNotReported, useSim, type SimState } from '@dems/shared/sim'
+import { captureFactsOf, isHostClockTime, isPlatformNotReported, reportedCoreDeviceIdOf, useSim, type SimState } from '@dems/shared/sim'
 
 type CaptureSession = { readonly state: string; readonly captureDurable?: boolean }
 
@@ -79,6 +79,15 @@ export function isSelfCaptureCore(state: Pick<SimState, 'security' | 'time'>): b
 /** `isSelfCaptureCore` of the console's state (a boolean: the selector's result compares by value). */
 export function useSelfCaptureCore(): boolean {
   return useSim(isSelfCaptureCore)
+}
+
+/**
+ * The device id the console shows for this Core (audit row CS2, finding U-14c; rule S9 of row 105): the Core's record,
+ * or `null` - drawn "Not reported" - when a Core in its own capture still holds the dataset's reserved id. The one reader
+ * is `reportedCoreDeviceIdOf` of `@dems/shared/sim`; every web surface that prints `device.id` reads it through here.
+ */
+export function useReportedCoreDeviceId(): string | null {
+  return useSim(reportedCoreDeviceIdOf)
 }
 
 /** The evidence signing key a Core reports: the one its sealed items are signed with. */

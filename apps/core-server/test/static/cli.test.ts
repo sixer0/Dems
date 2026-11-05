@@ -214,6 +214,8 @@ const SERVER_IMPORTS: Readonly<Record<string, { readonly reach: Reach; readonly 
   'src/core/types': { reach: 'INSIDE', why: 'the type of that unit of work (types only)' },
   'src/db/schema/boot-checks': { reach: 'INSIDE', why: 'the schema version check the Core runs at boot (SX-12, R-X2-8)' },
   'src/engine/rehydrate': { reach: 'INSIDE', why: 'the newest stored instant, for the clock floor (decision D110)' },
+  'src/modules/admin/rule': { reach: 'INSIDE', why: 'the system-principal predicate (DF-29, D20(d)), defined once in the admin rule (decision D38 DR-4, row 133); the admin index does not export it' },
+  'src/modules/admin/statements': { reach: 'INSIDE', why: 'the purge-kept mark of an account (decision D51, row 133): the same statement operation 13 asks before it enables' },
   'src/modules/identity': { reach: 'INDEX', why: 'the password policy and the repeat guard of one run (SX-13, R-X2-6)' },
   'src/modules/identity/biometric': { reach: 'SUB_INDEX', why: 'biometric tokens of the operator are revoked with the credential (CREDENTIAL_REPLACED)' },
   'src/modules/identity/password-hash': { reach: 'SUB_INDEX', why: 'the one hasher of the server and the type of its record (R-X2-5)' },
@@ -236,6 +238,8 @@ const SERVER_IMPORTS_OF: Readonly<Record<string, readonly string[]>> = {
     'src/core/types',
     'src/db/schema/boot-checks',
     'src/engine/rehydrate',
+    'src/modules/admin/rule',
+    'src/modules/admin/statements',
     'src/modules/identity',
     'src/modules/identity/biometric',
     'src/modules/identity/password-hash',
@@ -331,6 +335,8 @@ describe('B. what a cli file may import', () => {
       'src/db/schema/boot-checks',
       'src/engine/rehydrate',
       'src/evidence-export/receiver-cli',
+      'src/modules/admin/rule',
+      'src/modules/admin/statements',
       'src/modules/identity/session-store',
       'src/plugins/config/connection-file',
       'src/sealing/signing',
@@ -819,8 +825,12 @@ describe('D. no secret from the environment', () => {
 
   it('DF-29 / D20(d): a system principal is refused on BOTH paths (--username, --all-demo), after the operators are read and before the D56 create path, the word or any prompt', () => {
     const command = fileOf(PASSWORD_COMMAND).text;
-    // The predicate rests on the shared reserved id, not on a second literal of its own.
-    expect(command).toMatch(/SYSTEM_PRINCIPAL_OPERATOR_IDS: readonly string\[\] = Object\.freeze\(\[UNATTRIBUTED_OPERATOR_ID\]\);/);
+    // The predicate rests on the shared reserved id, not on a second literal of its own. D38 DR-4 (row 133):
+    // it is defined ONCE, in the admin rule, and the command imports it; no copy is left here.
+    const rule = fileOf('src/modules/admin/rule.ts', tree).text;
+    expect(rule).toMatch(/SYSTEM_PRINCIPAL_OPERATOR_IDS: readonly string\[\] = Object\.freeze\(\[UNATTRIBUTED_OPERATOR_ID\]\);/);
+    expect(command).toContain("import { isSystemPrincipal } from '../src/modules/admin/rule';");
+    expect(command).not.toMatch(/SYSTEM_PRINCIPAL_OPERATOR_IDS|SYSTEM_PRINCIPAL_USERNAMES|function isSystemPrincipal/);
     const refusals = [...command.matchAll(/return refuse\(SetPasswordRefusal\.SYSTEM_PRINCIPAL,/g)].map((match) => match.index ?? -1);
     expect(refusals).toHaveLength(2);
     const byUsername = command.indexOf('pool.query<OperatorRow & { has_credential: boolean }>(SELECT_OPERATOR_BY_USERNAME');
@@ -837,6 +847,19 @@ describe('D. no secret from the environment', () => {
       const at = command.indexOf(later);
       expect(at, later).toBeGreaterThan(second);
     }
+  });
+
+  it('D51 (row 133): a purge-kept account is refused on the --username path, after the system principal and before the D56 create path', () => {
+    const command = fileOf(PASSWORD_COMMAND).text;
+    expect(command).toContain("import { isPurgeKept } from '../src/modules/admin/statements';");
+    const refusals = [...command.matchAll(/return refuse\(SetPasswordRefusal\.PURGE_KEPT,/g)].map((match) => match.index ?? -1);
+    expect(refusals).toHaveLength(1);
+    const asked = command.indexOf('if (await isPurgeKept(pool, row.operator_id)) {');
+    const system = command.indexOf('return refuse(SetPasswordRefusal.SYSTEM_PRINCIPAL,');
+    const create = command.indexOf('const create = row.has_credential !== true;');
+    expect(asked).toBeGreaterThan(system);
+    expect(refusals[0]).toBeGreaterThan(asked);
+    expect(refusals[0]).toBeLessThan(create);
   });
 
   it('finds a value read from the environment, and a refusal list that was emptied (planted control)', () => {

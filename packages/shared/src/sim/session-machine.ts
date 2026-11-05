@@ -24,7 +24,9 @@ import {
   CAPTURE_START_REQUIRED_SLOTS,
   CaptureStartRule,
   SOURCE_NOT_ASSIGNED_PRECHECK_VALUE,
+  SlotSourceState, // audit fix row 128b (D100 (1)): the one reader of an assigned source (row 128)
   captureReachabilityOf,
+  slotSourceOf,
   unassignedSlotsOf,
 } from './capture-notices';
 import { advanceCaptureEnd, advanceCaptureStart, endCaptureFaultAtSeal } from './capture-session';
@@ -516,6 +518,35 @@ function unassignedSource(state: SimState, slot: CaptureSelectorSlot): PrecheckE
 }
 
 /**
+ * The check result of an assigned source the Core's LAST REACH READING did not reach, or null (audit fix row 128b,
+ * C-DEV-A; F-5-02b; decision D100 (1), option (a)).
+ *
+ * Only in a state of REAL capture (`isOwnCaptureCoreState`). The one reader is `slotSourceOf` (row 128): NOT_REACHABLE
+ * means the registry flag `online` is true but `reach` (row 125) says the last reading - a live preview (row 127) or the
+ * pre-check run's own probe (row 128b, `apps/core-server/src/capture-notices/precheck.ts`) - did not reach the device.
+ * WARN only, never BLOCK: `online` stays the engine gate and the start rule (`captureReachabilityOf`) is unchanged, so a
+ * stale reading can never block a start. A pre-check RUN re-states the reach of every source it probes before its items
+ * are judged, so the run's verdict rests on that fresh reading; at rest (the step-1 live view) the item no longer says
+ * PASS for a source the Core could not reach.
+ *
+ * The item has the form of an unreachable source (`value: 'UNREACHABLE'`, `reasonCode: null`, `params.deviceId`,
+ * `deviceKind`, `rule`); `rule` is the start rule's WARN sentence of that kind - `oneCamera` for a camera, `noStandby`
+ * for a microphone channel - so the clients draw it with the sentence they already have.
+ */
+function lastCheckUnreachableSource(state: SimState, slot: CaptureSelectorSlot, deviceKind: 'CAMERA' | 'MIC'): PrecheckEvaluation | null {
+  if (!isOwnCaptureCoreState(state)) return null;
+  const source = slotSourceOf(selectorInForce(state), state.captureDevices.devices, slot);
+  if (source.state !== SlotSourceState.NOT_REACHABLE || source.deviceId === null) return null;
+  return {
+    status: 'WARN',
+    value: 'UNREACHABLE',
+    reason: `${source.deviceId} was not reachable at the last check`,
+    reasonCode: null,
+    params: { deviceId: source.deviceId, deviceKind, rule: deviceKind === 'CAMERA' ? CaptureStartRule.ONE_CAMERA : CaptureStartRule.NO_STANDBY },
+  };
+}
+
+/**
  * One gate check against the live device state:
  * - BLOCK: Core OFFLINE (the tablet link is the Core link, MA-10), lens FAULT, storage FULL,
  *   security FAULT. On a Core in its own capture the tablet link only WARNS (decision D48): that
@@ -548,7 +579,8 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
         return { status: 'BLOCK', value: 'FAULT', reason: `${camera?.name ?? id} lens fault`, reasonCode: R.LENS_FAULT, params: { track } };
       }
       // The configured capture device does not answer (row 133; D80(6)): one of two warns, both block.
-      return unreachableSource(state, track) ?? { status: 'PASS', value: 'READY', ...PASSED };
+      // Audit fix row 128b (F-5-02b; D100 (1)): a source the Core's last reach reading did not reach is a WARN, never PASS.
+      return unreachableSource(state, track) ?? lastCheckUnreachableSource(state, track, 'CAMERA') ?? { status: 'PASS', value: 'READY', ...PASSED };
     }
     case 'MIC_PRIMARY':
     case 'MIC_STANDBY':
@@ -565,6 +597,9 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
       // An unreachable channel 1 blocks, an unreachable channel 2 warns (D83: no switch at pre-check).
       const unreachable = unreachableSource(state, channel);
       if (unreachable !== null) return unreachable;
+      // Audit fix row 128b (F-5-02b; D100 (1)): the same for the source of a microphone channel.
+      const lastCheck = lastCheckUnreachableSource(state, channel, 'MIC');
+      if (lastCheck !== null) return lastCheck;
       const input = captureMicLines(state).find((line) => line.channel === channel)?.inputId ?? null;
       const track = input === null ? null : channelOfMicLine(captureMicLines(state), input);
       const mic = track === null ? undefined : state.mics.find((m) => m.id === track);

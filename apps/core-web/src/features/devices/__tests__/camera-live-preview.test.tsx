@@ -14,18 +14,19 @@
 //
 // The double is the contract-checked fake transport of the Live test bed; jsdom loads no image, so a test fires the
 // picture's `load` and `error` itself. No browser and no Core were run (the bench check is the controller's).
-import { cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { en } from '@dems/shared/i18n'
+import type { FakeCommandOptions } from '@dems/shared/live/testing'
 import type { SocketLike } from '@dems/shared/realtime'
 import { ALWAYS_VISIBLE, createMemoryAuthStorage, createSim, OPERATOR_IDS, type Sim, type SimState } from '@dems/shared/sim'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { coreWithSession, CORE_START_MS, stubMediaForJsdom } from '@/features/session-new/__tests__/live-session-new-bed'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
 import { createAppRouter } from '@/router'
-import { createLiveTestBed, SUPERVISOR_SESSION, type LiveTestBed } from '@/runtime/testing/live-harness'
+import { createLiveTestBed, SUPERVISOR_SESSION, type LivePage, type LiveTestBed } from '@/runtime/testing/live-harness'
 import { pageTimersFake, pageTimersReal, pass } from '@/runtime/testing/fake-time'
 import {
   isLivePreviewDevice,
@@ -35,6 +36,9 @@ import {
   previewPathOf,
   previewRefusalOf,
   previewRetryDelayMs,
+  autoPreviewBlocked,
+  requestPreviewRetry,
+  resetPreviewRetries,
 } from '../camera-live-preview'
 
 configure({ asyncUtilTimeout: 8_000 })
@@ -68,7 +72,7 @@ async function livePage(path: string, pageId: string, served: (idle: SimState) =
   const page = await created.load()
   const entry = await created.mount(page, path)
   const root = await screen.findByTestId(pageId, {}, { timeout: 15_000 })
-  return { root, entry }
+  return { root, entry, page }
 }
 
 const previews = (root: ParentNode = document) => Array.from(root.querySelectorAll<HTMLElement>('[data-testid="camera-live-preview"]'))
@@ -106,7 +110,14 @@ beforeAll(() => {
     return []
   }
 })
-afterAll(() => restoreMedia())
+afterAll(async () => {
+  restoreMedia()
+  // D90 (row 130): the charts of the pages this file mounts (recharts' store, redux-toolkit's autoBatch) schedule their
+  // notify on `requestAnimationFrame` with a 100 ms `setTimeout` fallback that calls `cancelAnimationFrame`. A fallback
+  // armed by the last unmount fired AFTER the environment was torn down ("cancelAnimationFrame is not defined", seen when
+  // this file ran with the other device tests). Let it fire while the window still stands.
+  await new Promise<void>((resolve) => setTimeout(resolve, 250))
+})
 beforeEach(() => {
   resetCoreErrorPresenter()
   window.localStorage.clear()
@@ -119,6 +130,7 @@ afterEach(() => {
   for (const sim of sims.splice(0)) sim.stop()
   bed?.dispose()
   bed = undefined
+  resetPreviewRetries()
   vi.restoreAllMocks()
 })
 
@@ -389,5 +401,155 @@ describe('the other surfaces', () => {
     await waitFor(() => expect(noPreviews(within(root).getByTestId('device-tile-VIDEO-01'))).toHaveLength(1))
     expect(previews(root)).toHaveLength(0)
     expect(issued()).toHaveLength(0)
+  })
+})
+
+// Row 130 (DF-12, DF-13; contract row 125): the Core states the outcome of its last reading of a device (`reach` +
+// `checkedAt`); a NOT_REACHABLE camera gets no automatic preview (the bench: 4 previews with the LAN down = 32 Core
+// notes), and the operator's "Try again" asks once more.
+describe('row 130: no reach, no automatic preview', () => {
+  const CHECKED_AT = CORE_START_MS + 5_000
+  /** The Core's last reading of `id` (`reach` + `checkedAt` of `captureDevices.devices[]`, row 125). */
+  const reading =
+    (id: string, reach: 'REACHABLE' | 'NOT_REACHABLE' | null, checkedAt: number | null) =>
+    (state: SimState): SimState => ({
+      ...state,
+      captureDevices: { devices: state.captureDevices.devices.map((device) => (device.id === id ? ({ ...device, reach, checkedAt } as Device) : device)) },
+    })
+  const republishDevices = async (page: LivePage) => {
+    await act(async () => {
+      page.sockets.at(-1)!.delta([{ op: 'replace', slice: 'captureDevices', value: JSON.parse(JSON.stringify(bed!.core.served.captureDevices)) }] as FakeCommandOptions['ops'])
+    })
+  }
+
+  it('the rule (pure): only a stated NOT_REACHABLE closes the gate', () => {
+    expect(autoPreviewBlocked({ reach: 'NOT_REACHABLE' })).toBe(true)
+    expect(autoPreviewBlocked({ reach: 'REACHABLE' })).toBe(false)
+    expect(autoPreviewBlocked({ reach: null })).toBe(false)
+    expect(autoPreviewBlocked({})).toBe(false)
+    expect(autoPreviewBlocked(undefined)).toBe(false)
+  })
+
+  it('an online line whose camera the Core found NOT_REACHABLE opens nothing: no token, the tile says "Not reachable"', async () => {
+    const { root } = await livePage('/devices', 'page-devices', (idle) => reading('CAM-01', 'NOT_REACHABLE', CHECKED_AT)(production()(idle)))
+    const tile = await within(root).findByTestId('camera-tile-VIDEO-01')
+    await waitFor(() => expect(noPreviews(tile)).toHaveLength(1))
+    expect(noPreviews(tile)[0]).toHaveAttribute('data-state', 'NOT_REACHABLE')
+    expect(noPreviews(tile)[0]).toHaveTextContent(en.common.developmentRoster.notReachable)
+    pageTimersFake()
+    await pass(3_000)
+    pageTimersReal()
+    expect(previews(tile)).toHaveLength(0)
+    expect(issued()).toHaveLength(0)
+  })
+
+  it('an open preview closes when the Core states NOT_REACHABLE; "Try again" asks ONCE more, a newer unreachable reading closes it, REACHABLE re-opens it', async () => {
+    const { root, page } = await livePage('/devices', 'page-devices', production())
+    const tile = await within(root).findByTestId('camera-tile-VIDEO-01')
+    await waitFor(() => expect(imageOf(previews(tile)[0]!)).not.toBeNull())
+    expect(issued()).toHaveLength(1)
+    const image = imageOf(previews(tile)[0]!)!
+    // The Core's preview failed: it states NOT_REACHABLE (the registry flag of the line stays online).
+    bed!.core.served = reading('CAM-01', 'NOT_REACHABLE', CHECKED_AT)(bed!.core.served)
+    await republishDevices(page)
+    await waitFor(() => expect(previews(tile)).toHaveLength(0))
+    expect(image.hasAttribute('src')).toBe(false)
+    expect(noPreviews(tile)[0]).toHaveAttribute('data-state', 'NOT_REACHABLE')
+    // The operator's "Try again" (the action of `CameraPreviewTryAgain`): one more token, after the debounce.
+    act(() => requestPreviewRetry('CAM-01', CHECKED_AT))
+    await waitFor(() => expect(issued()).toHaveLength(2), { timeout: 4_000 })
+    await waitFor(() => expect(imageOf(previews(tile)[0]!)).not.toBeNull())
+    // The Core's NEWER reading is unreachable again: the gate closes, and stays closed.
+    bed!.core.served = reading('CAM-01', 'NOT_REACHABLE', CHECKED_AT + 10_000)(bed!.core.served)
+    await republishDevices(page)
+    await waitFor(() => expect(previews(tile)).toHaveLength(0))
+    pageTimersFake()
+    await pass(3_000)
+    pageTimersReal()
+    expect(issued()).toHaveLength(2)
+    // The camera answers (a reading states REACHABLE): the automatic preview opens by itself again.
+    bed!.core.served = reading('CAM-01', 'REACHABLE', CHECKED_AT + 20_000)(bed!.core.served)
+    await republishDevices(page)
+    await waitFor(() => expect(issued()).toHaveLength(3), { timeout: 4_000 })
+  })
+})
+
+// Row 130b (D95; the rule of row 130 on the session pages): Session New's device-check previews and the Session Monitor's
+// live feed mount the live preview without the Devices tile's automatic gate, so a NOT_REACHABLE camera kept asking at the
+// backoff (one Core preview note per attempt). They now ask for nothing while the Core states NOT_REACHABLE; the
+// operator's "Try again" (row 130's `CameraPreviewTryAgain`, in the tile's action slot) asks exactly once.
+describe('row 130b: the session pages ask for no preview of a NOT_REACHABLE camera', () => {
+  const CHECKED_AT = CORE_START_MS + 5_000
+  const reading =
+    (ids: readonly string[], reach: 'REACHABLE' | 'NOT_REACHABLE' | null, checkedAt: number | null) =>
+    (state: SimState): SimState => ({
+      ...state,
+      captureDevices: { devices: state.captureDevices.devices.map((device) => (ids.includes(device.id) ? ({ ...device, reach, checkedAt } as Device) : device)) },
+    })
+  const republishDevices = async (page: LivePage) => {
+    await act(async () => {
+      page.sockets.at(-1)!.delta([{ op: 'replace', slice: 'captureDevices', value: JSON.parse(JSON.stringify(bed!.core.served.captureDevices)) }] as FakeCommandOptions['ops'])
+    })
+  }
+  const issuedFor = (id: string) => issued().filter((call) => call.params.id === id)
+  const tryAgainOf = (root: ParentNode) => root.querySelector<HTMLElement>('[data-testid^="camera-preview-try-again-"]')
+  const settle = async () => {
+    pageTimersFake()
+    await pass(3_000)
+    pageTimersReal()
+  }
+
+  it('Session New: the unreachable camera asks for no token and offers "Try again" (exactly one token); a reachable camera opens', async () => {
+    const core = coreWithSession(CORE_START_MS, 'ARMED')
+    const { root } = await livePage('/session/new?step=2', 'page-session-new', () =>
+      reading(['CAM-01'], 'NOT_REACHABLE', CHECKED_AT)(reading(['CAM-02'], 'REACHABLE', CHECKED_AT)(production(['CAM-01', 'CAM-02'])(core.state()))),
+    )
+    const step = await within(root).findByTestId('sn-step-devices')
+    // CAM-02 (REACHABLE) opens as before; CAM-01 (NOT_REACHABLE) is the neutral tile.
+    await waitFor(() => expect(issuedFor('CAM-02')).toHaveLength(1))
+    const held = noPreviews(step).find((tile) => tile.getAttribute('data-camera') === 'VIDEO-01')!
+    expect(held).toHaveAttribute('data-state', 'NOT_REACHABLE')
+    await settle()
+    expect(issuedFor('CAM-01')).toHaveLength(0)
+    const frame = held.parentElement!
+    const offer = within(frame).getByTestId('camera-preview-try-again-VIDEO-01')
+    expect(offer).toHaveTextContent(PV.notReachable)
+    fireEvent.click(within(offer).getByRole('button', { name: PV.tryAgain }))
+    await waitFor(() => expect(issuedFor('CAM-01')).toHaveLength(1))
+    await settle()
+    expect(issuedFor('CAM-01')).toHaveLength(1)
+    expect(previews(step).some((preview) => preview.getAttribute('data-camera') === 'VIDEO-01')).toBe(true)
+  })
+
+  it('Session Monitor: the feed of an unreachable camera asks for nothing; "Try again" asks once; a newer unreachable reading closes it; REACHABLE opens it', async () => {
+    const recording = createSim({ scenario: 'recording', storage: null, authStorage: createMemoryAuthStorage(), visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined })
+    sims.push(recording)
+    const { root, page } = await livePage('/session', 'page-session-monitor', () =>
+      reading(['CAM-01', 'CAM-02'], 'NOT_REACHABLE', CHECKED_AT)(production(['CAM-01', 'CAM-02'])(recording.store.getState())),
+    )
+    await waitFor(() => expect(tryAgainOf(root)).not.toBeNull())
+    await settle()
+    expect(previews(root)).toHaveLength(0)
+    expect(issued()).toHaveLength(0)
+    // The REC badge of the recording stays on the neutral tile: the recording is not the preview's.
+    const frame = tryAgainOf(root)!.closest<HTMLElement>('[data-testid="camera-no-preview-frame"]')!
+    expect(frame).toHaveAttribute('data-variant', 'feed')
+    expect(within(frame).getByTestId('rec-indicator')).toBeInTheDocument()
+    fireEvent.click(within(tryAgainOf(root)!).getByRole('button', { name: PV.tryAgain }))
+    await waitFor(() => expect(issued()).toHaveLength(1))
+    await settle()
+    expect(issued()).toHaveLength(1)
+    expect(previews(root)).toHaveLength(1)
+    // The Core's newer reading is unreachable again: the preview goes and nothing more is asked for.
+    bed!.core.served = reading(['CAM-01', 'CAM-02'], 'NOT_REACHABLE', CHECKED_AT + 10_000)(bed!.core.served)
+    await republishDevices(page)
+    await waitFor(() => expect(previews(root)).toHaveLength(0))
+    await settle()
+    expect(issued()).toHaveLength(1)
+    // The camera answers (REACHABLE): the feed opens by itself.
+    bed!.core.served = reading(['CAM-01', 'CAM-02'], 'REACHABLE', CHECKED_AT + 20_000)(bed!.core.served)
+    await republishDevices(page)
+    await waitFor(() => expect(issued()).toHaveLength(2))
+    expect(previews(root)).toHaveLength(1)
   })
 })

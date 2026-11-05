@@ -3,7 +3,7 @@ import { Alert, Button, Description, FieldError, Label, Modal, Spinner, TextArea
 import { Download, FileDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { settle, useCoreActions } from '@dems/shared/live'
-import { Permission, useSim, useSimInstance, type ExportResult } from '@dems/shared/sim'
+import { CORE_DEVICE_ID_NOT_REPORTED, Permission, reportedCoreDeviceIdOf, useSim, useSimInstance, type ExportResult } from '@dems/shared/sim'
 import { Stepper, type StepperStatus, type StepperStep } from '@/components/composed/stepper'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
@@ -162,7 +162,8 @@ export function ExportAuditDialog({ isOpen, onOpenChange, chain }: ExportAuditDi
         if (generation.current !== mine) return
         const built = buildAuditExportFile({
           exportId: receipt.exportId,
-          deviceId: sim.store.getState().device.id,
+          // Audit row CS2 (U-14c, S9): the id the Core reports - never the dataset's reserved id on a Core in its own capture.
+          deviceId: reportedCoreDeviceIdOf(sim.store.getState()) ?? CORE_DEVICE_ID_NOT_REPORTED,
           at: sim.store.getState().clock.now,
           reason: reasonText,
           rows,

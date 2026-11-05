@@ -289,8 +289,15 @@ describe('rule 4 (M5): one unit per change, one audit path, publications after t
     expect(count(changes, /throw operatorStillReferenced\(/g)).toBe(0);
     // REVISED 2026-11-05 (row 95, decision D43): the second 409 INVALID_STATE is the refusal of a
     // party of the active session, built once (`activeSessionParty`) and thrown once, before any write.
-    expect(count(changes, /new ApiFailure\(409, ApiErrorCode\.INVALID_STATE,/g)).toBe(2);
+    // REVISED 2026-11-05 (row 133, DF-29 and D51): two more, each built once - the system principal
+    // (`systemPrincipalRefused`, thrown by the helper of ops 12/14 and inline by ops 16/17) and the
+    // purge-kept account (`purgeKeptRefused`, op 13 only).
+    expect(count(changes, /new ApiFailure\(409, ApiErrorCode\.INVALID_STATE,/g)).toBe(4);
     expect(count(changes, /throw activeSessionParty\(/g)).toBe(1);
+    // Cycle 3 (F-DBW2-3): ops 12/14 test the row their lock read (`target.username`), ops 16/17 the row they answer with.
+    expect(count(changes, /throw systemPrincipalRefused\(\)/g)).toBe(4);
+    expect(count(changes, /if \(isSystemPrincipal\(\{ operatorId, username: target\.username \}\)\) throw systemPrincipalRefused\(\);/g)).toBe(2);
+    expect(count(changes, /throw purgeKeptRefused\(\)/g)).toBe(1);
     expect(changes).toMatch(/new ApiFailure\(403, ApiErrorCode\.NOT_PERMITTED,/);
     expect(changes).toMatch(/new ApiFailure\(422, ApiErrorCode\.INVALID_INPUT,/);
     // The identity half of the narrowed rule is read on the caller's own row, inside the unit.
@@ -334,6 +341,8 @@ describe('rule 5: the statements', () => {
       'PURGE_OPERATOR',
       // Row 95 (D43): the active session's parties, read before a purge so a party is refused.
       'READ_ACTIVE_SESSION_PARTIES',
+      // Row 133 (D51): the purge-kept mark, asked by op 13 and by the host password command.
+      'READ_PURGE_KEPT',
       'READ_ROLES_HOLDING',
       'READ_ROLE_PERMISSIONS',
       'READ_USER',
@@ -418,7 +427,7 @@ describe('rule 5: the statements', () => {
     const own = ['auth_sessions', 'operators', 'permissions', 'role_permissions', 'operator_credentials'];
     expect(
       list
-        .filter(([name, text]) => !['REFERENCED_BY', 'PURGE_FORECAST', 'READ_ACTIVE_SESSION_PARTIES'].includes(name) && [...text.matchAll(/\bpublic\.([a-z_]+)\b(?!\s*\()/g)].some((match) => !own.includes(match[1] ?? '')))
+        .filter(([name, text]) => !['REFERENCED_BY', 'PURGE_FORECAST', 'READ_ACTIVE_SESSION_PARTIES', 'READ_PURGE_KEPT'].includes(name) && [...text.matchAll(/\bpublic\.([a-z_]+)\b(?!\s*\()/g)].some((match) => !own.includes(match[1] ?? '')))
         .map(([name]) => name),
     ).toEqual([]);
     // The two functions of migration 0036 are the only route this module has to the chain, and both
@@ -515,8 +524,9 @@ describe('rule 5: the statements', () => {
   });
 
   it('the lock point of RB-8 is every operator row, in key order, FOR UPDATE (AT-C5); an enable locks its one row', () => {
-    expect(byName['LOCK_OPERATORS']).toBe('SELECT id, role_id, enabled FROM public.operators ORDER BY id FOR UPDATE');
-    expect(byName['LOCK_OPERATOR']).toBe('SELECT id, role_id, enabled FROM public.operators WHERE id = $1 FOR UPDATE');
+    // Row 133 cycle 3 (F-DBW2-3): the username rides the lock, for the system-principal check.
+    expect(byName['LOCK_OPERATORS']).toBe('SELECT id, username, role_id, enabled FROM public.operators ORDER BY id FOR UPDATE');
+    expect(byName['LOCK_OPERATOR']).toBe('SELECT id, username, role_id, enabled FROM public.operators WHERE id = $1 FOR UPDATE');
     expect(byName['READ_ROLES_HOLDING']).toBe('SELECT role_id FROM public.role_permissions WHERE permission_id = $1');
     // No other statement takes a row lock, and none takes a table lock.
     expect(list.filter(([, text]) => /\bFOR (?:UPDATE|SHARE|NO KEY UPDATE|KEY SHARE)\b/.test(text)).map(([name]) => name).sort()).toEqual(['LOCK_OPERATOR', 'LOCK_OPERATORS']);

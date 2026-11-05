@@ -63,7 +63,11 @@ import {
   READ_STORED_MICROPHONE,
   READ_STORED_STREAM_TOKEN,
   EARLY_LOSSES_KEPT,
+  PREVIEW_NOTE_COLLAPSE_MS,
+  PREVIEW_REACH_REFRESH_MS,
+  PREVIEW_REACH_UNIT,
   composeProductionCapture,
+  createPreviewOutcome,
   createRelayReportHub,
   hostAliasInterfaceFileOf,
   storedProductionFactsOf,
@@ -71,6 +75,8 @@ import {
   type ProductionCaptureInput,
   type ProductionCapturePorts,
 } from '../capture-composition';
+import { captureDeviceReachTransition, type CaptureDeviceReachReading } from '../engine/internal-actions';
+import type { SimState } from '@dems/shared/sim';
 
 /** Hand-written host facts (the documentation networks of rows 143 and 144): a camera interface on 192.168.50.0/24, an office interface on 10.20.0.0/24. */
 const HOST: DestinationContext = {
@@ -1856,5 +1862,134 @@ describe('decisions D51 / D53: the live camera preview and the idle meters in th
     // Control: off linux there are none, whatever the programs.
     const darwin = composed(rig(CaptureOperation.REAL_PRODUCTION, { audioHelperProgram: '/x/helper', guardProgram: '/x/guard', runDir: '/x/run' }), { platform: 'darwin', network: () => HOST });
     expect(darwin.idleMeters).toBeNull();
+  });
+});
+
+// Audit row 127 (DF-12, DF-13; decisions D19, D24, D90; finding F-9-06): the outcome of a live preview becomes the reach
+// of the device (its first picture: REACHABLE; a failure: NOT_REACHABLE), and the notes of the manager are collapsed per
+// device and reason - the 32 warn lines in 6 s of 4 previews opened on a camera link that was down become 4.
+describe('audit row 127: the outcome of a live preview - reach of the device, collapsed notes', () => {
+  const partOf = (jpeg: Buffer): Buffer => Buffer.concat([Buffer.from(`--ffmpeg\r\nContent-type: image/jpeg\r\nContent-length: ${String(jpeg.length)}\r\n\r\n`), jpeg, Buffer.from('\r\n')]);
+  const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0xff, 0xd9]);
+
+  function outcomeRig(write: (reading: CaptureDeviceReachReading) => Promise<unknown> | void = () => undefined) {
+    let clock = 1_760_000_000_000;
+    const readings: CaptureDeviceReachReading[] = [];
+    const lines: { note: string; deviceId: string; reason: string | null; collapsed: number }[] = [];
+    const notWritten: { deviceId: string; reach: string; reason: string | null }[] = [];
+    const outcome = createPreviewOutcome({
+      now: () => clock,
+      write: (reading) => {
+        readings.push(reading);
+        return write(reading);
+      },
+      log: (context) => void lines.push({ ...context }),
+      notWritten: (context) => void notWritten.push({ ...context }),
+    });
+    return { outcome, readings, lines, notWritten, advance: (ms: number) => void (clock += ms), at: () => clock };
+  }
+
+  it('the first picture of an open writes checkedAt and REACHABLE once; bytes before it and pictures after it write nothing more', async () => {
+    const built = outcomeRig();
+    const chunks: Buffer[] = [];
+    const opener = built.outcome.opener(async (deviceId, _operator, onChunk) => {
+      const part = partOf(JPEG);
+      // The first picture arrives in two chunks: the header block alone is no picture.
+      onChunk(part.subarray(0, 20));
+      expect(built.readings).toEqual([]);
+      onChunk(part.subarray(20));
+      onChunk(partOf(JPEG));
+      return { deviceId } as never;
+    });
+    await opener('CAM-01', OPERATOR, (bytes) => void chunks.push(bytes), new AbortController().signal);
+    expect(built.readings).toEqual([{ deviceId: 'CAM-01', reach: 'REACHABLE', checkedAt: built.at() }]);
+    // Every byte still reaches the manager, unchanged and in order.
+    expect(Buffer.concat(chunks)).toEqual(Buffer.concat([partOf(JPEG), partOf(JPEG)]));
+  });
+
+  it('a failure note writes NOT_REACHABLE (it clears REACHABLE); an equal reading is written again only after the refresh window', async () => {
+    const built = outcomeRig();
+    const opener = built.outcome.opener(async (deviceId, _operator, onChunk) => {
+      onChunk(partOf(JPEG));
+      return { deviceId } as never;
+    });
+    await opener('CAM-02', OPERATOR, () => {}, new AbortController().signal);
+    built.advance(1_000);
+    built.outcome.note({ code: 'PREVIEW_ENDED', deviceId: 'CAM-02', reason: 'CAMERA_LOST' });
+    expect(built.readings.map((reading) => reading.reach)).toEqual(['REACHABLE', 'NOT_REACHABLE']);
+    expect(built.readings[1]?.checkedAt).toBe(built.at());
+    // Not a failure: a restart, an unreaped stop, a pause that ended by itself.
+    for (const code of ['PREVIEW_RESTARTING', 'PREVIEW_NOT_REAPED', 'PREVIEW_PAUSE_ENDED_BY_ITSELF']) built.outcome.note({ code, deviceId: 'CAM-02', reason: null });
+    built.outcome.note({ code: 'PREVIEW_UNAVAILABLE', deviceId: 'CAM-02', reason: 'CAMERA_LOST' });
+    expect(built.readings).toHaveLength(2);
+    built.advance(PREVIEW_REACH_REFRESH_MS);
+    built.outcome.note({ code: 'PREVIEW_AUTH_REFUSED', deviceId: 'CAM-02', reason: 'AUTHENTICATION_REFUSED' });
+    expect(built.readings).toHaveLength(3);
+    expect(built.readings[2]).toEqual({ deviceId: 'CAM-02', reach: 'NOT_REACHABLE', checkedAt: built.at() });
+  });
+
+  it('F-9-06 replayed: 32 refused opens of 4 cameras in 6 s are 4 lines and 2 readings per camera (one per refresh window); the next line of a key after the window carries the count', () => {
+    const built = outcomeRig();
+    const cameras = ['CAM-03', 'CAM-04', 'CAM-05', 'CAM-06'];
+    for (let round = 0; round < 8; round += 1) {
+      for (const deviceId of cameras) built.outcome.note({ code: 'PREVIEW_OPEN_REFUSED', deviceId, reason: 'CAPTURE_CAMERA_ADDRESS_REFUSED' });
+      built.advance(750);
+    }
+    expect(built.lines).toEqual(cameras.map((deviceId) => ({ note: 'PREVIEW_OPEN_REFUSED', deviceId, reason: 'CAPTURE_CAMERA_ADDRESS_REFUSED', collapsed: 0 })));
+    // Rounds at 0 .. 5 250 ms: the first reading, and one more once the refresh window (5 s) has passed - a retry is dated (row 130).
+    expect(built.readings.map((reading) => [reading.deviceId, reading.reach])).toEqual([...cameras, ...cameras].map((deviceId) => [deviceId, 'NOT_REACHABLE']));
+    // Another reason of the same device is its own key.
+    built.outcome.note({ code: 'PREVIEW_OPEN_REFUSED', deviceId: 'CAM-03', reason: 'CAPTURE_CAMERA_RELAY_NOT_CONFIGURED' });
+    expect(built.lines).toHaveLength(5);
+    built.advance(PREVIEW_NOTE_COLLAPSE_MS);
+    built.outcome.note({ code: 'PREVIEW_OPEN_REFUSED', deviceId: 'CAM-04', reason: 'CAPTURE_CAMERA_ADDRESS_REFUSED' });
+    expect(built.lines.at(-1)).toEqual({ note: 'PREVIEW_OPEN_REFUSED', deviceId: 'CAM-04', reason: 'CAPTURE_CAMERA_ADDRESS_REFUSED', collapsed: 7 });
+  });
+
+  it('a picture ends the collapse of its device: a failure after a recovery is logged at once', async () => {
+    const built = outcomeRig();
+    built.outcome.note({ code: 'PREVIEW_OPEN_REFUSED', deviceId: 'CAM-01', reason: 'CAPTURE_CAMERA_ADDRESS_REFUSED' });
+    const opener = built.outcome.opener(async (deviceId, _operator, onChunk) => {
+      onChunk(partOf(JPEG));
+      return { deviceId } as never;
+    });
+    await opener('CAM-01', OPERATOR, () => {}, new AbortController().signal);
+    built.outcome.note({ code: 'PREVIEW_OPEN_REFUSED', deviceId: 'CAM-01', reason: 'CAPTURE_CAMERA_ADDRESS_REFUSED' });
+    expect(built.lines).toHaveLength(2);
+    expect(built.readings.map((reading) => reading.reach)).toEqual(['NOT_REACHABLE', 'REACHABLE', 'NOT_REACHABLE']);
+  });
+
+  it('a reading the engine did not take is reported by code and written again at the next reading', async () => {
+    const built = outcomeRig(() => Promise.reject(Object.assign(new Error('engine stopped'), { code: 'ENGINE_NOT_READY' })));
+    built.outcome.note({ code: 'PREVIEW_OPEN_REFUSED', deviceId: 'CAM-05', reason: null });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(built.notWritten).toEqual([{ deviceId: 'CAM-05', reach: 'NOT_REACHABLE', reason: 'ENGINE_NOT_READY' }]);
+    built.outcome.note({ code: 'PREVIEW_UNAVAILABLE', deviceId: 'CAM-05', reason: null });
+    expect(built.readings).toHaveLength(2);
+  });
+
+  it('the pure transition sets checkedAt and reach on that device only, never online or streamState, and returns the same state when nothing changes', () => {
+    const device = (id: string) => ({ id, kind: 'CAMERA', online: true, streamState: null, capabilities: [] });
+    const state = { captureDevices: { devices: [device('CAM-01'), device('CAM-02')] } } as unknown as SimState;
+    const reading: CaptureDeviceReachReading = { deviceId: 'CAM-02', reach: 'NOT_REACHABLE', checkedAt: 1_760_000_000_000 };
+    const next = captureDeviceReachTransition(state, reading);
+    expect(next.captureDevices.devices[1]).toEqual({ ...device('CAM-02'), reach: 'NOT_REACHABLE', checkedAt: 1_760_000_000_000 });
+    expect(next.captureDevices.devices[0]).toBe(state.captureDevices.devices[0]);
+    expect(captureDeviceReachTransition(next, reading)).toBe(next);
+    expect(captureDeviceReachTransition(state, { ...reading, deviceId: 'CAM-09' })).toBe(state);
+  });
+
+  it('in the composition: a refused preview open is a NOT_REACHABLE reading through the port and one collapsed note line', async () => {
+    const readings: CaptureDeviceReachReading[] = [];
+    const built = rig(CaptureOperation.REAL_PRODUCTION, { noteDeviceReach: async (reading) => void readings.push(reading) });
+    const composition = composed(built, { platform: CARD_LISTING_PLATFORM, network: () => HOST });
+    expect(composition.preview.join('CAM-01', OPERATOR, { frame: () => true, end: () => {} }).joined).toBe(true);
+    for (let turn = 0; turn < 20 && readings.length === 0; turn += 1) await new Promise((resolve) => setImmediate(resolve));
+    expect(readings).toEqual([{ deviceId: 'CAM-01', reach: 'NOT_REACHABLE', checkedAt: 1_760_000_000_000 }]);
+    const notes = built.reports.filter((entry) => entry.code === CaptureCompositionCode.PREVIEW_NOTE);
+    expect(notes.length).toBeGreaterThan(0);
+    for (const entry of notes) expect(entry).toMatchObject({ level: 'warn', context: { deviceId: 'CAM-01', collapsed: 0 } });
+    expect(PREVIEW_REACH_UNIT).toBe('capture.previewReach');
+    await composition.preview.close();
   });
 });

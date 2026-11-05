@@ -45,7 +45,10 @@
  *      SYSTEM PRINCIPAL among them (`isSystemPrincipal`: the reserved id `OPR-000` the auto-attach
  *      path acts as, or the username `system`) is refused here, whole command, nothing asked
  *      (DF-29, decision D20(d), 2026-11-05: that row stands for the Core itself and must never be
- *      able to sign in, so no credential of it is ever written - neither replaced nor created by D56)
+ *      able to sign in, so no credential of it is ever written - neither replaced nor created by D56);
+ *      the predicate lives in `src/modules/admin/rule.ts` (D38 DR-4). The named operator is also
+ *      refused when it is a PURGE-KEPT account (decision D51, row 133: `isPurgeKept` of the admin
+ *      statements). The walk never meets one: the purge removed its credential row.
  *   6. the summary - database, data directory, the connection file's full path, operators, and what "the Core is stopped" can and
  *      cannot mean here - and the word `SET`
  *
@@ -79,7 +82,7 @@ import { join, isAbsolute, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Pool } from 'pg';
-import { AuditType, UNATTRIBUTED_OPERATOR_ID } from '@dems/shared/sim';
+import { AuditType } from '@dems/shared/sim';
 import { SELECT_STORED_HASH_SETS, demoPasswordHashSetsAmong, storedHashSetIsDemoPassword, type StoredHashSetRow } from '../src/capture/boot';
 import { CONNECTION_FILE_NAME, ConfigError, DATABASE_HOST, RUNTIME_ROLE, type DatabaseConnection } from '../src/config';
 import { fixedSeverityOf } from '../src/core/audit-details';
@@ -88,6 +91,8 @@ import { createPipeline } from '../src/core/pipeline';
 import type { Pipeline } from '../src/core/types';
 import { BootCheckError, checkSchemaVersion } from '../src/db/schema/boot-checks';
 import { readNewestStoredInstant } from '../src/engine/rehydrate';
+import { isSystemPrincipal } from '../src/modules/admin/rule';
+import { isPurgeKept } from '../src/modules/admin/statements';
 import { PASSWORD_POLICY_REFUSAL, checkNewPassword, createRunRepeatGuard, type RunRepeatGuard } from '../src/modules/identity';
 import { revokeBiometricTokens } from '../src/modules/identity/biometric';
 import type { PasswordHashRecord } from '../src/modules/identity/password-hash';
@@ -133,6 +138,8 @@ export const SetPasswordRefusal = {
   OPERATOR_NOT_FOUND: 'OPERATOR_NOT_FOUND',
   /** The operator is a system principal (DF-29, D20(d)): it stands for the Core and never signs in, so it gets no password. */
   SYSTEM_PRINCIPAL: 'SYSTEM_PRINCIPAL',
+  /** The account was purged and KEPT, disabled, under its evidence-chain rows (D38 DR-1, migration 0043): it is terminal (D51), so it gets no password. */
+  PURGE_KEPT: 'PURGE_KEPT',
   OPERATORS_UNREADABLE: 'OPERATORS_UNREADABLE',
   NOT_CONFIRMED: 'NOT_CONFIRMED',
   /** The repeat check of the run could not be prepared. */
@@ -190,20 +197,10 @@ export function connectionFileProblem(file: string, uid: number, inspect: (path:
 }
 
 /**
- * THE SYSTEM PRINCIPALS (DF-29, decision D20(d), 2026-11-05). `OPR-000` is the operator id the
- * auto-attach path acts as (`SYSTEM_OPERATOR_ID` of `capture-discovery/connect`, the same value as
- * the shared `UNATTRIBUTED_OPERATOR_ID`; the sequence of real operators starts at OPR-001). The D62
- * installer provisions its row as `system` WITHOUT a credential: "it can never sign in". Before
- * this, the D56 create path of this command would have written its first credential and made it a
- * TECHNICIAN that can sign in. A row is a system principal by its reserved id OR by the reserved
- * username (any case), so a row provisioned under another id is held as well. The row itself is
- * never touched: adoption needs it as its actor key.
+ * THE SYSTEM PRINCIPALS (DF-29, decision D20(d), 2026-11-05) are defined ONCE, in the admin module's
+ * rule (`src/modules/admin/rule.ts`, decision D38 DR-4, row 133): the same predicate refuses there the
+ * edit, the disable and the purge of such a row, and here its credential. See that file for who they are.
  */
-export const SYSTEM_PRINCIPAL_OPERATOR_IDS: readonly string[] = Object.freeze([UNATTRIBUTED_OPERATOR_ID]);
-export const SYSTEM_PRINCIPAL_USERNAMES: readonly string[] = Object.freeze(['system']);
-export function isSystemPrincipal(operator: { readonly operatorId: string; readonly username: string }): boolean {
-  return SYSTEM_PRINCIPAL_OPERATOR_IDS.includes(operator.operatorId) || SYSTEM_PRINCIPAL_USERNAMES.includes(operator.username.toLowerCase());
-}
 
 /**
  * A name of an environment variable that reads as "a password for this command". Only NAMES are
@@ -458,6 +455,11 @@ export async function runSetPasswordCommand(argv: readonly string[], ports: SetP
         // DF-29 / D20(d): BEFORE the D56 create path and before any derivation - a system principal gets no credential.
         if (isSystemPrincipal({ operatorId: row.operator_id, username: row.username })) {
           return refuse(SetPasswordRefusal.SYSTEM_PRINCIPAL, `${row.username} (${row.operator_id}) is a system principal: it stands for the Core itself and never signs in, so this command sets no password of it. Nothing was changed.`);
+        }
+        // D51 (row 133): a purge-kept account is terminal. The purge took its credential and left the row only
+        // because evidence-chain rows name it; the D56 create path below would otherwise give it one again.
+        if (await isPurgeKept(pool, row.operator_id)) {
+          return refuse(SetPasswordRefusal.PURGE_KEPT, `${row.username} (${row.operator_id}) was deleted and is kept, disabled, only because evidence-chain records name it. It never signs in again, so this command sets no password of it. Nothing was changed.`);
         }
         // D56 (2026-11-03): an account with no credential row is not refused - a factory seed deliberately
         // leaves the vendor accounts without one, and this command is the only writer of a credential, so
