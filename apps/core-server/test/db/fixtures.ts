@@ -599,7 +599,9 @@ export function captureSource(slot: string, overrides: Row = {}): Row {
     session_id: SESSION_ID,
     slot,
     // D61 (2026-11-04): the mic slots are the four numbered channels and feed their built-in.
-    device_id: slot.startsWith('VIDEO-') ? (slot === 'VIDEO-02' ? 'CAM-02' : 'CAM-01') : ['MIC-02', 'MIC-03', 'MIC-04'].includes(slot) ? slot : 'MIC-01',
+    // The two role names of the historical sets (set 8 replays (6, dbc-7), set 11 (9, dbc-10))
+    // keep their pre-D61 pairing: standby feeds MIC-02, exactly as the seeded selector names it.
+    device_id: slot.startsWith('VIDEO-') ? (slot === 'VIDEO-02' ? 'CAM-02' : 'CAM-01') : slot === 'MIC-STANDBY' || slot === 'MIC-02' ? 'MIC-02' : ['MIC-03', 'MIC-04'].includes(slot) ? slot : 'MIC-01',
     adapter_kind: 'FAKE',
     recorded_at: T,
     ...overrides,
@@ -615,6 +617,30 @@ export function captureConfig(overrides: Row = {}): Row {
     // D61 (2026-11-04): the two roles became the four numbered channels (migration 0040 renames).
     mic_01_id: 'MIC-01',
     mic_02_id: 'MIC-02',
+    revision: 1,
+    updated_by: 'OPR-001',
+    updated_at: T,
+    ...overrides,
+  };
+}
+
+/**
+ * The one `capture_config` row in the shape of sets 1 to 10 - BEFORE D60/D61 widened the table
+ * (2026-11-04). The historical-set replays must seed THIS shape: set 8 replays 0015/0016 against
+ * a genuine (6, 'dbc-7') pre-state and set 11 replays 0021-0023 against (9, 'dbc-10'); at those
+ * boundaries 0039 and 0040 have not run, so the table holds exactly the six slot columns with the
+ * microphone pair named by ROLE (`mic_primary_id`/`mic_standby_id`) - `mic_01_id`..`mic_04_id` do
+ * not exist yet. Do not "modernise" these seeds to `captureConfig()`: the 42703 they then raise
+ * is not the refusal or the rewrite the set under test is about.
+ */
+export function captureConfigHistoric(overrides: Row = {}): Row {
+  return {
+    video_01_device_id: 'CAM-01',
+    video_01_profile: 'UHD',
+    video_02_device_id: 'CAM-02',
+    video_02_profile: 'HD',
+    mic_primary_id: 'MIC-01',
+    mic_standby_id: 'MIC-02',
     revision: 1,
     updated_by: 'OPR-001',
     updated_at: T,

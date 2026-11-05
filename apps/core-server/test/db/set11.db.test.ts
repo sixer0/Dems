@@ -45,7 +45,7 @@ import {
 import { BootCheckError, checkSchemaVersion } from '../../src/db/schema/boot-checks';
 import { DB_CONTRACT_REVISION, DB_SCHEMA_VERSION } from '../../src/db/schema/meta';
 import { useTestDatabase, type TestDatabase } from '../helpers/db';
-import { captureConfig, captureDevice, captureDeviceStream, insertRbac, insertRow, json } from './fixtures';
+import { captureConfigHistoric, captureDevice, captureDeviceStream, insertRbac, insertRow, json } from './fixtures';
 import { EMPTY_DATABASE, SQLSTATE, expectRefused } from './support';
 
 const db = useTestDatabase({ template: EMPTY_DATABASE });
@@ -166,7 +166,10 @@ async function seedOldForm(owner: Pool): Promise<void> {
   for (const [id, kind, adapter, profiles] of OLD_FORM) await insertRow(owner, 'capture_devices', captureDevice(id, kind, { adapter_kind: adapter, profiles: json(profiles) }));
   await insertRow(owner, 'capture_device_streams', captureDeviceStream('CAM-06', 'HEVC_1080P'));
   await insertRow(owner, 'capture_device_streams', captureDeviceStream('CAM-06', 'H264_720P', { onvif_profile_token: 'profile_2', stream_role: 'SUB', codec: 'H264', width: 1280, height: 720 }));
-  await insertRow(owner, 'capture_config', captureConfig({ video_01_device_id: 'CAM-03', video_01_profile: 'H264_1080P25', video_02_device_id: 'CAM-01', video_02_profile: 'H264_1080P25', mic_standby_id: null }));
+  // D61 (2026-11-05): the pre-D61 shape (mic_primary_id/mic_standby_id, six slot columns) — at
+  // this (9, 'dbc-10') boundary 0039/0040 have not run and mic_01_id.. do not exist; see
+  // captureConfigHistoric in fixtures.ts.
+  await insertRow(owner, 'capture_config', captureConfigHistoric({ video_01_device_id: 'CAM-03', video_01_profile: 'H264_1080P25', video_02_device_id: 'CAM-01', video_02_profile: 'H264_1080P25', mic_standby_id: null }));
 }
 
 /** The profile list of every device, by id. */

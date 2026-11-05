@@ -49,7 +49,7 @@ import {
 import { BootCheckError, checkSchemaVersion } from '../../src/db/schema/boot-checks';
 import { DB_CONTRACT_REVISION, DB_SCHEMA_VERSION } from '../../src/db/schema/meta';
 import { useTestDatabase } from '../helpers/db';
-import { captureAudioInput, captureConfig, captureDevice, captureDeviceStream, captureSource, insertRbac, insertRow, json, sessionHistory } from './fixtures';
+import { captureAudioInput, captureConfigHistoric, captureDevice, captureDeviceStream, captureSource, insertRbac, insertRow, json, sessionHistory } from './fixtures';
 import { EMPTY_DATABASE, SQLSTATE, expectRefused } from './support';
 
 const db = useTestDatabase({ template: EMPTY_DATABASE });
@@ -206,7 +206,9 @@ describe('M8S-1: the pre-state, a (6, dbc-7) database that holds rows', () => {
     for (const [id, kind] of [['CAM-01', 'CAMERA'], ['CAM-02', 'CAMERA'], ['MIC-01', 'MIC'], ['MIC-02', 'MIC']] as const) await insertRow(owner, 'capture_devices', captureDevice(id, kind));
     // What adoption stores today: the ONVIF tokens themselves, lower case included (finding F-DB-1).
     await insertRow(owner, 'capture_devices', captureDevice('CAM-03', 'CAMERA', { profiles: json(['profile_1', 'profile_2']) }));
-    await insertRow(owner, 'capture_config', captureConfig());
+    // D61 (2026-11-05): the pre-D61 shape (mic_primary_id/mic_standby_id) — 0040 has not run at
+    // this (6, 'dbc-7') boundary; see captureConfigHistoric in fixtures.ts.
+    await insertRow(owner, 'capture_config', captureConfigHistoric());
     await insertRow(owner, 'session_history', sessionHistory());
     for (const slot of ['VIDEO-01', 'VIDEO-02', 'MIC-PRIMARY', 'MIC-STANDBY']) await insertRow(owner, 'session_capture_sources', captureSource(slot));
     expect(await storedBefore(owner)).toMatchObject([{ devices: 5, selectors: 1, sources: 4 }]);
@@ -353,7 +355,7 @@ describe('M8S-4 (d): a slot of the selector may be unassigned, and a video slot 
       ),
     ).toEqual([...SLOT_COLUMNS, 'revision', 'updated_at', 'updated_by'].sort());
     await expectRefused(() => app.query(`DELETE FROM ${SELECTOR}`), SQLSTATE.insufficientPrivilege);
-    await expectRefused(() => insertRow(app, 'capture_config', captureConfig({ singleton: false })), SQLSTATE.insufficientPrivilege);
+    await expectRefused(() => insertRow(app, 'capture_config', captureConfigHistoric({ singleton: false })), SQLSTATE.insufficientPrivilege);
   });
 });
 
@@ -591,7 +593,7 @@ describe('M8S-9: rollback', () => {
     await migrateShort(owner, 15);
     await insertRbac(owner);
     for (const [id, kind] of [['CAM-01', 'CAMERA'], ['CAM-02', 'CAMERA'], ['MIC-01', 'MIC'], ['MIC-02', 'MIC']] as const) await insertRow(owner, 'capture_devices', captureDevice(id, kind));
-    await insertRow(owner, 'capture_config', captureConfig());
+    await insertRow(owner, 'capture_config', captureConfigHistoric()); // D61 (2026-11-05): the (6, 'dbc-7') shape, not today's
     await insertRow(owner, 'session_history', sessionHistory());
     for (const slot of ['VIDEO-01', 'VIDEO-02', 'MIC-PRIMARY', 'MIC-STANDBY']) await insertRow(owner, 'session_capture_sources', captureSource(slot));
     return other;
