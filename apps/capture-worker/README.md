@@ -1,10 +1,14 @@
 # DEMS capture worker
 
+Back to the [repository README](../../README.md).
+
 A small C program against the installed FFmpeg libraries (9.0.2), started and supervised by the
 Core (`apps/core-server/src/capture`). It records one camera file per camera of the plan — up to
 FOUR (D60, 2026-11-04: `VIDEO-01`..`VIDEO-04` at once, was two) — from RTSP ingests on
-`127.0.0.1` and one audio track from the microphone inputs. Everything here runs from the
-repository root; nothing is installed.
+`127.0.0.1`, with the audio of each camera's paired microphone (see the correction below; the
+"one audio track" of the first version is retired). The commands in this file run from the
+repository root and install nothing; on the bench host the built worker and its stamp are
+installed by the deploy procedure (section **Production notes** below).
 
 Correction (2026-11-06, branch `audit/fix-20261105`, decisions D5, D117, D132): the worker is now
 `capture-worker/0.8.0` on capture protocol 6. It no longer writes one shared audio track: each camera
@@ -13,9 +17,29 @@ file `MIC-0N.m4a` (track AUDIO-0N), and a camera whose paired microphone is miss
 track (`micMissing` in the plan). MIC-01 alone feeds the transcription tap. On the bench host the worker
 is built against `/opt/dems/ffmpeg-9.0.2` (`PKG_CONFIG_PATH=/opt/dems/ffmpeg-9.0.2/lib/pkgconfig`).
 
+## How it talks to the rest of DEMS
+
+- **To the Core: capture protocol 6.** The Core starts the worker as a child process and they
+  exchange one JSON object per line: commands on the worker's standard input, frames (`HELLO`,
+  `HEARTBEAT`, `ACK`, `WARNING`, `RECORD`, `CRASH`, `TELEMETRY`) on its standard output, and
+  nothing else ever on standard output (`src/ipc.c`). The shared contract is
+  `packages/capture-protocol` (`@dems/capture-protocol`, `CAPTURE_PROTOCOL_VERSION = 6`, the same
+  number as in `src/worker.h`). A Core and a worker of different protocol numbers refuse each
+  other at `HELLO`. The worker's log is a JSON-lines file named by `--log`; standard error is not used.
+- **From the cameras: RTSP ingest on loopback.** The worker listens on `127.0.0.1` TCP ports in
+  8554-8564; each camera's relay (`build/capture-relay`, below) pulls the camera and pushes it there.
+  On the bench host the nftables rule of `dems-loopback-rule.service` lets only the Core's service
+  user connect to those ports.
+- **Microphones** arrive as PCM inputs from the audio helper, which the Core starts through the
+  guard (`build/capture-guard`, below).
+
+## Folder layout
+
 | Folder | Content |
 |---|---|
-| `src/` | the worker (static rules: `check.sh`) |
+| `src/` | the worker (static rules: `check.sh`): `capture_worker.c` (entry, plan, threads), `ipc.c` (protocol frames and the bounded log), `ingest.c` (RTSP ingest per camera), `audio.c` (filtering thread, one AAC encoder per paired microphone), `sink.c` (the fMP4 writer), `anchor.c` / `anchor.h` (video anchoring arithmetic), `micwatch.c` / `micwatch.h` (microphone warnings), `announce.c` / `announce.h` (the announce gate of an ingest), `worker.h` (version word and protocol number) |
+| `src/relay/` | the capture relay (`relay.c`, `relay_core.c`, `relay_rtsp.c`, `relay.h`; static rules: `relay-check.sh`) |
+| `src/guard/` | the capture guard (`guard.c`) |
 | `test/` | unit checks (`anchor_test.c`, `sink_kill_test.c`), the end-to-end harness `m3worker.py`, the series runner `e2e.py`, planted lines of the static self-test |
 | `test-fixtures/` | the NM-14 fixture set: `fake_cam.c`, `fake_mic.c`, the analysers `av_analyse.py`, and `negative-control/skeleton111.c` (a vendored old worker that the socket check must fail on) |
 | `build/` | every binary (git-ignored) |
@@ -23,12 +47,70 @@ is built against `/opt/dems/ffmpeg-9.0.2` (`PKG_CONFIG_PATH=/opt/dems/ffmpeg-9.0
 The fake ONVIF camera for the discovery and connection-test rows is TypeScript and lives where the
 Node tests import it: `apps/core-server/test/support/fake-onvif-stub.ts`.
 
+## Requirements and setup
+
+- A C compiler, `make`, `pkg-config`, `python3` (test runners).
+- FFmpeg 9.0.2 with its `pkg-config` files: the worker links `libavformat`, `libavcodec`,
+  `libavfilter`, `libswresample` and `libavutil` (`LIBS_PC` in the `Makefile`). On the bench host the
+  build lives at `/opt/dems/ffmpeg-9.0.2`; point `pkg-config` at it:
+
+  ```
+  PKG_CONFIG_PATH=/opt/dems/ffmpeg-9.0.2/lib/pkgconfig make -C apps/capture-worker
+  ```
+
+  On the development Mac the Homebrew FFmpeg 9.0.2 is found without the variable.
+- `make versions` prints the library versions and directory that a build links.
+
+## Make targets
+
 ```
 make -C apps/capture-worker            static rules + their self-test + unit checks + build/capture-worker
+                                       (+ its stamp) + the relay + the guard  (also: npm run test:capture-worker)
+make -C apps/capture-worker check      the worker's static rules (check.sh)
+make -C apps/capture-worker selftest   the self-test of the static rules
+make -C apps/capture-worker unit       the unit checks
+make -C apps/capture-worker relay      relay-check, relay-unit, relay-asan, relay-fuzz and build/capture-relay
+make -C apps/capture-worker guard      build/capture-guard and its tests
 make -C apps/capture-worker proof      the proof builds (negative controls; never started by the Core)
 make -C apps/capture-worker fixtures   fake camera, fake mics, the vendored skeleton
 make -C apps/capture-worker versions   the FFmpeg libraries this build links
+make -C apps/capture-worker e2e        the end-to-end series, about 35 minutes (also: npm run test:capture-worker-e2e)
+make -C apps/capture-worker clean      removes build/
 ```
+
+The relay targets `relay-check`, `relay-unit`, `relay-asan`, `relay-fuzz` and `relay-fuzz-controls`
+are described in the relay section below.
+
+## Configuration
+
+The worker, the relay and the guard read **no environment variables**. The worker takes its
+settings as command-line arguments and the start message from the Core; the relay reads one start
+line on standard input. What is configured is on the Core's side, in its environment file
+(template: [`deploy/bench-config/core.env.example`](../../deploy/bench-config/core.env.example)):
+
+| Core variable | What it names |
+|---|---|
+| `DEMS_CAPTURE_MODE` | `real` to start the worker at all (`simulated` starts none) |
+| `DEMS_CAPTURE_WORKER` | absolute path of `capture-worker` |
+| `DEMS_CAPTURE_RELAY` | absolute path of `capture-relay` |
+| `DEMS_CAPTURE_GUARD` | absolute path of `capture-guard` |
+| `DEMS_CAPTURE_AUDIO_HELPER` | absolute path of the audio helper the guard starts |
+| `DEMS_MEDIA_DIR` | the media root the worker writes camera files into |
+
+## Production notes
+
+- The worker runs as a child of the Core (systemd unit `dems-core`), never as a unit of its own.
+- Install the binary and its stamp together: binary 0755, stamp `capture-worker.stamp` 0644, both
+  root-owned. At boot the Core checks that the stamp names this binary's sha256, the source it was
+  built from, the worker version and the protocol; a mismatch is refused (`CAPTURE_WORKER_BUILD_STAMP_STALE`,
+  `CAPTURE_WORKER_VERSION_MISMATCH`, `CAPTURE_WORKER_PROTOCOL_MISMATCH`). A healthy REAL_PRODUCTION boot logs one
+  `CAPTURE_BOOT_CHECKS_PASSED` line naming `capture-worker/0.8.0`.
+- Rebuild on the host only when `apps/capture-worker` changed: `make clean`, then
+  `PKG_CONFIG_PATH=/opt/dems/ffmpeg-9.0.2/lib/pkgconfig make check selftest unit build/capture-worker relay-check`
+  under the heavy-host lock (root README, section **Deploy procedure (short)**).
+- The gated end-to-end D5 tests cannot pass on the bench host: its loopback rule refuses pushers
+  started as a normal user (decisions D150, D153).
+- Unit files and the loopback rule: [`deploy/bench-config/README.md`](../../deploy/bench-config/README.md).
 
 ## How to run the capture e2e
 
@@ -198,4 +280,4 @@ capture-guard <absolute path of the program> [its arguments ...]
 
 ## Linked libraries and their licence
 
-`make -C apps/capture-worker versions` prints the FFmpeg libraries this build links. The worker links `libavformat`, `libavcodec`, `libavfilter`, `libswresample` and `libavutil` dynamically, through `pkg-config` (`Makefile`, `LIBS_PC`). On this Mac those are the libraries of the Homebrew FFmpeg 9.0.2, which is a GPL-3.0-or-later build. The record of that fact, and of what is and is not established for a distributed worker, is `THIRD_PARTY_NOTICES.md` at the repository root, section "Component register of the real-capture task", part 1. The binaries under `build/` are git-ignored and are in no package.
+`make -C apps/capture-worker versions` prints the FFmpeg libraries this build links. The worker links `libavformat`, `libavcodec`, `libavfilter`, `libswresample` and `libavutil` dynamically, through `pkg-config` (`Makefile`, `LIBS_PC`). On this Mac those are the libraries of the Homebrew FFmpeg 9.0.2, which is a GPL-3.0-or-later build. On the bench host they are the FFmpeg 9.0.2 build under `/opt/dems/ffmpeg-9.0.2` (added 2026-11-06). The record of that fact, and of what is and is not established for a distributed worker, is `THIRD_PARTY_NOTICES.md` at the repository root, section "Component register of the real-capture task", part 1. The binaries under `build/` are git-ignored and are in no package.
