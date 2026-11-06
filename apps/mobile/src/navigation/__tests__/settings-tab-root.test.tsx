@@ -44,7 +44,10 @@ describe('R-P-3: Settings > Device Settings opens the Devices list at its root',
     const app = renderApp('/devices', { runtime: signedIn() });
     act(() => router.push('/devices/CAM-01'));
     expect(app.getPathname()).toBe('/devices/CAM-01');
-    expect(screen.getByTestId('device-detail-id')).toHaveTextContent('CAM-01');
+    // PIN MOVED by audit row 229 (D255/D257): this harness runs the default LIVE link against no Core (fetch 503), so the
+    // Core states no selector line (0 devices, 0 camera / mic lines). A built-in detail shows the device its SLOT holds - none here -
+    // so it reads "Not assigned", not the seed's fixed id. The simulated lane still shows the built-in id (devices-screen.test.tsx).
+    expect(screen.getByTestId('device-detail-id')).toHaveTextContent('Not assigned');
 
     // More > Settings (More opens it with `router.push`, a tab jump).
     act(() => router.push('/settings'));

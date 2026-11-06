@@ -272,10 +272,12 @@ describe('fix wave J - the picker and the selector rows', () => {
     expect(screen.queryByTestId('capture-source-sheet')).toBeNull();
   });
 
-  it('JA2-33 / JA2-29: one wording of the picture - "This build shows no live picture of the cameras."; no specification language', async () => {
+  // D247 (row 232, M3 c2 F5): the pin moved - the card no longer says the build has no live picture; it reads the web's shared sentence.
+  it('JA2-33 / JA2-29: one wording of the picture - the shared "Device state only here" note; no specification language', async () => {
     renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
-    expect(screen.getByTestId('capture-selector-no-preview')).toHaveTextContent('Status only. This build shows no live picture of the cameras.');
+    expect(screen.getByTestId('capture-selector-no-preview')).toHaveTextContent('Device state only here: the live preview of a camera is shown in its tile.');
+    expect(screen.queryByText(/no live picture|this build/i)).toBeNull();
     expect(screen.queryByText(/this phase|Searching connects to nothing|\(SYS-|§/)).toBeNull();
   });
 });

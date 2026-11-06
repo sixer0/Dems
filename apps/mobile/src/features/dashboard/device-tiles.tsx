@@ -4,6 +4,8 @@
  * bundled live loops, D50; at most 2 live canvases), MIC 1 and MIC 2 with a C-2 `compact` meter fed
  * by the transient 20 Hz shared values (§5.4: zero React renders per frame) and a 1 Hz dBFS line.
  * Tap → the device (`/devices/<id>`; master-detail hands it to the Devices pane on tablets).
+ * Since D60 the grid holds four camera tiles and four MIC tiles; audit row 230 (F2) binds camera tile N to track
+ * VIDEO-0N (camera N), so each tile's preview asks for its own camera.
  *
  * The feeds and meters pause off-focus (§7.8). Under the D43 test switch (`?motion=off`) the feeds
  * show their still poster, the meters stop and their dBFS line holds, so uiautomator can reach idle
@@ -37,9 +39,9 @@ import { DbfsMeter } from '@/components/composed/dbfs-meter';
 import { StatusChip } from '@/components/kit';
 import { MicInputSourceBadge, TrackSourceBadge } from '@/features/capture-selector/development-source-badge';
 // Fix wave H (G70-03, G75-13; D196): `CameraPreview` = this feed for a simulated Core, the "No preview" tile for a Core in real capture.
-import { CameraPreview } from '@/features/devices/camera-preview';
+import { CameraPreview, previewTrackOf } from '@/features/devices/camera-preview';
 import { useConnectingCameras } from '@/features/session-live/rec-indicator';
-import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
+import { DEMO_MEDIA_LIVE, demoVideoAssetOf } from '@/components/media/demo-media';
 import { useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
 import { AUDIO_FLOOR_DBFS, audioAccessibilityValue, useAudioAccessibilityValue, useAudioSharedValues, type AudioAccessibilityValue } from '@/runtime';
 import { MIC_NO_LEVEL_TEXT, TRACK_NAME_KEY, micReadoutKind } from './home-model';
@@ -139,11 +141,18 @@ function FeedThumb({ tile, name }: { tile: DeviceTileInfo; name: string }) {
   const policy = useMotionPolicy();
   const focused = useIsFocused();
   const testSwitch = useMotionState((s) => s.linkMotion === 'off');
-  const cameraIndex = tile.trackId === 'VIDEO-02' ? 2 : 1;
-  const poster = DEMO_MEDIA_LIVE.poster[cameraIndex === 2 ? 'VIDEO-02' : 'VIDEO-01'];
+  // Audit row 230 (M3 cycle 2, F2; D60): the tile's camera is its own track's - VIDEO-0N -> camera N - for all four
+  // tiles. The former `VIDEO-02 ? 2 : 1` (a two-camera leftover) bound tiles 3 and 4 to camera 1, and the Core then
+  // refused the second preview of that camera. The track is passed as is, so the reach gate and the live preview
+  // resolve the device the selector assigns to THIS track. The demo poster stays the D172 known limit: cameras 1-2
+  // have their own, 3-4 fall back to camera 1's (`demoVideoAssetOf`, as the device detail does).
+  const track = previewTrackOf(tile.trackId);
+  const cameraIndex = Number(track.slice(-1)) as 1 | 2 | 3 | 4;
+  const poster = demoVideoAssetOf(DEMO_MEDIA_LIVE, 'poster', track);
   return (
     <CameraPreview
       livePreview
+      trackId={track}
       name={name}
       testID={`home-device-${tile.trackId}-feed`}
       cameraId={`CAM-${cameraIndex}`}

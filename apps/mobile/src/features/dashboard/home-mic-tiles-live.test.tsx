@@ -330,7 +330,8 @@ describe.each(['tabletLandscape', 'phonePortrait'] as const)('G70b-04 / G75b-09 
       const thumb = screen.getByTestId(`home-recent-row-${index}-thumb`);
       // The neutral thumb is a labelled icon tile, not an image: it has no picture source at all.
       expect(thumb.props.source).toBeUndefined();
-      expect(thumb.props.accessibilityLabel).toMatch(/No preview: this build shows no live picture\.$/);
+      // D247/D252 (row 232): the tablet preview label now reads as the web's, "the live preview is not open".
+      expect(thumb.props.accessibilityLabel).toMatch(/No preview: the live preview is not open\.$/);
       expect(textOf(`home-recent-row-${index}-id`)).not.toBe('');
     }
     expect(within(screen.getByTestId('home-recent')).queryAllByText(/\b(LIVE|DEMO)\b/)).toHaveLength(0);

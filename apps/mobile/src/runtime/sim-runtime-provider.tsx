@@ -68,7 +68,6 @@ import {
 } from './contract';
 import {
   coreLinkStateFor,
-  DEFAULT_CORE_LINK_SOURCE,
   effectiveCoreLinkSource,
   getCoreLinkSource,
   hydrateCoreLinkSource,

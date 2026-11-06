@@ -12,9 +12,10 @@ import './testing/devices-test-setup';
 import '@/navigation/testing/router-harness';
 
 import { act, screen, within } from '@testing-library/react-native';
-import { clearCaptureWarningTransition, raiseCaptureWarningTransition, type SimState } from '@dems/shared/sim';
+import { clearCaptureWarningTransition, isSlotSourceUp, raiseCaptureWarningTransition, type SimState } from '@dems/shared/sim';
 import { getMissingKeys, i18n, resetMissingKeys } from '@/i18n';
 import { noPreviewFactsOf, noPreviewWords, previewTrackOf, realCaptureView } from './camera-preview';
+import { trackSourceOf } from './devices-model';
 import { renderDevicesApp, settle, type DevicesHarness } from './testing/devices-harness';
 
 /** What `useMobileLive()` answers: null = Simulated client mode; an object = Live. */
@@ -36,7 +37,8 @@ const FAKE: Mark = { sourceClass: 'DEVELOPMENT', adapter: 'FAKE' };
 const LOCAL: Mark = { sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE' };
 const PRODUCTION: Mark = { sourceClass: 'PRODUCTION', adapter: 'ONVIF_RTSP' };
 const WINDOWS = ['tabletLandscape', 'phonePortrait'] as const;
-const NO_PREVIEW_LABEL = /No preview: this build shows no live picture/;
+// D247 / D252 (row 232 reworded preview.label / preview.thumbLabel to the web's devices.noPreview.aria words).
+const NO_PREVIEW_LABEL = /No preview: the live preview is not open/;
 
 function mark(h: Pick<DevicesHarness, 'sim'>, marks: Readonly<Record<string, Mark>>): void {
   act(() => h.sim.store.setState((s) => ({ captureDevices: { ...s.captureDevices, devices: s.captureDevices.devices.map((device) => ({ ...device, ...(marks[device.id] ?? {}) })) } })));
@@ -96,6 +98,20 @@ describe('the words of the tile: the device and its TRUE state, as the Core sent
     expect(noPreviewWords(t, noPreviewFactsOf(stateWith({}, 'CAM-09'), 'VIDEO-01'), true)).toEqual({ device: null, state: 'State not known' });
   });
 
+  // Row 231 (M3 cycle 2, F4; test/12_m3_ui_tablet.md §7, 00_home_start.png): the header and the gate said "Not reachable"
+  // while the neutral tile inside said "Camera CAM-03 · Reachable": the tile read the registry flag `online`, not the
+  // stated `reach`. The tile now reads the ONE source reader (`trackSourceOf` / `isSlotSourceUp`, P10, D195).
+  it('F4 - a camera the Core states NOT_REACHABLE (online, checked) reads "Not reachable" on the tile, as the header and the gate read it', () => {
+    const down = stateWith({ 'CAM-01': { ...PRODUCTION, online: true, reach: 'NOT_REACHABLE', checkedAt: 1_791_636_968_000 } as Mark });
+    expect(isSlotSourceUp(trackSourceOf(down, 'VIDEO-01'))).toBe(false);
+    expect(noPreviewFactsOf(down, 'VIDEO-01')).toMatchObject({ deviceId: 'CAM-01', online: true, sourceUp: false });
+    expect(noPreviewWords(t, noPreviewFactsOf(down, 'VIDEO-01'), true)).toEqual({ device: 'Camera CAM-01', state: 'Not reachable' });
+    // The same camera stated REACHABLE keeps the roster's word.
+    const up = stateWith({ 'CAM-01': { ...PRODUCTION, online: true, reach: 'REACHABLE', checkedAt: 1_791_636_968_000 } as Mark });
+    expect(isSlotSourceUp(trackSourceOf(up, 'VIDEO-01'))).toBe(true);
+    expect(noPreviewWords(t, noPreviewFactsOf(up, 'VIDEO-01'), true)).toEqual({ device: 'Camera CAM-01', state: 'Reachable' });
+  });
+
   // Task 4 row W5 (review 060d finding Q-01; decision C111). The tile is the tablet's feed of a Core in real capture
   // (`CameraPreview` of `session-live/live-feed.tsx`). The double: the Core's own raise and clear of a capture warning
   // (`raiseCaptureWarningTransition` / `clearCaptureWarningTransition`). The format chip of the feed pinned by ruling
@@ -141,7 +157,7 @@ describe.each(WINDOWS)('Devices & Inputs on %s', (window) => {
     }
   });
 
-  it('REAL capture, the camera detail: the "No preview" tile with the name and the true state; the accessibility label says the build has no live preview', async () => {
+  it('REAL capture, the camera detail: the "No preview" tile with the name and the true state; the accessibility label says the live preview is not open (D252)', async () => {
     live();
     const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-01' });
     mark(h, { 'CAM-01': LOCAL, 'CAM-02': FAKE, 'MIC-01': FAKE, 'MIC-02': FAKE });

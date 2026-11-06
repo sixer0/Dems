@@ -46,7 +46,6 @@ export const captureSelectorEn = {
     changeMicLabel: 'Change the microphone on channel {{n}}',
     pending: 'Saving…',
     empty: 'No capture devices configured',
-    noPreview: 'Status only. This build shows no live picture of the cameras.',
     lockedTitle: 'Configuration locked',
     waitingTitle: 'Waiting for the Core link',
     dismiss: 'Dismiss',
@@ -299,8 +298,11 @@ export const captureSelectorEn = {
     camera: 'Camera',
     stateUnknown: 'State not known',
     on: 'On',
-    label: '{{name}}, {{state}}. No preview: this build shows no live picture of the cameras.',
-    thumbLabel: '{{name}}. No preview: this build shows no live picture.',
+    // Row 232 (M3 c2 F5, D247): since rows 195/196 a reachable camera shows its live picture; this tile
+    // stands until the first frame, after a refusal, or where no preview is asked. Words of the web tile
+    // (shared `devices.noPreview.aria`: "The live preview is not open.").
+    label: '{{name}}, {{state}}. No preview: the live preview is not open.',
+    thumbLabel: '{{name}}. No preview: the live preview is not open.',
   },
   /** Fix wave H (G70-08): why a pre-check or start control is disabled while the device classes are not known. */
   localSources: {

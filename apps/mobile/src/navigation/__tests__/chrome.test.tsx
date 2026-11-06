@@ -202,7 +202,10 @@ describe('master-detail (04 §2.5 rule 3)', () => {
     const app = renderApp('/devices?selected=CAM-02', { runtime: signedIn() });
     expect(app.getPathname()).toBe('/devices/CAM-02');
     // The real Device detail (step 84) shows the pushed ID (step 70's stub printed it as a param).
-    expect(screen.getByTestId('device-detail-id')).toHaveTextContent('CAM-02');
+    // PIN MOVED by audit row 229 (D255/D257): this harness runs the default LIVE link against no Core (fetch 503), so the
+    // Core states no selector line (0 devices, 0 camera / mic lines). A built-in detail shows the device its SLOT holds - none here -
+    // so it reads "Not assigned", not the seed's fixed id. The simulated lane still shows the built-in id (devices-screen.test.tsx).
+    expect(screen.getByTestId('device-detail-id')).toHaveTextContent('Not assigned');
     act(() => router.back());
     expect(app.getPathname()).toBe('/devices');
     expect(app.getSearchParams()).toEqual({});

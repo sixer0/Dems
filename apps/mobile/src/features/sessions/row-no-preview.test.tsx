@@ -22,7 +22,8 @@ jest.mock('@/runtime', () => {
   return { ...actual, useMobileLive: () => mockLive };
 });
 
-const NO_PREVIEW = /No preview: this build shows no live picture/;
+// D247 (row 232, M3 c2 F5): pin moved to the reworded thumb label.
+const NO_PREVIEW = /No preview: the live preview is not open/;
 const realCapture = (h: SessionsHarness) =>
   act(() => h.sim.store.setState((s) => ({ captureDevices: { ...s.captureDevices, devices: s.captureDevices.devices.map((device) => ({ ...device, sourceClass: 'DEVELOPMENT' as const, adapter: 'FAKE' })) } })));
 /** Whether a picture is drawn inside a row's thumb (an image carries a `source`; the kit renders it through several nodes). */

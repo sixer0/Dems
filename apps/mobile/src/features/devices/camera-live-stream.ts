@@ -242,6 +242,11 @@ export function resetCameraStreamClaims(): void {
 /**
  * Whether this tile holds the one stream of `deviceId` while it `wants` one. A tile that finds the camera
  * held (another surface shows it) or the bound full waits, and takes the slot when one frees.
+ *
+ * Row 231 (M3 cycle 2, F3): a tile lets go the moment it stops wanting - unmount, or its surface `paused`
+ * (its screen lost focus while it stays mounted, as Home's tile under a pushed detail). Chosen over a shared,
+ * refcounted stream: one stream has exactly one viewer, so "closes when its last viewer goes" is the tile's own
+ * abort, and no hidden screen keeps a camera streaming and decoding.
  */
 export function useCameraStreamClaim(deviceId: string | null, wants: boolean): boolean {
   const [owner] = useState(() => Symbol('camera-stream'));

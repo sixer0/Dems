@@ -20,7 +20,7 @@ import { Fragment, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, ReduceMotion, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { useSim, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim';
+import { capturePairOfMicChannel, PRIMARY_MIC_CHANNEL, useSim, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim';
 import { palette, spacing } from '@dems/shared/tokens';
 import { SectionCard, StatusChip } from '@/components/kit';
 import { PrecheckCaptureNotices, precheckSentence, usePrecheckSentence } from '@/features/capture-selector/capture-notices';
@@ -247,8 +247,14 @@ function CheckRow({ item, id, settings }: CheckRowProps) {
   const binding = checkMicBinding(id, roleLine);
   // Round two (JT-13): the NOTE chip of the host-clock row is explained in the row - it was a word nobody explained.
   const noteText = !note ? null : id === 'TIME' ? t('features.session-new.devices.noteTime') : id === 'SECURITY' ? t('features.session-new.devices.noteSecurity') : null;
-  // D61 (2026-11-04): the row names the CHANNEL of the checked line.
-  const roleText = binding ? t('features.capture-selector.precheck.micRole', { role: t(`features.capture-selector.selector.channel.${binding.channel}`), input: binding.inputId }) : null;
+  // Audit row 235 (M3 cycle 2; D255, register T9/A3, D134, D138): the row names the PAIR of the checked line's channel,
+  // "Mic N (Camera N)", as Home (row 209), Session Live (row 210) and the selector (row 189) do - not the channel role
+  // words ("Channel 1 (transcribed)"). "Transcribed" is said once, on Pair 1. The input that holds the channel follows.
+  const roleText = binding
+    ? [t('devices.pairs.micOfCamera', { n: capturePairOfMicChannel(binding.channel).pair }), binding.channel === PRIMARY_MIC_CHANNEL ? t('devices.pairs.transcribed') : null, binding.inputId]
+        .filter((part): part is string => part !== null)
+        .join(' · ')
+    : null;
 
   return (
     <ListGroup.Item testID={`session-new-check-${id}`} accessibilityRole="text" accessibilityLabel={`${t(`sessionNew.devices.checks.${id}`)}, ${description}, ${note ? t('sessionNew.precheckNote.chip') : t(`common.precheckStatus.${status}`)}`}>

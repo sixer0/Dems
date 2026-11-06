@@ -16,8 +16,16 @@
  */
 import { VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain';
 // D61 (2026-11-04): the microphone plane mirrors the video plane — the roles became the four numbered channels.
-import { MIC_CHANNEL_IDS, capturePairOfMicChannel, type MicChannel } from '@dems/shared/sim';
-import { CaptureDeviceKind, CaptureStreamState, type CaptureConfigSlice, type CaptureDeviceStatus, type CaptureDevicesSlice } from '@dems/shared/sim';
+import {
+  MIC_CHANNEL_IDS,
+  capturePairOfMicChannel,
+  type MicChannel,
+  CaptureDeviceKind,
+  CaptureStreamState,
+  type CaptureConfigSlice,
+  type CaptureDeviceStatus,
+  type CaptureDevicesSlice,
+} from '@dems/shared/sim';
 import { storedProfilesOf } from './camera-profile';
 
 // ── Rows ─────────────────────────────────────────────────────────────────────────────────

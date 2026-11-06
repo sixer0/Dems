@@ -15,6 +15,12 @@ import { renderDevicesApp, settle, type DevicesHarness } from './testing/devices
 import { settledBusyState } from '@/features/capture-selector/settled-busy-state';
 import { deviceStatus } from './devices-model';
 import { unmountBeforeTheHooksOfThisGroup } from '@/runtime/testing/scoped-cleanup';
+import type { ReactTestInstance } from 'react-test-renderer';
+import { flat } from '@/features/evidence/testing/row-tree';
+
+/** Row 233: the opacity of a selection glow's host view (row 222's reader). */
+const glowHost = (testID: string): ReactTestInstance => screen.getAllByTestId(testID, { includeHiddenElements: true }).filter((n) => typeof n.type === 'string')[0]!;
+const glow = (testID: string): unknown => flat(glowHost(testID)).opacity;
 
 // The cases this file held before the consolidation of the suite (D233), under their own hooks.
 describe('devices screen', () => {
@@ -355,6 +361,32 @@ describe('tablet (list | detail, §2.4)', () => {
     await settle();
     expect(screen.getByTestId('device-detail-missing')).toBeTruthy();
     expect(screen.getByText('This device is not part of this room.')).toBeTruthy();
+  });
+
+  // Audit row 233 (L7, D220 R222-2): a held `?selected=registered.CAM-03` whose device goes back to its own line opens
+  // the fixed row CAM-03 (row 222's `useDeviceDetailTarget`); the highlight follows that target, with no new press.
+  it('row 233: registered.CAM-03 selected on VIDEO-01, then CAM-03 back on VIDEO-03 - the fixed CAM-03 row is highlighted and the detail matches', async () => {
+    const h = renderDevicesApp({ window: 'tabletLandscape' });
+    await settle();
+    const ownLines = h.sim.store.getState().captureConfig.cameras;
+    const setLines = (cameras: typeof ownLines) => act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, cameras } })));
+    setLines(ownLines.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'CAM-03' } : line.trackId === 'VIDEO-03' ? { ...line, deviceId: 'CAM-01' } : line)));
+    await settle();
+    fireEvent.press(screen.getByTestId('registered-device-row-CAM-03'));
+    await settle();
+    expect(h.app.getSearchParams()).toMatchObject({ selected: 'registered.CAM-03' });
+    expect(glow('device-row-glow-CAM-03')).toBe(0);
+
+    setLines(ownLines);
+    await settle();
+    expect(h.app.getSearchParams()).toMatchObject({ selected: 'registered.CAM-03' });
+    const pane = within(screen.getByTestId('pane-detail'));
+    expect(pane.getByTestId('device-detail-id')).toHaveTextContent('CAM-03');
+    expect(pane.queryByTestId('registered-device-detail')).toBeNull();
+    expect(screen.getByTestId('device-row-CAM-03')).toHaveProp('accessibilityState', expect.objectContaining({ selected: true }));
+    expect(glow('device-row-glow-CAM-03')).toBe(1);
+    expect(screen.queryByTestId('registered-device-row-CAM-03')).toBeNull();
+    for (const other of ['CAM-01', 'CAM-02', 'CAM-04']) expect(glow(`device-row-glow-${other}`)).toBe(0);
   });
 });
 });

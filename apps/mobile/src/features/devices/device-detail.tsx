@@ -107,6 +107,10 @@ import {
   useMicLevelSeries,
   useTabletLink,
   useSourceRow,
+  assignedIdText,
+  builtInSlotOf,
+  useAssignedSource,
+  type AssignedSource,
 } from './use-devices-data';
 
 type DetailTab = 'overview' | 'health' | 'log';
@@ -266,12 +270,14 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
       <DeviceHero deviceId={deviceId} status={status} onClipReset={resetClip} />
       <View style={styles.statusRow}>
         <DeviceStatusChip status={status} word={chipWord} size="md" testID="device-detail-status" />
+        {/* Audit row 229 (F1 d): on a Core in real capture a built-in camera / microphone detail is its SLOT - it shows the
+            device the slot holds (CAM-03 on VIDEO-01), or "Not assigned"; never the seed's fixed CAM-0N / MIC-0N. */}
         <Text maxFontSizeMultiplier={1.2} selectable style={styles.deviceId} testID="device-detail-id">
-          {deviceId}
+          {assignedIdText(t, deviceId, row.assigned)}
         </Text>
       </View>
-      {/* Task 3 row 138 (ux §8f.2 "Devices rows"): the one "Development source" badge; no node when the Core sent no class. */}
-      <DevelopmentSourceBadge deviceId={deviceId} testID="device-detail-source" />
+      {/* Task 3 row 138 (ux §8f.2 "Devices rows"): the one "Development source" badge; no node when the Core sent no class. Row 229: of the slot's device. */}
+      <DevelopmentSourceBadge deviceId={sourceIdOf(deviceId, row.assigned)} testID="device-detail-source" />
       {deviceId === 'TABLET' && status === 'OFFLINE' ? (
         <Alert status="warning" testID="device-tablet-offline">
           <Alert.Indicator />
@@ -486,6 +492,9 @@ function MicHero({ deviceId, onClipReset }: { deviceId: DeviceId; onClipReset: (
 function IconHero({ deviceId, status }: { deviceId: DeviceId; status: DeviceStatus }) {
   const { t } = useTranslation();
   const recording = useIsRecording();
+  // Audit row 229 (F6; M3-10 R3, row 198's rule): on a Core in its own capture the PoE switch and the indicator have no
+  // producer, so the caption under the icon reads "Not reported" (I4) like the status chip - never the model's "Active".
+  const notReported = useNoProducerView() && NO_PRODUCER_DEVICES.has(deviceId);
   const Icon = OTHER_ICON[deviceId] ?? Tablet;
   // Fix wave J (JA2-33): ONE statement of the indicator, from the Core's session fact - red and "recording" only while a session records.
   const relay = deviceId === 'REC-INDICATOR' ? relayWords(status, recording) : null;
@@ -494,7 +503,7 @@ function IconHero({ deviceId, status }: { deviceId: DeviceId; status: DeviceStat
     <View style={styles.iconPlate} testID="device-detail-icon-plate">
       <Icon size={48} color={color} />
       <Text maxFontSizeMultiplier={1.2} style={styles.iconPlateText} testID="device-detail-icon-state">
-        {relay !== null ? t(relay.key) : t(STATUS_LABEL_KEY[status])}
+        {notReported ? t('system.noProducer') : relay !== null ? t(relay.key) : t(STATUS_LABEL_KEY[status])}
       </Text>
     </View>
   );
@@ -538,9 +547,25 @@ function Facts({ items, note }: { items: readonly KeyValueItem[]; note?: string 
  * Fix wave L, closing pass L-Z (the ONE RULE; decision 5 of note 155): what this device's blocks may draw
  * (`detailFactsOf`). The adapter is the Core's own fact on the registry entry of the same id.
  */
+/** Row 229 (F1): the device a built-in detail's facts belong to - the slot's assigned device on a Core in real capture, else the built-in id. */
+function sourceIdOf(deviceId: DeviceId, assigned: AssignedSource | null): string | null {
+  return assigned === null ? deviceId : assigned.deviceId;
+}
+
+/** Row 229 (F1 d): the "Device ID" fact (the slot's device) and, on a Core in real capture, the "Used as" fact naming the slot. */
+function useIdFacts(deviceId: DeviceId, assigned: AssignedSource | null): KeyValueItem[] {
+  const { t } = useTranslation();
+  const label = useFieldLabel();
+  const id: KeyValueItem = { id: 'deviceId', label: label('deviceId'), value: assignedIdText(t, deviceId, assigned), mono: assigned === null || assigned.deviceId !== null, testID: 'device-fact-device-id' };
+  if (assigned === null) return [id];
+  return [id, { id: 'usedAs', label: t('common.developmentRoster.field.usedAs'), value: t(`common.developmentRoster.usedAs.${assigned.slot}`), testID: 'device-fact-used-as' }];
+}
+
 function useDetailFacts(deviceId: DeviceId): DetailFacts {
   const ownCapture = useNoProducerView(); // row 198: the one own-capture reader, or the picture rule
-  const adapter = useSim((s) => s.captureDevices.devices.find((device) => device.id === deviceId)?.adapter ?? null);
+  // Row 229 (F1): the adapter of the device the slot holds on a Core in real capture, not of the built-in id.
+  const sourceId = sourceIdOf(deviceId, useAssignedSource(deviceId));
+  const adapter = useSim((s) => (sourceId === null ? null : (s.captureDevices.devices.find((device) => device.id === sourceId)?.adapter ?? null)));
   return detailFactsOf(ownCapture, adapter);
 }
 
@@ -556,13 +581,19 @@ function CameraOverview({ deviceId, statusLabel }: { deviceId: DeviceId; statusL
   const camera = useCamera(deviceId);
   // Task 4 row W4 (review 060c R-02): a camera's own rule - a production camera draws only what the Core states, never the model's record.
   const ownCapture = useNoProducerView(); // row 198: the one own-capture reader, or the picture rule
-  const adapter = useSim((s) => s.captureDevices.devices.find((device) => device.id === deviceId)?.adapter ?? null);
+  // Audit row 229 (F1 d): on a Core in real capture the detail is the TRACK's - its line, and the camera that line names.
+  const assigned = useAssignedSource(deviceId);
+  const idFacts = useIdFacts(deviceId, assigned);
+  const sourceId = sourceIdOf(deviceId, assigned);
+  const adapter = useSim((s) => (sourceId === null ? null : (s.captureDevices.devices.find((device) => device.id === sourceId)?.adapter ?? null)));
   const facts = cameraDetailFactsOf(ownCapture, adapter);
+  const trackId = DEVICE_CAMERA[deviceId];
+  const lineOf = (line: { readonly trackId?: unknown; readonly deviceId?: unknown }): boolean => (assigned === null ? line.deviceId === deviceId : line.trackId === trackId);
   // The stored stream statement of this camera's selector line, and the camera's fault where the Core reports one (`stream-facts.ts`).
-  const stated = useSim((s) => statedTrackOf(s, (line) => line.deviceId === deviceId));
+  const stated = useSim((s) => statedTrackOf(s, lineOf));
   // The format of a track on a Core in its own capture is its selector line's profile, never the model's resolution / fps.
   const profile = useSim((s) => {
-    const stated = (cameraLinesInForce(s).find((line) => line.deviceId === deviceId) as { readonly profile?: unknown } | undefined)?.profile;
+    const stated = (cameraLinesInForce(s).find(lineOf) as { readonly profile?: unknown } | undefined)?.profile;
     return typeof stated === 'string' && stated !== '' ? stated : null;
   });
   if (!camera) return null;
@@ -571,7 +602,7 @@ function CameraOverview({ deviceId, statusLabel }: { deviceId: DeviceId; statusL
       <Facts
         items={[
           { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
-          { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
+          ...idFacts,
           { id: 'source', label: t('common.developmentRoster.field.source'), value: t('common.developmentRoster.source.FAKE'), testID: 'device-fact-source' },
           { id: 'format', label: label('format'), value: profile ?? t('common.platformNotReported.value'), mono: profile !== null, testID: 'device-fact-format' },
           { id: 'recState', label: label('recState'), value: camera.recState ? t(`common.enums.trackRecState.${camera.recState}`) : EMPTY_DATE_TEXT },
@@ -584,7 +615,7 @@ function CameraOverview({ deviceId, statusLabel }: { deviceId: DeviceId; statusL
       <Facts
         items={[
           { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
-          { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
+          ...idFacts,
           // The stored stream facts, "Not stated" where the line names none; the fault in their place while the Core reports one.
           { id: 'format', label: label('format'), value: statedFormatText(t, stated, 'line'), testID: 'device-fact-format' },
           { id: 'recState', label: label('recState'), value: camera.recState ? t(`common.enums.trackRecState.${camera.recState}`) : EMPTY_DATE_TEXT },
@@ -627,6 +658,8 @@ function MicOverview({ deviceId, statusLabel, onClipReset }: { deviceId: DeviceI
   const label = useFieldLabel();
   const mic = useMic(deviceId);
   const facts = useDetailFacts(deviceId);
+  // Audit row 229 (F1 d): the slot's device and its pair slot, on a Core in real capture.
+  const idFacts = useIdFacts(deviceId, useAssignedSource(deviceId));
   if (!mic) return null;
   const clip: KeyValueItem = {
     id: 'clip',
@@ -646,7 +679,7 @@ function MicOverview({ deviceId, statusLabel, onClipReset }: { deviceId: DeviceI
       <Facts
         items={[
           { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
-          { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
+          ...idFacts,
           { id: 'source', label: t('common.developmentRoster.field.source'), value: t('common.developmentRoster.source.FAKE'), testID: 'device-fact-source' },
           clip,
           { id: 'recState', label: label('recState'), value: mic.recState ? t(`common.enums.trackRecState.${mic.recState}`) : EMPTY_DATE_TEXT },
@@ -664,7 +697,7 @@ function MicOverview({ deviceId, statusLabel, onClipReset }: { deviceId: DeviceI
       <Facts
         items={[
           { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
-          { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
+          ...idFacts,
           { id: 'channel', label: label('channel'), value: model(t('devices.drawer.value.channel', { channel: micChannelNumber(mic.channel) })), testID: 'device-fact-channel' }, // D61 (2026-11-04): the slice states the code; the fact keeps the ordinal
           { id: 'gain', label: label('gain'), value: model(t('devices.audio.gainValue', { value: mic.gainDb })), testID: 'device-fact-gain' },
           { id: 'phantom', label: label('phantom'), value: model(mic.phantom ? t('devices.audio.phantomOn') : t('devices.audio.phantomOff')), testID: 'device-fact-phantom' },
@@ -758,7 +791,13 @@ function TabletOverview({ status }: { status: DeviceStatus }) {
 // ── Health ───────────────────────────────────────────────────────────────────────────────
 function HealthTab({ deviceId, live }: { deviceId: DeviceId; live: boolean }) {
   // Ruling D137: the meter channel of a microphone is the position of its line in the capture configuration.
-  const channel = useSim((s) => channelOf(deviceId, micLinesInForce(s)));
+  // Audit row 229 (F1): a built-in microphone row is its CHANNEL - the channel's meter while a line holds that channel
+  // (was: the line whose input carries the built-in id, which read another channel or none).
+  const channel = useSim((s) => {
+    const slot = builtInSlotOf(deviceId);
+    if (slot === null || !slot.startsWith('MIC-')) return channelOf(deviceId, micLinesInForce(s));
+    return micLinesInForce(s).some((line) => line.channel === slot) ? (`AUDIO-${slot.slice(-2)}` as AudioTrackId) : null;
+  });
   return channel ? <MicHealth channel={channel} live={live} /> : <DeviceHealth deviceId={deviceId} live={live} />;
 }
 

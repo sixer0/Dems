@@ -460,14 +460,16 @@ describe.each(WINDOWS)('G70d-02 - the Devices rows and the detail of a selected 
       expect(label).toMatch(/Not checked/);
       expect(label).not.toMatch(/Online|Interviewer|Subject/);
     }
-    // D61 (2026-11-04): the role words became the channel words (`capture-selector.selector.channel`).
-    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/MIC 1 · Channel 1 \(transcribed\)/);
-    expect(String(screen.getByTestId('device-row-MIC-02').props.accessibilityLabel)).toMatch(/MIC 2 · Channel 2(,|$)/);
+    // PIN MOVED by audit row 229 (F1, D247; was D61's "MIC 1 · Channel 1 (transcribed)"): the row is the pair SLOT, named by the
+    // selector's pair words, over the input it holds - here its own id, since the roster does not list a built-in on its own line.
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/^Mic 1 \(Camera 1\), MIC-01 · Generated test source, /);
+    expect(String(screen.getByTestId('device-row-MIC-02').props.accessibilityLabel)).toMatch(/^Mic 2 \(Camera 2\), MIC-02 · Generated test source, /);
     // The selector in force names the line: with the two transcription channels traded the names follow.
     act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, mics: s.captureConfig.mics.map((line) => ({ ...line, channel: line.channel === 'MIC-01' ? 'MIC-02' : line.channel === 'MIC-02' ? 'MIC-01' : line.channel })) } as SimState['captureConfig'] })));
     await settle();
-    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/MIC 1 · Channel 2(,|$)/); // D61 (2026-11-04)
-    expect(String(screen.getByTestId('device-row-MIC-02').props.accessibilityLabel)).toMatch(/MIC 2 · Channel 1 \(transcribed\)/); // D61
+    // Row 229 (pin moved): the slot keeps its pair words; the INPUT it holds follows (and is now a roster row, so no id here).
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/^Mic 1 \(Camera 1\), MIC 2 · Generated test source, /);
+    expect(String(screen.getByTestId('device-row-MIC-02').props.accessibilityLabel)).toMatch(/^Mic 2 \(Camera 2\), MIC 1 · Generated test source, /);
   });
 
   it('a checked fact of the Core: "Reachable"; a camera on a line while a session records: "Live"', async () => {
@@ -495,7 +497,160 @@ describe.each(WINDOWS)('G70d-02 - the Devices rows and the detail of a selected 
     expect(text('device-fact-status')).toMatch(/Not checked/);
     expect(text('device-fact-status')).not.toMatch(/Online/);
     expect(screen.queryByText(/Interviewer|– Subject/)).toBeNull();
-    if (id === 'MIC-02') expect(screen.getAllByText('MIC 2 · Channel 2').length).toBeGreaterThan(0); // D61 (2026-11-04): the channel word, never the room role
+    if (id === 'MIC-02') expect(screen.getAllByText('Mic 2 (Camera 2)').length).toBeGreaterThan(0); // row 229 (pin moved; was D61 "MIC 2 · Channel 2"): the pair words, never the room role
+  });
+});
+
+// ── Audit row 229 (M3 cycle 2, F1 + F6; D247; M3-08 E1; web twin W4-2 / D226) ─────────────────────────────────────────
+// The bench of row 66's judging (test/12_m3_ui_tablet.md §7 F1): the Core lists ONVIF cameras CAM-03..06 on VIDEO-01..04
+// and USB microphones MIC-03..06 on channels 1-4; the simulator's model still holds its FAKE CAM-01/02 / MIC-01/02 rows.
+// Before: MIC-03/04 drawn twice (built-in rows by input id + roster), MIC 1 – Interviewer / MIC 2 – Subject drawn for the
+// unused model mics, channels 3/4 without a row, and the built-in camera detail reading the fixed CAM-0N.
+describe.each(WINDOWS)('row 229 - the Devices list per slot, each Core device once, the detail of the slot (F1) on %s', (window) => {
+  const BENCH_CAMERAS = ['CAM-03', 'CAM-04', 'CAM-05', 'CAM-06'] as const;
+  const BENCH_MICS = ['MIC-03', 'MIC-04', 'MIC-05', 'MIC-06'] as const;
+  const bench = (h: Pick<DevicesHarness, 'sim'>, change: (config: SimState['captureConfig']) => SimState['captureConfig'] = (config) => config) =>
+    act(() =>
+      h.sim.store.setState((s) => {
+        const camera = s.captureDevices.devices.find((device) => device.kind === 'CAMERA')!;
+        const mic = s.captureDevices.devices.find((device) => device.kind === 'MIC')!;
+        const devices = [
+          ...BENCH_CAMERAS.map((id) => ({ ...camera, id, sourceClass: 'PRODUCTION', adapter: 'ONVIF_RTSP', checkedAt: null, reach: null })),
+          ...BENCH_MICS.map((id) => ({ ...mic, id, sourceClass: 'PRODUCTION', adapter: 'USB_AUDIO', checkedAt: null, reach: null })),
+        ];
+        const config = {
+          ...s.captureConfig,
+          cameras: s.captureConfig.cameras.map((line, index) => ({ ...line, deviceId: BENCH_CAMERAS[index] ?? line.deviceId })),
+          mics: s.captureConfig.mics.map((line, index) => ({ ...line, inputId: BENCH_MICS[index] ?? line.inputId, deviceId: BENCH_MICS[index] ?? line.deviceId })),
+        } as SimState['captureConfig'];
+        return { captureDevices: { ...s.captureDevices, devices } as SimState['captureDevices'], captureConfig: change(config) };
+      }),
+    );
+  const label = (id: string): string => String(screen.getByTestId(id).props.accessibilityLabel);
+  /** The ROWS (built-in slot rows and roster rows; one per row id) of the camera and audio sections that name `id` in their text or label. */
+  const namingRows = (id: string): string[] => {
+    const named = new RegExp(`(^|[^-\\w])${id}($|[^-\\w])`);
+    const rows = new Map<string, string>();
+    for (const section of ['devices-section-cameras', 'devices-section-audio']) {
+      for (const row of within(screen.getByTestId(section)).queryAllByTestId(/^(device-row|registered-device-row)-(CAM|MIC)-\d+$/)) {
+        const key = String(row.props.testID);
+        if (!rows.has(key)) rows.set(key, drawn(row as unknown as Drawn));
+      }
+    }
+    return [...rows].filter(([, words]) => named.test(words)).map(([key]) => key);
+  };
+  const occurrences = (id: string): number => namingRows(id).length;
+
+  it('Audio inputs: one row per pair slot, "Mic N (Camera N)" over the input it holds; no FAKE MIC-01/02, no room role; each Core device id appears once', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    bench(h);
+    await settle();
+    const audio = screen.getByTestId('devices-section-audio');
+    for (const [index, slot] of (['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const).entries()) {
+      const n = index + 1;
+      const input = BENCH_MICS[index]!;
+      // The pair words and the input's own name - the name the roster row of that device carries.
+      expect(label(`device-row-${slot}`)).toMatch(new RegExp(`^Mic ${n} \\(Camera ${n}\\), ${text(`registered-device-name-${input}`)}, `));
+      expect(label(`device-row-${slot}`)).not.toMatch(/Online|Interviewer|Subject|Channel \d/);
+      expect(text(`device-status-${slot}`)).toMatch(/Not checked/);
+    }
+    expect(within(audio).queryByText(/Interviewer|Subject/)).toBeNull();
+    // The model's unused FAKE MIC-01/02 (and CAM-01/02) are drawn nowhere: not as rows, not by name, not by id.
+    for (const id of ['MIC-01', 'MIC-02', 'CAM-01', 'CAM-02']) {
+      expect(screen.queryByTestId(`registered-device-row-${id}`)).toBeNull();
+      expect(occurrences(id)).toBe(0);
+    }
+    expect(within(audio).queryAllByText(/^MIC [12]$/)).toHaveLength(0);
+    // M3-08 E1: every device of the Core's list appears EXACTLY once across the slot rows and the roster.
+    // The slot rows name the input, not the id: the id is the roster row's (M3-08 R1 lists a built-in id off its own line).
+    for (const id of [...BENCH_CAMERAS, ...BENCH_MICS]) expect(namingRows(id)).toEqual([`registered-device-row-${id}`]);
+  });
+
+  it('a slot without an input reads "Not assigned"; a built-in on its OWN line is named by its id in the slot row, once (the roster omits it)', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    bench(h, (config) => ({ ...config, mics: config.mics.map((line) => (line.channel === 'MIC-04' ? { ...line, deviceId: null } : line)) }) as SimState['captureConfig']);
+    await settle();
+    expect(label('device-row-MIC-04')).toMatch(/^Mic 4 \(Camera 4\), Not assigned, /);
+    expect(occurrences('MIC-06')).toBe(1); // no longer on a line: its roster row only
+    // The seed's own lines (CAM-01 on VIDEO-01 ... MIC-04 on channel 4), all of a class: every id once, in its slot row.
+    h.app.unmount();
+    live();
+    const own = renderDevicesApp({ user: 'rina.wijaya', window });
+    mark(own, ALL_FAKE);
+    await settle();
+    const ids = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'];
+    expect(ids.map((id) => namingRows(id))).toEqual(ids.map((id) => [`device-row-${id}`]));
+  });
+
+  it.each([
+    ['CAM-01', 'CAM-03', 'Feeds Camera 1'],
+    ['CAM-03', 'CAM-05', 'Feeds Camera 3'],
+    ['MIC-01', 'MIC-03', 'Feeds Microphone 1 (transcribed)'],
+    ['MIC-04', 'MIC-06', 'Feeds Microphone 4'],
+  ] as readonly (readonly [string, string, string])[])('the detail of built-in %s shows the device its slot holds (%s) and "Used as", never the fixed id', async (builtIn, assigned, usedAs) => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: `/devices/${builtIn}` });
+    bench(h);
+    await settle();
+    expect(screen.getByTestId('device-detail-id')).toHaveTextContent(assigned);
+    expect(text('device-fact-device-id')).toMatch(assigned);
+    expect(text('device-fact-used-as')).toMatch(usedAs);
+  });
+
+  // Audit row 235 (M3 cycle 2; D255, R230-1 of row 230): the camera hero's preview follows the TRACK of the detail, so it
+  // shows the camera the selector assigns that track - never the seed's fixed CAM-0N (`cameraId` CAM-N is framing only).
+  it.each([
+    ['CAM-01', 'VIDEO-01', 'CAM-03'],
+    ['CAM-02', 'VIDEO-02', 'CAM-04'],
+    ['CAM-03', 'VIDEO-03', 'CAM-05'],
+    ['CAM-04', 'VIDEO-04', 'CAM-06'],
+  ] as readonly (readonly [string, string, string])[])('row 235 - the camera hero of built-in %s (%s) previews the camera assigned to that track (%s)', async (builtIn, track, assigned) => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: `/devices/${builtIn}` });
+    bench(h);
+    await settle();
+    const feed = text('device-detail-feed');
+    expect(feed).toMatch(new RegExp(`(^|[^-\\w])${assigned}($|[^-\\w])`));
+    // Not the fixed id of the route, unless the selector put that very camera on the track.
+    if (assigned !== builtIn) expect(feed).not.toMatch(new RegExp(`(^|[^-\\w])${builtIn}($|[^-\\w])`));
+    // The selector moves the track to another camera: the hero follows it.
+    const other = BENCH_CAMERAS.find((id) => id !== assigned)!;
+    act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, cameras: s.captureConfig.cameras.map((line) => (line.trackId === track ? { ...line, deviceId: other } : line.deviceId === other ? { ...line, deviceId: assigned } : line)) } as SimState['captureConfig'] })));
+    await settle();
+    expect(text('device-detail-feed')).toMatch(new RegExp(`(^|[^-\\w])${other}($|[^-\\w])`));
+  });
+});
+
+// Audit row 229 (F6; M3-10 R3, row 198's no-producer rule): the PoE switch's icon caption read the model's "Active" while its chip said "Not reported".
+describe.each(WINDOWS)('row 229 - the PoE switch icon caption under the no-producer rule (F6) on %s', (window) => {
+  const label = (id: string): string => String(screen.getByTestId(id).props.accessibilityLabel);
+  it('own capture: the caption reads "Not reported", as the chip; CONTROL simulated: the model word', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/POE-SWITCH' });
+    act(() => h.sim.store.setState((s) => ownCaptureCoreFactsTransition(s)));
+    await settle();
+    expect(screen.getByTestId('device-detail-icon-state')).toHaveTextContent(NOT_REPORTED);
+    expect(text('device-detail-status')).toMatch(NOT_REPORTED);
+    h.app.unmount();
+
+    renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/POE-SWITCH' });
+    await settle();
+    expect(screen.getByTestId('device-detail-icon-state')).toHaveTextContent('Active');
+    expect(screen.getByTestId('device-detail-id')).toHaveTextContent('POE-SWITCH');
+  });
+
+  it('CONTROL simulated: the built-in rows and details keep the model names and the built-in ids', async () => {
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    await settle();
+    expect(label('device-row-MIC-01')).toMatch(/MIC 1 – Interviewer/);
+    expect(within(screen.getByTestId('devices-section-audio')).queryByText(/^Mic 1 \(Camera 1\)$/)).toBeNull();
+    h.app.unmount();
+    renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-01' });
+    await settle();
+    expect(screen.getByTestId('device-detail-id')).toHaveTextContent('CAM-01');
+    expect(screen.queryByTestId('device-fact-used-as')).toBeNull();
   });
 });
 

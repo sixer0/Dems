@@ -7,7 +7,7 @@
  * (`reach` + `checkedAt` of `captureDevices.devices[]`, register P9/P10). This module is the ONE place the
  * app decides from it whether a camera tile may ask for operation 112 `createCameraPreviewSession` (P1):
  *
- * | Phase (`CameraReachPhase`) | When | Op 112 | Drawn by `ReachGatedCameraPreview` |
+ * | Phase (`CameraReachPhase`, type `CameraReachPhaseName`) | When | Op 112 | Drawn by `ReachGatedCameraPreview` |
  * |---|---|---|---|
  * | `NOT_APPLICABLE` | Simulated client mode, or the track's camera is no PRODUCTION camera (the Core has no preview of anything else: it would answer `409 PREVIEW_NOT_AVAILABLE`), or the selector names no known device | never | the caller's `fallback` |
  * | `OFFLINE` | the track's selector line reads `online: false` | never | the caller's `fallback` (no "Try again": the same gap as the web, row 130 §4) |
@@ -49,7 +49,8 @@ export const CameraReachPhase = {
   HELD: 'HELD',
   OPEN: 'OPEN',
 } as const;
-export type CameraReachPhase = (typeof CameraReachPhase)[keyof typeof CameraReachPhase];
+/** One phase of `CameraReachPhase` (its own name: a type of the const's name trips `no-redeclare`, row 231). */
+export type CameraReachPhaseName = (typeof CameraReachPhase)[keyof typeof CameraReachPhase];
 
 /** The web's `isLivePreviewDevice`: a PRODUCTION camera, the only kind the Core previews. */
 export function isReachGatedCamera(device: Pick<CameraReachDevice, 'kind' | 'sourceClass'> | undefined): boolean {
@@ -73,7 +74,7 @@ export interface CameraReachFacts {
 }
 
 /** The phase of the gate; pure (rule P17). */
-export function cameraReachPhaseOf({ live, device, online, retryStanding }: CameraReachFacts): CameraReachPhase {
+export function cameraReachPhaseOf({ live, device, online, retryStanding }: CameraReachFacts): CameraReachPhaseName {
   if (!live || device === undefined || !isReachGatedCamera(device)) return CameraReachPhase.NOT_APPLICABLE;
   if (!online) return CameraReachPhase.OFFLINE;
   if (cameraHeldByReach(device) && !retryStanding) return CameraReachPhase.HELD;
@@ -81,7 +82,7 @@ export function cameraReachPhaseOf({ live, device, online, retryStanding }: Came
 }
 
 /** Whether a caller may send operation 112 in this phase: only `OPEN`. */
-export function mayRequestCameraPreview(phase: CameraReachPhase): boolean {
+export function mayRequestCameraPreview(phase: CameraReachPhaseName): boolean {
   return phase === CameraReachPhase.OPEN;
 }
 
@@ -157,7 +158,7 @@ function trackReachLine(state: ReachState, trackId: VideoTrackId): string {
 }
 
 export interface CameraReachGate {
-  readonly phase: CameraReachPhase;
+  readonly phase: CameraReachPhaseName;
   /** The track's camera id, or null. */
   readonly deviceId: string | null;
   /** The Core's last reading of it (epoch ms), or null. */

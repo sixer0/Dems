@@ -336,3 +336,103 @@ describe('refusals: the neutral tile, 0 retries (M3-09 R3)', () => {
     expect(warnRecords()).toHaveLength(1);
   });
 });
+
+// Row 231 (M3 cycle 2, F3; test/12_m3_ui_tablet.md §7): the Home tile stays MOUNTED while another screen is on top
+// (`paused={!focused}`, device-tiles.tsx / device-detail.tsx). Its hold of the camera's one stream (P5) must go
+// with its focus, or the detail of the same camera waits for ever ("No preview", no op 112).
+describe('one stream per camera across screens (row 231, F3)', () => {
+  /** Home's tile and the Devices detail of the SAME camera, as the stack mounts them. */
+  function Screens({ homePaused, detail }: { readonly homePaused: boolean; readonly detail: boolean }) {
+    return (
+      <HeroUINativeProvider>
+        <SimProvider sim={test.sim} autoStart={false}>
+          <CameraPreview cameraId="CAM-1" trackId={TRACK} motion="reduced" livePreview paused={homePaused} compact testID="home" />
+          {detail ? <CameraPreview cameraId="CAM-1" trackId={TRACK} motion="reduced" livePreview paused={false} testID="detail" /> : null}
+        </SimProvider>
+      </HeroUINativeProvider>
+    );
+  }
+  /** Open streams (not aborted) at the moment of each op 112: must be 0 every time (one op 112 per camera at a time). */
+  let openAtAsk: number[];
+  beforeEach(() => {
+    openAtAsk = [];
+    op112.mockImplementation(() => {
+      openAtAsk.push(mockStreams.filter((stream) => !stream.signal.aborted).length);
+      return Promise.resolve({ ok: true, status: 201, data: { url: URL_TEXT, expiresAt: 1_790_825_000_000 } });
+    });
+  });
+  const pushTo = async (index: number, n: number) => {
+    await act(async () => {
+      mockStreams[index]?.push(frame(n));
+      await Promise.resolve();
+    });
+    await flush();
+  };
+  const openStreams = () => mockStreams.filter((stream) => !stream.signal.aborted).length;
+
+  it('Home focused, then the detail focused: the detail renders frames; back to Home: Home renders again', async () => {
+    production(CaptureDeviceReach.REACHABLE, 1_000);
+    const view = render(<Screens homePaused={false} detail={false} />);
+    await flush();
+    expect(op112Calls()).toBe(1);
+    await pushTo(0, 1);
+    expect(screen.getByTestId('home-live-picture')).toBeTruthy();
+
+    // The detail is pushed: it mounts focused, Home stays mounted and loses focus.
+    view.rerender(<Screens homePaused detail />);
+    await flush();
+    expect(mockStreams[0]?.signal.aborted).toBe(true);
+    expect(op112Calls()).toBe(2);
+    expect(mockStreamFetch).toHaveBeenCalledTimes(2);
+    await pushTo(1, 2);
+    expect(screen.getByTestId('detail-live-picture')).toBeTruthy();
+    // Home draws its neutral tile while unfocused, not a stale frame.
+    expect(screen.queryByTestId('home-live-picture')).toBeNull();
+
+    // Back: the detail is popped (unmounted), Home is focused again.
+    view.rerender(<Screens homePaused={false} detail={false} />);
+    await flush();
+    expect(mockStreams[1]?.signal.aborted).toBe(true);
+    expect(op112Calls()).toBe(3);
+    await pushTo(2, 3);
+    expect(screen.getByTestId('home-live-picture')).toBeTruthy();
+    expect(openStreams()).toBe(1);
+  });
+
+  it('one op 112 per camera at a time: no ask while a stream of that camera is open, and at most one stream open', async () => {
+    production(CaptureDeviceReach.REACHABLE, 1_000);
+    const view = render(<Screens homePaused={false} detail={false} />);
+    await flush();
+    // The detail mounts BEFORE Home's blur lands (the stack's order): it waits, it does not ask.
+    view.rerender(<Screens homePaused={false} detail />);
+    await flush();
+    expect(op112Calls()).toBe(1);
+    expect(openStreams()).toBe(1);
+    view.rerender(<Screens homePaused detail />);
+    await flush();
+    view.rerender(<Screens homePaused={false} detail={false} />);
+    await flush();
+    expect(op112Calls()).toBe(3);
+    expect(openAtAsk).toEqual([0, 0, 0]);
+    expect(openStreams()).toBe(1);
+    view.unmount();
+    await flush();
+    // Every stream closes when its last viewer goes.
+    expect(openStreams()).toBe(0);
+  });
+
+  it('a refused tile is not asked again by a blur and a refocus (D218 §5: no automatic retry)', async () => {
+    production(CaptureDeviceReach.REACHABLE, 1_000);
+    op112.mockResolvedValue({ ok: false, status: 409, error: { code: 'PREVIEW_NOT_AVAILABLE' } });
+    const view = render(<Screens homePaused={false} detail={false} />);
+    await flush();
+    expect(op112Calls()).toBe(1);
+    view.rerender(<Screens homePaused detail={false} />);
+    await flush();
+    view.rerender(<Screens homePaused={false} detail={false} />);
+    await flush();
+    expect(op112Calls()).toBe(1);
+    expect(mockStreamFetch).not.toHaveBeenCalled();
+    expect(screen.getByTestId('home')).toBeTruthy();
+  });
+});

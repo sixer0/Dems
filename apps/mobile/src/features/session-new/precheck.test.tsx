@@ -181,6 +181,34 @@ describe('T-M10 Devices Check: the §5.3 gate (MA-29 step 2, MA-30)', () => {
     expect(nextButton().props.accessibilityState?.disabled).toBe(true);
   });
 });
+
+// Audit row 235 (M3 cycle 2; D255, register T9/A3, D134, D138; seam found by row 229): the line under each microphone
+// check named the channel's role words ("Channel 1 (transcribed) microphone · MIC-01"). It now names the PAIR,
+// "Mic N (Camera N)", as Home (row 209), Session Live (row 210) and the selector (row 189) do; "Transcribed" once, on Pair 1.
+describe('row 235 - the pre-check microphone lines name the pair, not the channel role (D5 pair words)', () => {
+  const MIC_CHECKS = ['MIC_PRIMARY', 'MIC_STANDBY', 'MIC_3', 'MIC_4'] as const;
+  const roleLines = (): string[] => MIC_CHECKS.map((id) => String(screen.getByTestId(`session-new-check-${id}-role`).props.children));
+
+  it('the four lines read "Mic 1 (Camera 1)" .. "Mic 4 (Camera 4)" with their input; exactly one "Transcribed", on Pair 1; no channel role words', async () => {
+    const h = await openGate();
+    h.tick(PRECHECK_TOTAL_MAX_MS);
+    await settle();
+    expect(roleLines()).toEqual(['Mic 1 (Camera 1) · Transcribed · MIC-01', 'Mic 2 (Camera 2) · MIC-02', 'Mic 3 (Camera 3) · MIC-03', 'Mic 4 (Camera 4) · MIC-04']);
+    expect(roleLines().filter((line) => line.includes('Transcribed'))).toHaveLength(1);
+    expect(roleLines().join(' ')).not.toMatch(/Channel \d|microphone ·|\(transcribed\)/);
+    expect(getMissingKeys()).toEqual([]);
+  });
+
+  it('a selector that put MIC-02 on channel 1: Pair 1 names MIC-02 and stays the one "Transcribed" line (D61: by channel)', async () => {
+    const h = await openGate((test) => {
+      test.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, mics: s.captureConfig.mics.map((mic) => ({ ...mic, channel: mic.channel === 'MIC-01' ? 'MIC-02' : mic.channel === 'MIC-02' ? 'MIC-01' : mic.channel })) } as typeof s.captureConfig }));
+    });
+    h.tick(PRECHECK_TOTAL_MAX_MS);
+    await settle();
+    expect(roleLines()).toEqual(['Mic 1 (Camera 1) · Transcribed · MIC-02', 'Mic 2 (Camera 2) · MIC-01', 'Mic 3 (Camera 3) · MIC-03', 'Mic 4 (Camera 4) · MIC-04']);
+    expect(getMissingKeys()).toEqual([]);
+  });
+});
 });
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────

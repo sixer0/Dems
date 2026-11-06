@@ -5,7 +5,7 @@
 // settings-screen.test.tsx.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { act, cleanup, fireEvent, renderHook, screen } from '@testing-library/react-native';
+import { act, cleanup, renderHook, screen } from '@testing-library/react-native';
 import { Dimensions } from 'react-native';
 import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';

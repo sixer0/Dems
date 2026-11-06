@@ -46,7 +46,7 @@ import { DeviceRow } from './device-row';
 import { NO_PRODUCER_DEVICES, useNoProducerView } from './device-status-chip';
 import { DEVICE_SHORT_NAME_KEY, SECTIONS, STATUS_LABEL_KEY, STATUS_RANK, attentionDevices, isDeviceId, type DeviceId, type DeviceSection, type DeviceStatus } from './devices-model';
 import { PanelBoundary } from './panel-boundary';
-import { RegisteredDeviceRows, useRegisteredDevices } from './registered-device-rows';
+import { RegisteredDeviceRows, useDeviceDetailTarget, useRegisteredDevices } from './registered-device-rows';
 import { useDeviceStatuses, useIsRecording } from './use-devices-data';
 
 export interface DevicesScreenProps {
@@ -70,9 +70,15 @@ export function DevicesScreen({ selectedId }: DevicesScreenProps) {
     [isMultiPane, router],
   );
 
+  // Audit row 233 (L7, D220 R222-2): the highlight follows the row the detail pane resolves (`useDeviceDetailTarget`,
+  // row 222), not the raw `?selected=`. A held `registered.CAM-03` whose device went back to its own line opens the
+  // fixed row CAM-03, so the fixed row is highlighted; the roster no longer lists it. Any other key is unchanged.
+  const target = useDeviceDetailTarget(selectedId ?? '');
+  const highlightId = isMultiPane && selectedId !== null ? (target.builtInId ?? selectedId) : null;
+
   const list = (
     <PanelBoundary name="list">
-      <DevicesList selectedId={isMultiPane ? selectedId : null} twoColumns={layoutClass === 'compact-landscape'} onSelect={select} />
+      <DevicesList selectedId={highlightId} twoColumns={layoutClass === 'compact-landscape'} onSelect={select} />
     </PanelBoundary>
   );
 

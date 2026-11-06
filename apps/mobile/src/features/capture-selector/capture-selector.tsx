@@ -332,7 +332,7 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
           )}
           {gateLine !== null ? <GateLine text={gateLine} /> : null}
           <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="capture-selector-no-preview">
-            {t('features.capture-selector.selector.noPreview')}
+            {t('devices.selector.noPreview')}
           </Text>
         </>
       )}

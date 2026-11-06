@@ -21,7 +21,8 @@ afterEach(() => {
   bed = null;
 });
 
-const NO_PREVIEW_LABEL = /No preview: this build shows no live picture of the cameras\./;
+// D247 (row 232, M3 c2 F5): pin moved to the reworded tile label.
+const NO_PREVIEW_LABEL = /No preview: the live preview is not open\./;
 const FEEDS = ['session-new-feed-CAM-1', 'session-new-feed-CAM-2'] as const;
 
 function realCapture(engine: TestSim): void {

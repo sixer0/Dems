@@ -53,20 +53,25 @@ export function DeviceRow(props: DeviceRowProps) {
   }
 }
 
-/** True for a capture source the Core names `adapter: FAKE` on a Core in real capture (`detailFactsOf`). */
-function useGeneratedSource(deviceId: DeviceId): boolean {
+/**
+ * True for a capture source the Core names `adapter: FAKE` on a Core in real capture (`detailFactsOf`). Audit row 229
+ * (F1): `sourceId` is the device the row's slot holds there (`useSourceRow(...).assigned`), never the built-in id - a
+ * FAKE built-in no line uses is no fact of the row. Null (an empty slot): no source.
+ */
+function useGeneratedSource(sourceId: string | null): boolean {
   const realCapture = useRealCaptureView();
-  const adapter = useSim((s) => s.captureDevices.devices.find((device) => device.id === deviceId)?.adapter ?? null);
+  const adapter = useSim((s) => (sourceId === null ? null : (s.captureDevices.devices.find((device) => device.id === sourceId)?.adapter ?? null)));
   return detailFactsOf(realCapture, adapter) === 'GENERATED';
 }
 
 function CameraRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
   const { t } = useTranslation();
   const camera = useCamera(deviceId);
-  // Closing pass L-Z (the ONE RULE): the room is the simulator's model; a generated source of a Core in its own capture is named as that.
-  const generated = useGeneratedSource(deviceId);
   // Fix wave M (G70d-02): the one wording rule of a capture source (never "Online" beside "Not checked").
   const row = useSourceRow(deviceId, status);
+  // Closing pass L-Z (the ONE RULE): the room is the simulator's model; a generated source of a Core in its own capture is named as that.
+  // Row 229 (F1): the source is the camera the track holds, not the built-in id.
+  const generated = useGeneratedSource(sourceIdOf(deviceId, row.assigned));
   const name = row.name;
   // D60 (2026-11-04): four camera tracks; a track the demo corpus does not ship yet shows the first loop.
   const poster = demoVideoAssetOf(DEMO_MEDIA_LIVE, 'poster', DEVICE_CAMERA[deviceId] ?? 'VIDEO-01');
@@ -76,23 +81,31 @@ function CameraRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
       selected={selected}
       onPress={onPress}
       name={name}
-      detail={generated ? t('common.developmentRoster.source.FAKE') : (camera?.room ?? '')}
+      detail={row.detail ?? (generated ? t('common.developmentRoster.source.FAKE') : (camera?.room ?? ''))}
       statusText={row.statusLabel}
       prefix={<PreviewThumb kind="camera" name={name} source={poster} label={t('features.devices.list.thumbnail', { name })} dim={status === 'FAULT'} testID={`device-thumb-${deviceId}`} />}
       suffix={<DeviceStatusChip status={status} word={row.word} testID={`device-status-${deviceId}`} />}
+      sourceId={sourceIdOf(deviceId, row.assigned)}
     />
   );
 }
 
+/** Row 229 (F1): the device a built-in row's facts and badge belong to - the slot's assigned device on a Core in real capture, else the built-in id. */
+function sourceIdOf(deviceId: DeviceId, assigned: ReturnType<typeof useSourceRow>['assigned']): string | null {
+  return assigned === null ? deviceId : assigned.deviceId;
+}
+
 function MicRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
   const { t } = useTranslation();
+  // Row 229 (F1): the CHANNEL's row (`useMic` reads by the slot), so the meter is the pair's input, never a FAKE built-in's.
   const mic = useMic(deviceId);
-  const generated = useGeneratedSource(deviceId);
   const { isMultiPane } = useLayoutClass();
   const focused = useIsFocused();
   const testSwitch = useMotionState((s) => s.linkMotion === 'off');
-  // Fix wave M (G70d-02): the line's name from the selector in force ("MIC 1 · Primary"), and the one wording rule.
+  // Row 229 (F1; was fix wave M, G70d-02): on a Core in real capture the row is the pair slot - "Mic N (Camera N)" over the
+  // input it holds (`row.detail`); the one wording rule of the source. The simulated lane keeps its names.
   const row = useSourceRow(deviceId, status);
+  const generated = useGeneratedSource(sourceIdOf(deviceId, row.assigned));
   const name = row.name;
   // The mockup's mic thumbnails are room photos: MIC 1 sits on the interviewer's side (lens 1),
   // MIC 2 on the subject's side (lens 2). A mic badge marks them as inputs, not cameras.
@@ -104,7 +117,7 @@ function MicRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
       onPress={onPress}
       name={name}
       // D61 (2026-11-04): the mics slice states the channel CODE; the row keeps the book's ordinal word.
-      detail={generated ? t('common.developmentRoster.source.FAKE') : t('devices.drawer.value.channel', { channel: micChannelNumber(mic?.channel ?? 'MIC-01') })}
+      detail={row.detail ?? (generated ? t('common.developmentRoster.source.FAKE') : t('devices.drawer.value.channel', { channel: micChannelNumber(mic?.channel ?? 'MIC-01') }))}
       statusText={row.statusLabel}
       prefix={
         <PreviewThumb kind="microphone" name={name} source={poster} label={t('features.devices.list.thumbnail', { name })} dim={status === 'NO_SIGNAL'} testID={`device-thumb-${deviceId}`}>
@@ -125,6 +138,7 @@ function MicRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
         ) : null
       }
       suffix={<DeviceStatusChip status={status} word={row.word} testID={`device-status-${deviceId}`} />}
+      sourceId={sourceIdOf(deviceId, row.assigned)}
     />
   );
 }
@@ -230,9 +244,11 @@ interface RowFrameProps {
   prefix: ReactNode;
   suffix: ReactNode;
   extra?: ReactNode;
+  /** Row 229 (F1): the device whose development badge the row draws (the slot's assigned device); defaults to the row's id. */
+  sourceId?: string | null;
 }
 
-function RowFrame({ deviceId, selected, onPress, name, detail, statusText, prefix, suffix, extra }: RowFrameProps) {
+function RowFrame({ deviceId, selected, onPress, name, detail, statusText, prefix, suffix, extra, sourceId = deviceId }: RowFrameProps) {
   const { t } = useTranslation();
   return (
     <View style={styles.wrap} testID={`device-row-wrap-${deviceId}`}>
@@ -262,7 +278,7 @@ function RowFrame({ deviceId, selected, onPress, name, detail, statusText, prefi
               Fix wave J (JT-14): the badge and the state chip are pressables of the kit - inside the row they take no
               touch, so a tap anywhere on the row opens the detail. */}
           <View pointerEvents="none" testID={`device-row-source-wrap-${deviceId}`}>
-            <DevelopmentSourceBadge deviceId={deviceId} testID={`device-row-source-${deviceId}`} />
+            <DevelopmentSourceBadge deviceId={sourceId} testID={`device-row-source-${deviceId}`} />
           </View>
         </ListGroup.ItemContent>
         <ListGroup.ItemSuffix style={styles.suffix} pointerEvents="none">
