@@ -1,5 +1,189 @@
 # DEMS Edge Client Demo
 
+## Overview (added 2026-11-06, branch `audit/fix-20261105`, decision D268)
+
+This block describes the repository as it stands on branch `audit/fix-20261105`. The sections after it (from **Ringkasan** on) are the history of the demo and of the earlier tasks, kept as they were written; dated corrections inside them mark what has changed since.
+
+### What DEMS is
+
+DEMS is a Digital Evidence Management System for interview-room recording. A Core server on the interview-room host records up to four cameras with their paired microphones, seals each recording into a signed evidence package, keeps an audit trail and serves the operators. The parts are:
+
+- the **Core server**, which holds the recording truth, the database, the roles and the device pairing;
+- the **web console**, used by operators and administrators;
+- the **LCD front panel**, a small service that drives the ESP32 status panel from the Core's state;
+- the **capture worker**, a C program the Core starts to record cameras and microphones;
+- the **tablet app**, the operator's Android app, paired with one Core;
+- the **shared contract**, the types, operations, words and rules that the Core and both clients share.
+
+### Repository layout
+
+| Folder | What it holds |
+|---|---|
+| `apps/core-server` | Core server: Fastify on port 4420, PostgreSQL storage (Drizzle migrations), roles and permissions, device pairing, capture supervision, sealing, export, CLI tools for keys and operator passwords |
+| `apps/core-web` | Web console: React + Vite (Dashboard, Session Monitor, Start Session, Evidence, Devices & Inputs, Paired Devices, Security & Audit, System & Maintenance) |
+| `apps/lcd-backend` | LCD front panel service: Python HTTP service on port 8090 that writes to the ESP32 panel over USB serial (see its `README.md`) |
+| `apps/capture-worker` | Capture worker, capture relay and guard: C programs against FFmpeg 9.0.2, built with `make` (see its `README.md`) |
+| `apps/mobile` | Tablet app: Expo / React Native Android app `com.dems.demo.tablet` |
+| `apps/mock-core` | Mock Core of the first demo: health check and WebSocket heartbeat on `127.0.0.1:4400`, used by the Simulated mode only |
+| `apps/transcriber` | Speech-to-text pipeline called by the Core server |
+| `packages/shared` | Shared contract: API client and constants, operations, i18n words, simulator, theme tokens, OpenAPI generator |
+| `packages/capture-protocol` | The message contract between the Core server and the capture worker (protocol number 6) |
+| `scripts/` | Project-local PostgreSQL scripts (`scripts/pg`), test runners (`scripts/test`), host helpers (`scripts/host`), capture setup and release packaging |
+| `deploy/` | Docker installer sources and package records |
+| `docs/` | Task records of the earlier tasks (identification, research, plans, implementation and test reports), one folder per task |
+
+### Requirements
+
+| Item | Version or setting | Notes |
+|---|---|---|
+| Node | 26.8.2 for development (`.node-version`; root `engines` `>=26.8.2 <27`) | The bench host runs the Core with its own Node 26.12.1 under `/opt/dems` |
+| npm | 11.19.1 (`packageManager`) | Workspaces; `.npmrc` sets `save-exact=true` |
+| FFmpeg | 9.0.2, installed at `/opt/dems/ffmpeg-9.0.2` on the bench host | The capture worker builds and links against it: `PKG_CONFIG_PATH=/opt/dems/ffmpeg-9.0.2/lib/pkgconfig` |
+| C toolchain | a C compiler, `make`, `pkg-config` | For `apps/capture-worker` |
+| PostgreSQL | 18, port **4432** | Development: the project-local cluster from the npm package `embedded-postgres` (`npm run pg:*`, data in the git-ignored `.data/`). Bench host: the system cluster `postgresql@18-main` on port 4432, database `dems_demo` |
+| Python | 3, with `pyserial` 3.5 | For `apps/lcd-backend` |
+| Tablet toolchain | Expo `~57.0.26`, React Native 0.86.3, JDK 17, Android SDK (platform 36, build-tools 36.0.0, NDK 27.1.12297006), the Gradle wrapper that `expo prebuild` writes | Section **Prerequisites** below lists how the development Mac was set up |
+
+### Running in development
+
+All commands run from the repository root unless a folder is named. Every command below is a script of the root `package.json` or of a workspace `package.json`.
+
+```sh
+npm install                           # also applies the mobile library patch (postinstall)
+npm run typecheck                     # every workspace: tsc -b in core-web, tsc --noEmit elsewhere
+npm run lint                          # oxlint in the TypeScript workspaces, eslint in apps/mobile
+npm test                              # unit tests of every workspace: vitest, and jest in apps/mobile
+```
+
+- One workspace at a time: `npm test -w @dems/core-server` (the Core's `unit` Vitest project), `npm test -w @dems/core-web`, `npm test -w @dems/shared`, `npm test -w @dems/mobile` (jest), `npm run typecheck -w @dems/core-web` (`tsc -b`). The audit's gates also ran `npx tsc -b` inside `packages/shared`, `apps/core-server` and `apps/core-web`, and `npx tsc --noEmit -p .` inside `apps/mobile` (`docs/2026-11-05_team_update_audit/test/17_dbw4_report.md` section 1; see **Changes in audit/fix-20261105** for where that folder is kept).
+- Core server and console for development: `npm run pg:init` (once), `npm run pg:start`, `npm run db:create`, `npm run db:migrate`, `npm run db:seed`, `npm run dev:server` (or `npm run start:server`), then `npm run dev:web`. The section **Live mode** below has the full sequence and the variables the console needs.
+- Tablet in development: `npm run dev:mobile` (Metro), `npm run build:android` (debug APK), `npm run mobile:reverse` (adb reverse of ports 4400, 8081 and 4420).
+- Capture worker: `npm run test:capture-worker` (`make -C apps/capture-worker`: static rules, self-test, unit checks, build). The end-to-end series is `npm run test:capture-worker-e2e` (about 35 minutes).
+- Everything in one run: `npm run test:regression` (section **Tests** below).
+
+**Database tests and their isolation rule.** `npm run test:db` runs the Core's `db` Vitest project. Its global setup (`apps/core-server/test/global-setup.db.ts`) attaches to PostgreSQL on `127.0.0.1:4432`, fails (never skips) when nothing answers there, creates throw-away databases for the run and drops them at the end. The rule follows from that:
+
+- Run DB tests only against the project-local cluster (`npm run pg:start`), never against a database that holds real data.
+- On the bench host, port 4432 belongs to the production cluster. DB tests therefore never run there while production is up. They run only inside a **DB test window** (section **Production on the bench host**), which stops production and starts the project cluster in its place (decision D32).
+- The scripts that touch the database or the host take lock files under `.locks/` (`heavy-host.lock`, `db-migrate.lock`), so only one heavy run and one migration writer run at a time.
+- On the bench host a loopback firewall rule (unit `dems-loopback-rule.service`) lets only the Core's own service user push to the capture ingest ports 8554-8564. Tests that start pushers as a normal user are refused there, so the gated end-to-end capture tests cannot pass on that host (decisions D150, D153).
+
+### Production on the bench host
+
+The bench host runs DEMS from `/opt/dems/core`, a copy of the repository tree at a deployed commit. It is not a git checkout; the audit worked in a separate git worktree and copied files into `/opt/dems/core` (section **Deploy procedure**).
+
+| systemd unit | Port | What it runs |
+|---|---|---|
+| `dems-core` | 4420 (health: `/api/v1/health`) | The Core server, as its own service user, from `/opt/dems/core/apps/core-server`. It starts after `postgresql@18-main` and requires `dems-loopback-rule.service` |
+| `dems-console` | 5173 | The web console (Vite server) |
+| `dems-lcd` | 8090 (status: `/api/dems/status`) | The LCD front panel service |
+| `postgresql@18-main` | 4432 | PostgreSQL 18, database `dems_demo` |
+
+- **REAL_PRODUCTION.** The bench Core runs in the real production mode: real cameras, microphones, the capture worker and the production signing key, with no simulated values (anything without a real data source shows "Not reported", decision D25). Its settings come from the units' environment files, which are not part of the repository; this README gives no value from them.
+- **Boot proof.** At each start the Core runs its composition, fence, registry, host and program checks and then logs exactly one line with the code `CAPTURE_BOOT_CHECKS_PASSED`, `"operation":"REAL_PRODUCTION"`, `"checks":"real"` and the worker version (`capture-worker/0.8.0` since the W3 deploy). A worker whose build stamp, version or protocol does not match is refused at boot (`STAMP_STALE`, `VERSION_MISMATCH`, `PROTOCOL_MISMATCH` lines). A start without the `CAPTURE_BOOT_CHECKS_PASSED` line is not a healthy production start.
+- **Capture worker on the host.** The worker binary and its stamp file are installed together (binary 0755, stamp 0644, both root-owned). The Core checks that the stamp names this binary's sha256 and the source it was built from.
+- **Known service behaviour.** Stopping `dems-console` leaves it `failed` with status 143 (the Vite server's exit on SIGTERM); it starts cleanly. A console restart ends the web sign-ins, and a Core restart ends every sign-in (decisions D115, D246).
+
+### Deploy procedure (short)
+
+The audit deployed each fix wave as one lockstep copy of the changed files of one commit (records: `implementation/162_w3_deploy.md` and `implementation/w4_deploy.md` of the audit task folder).
+
+1. **Preconditions.** The worktree is clean at the commit to deploy. No session is recording, no seal is pending and no capture process is running. List the changed paths with `git diff --name-status --no-renames <deployed commit> <new commit>`. Check that every modified path in `/opt/dems/core` has the sha256 of the deployed commit's copy, and that every added path is absent.
+2. **Worker build, only when `apps/capture-worker` changed.** One fresh build of the committed tree in `apps/capture-worker`: `make clean`, then `PKG_CONFIG_PATH=/opt/dems/ffmpeg-9.0.2/lib/pkgconfig make check selftest unit build/capture-worker relay-check` under the heavy-host lock. Check that the stamp names the worker version, the protocol, the source hash and the binary hash.
+3. **Migration dry run, only when a migration is in the diff.** Restore a fresh dump into a scratch database, apply the migration there with the project's own migration code (under the migration lock, as the owner role), compare probes before and after, then drop the scratch database.
+4. **Backup.** Copy every file that will be replaced (and the worker pair) with `cp -a --parents` into `/opt/dems-backup-<wave>-<timestamp>/`, with a `SHA256SUMS` manifest, the list of added paths and the owners before. When a migration runs, also take a `pg_dump -Fc` of `dems_demo` into `/var/backups/dems/` (root, mode 0600).
+5. **Install.** Stop `dems-core` and `dems-console` (and `dems-lcd` when its files change; PostgreSQL stays up). Install each file from `git show <commit>:<path>` with `install -o <owner> -g <group> -m 0644` to a `.<name>.new` file, `chmod g-w,o-w`, then `mv -f` over the old file. Check that every installed file has the sha256 of the commit's copy. Apply the migration if there is one. Start the units.
+6. **Smoke.** All units active with no restarts; one `CAPTURE_BOOT_CHECKS_PASSED` with `REAL_PRODUCTION` and the expected worker version; no stamp, version or protocol refusal; no log line at level 50 or 60; HTTP 200 from `4420/api/v1/health`, `5173` and `8090/api/dems/status`; the migration ledger as expected.
+7. **Rollback** (not needed so far). Stop the units, copy the files back from the backup and check them against its `SHA256SUMS`, delete the added paths, restore the dump only if a migration ran (never delete a migration file while the ledger lists it), start the units, smoke again.
+
+**DB test window** (decision D32; records `test/16_dbw3d_report.md` and `test/17_dbw4_report.md`). Production is down for about 70 to 100 seconds:
+
+1. Check that no session is recording and no seal is pending.
+2. Take a fresh `pg_dump -Fc` of `dems_demo` into `/var/backups/dems/`.
+3. Stop `dems-core`, `dems-console`, `dems-lcd` and `postgresql@18-main`. Port 4432 is now free.
+4. `npm run pg:start` (the project cluster from the worktree's `.data/`).
+5. `npm run test:db -w @dems/core-server -- <listed test files> --maxWorkers=2`.
+6. `npm run pg:stop`.
+7. Start `postgresql@18-main` and the three DEMS units.
+8. Smoke: health 200, console and LCD 200, one `CAPTURE_BOOT_CHECKS_PASSED` with `REAL_PRODUCTION`, ledger unchanged. Pin the smoke to the worker version now deployed (`capture-worker/0.8.0`; an older pin gave a false red in DBW4). Restore the dump only if the smoke fails.
+
+### Tablet app
+
+**Debug and release builds.**
+
+| | Debug APK | Release APK |
+|---|---|---|
+| Build | `npm run build:android` (`expo prebuild --platform android --no-install`, then `./gradlew assembleDebug` in `apps/mobile/android`). The audit ran the Gradle step as `./gradlew --no-daemon assembleDebug -PreactNativeArchitectures=arm64-v8a` | `apps/mobile/scripts/create-demo-keystore.sh` once, then `apps/mobile/scripts/build-release-apk.sh` |
+| Output | `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk` | `release/android/DEMS-Demo-0.1.0.apk` with `.sha256`, `SHA256SUMS.txt` and `BUILD-INFO.txt` (git-ignored) |
+| Signed with | the Android debug key | the DEMO release keystore in the git-ignored `apps/mobile/signing/` (marked "DEMO ONLY - NOT FOR PRODUCTION"); no password is printed |
+| JavaScript | from Metro in development (`npm run dev:mobile`) | compiled Hermes bundle inside the APK |
+| Sources | Live, plus the older Simulated and Heartbeat sources for development links and tests | **Live only** (decision D163); biometric sign-in is off (residual R174-G5) |
+
+- `build-release-apk.sh` checks the signing material and the `app.json` plugin, runs `npx expo prebuild --platform android --no-install` and `./gradlew --no-daemon assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64` under `.locks/gradle.lock`, then copies the APK and writes its checksums. It never runs `prebuild --clean` and never installs anything. Run it outside the agent sandbox. It is written for the development Mac (default `JAVA_HOME` and `ANDROID_HOME` paths, `/usr/bin/lockf`).
+- Back up the debug APK before a release build; prebuild has cleared `android/` once even without `--clean`.
+- The two builds have different signatures. Installing one over the other needs an uninstall first, which deletes the tablet's pairing.
+
+**Core server address (decision D263).** The Pair screen has a **Core server address** card with Host and Port fields. The default is `127.0.0.1:4420`, which reaches the Core through `adb reverse` (`npm run mobile:reverse`) on an emulator or a USB-connected device. For a real tablet on the interview-room LAN, enter the Core host's LAN address (for example `192.168.x.x`) and port `4420`, tap **Use this address**, then pair. The card shows the address in force ("In use"), and Pair stays disabled while the fields hold another address. Settings shows the address read-only, and the login screen's offline message names it.
+
+- Accepted: an IPv4 address in a private, loopback or link-local range, or a host name; port 1 to 65535. Refused, each with its own message: a public IPv4 address, a scheme or a path, `host:port` in the Host field, IPv6.
+- Changing the address first forgets the stored device credential, any owed sign-out and the stored Core snapshot. A different Core means a new pairing.
+- A real-device test of the release APK against a LAN Core has not been run yet (row 238 proves the configuration only).
+
+**Pairing.** In the web console, an operator with the pairing permission (Supervisor) opens **Admin > Paired Devices** (`/admin/devices`) and issues a one-time six-digit code. On the tablet, check the Core server address, enter the code on the Pair screen and tap Pair. The tablet then appears in Paired Devices (`DEV-000N`), where it can also be revoked. No pairing code is written in this README; each code is issued fresh in the console.
+
+**Cleartext to the Core (decision D263, residual R263-TLS).** The app talks to the Core over plain `http` and `ws`. Android's network security configuration cannot allow cleartext by address range, so the app's configuration (generated by `apps/mobile/plugins/with-dems-core-cleartext.js`) permits cleartext in its base configuration, in release builds too, and keeps the loopback entries. The compensations are: the app refuses public IPv4 addresses, the device credential is bound to the address, and the interview-room LAN is a closed network. Traffic between tablet and Core is not encrypted. TLS to the Core is the proper fix and is open as residual **R263-TLS**.
+
+### Camera and microphone pairs (decision D5)
+
+- Each camera is paired with one microphone: VIDEO-01 with MIC-01, VIDEO-02 with MIC-02, VIDEO-03 with MIC-03, VIDEO-04 with MIC-04. The pairs are set in the capture setup; an operator cannot move a microphone to another camera during a session (operation 81 answers `409 AUDIO_SOURCE_FIXED_BY_PAIRING`), and a microphone change in the selector is a swap, so no camera is left without its pair.
+- **Audio per pair.** The capture worker opens one encoder per microphone and writes its audio twice: into its paired camera's file (VIDEO-0N) and into its own audio file (`MIC-0N.m4a`, stored as track AUDIO-0N). The seal declares every audio track (evidence package version /2.1) and the verifier checks them. MIC-01 also feeds the transcription.
+- **"Paired mic missing".** A camera in the recording plan whose paired microphone is not assigned (`NOT_ASSIGNED`) or could not be opened (`NOT_OPENED`). The recording still starts, so an interview is never lost because one microphone failed: that camera's file gets a silent audio track, there is no AUDIO-0N file for that pair, and the manifest records the missing channel. The Core logs `CAPTURE_PAIRED_MIC_MISSING` at warn level and raises a `PAIRED_MIC_MISSING` warning notice for the operators, with an extra sentence for Pair 1 because MIC-01 feeds the transcription; the tablet shows it on Devices, in the bell and as a toast. An unassigned microphone slot is normally blocked at pre-check, so at start the usual case is a microphone that did not open.
+
+### Changes in audit/fix-20261105 (2026-11-05/06)
+
+The decision log (decisions D1 to D268) and every row report are kept with the audit's task documents in `docs/2026-11-05_team_update_audit/` of the controller's working copy. That folder is **not part of this repository**; this README cites its file names and decision numbers for reference.
+
+**Mission 1: audit and fix of the team's updates (fix waves W1 to W3, all deployed and re-judged; closed by D158).**
+
+- W1: on a REAL_PRODUCTION Core, anything without a real data source shows "Not reported" and the production login offers no Simulated mode (D25); the capture worker names its version and writes a build stamp that the Core checks at boot (`capture-worker/0.7.0` at that point); a 12-item pre-check; audit vocabulary and allow-lists; camera link sensing with a link-up sweep; fault-cleared events; identity, login lock and banner words; credential scope; operator purge safety; migrations 0042 (constraint repair, so production equals a fresh install, D22) and 0043 (operator purge scope).
+- W2: camera preview contract and status, preview gating on the web tiles and Start Session, registered device lists, security commands and their administration pages; device commands that would only be simulated on a real Core are refused instead of audited as "(simulated)" (D89).
+- W3: the D5 camera and microphone pairs from contract to evidence: pairing contract, capture protocol 6 with `capture-worker/0.8.0`, migration 0044 (AUDIO-01..04 fragments), per-pair audio in the worker, the operator's audio switch retired (operation 81), sealing and export of the audio tracks with the shared verifier, and the web selector, monitor, Start Session and Evidence pages.
+
+**Fix wave W4 (deployed 2026-11-06 as `8962f16b`, D246).**
+
+- Web Dashboard, Session Monitor and Start Session thumbnails use the reach-gated live preview and close it when the tab is hidden; the monitor re-checks a camera that has been unreachable for a while.
+- Web Devices: the camera search "View device" route, PoE switch and recording lamp no longer counted on a self-capture Core, one microphone status reader for every list.
+- LCD camera lamp lit only for a reachable camera or an open stream (fix in the Core's LCD bridge).
+- Microphone levels routed by microphone id (channels 3 and 4 were dropped before); microphone reach taken from the idle meter.
+- Comment corrections in the shared package.
+
+**Mission 3: the tablet app adapted to the new Core (run before Mission 2, D148).**
+
+- Release builds carry the Live source only; the login and settings follow Live (D163).
+- Four camera previews with their pairs, the paired-mic notice, the swap selector, the retired operation 81, the Core identity on login and pairing, device commands, verify reader and integrity view with audio tracks, pair words on Home and microphone cards.
+- Sign-out gaps closed (owed sign-out kept and paid on link-up), stale texts and highlights fixed in a second cycle.
+- The Core server address setting on the Pair screen and the cleartext configuration (D263 to D266, commit `f41972f9`).
+- Debug APK built from `cf59429e` and release APK from `f41972f9`; neither is a production build (DEMO signing).
+
+### Known open items
+
+| Item | What is open |
+|---|---|
+| R225-F1, F2, F3 | A tablet is silently unpaired by a database rollback (`pg_restore`) taken before it paired, by moving it to another Core, or by a reset of the pairing tables. Open fixes: F1, a deploy runbook step that lists tablets paired after the dump before any restoring rollback; F2, a unique Core id per installation (Cores do not have one yet); F3, the tablet compares the stored Core id before sending its credential (depends on F2; the address setting of D263 covers the "another Core" case in part) |
+| R263-TLS | Tablet to Core traffic is cleartext `http`/`ws` on the LAN; TLS is the proper fix (the user's decision) |
+| R174-G5 | Biometric sign-in is off in release builds; enabling it needs Keystore-bound authentication proven on a real tablet |
+| R224-1 | If the secure write of an owed sign-out fails, the debt is forgotten after a cold start (it is logged) |
+| R224-2 | Unpairing does not delete a stored owed sign-out; it clears at the next socket that is not an operator's |
+| U-18 | A web view that may keep a recovered session on screen: not reproduced, parked with a capture plan for the next real failed start (D242) |
+| 4+4 acceptance recording | The first real session with four cameras and four microphones, after the camera cable returns, is a mandatory acceptance test before operational use (D153); the gated end-to-end D5 tests cannot run on the bench host |
+| Mission 2 | The end-to-end UI judging panel (web, LCD and the adapted tablet) is postponed by the user |
+
+### Branches
+
+- `task4/input-av-core-port` is the team's branch.
+- `audit/fix-20261105` is this audit's branch: the fix waves W1 to W4 and Mission 3, on top of the team's state at the audit's start.
+- The two branches are **not merged**. Do not merge or rebase one onto the other without a decision; open a pull request between them when that decision is made.
+
 ## Ringkasan (Bahasa Indonesia)
 
 Repositori ini berisi **demo** DEMS Edge Client: konsol web Core, aplikasi operator Android (ponsel dan tablet), dan mock Core lokal. **Semua data sintetis (DEMO)**: tidak ada data, kunci, atau kredensial asli.
@@ -238,6 +422,8 @@ Added by the backend task (`docs/2026-10-04_dems_backend_rbac_pairing/`). In **S
 
 Live mode is a development-host mode: it runs on this Mac, from the repository. The 0.1.0 packages in `release/` (web launchers and APK) stay Simulated-only.
 
+Correction (2026-11-06, branch `audit/fix-20261105`): a release APK built on this branch carries the Live source only (decision D163) and reaches the Core at the address set on its Pair screen; see **Tablet app** in the Overview. The sentence above describes the 0.1.0 packages of the first demo.
+
 **Read this first.**
 
 - **The seeded accounts use published demo credentials for synthetic accounts on a local demo.** Live mode seeds the same three operators with the same password as the demo credentials table in Quick start, and both Login screens say so. They are not a secret: the Live sign-in demonstrates the mechanism, it does not protect the data.
@@ -350,7 +536,7 @@ Open **`http://127.0.0.1:5173/`** (never `localhost`). The Login page shows the 
 - A web sign-in expires after 15 minutes without activity and after 8 hours at most.
 - Simulated mode on the same page still needs mock-core for Sign In (`npm run dev:mock`, section Start).
 
-**5. Pair the app and use it in Live mode.** This needs the debug APK (`npm run build:android`; the release APK is Simulated-only) on a booted emulator, and the Core server running.
+**5. Pair the app and use it in Live mode.** This needs the debug APK (`npm run build:android`; the release APK is Simulated-only) on a booted emulator, and the Core server running. (Correction 2026-11-06: on branch `audit/fix-20261105` the release APK is Live-only, D163; see **Tablet app** in the Overview.)
 
 ```sh
 npm run dev:mobile                                      # Metro on 127.0.0.1:8081, as in Start
@@ -1027,7 +1213,7 @@ node --import tsx scripts/release/build-web-packages.ts [--skip-gate] [--skip-we
 ```
 
 - **Before `build-release-apk.sh`, back up `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`.** Its prebuild cleared `android/` once even without `--clean`.
-- The APK is signed with a **DEMO keystore** in the git-ignored `apps/mobile/signing/` (random password, never printed). It is Simulated-only: Heartbeat is disabled in release builds.
+- The APK is signed with a **DEMO keystore** in the git-ignored `apps/mobile/signing/` (random password, never printed). It is Simulated-only: Heartbeat is disabled in release builds. Correction (2026-11-06, branch `audit/fix-20261105`): the release APK is now Live-only (decision D163), with biometric sign-in off (R174-G5) and cleartext permitted to the configured LAN Core (D263, residual R263-TLS); see **Tablet app** in the Overview.
 - The web packager builds the console with `VITE_DEMS_CORE_ORIGIN=same-origin` (it sets this itself) and writes six packages to `release/web/`. Check them with `shasum -a 256 -c SHA256SUMS.txt` in `release/web/`.
 
 ## Demo data (media and evidence)

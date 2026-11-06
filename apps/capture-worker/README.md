@@ -6,6 +6,13 @@ FOUR (D60, 2026-11-04: `VIDEO-01`..`VIDEO-04` at once, was two) — from RTSP in
 `127.0.0.1` and one audio track from the microphone inputs. Everything here runs from the
 repository root; nothing is installed.
 
+Correction (2026-11-06, branch `audit/fix-20261105`, decisions D5, D117, D132): the worker is now
+`capture-worker/0.8.0` on capture protocol 6. It no longer writes one shared audio track: each camera
+VIDEO-0N carries the audio of its paired microphone MIC-0N, each microphone is also written to its own
+file `MIC-0N.m4a` (track AUDIO-0N), and a camera whose paired microphone is missing gets a silent audio
+track (`micMissing` in the plan). MIC-01 alone feeds the transcription tap. On the bench host the worker
+is built against `/opt/dems/ffmpeg-9.0.2` (`PKG_CONFIG_PATH=/opt/dems/ffmpeg-9.0.2/lib/pkgconfig`).
+
 | Folder | Content |
 |---|---|
 | `src/` | the worker (static rules: `check.sh`) |
