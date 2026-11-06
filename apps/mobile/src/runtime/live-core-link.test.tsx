@@ -1,5 +1,8 @@
-// Backend task W51: `LIVE` as the third Core link source (04_client_integration_spec §3.1 MD-3,
-// MD-7, §9.5; AC-C-28, AC-C-32), the banner rule, and the debug parameter `core=`.
+// Backend task W51: `LIVE` as a Core link source (04_client_integration_spec §3.1 MD-3,
+// MD-7, §9.5; AC-C-28 as revised by D163: a release build carries LIVE only; AC-C-32), the banner
+// rule, and the debug parameter `core=`.
+// Since 2026-11-05 the device runs LIVE only: it is the default and the only source Settings
+// offers, while SIMULATED and HEARTBEAT stay reachable for the tests and the debug `core=` link.
 //
 // The release cases flip the global `__DEV__`, as the existing release-gate test does
 // (`features/settings/heartbeat-release-gate.test.tsx`, which stays as it is: these are the LIVE
@@ -23,12 +26,14 @@ import {
   getCoreLinkSource,
   hydrateCoreLinkSource,
   isCoreLinkSourceAvailable,
+  KNOWN_CORE_LINK_SOURCES,
   parseCoreLinkSource,
   resetCoreLinkPrefsForTests,
   setCoreLinkSource,
   useCoreLinkSource,
 } from './core-link';
 import { applyLaunchCoreSource, coreSourceFromUrl, resetDebugLaunchForTests, useDebugScenarioLinks } from './debug';
+import { CORE_LINK_SOURCES as INDEX_CORE_LINK_SOURCES, KNOWN_CORE_LINK_SOURCES as INDEX_KNOWN_CORE_LINK_SOURCES } from './index';
 import { runtimeLog } from './log';
 import { FALLBACK_DEVICE_NAME, liveDeviceDescription } from './sim-adapters';
 import { decideCoreLinkSource, simulatorLinkSource } from './sim-runtime-provider';
@@ -67,41 +72,57 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-describe('the three sources (MD-3)', () => {
-  it('SIMULATED is the default; LIVE is the third source', () => {
-    expect(DEFAULT_CORE_LINK_SOURCE).toBe('SIMULATED');
-    expect(CORE_LINK_SOURCES).toEqual(['SIMULATED', 'HEARTBEAT', 'LIVE']);
-    expect(getCoreLinkSource()).toBe('SIMULATED');
+describe('the sources (MD-3): LIVE is the default and the only one offered', () => {
+  it('LIVE is the default; the list Settings builds holds LIVE alone', () => {
+    expect(DEFAULT_CORE_LINK_SOURCE).toBe('LIVE');
+    expect(CORE_LINK_SOURCES).toEqual(['LIVE']);
+    expect(getCoreLinkSource()).toBe('LIVE');
   });
 
-  it('pure gate (AC-C-28): Simulated always; HEARTBEAT and LIVE only in a debug build; an unavailable choice falls back', () => {
-    expect(isCoreLinkSourceAvailable('LIVE', false)).toBe(false);
-    expect(isCoreLinkSourceAvailable('LIVE', true)).toBe(true);
-    expect(isCoreLinkSourceAvailable('HEARTBEAT', false)).toBe(false);
-    expect(isCoreLinkSourceAvailable('HEARTBEAT', true)).toBe(true);
-    expect(isCoreLinkSourceAvailable('SIMULATED', false)).toBe(true);
+  it('pure gate (L5, RT-1, D163): LIVE in every build; a release build allows LIVE only; a debug build keeps the known sources', () => {
+    // The three RT-1 asserts of S62 M3-01. Moved pins (D163): before RT-1 a release build answered
+    // LIVE false and SIMULATED true.
+    expect(isCoreLinkSourceAvailable('SIMULATED', false)).toBe(false);
+    expect(isCoreLinkSourceAvailable('LIVE', false)).toBe(true);
     expect(isCoreLinkSourceAvailable('SIMULATED', true)).toBe(true);
-    expect(effectiveCoreLinkSource('LIVE', false)).toBe('SIMULATED');
+    // Release: LIVE alone. Debug: every known source (the `core=` link and the tests), nothing else.
+    expect(isCoreLinkSourceAvailable('HEARTBEAT', false)).toBe(false);
+    expect(KNOWN_CORE_LINK_SOURCES.filter((source) => isCoreLinkSourceAvailable(source, false))).toEqual(['LIVE']);
+    expect(KNOWN_CORE_LINK_SOURCES.filter((source) => isCoreLinkSourceAvailable(source, true))).toEqual(['SIMULATED', 'HEARTBEAT', 'LIVE']);
+    expect(isCoreLinkSourceAvailable('CORE' as CoreLinkSource, true)).toBe(false);
+    expect(isCoreLinkSourceAvailable('CORE' as CoreLinkSource, false)).toBe(false);
+    // An unavailable choice falls back to the default, LIVE (D163: release SIMULATED now reads LIVE).
+    expect(effectiveCoreLinkSource('LIVE', false)).toBe('LIVE');
     expect(effectiveCoreLinkSource('LIVE', true)).toBe('LIVE');
-    expect(effectiveCoreLinkSource('HEARTBEAT', false)).toBe('SIMULATED');
-    expect(effectiveCoreLinkSource('SIMULATED', false)).toBe('SIMULATED');
-    // Jest is a debug build: the default follows __DEV__ …
+    expect(effectiveCoreLinkSource('HEARTBEAT', false)).toBe('LIVE');
+    expect(effectiveCoreLinkSource('SIMULATED', false)).toBe('LIVE');
+    expect(effectiveCoreLinkSource('HEARTBEAT', true)).toBe('HEARTBEAT');
+    expect(effectiveCoreLinkSource('SIMULATED', true)).toBe('SIMULATED');
+    // The default argument is the build flag (jest is a debug build).
     expect(isCoreLinkSourceAvailable('LIVE')).toBe(true);
+    expect(isCoreLinkSourceAvailable('SIMULATED')).toBe(true);
     expect(effectiveCoreLinkSource('LIVE')).toBe('LIVE');
-    // … and so it does in a release build.
     asReleaseBuild();
-    expect(isCoreLinkSourceAvailable('LIVE')).toBe(false);
-    expect(effectiveCoreLinkSource('LIVE')).toBe('SIMULATED');
+    expect(isCoreLinkSourceAvailable('LIVE')).toBe(true);
+    expect(isCoreLinkSourceAvailable('SIMULATED')).toBe(false);
+    expect(effectiveCoreLinkSource('HEARTBEAT')).toBe('LIVE');
+    expect(effectiveCoreLinkSource('SIMULATED')).toBe('LIVE');
   });
 
-  it('the stored value: the three names are read, anything else is the default', () => {
+  it('`KNOWN_CORE_LINK_SOURCES` is exported by the runtime index beside `CORE_LINK_SOURCES` (KD-13, M3-01 R4)', () => {
+    expect(INDEX_KNOWN_CORE_LINK_SOURCES).toBe(KNOWN_CORE_LINK_SOURCES);
+    expect(INDEX_KNOWN_CORE_LINK_SOURCES).toEqual(['SIMULATED', 'HEARTBEAT', 'LIVE']);
+    expect(INDEX_CORE_LINK_SOURCES).toEqual(['LIVE']);
+  });
+
+  it('the stored value: only LIVE is honoured, every older choice is read as LIVE', () => {
     expect(parseCoreLinkSource(JSON.stringify({ coreLinkSource: 'LIVE' }))).toBe('LIVE');
-    expect(parseCoreLinkSource(JSON.stringify({ coreLinkSource: 'HEARTBEAT' }))).toBe('HEARTBEAT');
-    expect(parseCoreLinkSource(JSON.stringify({ coreLinkSource: 'SIMULATED' }))).toBe('SIMULATED');
+    expect(parseCoreLinkSource(JSON.stringify({ coreLinkSource: 'HEARTBEAT' }))).toBe('LIVE');
+    expect(parseCoreLinkSource(JSON.stringify({ coreLinkSource: 'SIMULATED' }))).toBe('LIVE');
     for (const other of ['live', 'Live', 'CORE', '', null, 1, true, ['LIVE'], { source: 'LIVE' }]) {
-      expect(parseCoreLinkSource(JSON.stringify({ coreLinkSource: other }))).toBe('SIMULATED');
+      expect(parseCoreLinkSource(JSON.stringify({ coreLinkSource: other }))).toBe('LIVE');
     }
-    expect(parseCoreLinkSource(null)).toBe('SIMULATED');
+    expect(parseCoreLinkSource(null)).toBe('LIVE');
   });
 
   it('the link state: HEARTBEAT and LIVE follow the heartbeat they are given, SIMULATED the tablet link', () => {
@@ -119,7 +140,7 @@ describe('the three sources (MD-3)', () => {
     expect(simulatorLinkSource('SIMULATED')).toBe('SIMULATED');
   });
 
-  it('debug: LIVE can be chosen, is stored by merge, and hydrates again', async () => {
+  it('debug: LIVE is stored by merge, and an older stored choice hydrates as LIVE', async () => {
     await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ reduceMotion: true, railCollapsed: true }));
     const { result } = renderHook(() => useCoreLinkSource());
     act(() => setCoreLinkSource('LIVE'));
@@ -127,8 +148,9 @@ describe('the three sources (MD-3)', () => {
     expect(result.current).toBe('LIVE');
     expect(await storedPrefs()).toEqual({ reduceMotion: true, railCollapsed: true, coreLinkSource: 'LIVE' });
 
+    await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ coreLinkSource: 'SIMULATED' }));
     resetCoreLinkPrefsForTests();
-    expect(getCoreLinkSource()).toBe('SIMULATED');
+    expect(getCoreLinkSource()).toBe('LIVE');
     await act(async () => {
       await hydrateCoreLinkSource();
     });
@@ -136,34 +158,61 @@ describe('the three sources (MD-3)', () => {
   });
 });
 
-describe('release build: LIVE is not reachable (AC-C-28, MD-3)', () => {
-  it('a LIVE value stored by a debug build hydrates as SIMULATED', async () => {
+describe('the setter follows the RT-1 rule (L5, D163)', () => {
+  it('debug: every known source is reachable through the setter the `core=` link uses, and is stored', async () => {
+    const { result } = renderHook(() => useCoreLinkSource());
+    for (const source of KNOWN_CORE_LINK_SOURCES) {
+      act(() => setCoreLinkSource(source));
+      await flushAsync();
+      expect(result.current).toBe(source);
+      expect((await storedPrefs()).coreLinkSource).toBe(source);
+    }
+  });
+
+  it('release: `setCoreLinkSource(SIMULATED)` is refused and nothing is written; `setCoreLinkSource(LIVE)` is taken and stored', async () => {
+    asReleaseBuild();
+    const { result } = renderHook(() => useCoreLinkSource());
+    const recordsBefore = runtimeLog.records().length;
+    act(() => setCoreLinkSource('SIMULATED'));
+    await flushAsync();
+    expect(result.current).toBe('LIVE');
+    expect(await storedPrefs()).not.toHaveProperty('coreLinkSource');
+    expect(runtimeLog.records().slice(recordsBefore).some((record) => record.source === 'runtime.coreLink.unavailableSource' && record.context?.source === 'SIMULATED')).toBe(true);
+    act(() => setCoreLinkSource('LIVE'));
+    await flushAsync();
+    expect(result.current).toBe('LIVE');
+    expect(await storedPrefs()).toEqual({ coreLinkSource: 'LIVE' });
+  });
+});
+
+describe('release build: LIVE only (RT-1, D163; AC-C-28 revised)', () => {
+  it('a LIVE value stored by a debug build still hydrates as LIVE, and the stored value is left alone', async () => {
     await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ coreLinkSource: 'LIVE' }));
     asReleaseBuild();
     const { result } = renderHook(() => useCoreLinkSource());
     await act(async () => {
       await hydrateCoreLinkSource();
     });
-    expect(result.current).toBe('SIMULATED');
+    expect(result.current).toBe('LIVE');
     // The stored value is left alone: nothing is deleted when the mode cannot apply (§3.4).
     expect(await storedPrefs()).toEqual({ coreLinkSource: 'LIVE' });
   });
 
-  it('`setCoreLinkSource(LIVE)` is ignored and nothing is written', async () => {
+  it('`setCoreLinkSource(HEARTBEAT)` is ignored and nothing is written', async () => {
     asReleaseBuild();
     const { result } = renderHook(() => useCoreLinkSource());
-    act(() => setCoreLinkSource('LIVE'));
+    act(() => setCoreLinkSource('HEARTBEAT'));
     await flushAsync();
-    expect(result.current).toBe('SIMULATED');
+    expect(result.current).toBe('LIVE');
     expect(await storedPrefs()).not.toHaveProperty('coreLinkSource');
-    expect(runtimeLog.records().some((record) => record.source === 'runtime.coreLink.unavailableSource' && record.context?.source === 'LIVE')).toBe(true);
+    expect(runtimeLog.records().some((record) => record.source === 'runtime.coreLink.unavailableSource' && record.context?.source === 'HEARTBEAT')).toBe(true);
   });
 
-  it('the source decision of the runtime is SIMULATED whatever is stored and whatever the launch URL says', async () => {
-    await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ coreLinkSource: 'LIVE' }));
-    initialUrl.mockResolvedValue('demsdemo:///pair?core=LIVE');
+  it('the source decision of the runtime is LIVE whatever is stored, and the launch URL is not read', async () => {
+    await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ coreLinkSource: 'HEARTBEAT' }));
+    initialUrl.mockResolvedValue('demsdemo:///pair?core=HEARTBEAT');
     asReleaseBuild();
-    await expect(decideCoreLinkSource()).resolves.toBe('SIMULATED');
+    await expect(decideCoreLinkSource()).resolves.toBe('LIVE');
     // The launch URL was not even read.
     expect(initialUrl).not.toHaveBeenCalled();
   });
@@ -231,18 +280,18 @@ describe('the debug parameter `core=` (MD-7, AC-C-32)', () => {
     expect(coreSourceFromUrl(url)).toBe(source);
   });
 
-  it('debug build, launch URL: `core=LIVE` sets and stores the source before the runtime decides its data source', async () => {
-    initialUrl.mockResolvedValue('demsdemo:///pair?core=LIVE');
-    await expect(decideCoreLinkSource()).resolves.toBe('LIVE');
-    expect(getCoreLinkSource()).toBe('LIVE');
+  it('debug build, launch URL: `core=HEARTBEAT` sets and stores the source before the runtime decides its data source', async () => {
+    initialUrl.mockResolvedValue('demsdemo:///pair?core=HEARTBEAT');
+    await expect(decideCoreLinkSource()).resolves.toBe('HEARTBEAT');
+    expect(getCoreLinkSource()).toBe('HEARTBEAT');
     await flushAsync();
-    expect(await storedPrefs()).toEqual({ coreLinkSource: 'LIVE' });
+    expect(await storedPrefs()).toEqual({ coreLinkSource: 'HEARTBEAT' });
     // Once per process: a second decision does not read the launch URL again.
     await decideCoreLinkSource();
     expect(initialUrl).toHaveBeenCalledTimes(1);
   });
 
-  it('debug build: a launch with `core=SIMULATED` puts the default back over a stored LIVE', async () => {
+  it('debug build: a launch with `core=SIMULATED` sets the older source over a stored LIVE (RT-1: debug only)', async () => {
     await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ coreLinkSource: 'LIVE', haptics: false }));
     initialUrl.mockResolvedValue('demsdemo:///?core=SIMULATED');
     await expect(decideCoreLinkSource()).resolves.toBe('SIMULATED');
@@ -251,8 +300,8 @@ describe('the debug parameter `core=` (MD-7, AC-C-32)', () => {
   });
 
   it('a value that is already the source changes and stores nothing', async () => {
-    initialUrl.mockResolvedValue('demsdemo:///?core=SIMULATED');
-    await expect(decideCoreLinkSource()).resolves.toBe('SIMULATED');
+    initialUrl.mockResolvedValue('demsdemo:///?core=LIVE');
+    await expect(decideCoreLinkSource()).resolves.toBe('LIVE');
     await flushAsync();
     expect(await AsyncStorage.getItem(MOBILE_PREFS_KEY)).toBeNull();
   });
@@ -261,16 +310,16 @@ describe('the debug parameter `core=` (MD-7, AC-C-32)', () => {
     const { sim } = createTestSim();
     const { unmount } = renderHook(() => useDebugScenarioLinks(sim));
     await flushAsync();
-    expect(getCoreLinkSource()).toBe('SIMULATED');
-    act(() => linkListeners.forEach((listener) => listener({ url: 'demsdemo:///pair?core=LIVE' })));
     expect(getCoreLinkSource()).toBe('LIVE');
+    act(() => linkListeners.forEach((listener) => listener({ url: 'demsdemo:///pair?core=SIMULATED' })));
+    expect(getCoreLinkSource()).toBe('SIMULATED');
     act(() => linkListeners.forEach((listener) => listener({ url: 'demsdemo:///home?core=HEARTBEAT' })));
     expect(getCoreLinkSource()).toBe('HEARTBEAT');
     unmount();
   });
 
-  it('release build: `core=LIVE` does nothing, at launch and as a later link', async () => {
-    initialUrl.mockResolvedValue('demsdemo:///pair?core=LIVE');
+  it('release build: `core=HEARTBEAT` does nothing, at launch and as a later link', async () => {
+    initialUrl.mockResolvedValue('demsdemo:///pair?core=HEARTBEAT');
     asReleaseBuild();
     await applyLaunchCoreSource();
     const { sim } = createTestSim();
@@ -279,7 +328,7 @@ describe('the debug parameter `core=` (MD-7, AC-C-32)', () => {
     // The hook is off in a release build: it reads no URL and listens to none.
     expect(initialUrl).not.toHaveBeenCalled();
     expect(linkListeners).toHaveLength(0);
-    expect(getCoreLinkSource()).toBe('SIMULATED');
+    expect(getCoreLinkSource()).toBe('LIVE');
     expect(await AsyncStorage.getItem(MOBILE_PREFS_KEY)).toBeNull();
     unmount();
   });
@@ -290,9 +339,9 @@ describe('the debug parameter `core=` (MD-7, AC-C-32)', () => {
     const { unmount } = renderHook(() => useDebugScenarioLinks(sim, true));
     await flushAsync();
     const recordsBefore = runtimeLog.records().length;
-    act(() => linkListeners.forEach((listener) => listener({ url: 'demsdemo:///pair?core=LIVE' })));
     act(() => linkListeners.forEach((listener) => listener({ url: 'demsdemo:///pair?core=HEARTBEAT' })));
-    expect(getCoreLinkSource()).toBe('SIMULATED');
+    act(() => linkListeners.forEach((listener) => listener({ url: 'demsdemo:///pair?core=SIMULATED' })));
+    expect(getCoreLinkSource()).toBe('LIVE');
     expect(await AsyncStorage.getItem(MOBILE_PREFS_KEY)).toBeNull();
     // "Does nothing": the parameter is not even handed to the preference, which would refuse it and say so.
     expect(runtimeLog.records().slice(recordsBefore).map((record) => record.source)).toEqual([]);

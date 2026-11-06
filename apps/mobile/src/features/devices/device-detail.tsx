@@ -6,12 +6,26 @@
  * the C-2 `large` meter with the CLIP reset; other devices: an icon plate) · status chip and device
  * ID · kit `Tabs` Overview / Health / Log · actions Run diagnostics, Test signal, Restart.
  *
+ * - M3-10 R3 (audit row 198; D52, register I4; tablet half of web U-10, rows 104/107): on a Core in its own capture
+ *   (`useNoProducerView`, the one reader `isOwnCaptureCoreState` or the picture rule) no "Synthetic demo values" chip
+ *   is drawn. A value of the simulator's model reads "Not reported" (`system.noProducer`): the PoE switch and the
+ *   indicator (overview, status chip), a microphone's channel, gain, phantom power and converter, and the derived
+ *   health series. The measured microphone level (meter, `MicHealth`) is a real reading and stays. The tablet row is
+ *   the tablet's own link fact and stays.
  * - Overview: a `KeyValueList` of the device's facts; gain and phantom are read-only (G13).
  * - Health: a victory-native line, 1 Hz, no animation (SIM-GAP-M84-2 derives the series).
  * - Log: the device's audit rows, newest first, labelled from codes (never the simulator's English).
  * - Restart needs the Technician role and is unavailable while recording (D79; SIM-GAP-M84-3).
+ * - M3-11 (D96, D106; register 3.11 D4): on a Core in its own capture (`isOwnCaptureCoreState`, the one reader) Test
+ *   signal and Restart are drawn disabled for every role, with `common.deviceMenuHint.notAvailable` beneath them
+ *   (`device-command-not-available`), and nothing is sent: that Core refuses operations 48-50 (409
+ *   COMMAND_UNSUPPORTED, DEVICE_COMMAND_NOT_AVAILABLE). It is the first and lasting block, said before the role or
+ *   the recording (the web console's `NOT_AVAILABLE`). The dialog's 409 handler stays as defence in depth. Identify
+ *   (operation 50) is not offered on the tablet. Diagnostics (operation 65) is no device command and stays as it is.
  * - Faults escalate calmly (03M P7): the chip pulses once and holds its colour; the hero greys to
- *   NO SIGNAL; a tablet-offline note says recording continues.
+ *   NO SIGNAL; a tablet-offline note says "Recording continues on the Core" only while a session records
+ *   (M3-12, D50: shared `devices.other.tabletOfflineBody`), and the idle sentence otherwise
+ *   (`devices.other.tabletOfflineIdleBody`), as the web console's `tabletOfflineBodyKey`.
  *
  * Both data modes (backend task W78; 04_client_integration_spec §8.6 S2-8, §8.7 S3-2 and S5-4): the
  * actions come from `useCoreActions()` and every result is consumed through `settle`, so one call
@@ -44,10 +58,10 @@ import Animated from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
 import { EMPTY_DATE_TEXT, formatClock } from '@dems/shared/realtime';
 import { settle, useCoreActions } from '@dems/shared/live';
-import { Permission, selectRole, useSim, type AuditRow, type DeviceCommand } from '@dems/shared/sim';
+import { Permission, isOwnCaptureCoreState, selectRole, useSim, type AuditRow, type DeviceCommand } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, toneHex, typography } from '@dems/shared/tokens';
 import { KeyValueList, type KeyValueItem } from '@/components/kit';
-import { CameraPreview, useRealCaptureView } from './camera-preview';
+import { CameraPreview } from './camera-preview';
 import { DEMO_MEDIA_LIVE, demoVideoAssetOf } from '@/components/media/demo-media';
 import { useLayoutClass } from '@/layout';
 import { crossFadeIn, enterRise, triggerHaptic, useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
@@ -56,7 +70,7 @@ import { DevelopmentSourceBadge, useSourceBadgeMode } from '@/features/capture-s
 import { useRoleGate } from '@/features/rbac/use-role-gate';
 import { DeviceCommandDialog } from './device-command-dialog';
 import { DeviceMicMeter } from './device-mic-meter';
-import { DeviceStatusChip, SyntheticValuesChip } from './device-status-chip';
+import { DeviceStatusChip, NO_PRODUCER_DEVICES, NoProducerNotice, useNoProducerView, useNoProducerWord } from './device-status-chip';
 import {
   DEVICE_CAMERA,
   DEVICE_KIND,
@@ -66,7 +80,6 @@ import {
   STATUS_TONE,
   cameraDetailFactsOf,
   detailFactsOf,
-  isDeviceId,
   // D61 (2026-11-04): the "Channel" fact names the ordinal of the channel code the mics slice states.
   micChannelNumber,
   relayWords,
@@ -77,7 +90,7 @@ import {
 import { DiagnosticsSheet } from './diagnostics-sheet';
 import { HealthChart } from './health-chart';
 import { RegisteredDeviceDetail } from './registered-device-detail';
-import { useRegisteredDevice } from './registered-device-rows';
+import { useDeviceDetailTarget } from './registered-device-rows';
 import { rosterDeviceName } from './registered-devices-model';
 import { cameraPoePortKey, channelOf } from './sim-adapter';
 import { statedFormatText, statedTrackOf } from './stream-facts';
@@ -107,13 +120,17 @@ export interface DeviceDetailProps {
 export function DeviceDetail({ deviceId, variant }: DeviceDetailProps) {
   const { t } = useTranslation();
   const router = useRouter();
-  const known = isDeviceId(deviceId);
   // Row 140 (D137 (2)): a device the Core registered beyond the built-in ids has its own details, from the Core's list.
-  const registered = useRegisteredDevice(known ? null : deviceId);
+  // Audit row 222 (D173): the key decides - a plain fixed-row id is that fixed row; `registered.<id>` is the Core's
+  // device of that id (the bench's CAM-03 on VIDEO-01), unless it is back on its own line (`drawnByOwnTile`).
+  const target = useDeviceDetailTarget(deviceId);
+  const builtInId = target.builtInId;
+  const known = builtInId !== null;
+  const registered = target.registered;
   // The same "Live" as the badge reads (one rule for the name and the badge, D83 / D131).
   const { live } = useSourceBadgeMode();
   // Fix wave M (G70d-02): a built-in microphone line is named from the selector in force on a Core in its own capture.
-  const builtIn = useSourceRow(known ? deviceId : 'TABLET', 'ONLINE');
+  const builtIn = useSourceRow(known ? builtInId : 'TABLET', 'ONLINE');
   const name = known ? builtIn.name : registered !== null ? rosterDeviceName(t, registered, live) : deviceId;
   const header =
     variant === 'screen' ? (
@@ -158,7 +175,7 @@ export function DeviceDetail({ deviceId, variant }: DeviceDetailProps) {
       </View>
     );
   }
-  return <KnownDeviceDetail deviceId={deviceId} variant={variant} header={header} />;
+  return <KnownDeviceDetail deviceId={builtInId} variant={variant} header={header} />;
 }
 
 function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; variant: 'screen' | 'pane'; header: ReactNode }) {
@@ -184,6 +201,10 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
   const shortName = t(DEVICE_SHORT_NAME_KEY[deviceId]);
   // Fix wave M (G70d-02): the chip and the "Status" row say the selector line's word, as the tile above them.
   const row = useSourceRow(deviceId, status);
+  // M3-10 R3 (row 198): the PoE switch and the indicator have no producer on a Core in its own capture - their chip reads I4.
+  const noProducerView = useNoProducerView();
+  const noProducerWord = useNoProducerWord();
+  const chipWord = noProducerView && NO_PRODUCER_DEVICES.has(deviceId) ? noProducerWord : row.word;
 
   // S2-8: a diagnostics run; `started` runs once the simulator or the Core accepted it (the sheet opens there).
   const startDiagnostics = useCallback(
@@ -221,9 +242,17 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
     [actions, deviceId, live, presentCoreError],
   );
 
-  const restartBlocked = !canManage || recording;
+  // M3-11 (D96, D106): a Core in its own capture refuses every device command, for every role and in every state.
+  const commandsNotAvailable = useSim(isOwnCaptureCoreState);
+  const notAvailableHint = t('common.deviceMenuHint.notAvailable');
+  const testSignalBlocked = commandsNotAvailable || !diagnosticsGate.allowed;
+  const testSignalHint = commandsNotAvailable ? notAvailableHint : diagnosticsGate.hint;
+  const restartBlocked = commandsNotAvailable || !canManage || recording;
   // Task 3 row 68 (G9; ux §11, E-16): an unknown role reads "Checking your permissions…", never "Requires …".
-  const restartHint = !roleKnown
+  // M3-11: the not-available sentence is said first and alone (its own line below), so no restart hint then.
+  const restartHint = commandsNotAvailable
+    ? undefined
+    : !roleKnown
     ? t('mobile.rbac.checking')
     : !canManage
       ? t('features.devices.actions.restartNeedsTechnician')
@@ -236,7 +265,7 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
     <Animated.View entering={enterRise(0, m, { distance: 'riseLg' })} style={styles.block}>
       <DeviceHero deviceId={deviceId} status={status} onClipReset={resetClip} />
       <View style={styles.statusRow}>
-        <DeviceStatusChip status={status} word={row.word} size="md" testID="device-detail-status" />
+        <DeviceStatusChip status={status} word={chipWord} size="md" testID="device-detail-status" />
         <Text maxFontSizeMultiplier={1.2} selectable style={styles.deviceId} testID="device-detail-id">
           {deviceId}
         </Text>
@@ -248,7 +277,10 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
           <Alert.Indicator />
           <Alert.Content>
             <Alert.Title>{t('features.devices.other.deviceOfflineTitle')}</Alert.Title>
-            <Alert.Description>{t('features.devices.other.deviceOfflineBody')}</Alert.Description>
+            {/* M3-12 (D50): the recording claim only while a session records; W1 idle, W2 recording (shared pair). */}
+            <Alert.Description>
+              {t(recording ? 'devices.other.tabletOfflineBody' : 'devices.other.tabletOfflineIdleBody')}
+            </Alert.Description>
           </Alert.Content>
         </Alert>
       ) : null}
@@ -326,12 +358,13 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
           variant="outline"
           size="sm"
           style={styles.action}
-          isDisabled={!diagnosticsGate.allowed}
-          onPress={() => setCommand('TEST_SIGNAL')}
+          isDisabled={testSignalBlocked}
+          // M3-11: nothing is sent while the block stands, even if a press reaches a disabled control.
+          onPress={() => (testSignalBlocked ? undefined : setCommand('TEST_SIGNAL'))}
           testID="device-action-test-signal"
-          {...(diagnosticsGate.hint === null ? {} : { accessibilityHint: diagnosticsGate.hint })}
+          {...(testSignalHint === null ? {} : { accessibilityHint: testSignalHint })}
         >
-          <Activity size={18} color={palette.gold} />
+          <Activity size={18} color={commandsNotAvailable ? palette.gray : palette.gold} />
           <Button.Label numberOfLines={1}>{t('features.devices.actions.testSignal')}</Button.Label>
         </Button>
         <Button
@@ -339,14 +372,19 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
           size="sm"
           style={styles.action}
           isDisabled={restartBlocked}
-          onPress={() => setCommand('RESTART')}
-          accessibilityHint={restartHint}
+          onPress={() => (restartBlocked ? undefined : setCommand('RESTART'))}
+          accessibilityHint={commandsNotAvailable ? notAvailableHint : restartHint}
           testID="device-action-restart"
         >
           <RotateCcw size={18} color={restartBlocked ? palette.gray : palette.gold} />
           <Button.Label numberOfLines={1}>{t('features.devices.actions.restart')}</Button.Label>
         </Button>
       </View>
+      {commandsNotAvailable ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.hint} testID="device-command-not-available">
+          {notAvailableHint}
+        </Text>
+      ) : null}
       {diagnosticsGate.hint !== null && diagnosticsGate.hint !== restartHint ? (
         <Text maxFontSizeMultiplier={1.2} style={styles.hint} testID="device-diagnostics-hint">
           {diagnosticsGate.hint}
@@ -406,6 +444,7 @@ function CameraHero({ deviceId, status }: { deviceId: DeviceId; status: DeviceSt
     <View style={styles.feedWrap}>
       {/* Fix wave H (G70-03; D196): the demo feed for a simulated Core, the "No preview" tile for a Core in real capture. */}
       <CameraPreview
+        livePreview
         trackId={trackId}
         name={name}
         testID="device-detail-feed"
@@ -500,20 +539,15 @@ function Facts({ items, note }: { items: readonly KeyValueItem[]; note?: string 
  * (`detailFactsOf`). The adapter is the Core's own fact on the registry entry of the same id.
  */
 function useDetailFacts(deviceId: DeviceId): DetailFacts {
-  const realCapture = useRealCaptureView();
+  const ownCapture = useNoProducerView(); // row 198: the one own-capture reader, or the picture rule
   const adapter = useSim((s) => s.captureDevices.devices.find((device) => device.id === deviceId)?.adapter ?? null);
-  return detailFactsOf(realCapture, adapter);
+  return detailFactsOf(ownCapture, adapter);
 }
 
-/** A block of model values on a Core in its own capture: the chip above it; in every other case the block alone, as before. */
-function ModelValues({ block, marked, children }: { block: string; marked: boolean; children: ReactNode }) {
-  if (!marked) return <>{children}</>;
-  return (
-    <View style={styles.block}>
-      <SyntheticValuesChip block={block} />
-      {children}
-    </View>
-  );
+/** A block of model values: on a Core in its own capture I4 in its place (row 198; no chip, no value); in every other case the block alone, as before. */
+function ModelValues({ block, notReported, children }: { block: string; notReported: boolean; children: ReactNode }) {
+  if (!notReported) return <>{children}</>;
+  return <NoProducerNotice block={block} />;
 }
 
 function CameraOverview({ deviceId, statusLabel }: { deviceId: DeviceId; statusLabel: string }) {
@@ -521,9 +555,9 @@ function CameraOverview({ deviceId, statusLabel }: { deviceId: DeviceId; statusL
   const label = useFieldLabel();
   const camera = useCamera(deviceId);
   // Task 4 row W4 (review 060c R-02): a camera's own rule - a production camera draws only what the Core states, never the model's record.
-  const realCapture = useRealCaptureView();
+  const ownCapture = useNoProducerView(); // row 198: the one own-capture reader, or the picture rule
   const adapter = useSim((s) => s.captureDevices.devices.find((device) => device.id === deviceId)?.adapter ?? null);
-  const facts = cameraDetailFactsOf(realCapture, adapter);
+  const facts = cameraDetailFactsOf(ownCapture, adapter);
   // The stored stream statement of this camera's selector line, and the camera's fault where the Core reports one (`stream-facts.ts`).
   const stated = useSim((s) => statedTrackOf(s, (line) => line.deviceId === deviceId));
   // The format of a track on a Core in its own capture is its selector line's profile, never the model's resolution / fps.
@@ -559,7 +593,7 @@ function CameraOverview({ deviceId, statusLabel }: { deviceId: DeviceId; statusL
     );
   }
   return (
-    <ModelValues block="camera" marked={false}>
+    <ModelValues block="camera" notReported={false}>
       <Facts
         items={[
           { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
@@ -621,25 +655,30 @@ function MicOverview({ deviceId, statusLabel, onClipReset }: { deviceId: DeviceI
       />
     );
   }
+  // M3-10 R3 (row 198; D52, I4): on a Core in its own capture the model's channel, gain, phantom power and converter
+  // read "Not reported", with no chip and no "read-only in this demo" note. Status, id, CLIP latch and recording state are the Core's.
+  const notReported = facts === 'MODEL_VALUES';
+  const model = (value: string): string => (notReported ? t('system.noProducer') : value);
   return (
     <View style={styles.block}>
-      {facts === 'MODEL_VALUES' ? <SyntheticValuesChip block="microphone" /> : null}
       <Facts
         items={[
           { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
           { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
-          { id: 'channel', label: label('channel'), value: t('devices.drawer.value.channel', { channel: micChannelNumber(mic.channel) }) }, // D61 (2026-11-04): the slice states the code; the fact keeps the ordinal
-          { id: 'gain', label: label('gain'), value: t('devices.audio.gainValue', { value: mic.gainDb }), testID: 'device-fact-gain' },
-          { id: 'phantom', label: label('phantom'), value: mic.phantom ? t('devices.audio.phantomOn') : t('devices.audio.phantomOff'), testID: 'device-fact-phantom' },
+          { id: 'channel', label: label('channel'), value: model(t('devices.drawer.value.channel', { channel: micChannelNumber(mic.channel) })), testID: 'device-fact-channel' }, // D61 (2026-11-04): the slice states the code; the fact keeps the ordinal
+          { id: 'gain', label: label('gain'), value: model(t('devices.audio.gainValue', { value: mic.gainDb })), testID: 'device-fact-gain' },
+          { id: 'phantom', label: label('phantom'), value: model(mic.phantom ? t('devices.audio.phantomOn') : t('devices.audio.phantomOff')), testID: 'device-fact-phantom' },
           clip,
           { id: 'recState', label: label('recState'), value: mic.recState ? t(`common.enums.trackRecState.${mic.recState}`) : EMPTY_DATE_TEXT },
-          { id: 'adc', label: label('adc'), value: t('devices.drawer.value.adc') },
+          { id: 'adc', label: label('adc'), value: model(t('devices.drawer.value.adc')), testID: 'device-fact-adc' },
         ]}
         {...(mic.clipLatched ? { note: t('features.devices.detail.clipRemedy') } : {})}
       />
-      <Text maxFontSizeMultiplier={1.2} style={styles.hint}>
-        {t('features.devices.detail.readOnlyNote')}
-      </Text>
+      {notReported ? null : (
+        <Text maxFontSizeMultiplier={1.2} style={styles.hint}>
+          {t('features.devices.detail.readOnlyNote')}
+        </Text>
+      )}
     </View>
   );
 }
@@ -648,9 +687,9 @@ function PoeOverview({ status }: { status: DeviceStatus }) {
   const { t } = useTranslation();
   const label = useFieldLabel();
   const poe = useBookPoe();
-  const realCapture = useRealCaptureView();
+  const notReported = useNoProducerView();
   return (
-    <ModelValues block="poe" marked={realCapture}>
+    <ModelValues block="poe" notReported={notReported}>
       <Facts
         items={[
           { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
@@ -672,9 +711,9 @@ function RelayOverview({ status }: { status: DeviceStatus }) {
   const { t } = useTranslation();
   const label = useFieldLabel();
   const recording = useIsRecording();
-  const realCapture = useRealCaptureView();
+  const notReported = useNoProducerView();
   return (
-    <ModelValues block="relay" marked={realCapture}>
+    <ModelValues block="relay" notReported={notReported}>
       <Facts
         items={[
           { id: 'status', label: label('status'), value: t(relayWords(status, recording).key), testID: 'device-fact-relay-status' },
@@ -701,9 +740,9 @@ function TabletOverview({ status }: { status: DeviceStatus }) {
   const { t } = useTranslation();
   const label = useFieldLabel();
   const link = useTabletLink();
-  const realCapture = useRealCaptureView();
+  // M3-10 R3 (row 198): the tablet's own link fact, as the web's TABLET row (row 107) - drawn on every Core, no chip.
   return (
-    <ModelValues block="tablet" marked={realCapture}>
+    <ModelValues block="tablet" notReported={false}>
       <Facts
         items={[
           { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
@@ -725,8 +764,8 @@ function HealthTab({ deviceId, live }: { deviceId: DeviceId; live: boolean }) {
 
 function DeviceHealth({ deviceId, live }: { deviceId: DeviceId; live: boolean }) {
   const series = useHealthSeries(deviceId);
-  // The series is derived from the simulator's model (see the file header, Health): on a Core in its own capture it is marked as that.
-  const realCapture = useRealCaptureView();
+  // The series is derived from the simulator's model (see the file header, Health): on a Core in its own capture it reads I4 (row 198).
+  const notReported = useNoProducerView();
   const facts = useDetailFacts(deviceId);
   const { t } = useTranslation();
   // Fix wave J (JT-03): a generated source of a Core in its own capture has no link the Core measures - "Link
@@ -744,7 +783,7 @@ function DeviceHealth({ deviceId, live }: { deviceId: DeviceId; live: boolean })
     );
   }
   return (
-    <ModelValues block="health" marked={realCapture}>
+    <ModelValues block="health" notReported={notReported}>
       <HealthChart series={series} testID="device-health" live={live} />
     </ModelValues>
   );

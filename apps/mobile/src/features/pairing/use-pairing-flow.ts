@@ -37,6 +37,7 @@ import { useRetryCooldown, type RetryCooldown } from '@dems/shared/realtime';
 import { PAIRING_CODE_LENGTH, useSim, useSimInstance, type EpochMs, type PairingState } from '@dems/shared/sim';
 import { useHaptics } from '@/motion';
 import {
+  isCoreLinkSourceAvailable,
   isPairingBlocked,
   reportRuntimeIssue,
   resetToBootRouter,
@@ -126,7 +127,14 @@ export interface PairingFlow {
   retryOffered: boolean;
   /** The Retry of the offline notice: asks the Live socket to reconnect now (3 s, 6 s, 12 s; three times). */
   coreRetry: RetryCooldown;
-  /** Debug builds: back to the simulator (the choice is stored), then the boot router. */
+  /**
+   * "Use Simulated mode" may be offered: LIVE mode, and this build allows a simulated link. That is
+   * the dev-build gate of `core-link.ts` (`isCoreLinkSourceAvailable`: `isDevBuild` and
+   * `KNOWN_CORE_LINK_SOURCES`, register L5, RT-1, D163). A release build answers `false`, so the
+   * tablet stays LIVE-only from pairing through login (row 223, D174, D58).
+   */
+  simulatedOffered: boolean;
+  /** Debug builds: back to the simulator (the choice is stored), then the boot router. A release build refuses it and stays. */
   switchToSimulated: () => void;
 }
 
@@ -350,7 +358,15 @@ export function usePairingFlow(): PairingFlow {
   }, [mobileLive]);
   const coreRetry = useRetryCooldown(reconnect);
 
+  // Read at render, like the setter reads it at call time: the gate follows the build flag.
+  const simulatedOffered = live && isCoreLinkSourceAvailable('SIMULATED');
+
   const switchToSimulated = () => {
+    // Row 223 (D174): never a way out of LIVE in a release build, whatever calls this.
+    if (!isCoreLinkSourceAvailable('SIMULATED')) {
+      reportRuntimeIssue('warn', 'PairingScreen.useSimulated', 'Use Simulated mode refused: this build allows LIVE only');
+      return;
+    }
     reportRuntimeIssue('info', 'PairingScreen.useSimulated', 'Core link source set to SIMULATED from the Pair screen');
     setAttempt(null);
     setCoreLinkSource('SIMULATED');
@@ -382,6 +398,7 @@ export function usePairingFlow(): PairingFlow {
     retrySeconds,
     retryOffered: outcome !== null && (outcome.kind === 'limited' || outcome.kind === 'unavailable') && keepsCode(outcome) && !outcome.exhausted,
     coreRetry,
+    simulatedOffered,
     switchToSimulated,
   };
 }

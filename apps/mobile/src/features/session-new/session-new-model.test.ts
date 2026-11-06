@@ -3,11 +3,12 @@
 // number. Pure functions over plain values and a real test simulator.
 import { describe, expect, it } from '@jest/globals';
 import type { SessionState } from '@dems/shared/domain';
-import { DEMO_OPERATOR_PASSWORD, OPERATORS, type PrecheckSlice, type SessionHistoryEntry } from '@dems/shared/sim';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS, PRECHECK_ORDER, PrecheckCheckId, type PrecheckSlice, type SessionHistoryEntry } from '@dems/shared/sim';
 import { createTestSim } from '@/runtime/testing/test-sim';
 import {
   arrangementFor,
   canLeaveGate,
+  checkMicBinding,
   decodeEvaluation,
   defaultInvestigatorId,
   effectiveStep,
@@ -19,6 +20,7 @@ import {
   hasDeviceColumn,
   isWizardState,
   lastProfileValues,
+  micRoleLine,
   newestHistoryEntry,
   precheckTone,
   resolvedCount,
@@ -27,6 +29,8 @@ import {
   valueKey,
 } from './session-new-model';
 import { caseSeqOf, nextCaseNumber, nextCaseSeq } from './sim-adapter';
+import { Camera, Mic } from 'lucide-react-native';
+import { CheckIcon } from './check-icon';
 
 const slice = (outcome: PrecheckSlice['outcome'], startedAt: number | null = 1): PrecheckSlice => ({
   items: [],
@@ -94,6 +98,15 @@ describe('the §5.3 gate', () => {
     expect(valueKey('STORAGE', 'FULL')).toBe('common.enums.storageState.FULL');
     expect(valueKey('TIME', 'RTC')).toBe('common.enums.timeSource.RTC');
     expect(valueKey('SECURITY', 'FAULT')).toBe('common.enums.securityState.FAULT');
+  });
+
+  // Audit M3-04 R2 (register C6; D53 twelve checks): cameras 3/4 read the lens words, mic channels 3/4 the
+  // microphone words - before the fix the `default` branch gave MIC_3/MIC_4 the lens words.
+  it('cameras 3/4 read the lens words and mic channels 3/4 the microphone words (M3-04 R2, C6)', () => {
+    expect(valueKey('MIC_3', 'READY')).toBe('common.enums.micState.READY');
+    expect(valueKey('MIC_4', 'NO_SIGNAL')).toBe('common.enums.micState.NO_SIGNAL');
+    expect(valueKey('LENS_3', 'FAULT')).toBe('common.enums.lensState.FAULT');
+    expect(valueKey('LENS_4', 'READY')).toBe('common.enums.lensState.READY');
   });
 
   it('round-trips the flat live-evaluation encoding (F74-13)', () => {
@@ -199,5 +212,35 @@ describe('formSessionGone: the wizard followed a session that is no longer in se
     [null, null, null, false],
   ] as [string | null, string | null, string | null, boolean][])('owned %s, followed %s, current %s -> %s', (owned, followed, current, gone) => {
     expect(formSessionGone(owned, followed, current)).toBe(gone);
+  });
+});
+
+// Audit M3-04 R1/R3 (G-1, P0; register C5; D53): the twelve-check pre-check names LENS_3/4 and MIC_3/4. A check
+// row whose icon is undefined crashes the screen ("Element type is invalid"), so every id of the vocabulary needs one.
+describe('the twelve-check pre-check: icons and microphone channels (M3-04, G-1)', () => {
+  it('CheckIcon has an element type for every PrecheckCheckId (all 14), cameras 3/4 a camera and channels 3/4 a mic', () => {
+    const ids = Object.values(PrecheckCheckId);
+    expect(ids).toHaveLength(14);
+    for (const id of ids) {
+      const element = CheckIcon({ id, tone: 'default' });
+      expect({ id, defined: element.type !== undefined && element.type !== null }).toEqual({ id, defined: true });
+    }
+    expect(CheckIcon({ id: 'LENS_3', tone: 'default' }).type).toBe(Camera);
+    expect(CheckIcon({ id: 'LENS_4', tone: 'default' }).type).toBe(Camera);
+    expect(CheckIcon({ id: 'MIC_3', tone: 'default' }).type).toBe(Mic);
+    expect(CheckIcon({ id: 'MIC_4', tone: 'default' }).type).toBe(Mic);
+    for (const id of PRECHECK_ORDER) expect(CheckIcon({ id, tone: 'success' }).type).toBeDefined();
+  });
+
+  it('MIC_3 / MIC_4 are bound by CHANNEL to MIC-03 / MIC-04 (M3-04 R3; D61)', () => {
+    const line = micRoleLine({ session: null, captureConfig: { mics: [{ inputId: 'MIC-01', channel: 'MIC-01' }, { inputId: 'MIC-02', channel: 'MIC-02' }, { inputId: 'MIC-03', channel: 'MIC-03' }, { inputId: 'MIC-04', channel: 'MIC-04' }] } });
+    expect(checkMicBinding('MIC_3', line)).toEqual({ inputId: 'MIC-03', channel: 'MIC-03' });
+    expect(checkMicBinding('MIC_4', line)).toEqual({ inputId: 'MIC-04', channel: 'MIC-04' });
+    // A selector that moved input MIC-01 onto channel 3: the channel-3 check names that input.
+    const moved = 'MIC-03:MIC-01|MIC-02:MIC-02|MIC-01:MIC-03|MIC-04:MIC-04';
+    expect(checkMicBinding('MIC_3', moved)).toEqual({ inputId: 'MIC-01', channel: 'MIC-03' });
+    // CONTROL: the cameras carry no microphone binding.
+    expect(checkMicBinding('LENS_3', line)).toBeNull();
+    expect(checkMicBinding('LENS_4', line)).toBeNull();
   });
 });

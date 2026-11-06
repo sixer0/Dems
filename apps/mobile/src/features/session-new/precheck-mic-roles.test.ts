@@ -50,8 +50,14 @@ describe('microphone checks and the selector (MB-02)', () => {
     expect(valueKey('LENS_1', 'READY')).toBe('common.enums.lensState.READY');
   });
 
-  it('the rendered order is still the shared eight; every id of the vocabulary is a known id', () => {
+  // Re-pinned by row 184 (M3-04 R6, I63 §4.3), citing D53: the shared order is twelve (register C1), was eight.
+  it('the rendered order is the shared PRECHECK_ORDER (twelve since D53); every id of the vocabulary is a known id', () => {
     expect(CHECK_ORDER).toBe(PRECHECK_ORDER);
+    expect(CHECK_ORDER).toEqual([
+      'CORE', 'LENS_1', 'LENS_2', 'LENS_3', 'LENS_4',
+      'MIC_PRIMARY', 'MIC_STANDBY', 'MIC_3', 'MIC_4',
+      'STORAGE', 'TIME', 'SECURITY',
+    ]); // D53 (register C1)
     expect(Object.keys(PrecheckCheckId)).toEqual(expect.arrayContaining(['MIC_PRIMARY', 'MIC_STANDBY']));
   });
 });

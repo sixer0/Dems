@@ -242,3 +242,29 @@ describe('microphones: "Search again" re-reads the local inputs (§8g; M4-MIC-RE
     expect(requests.count(`POST ${RESCAN}`)).toBe(3);
   });
 });
+
+// Audit row 186 (M3-06 R3; S62 register N2-N4): the Devices notices list shows the Core's PAIRED_MIC_MISSING advisory
+// as its sentence, at WARNING, with no search control; it is gone when the Core resolves it. Raised through the same
+// INTERNAL pair the Core uses (`raiseCaptureWarning` / `clearCaptureWarning`).
+describe('a camera recording without the microphone of its pair (row 186, M3-06 R3)', () => {
+  const PAIRED = { code: 'PAIRED_MIC_MISSING', subject: 'CAM-01', sessionId: 'SES-20261001-0001', trackId: 'VIDEO-01', micChannel: 'MIC-01', micMissing: 'NOT_ASSIGNED', transcribed: true } as Parameters<Sim['actions']['raiseCaptureWarning']>[0];
+
+  it('Pair 1: the banner says N3 then N4, has no title and no "Search again"; resolved -> 0 banners', async () => {
+    const h = renderDevicesApp({ user: 'rina.wijaya' });
+    await settle();
+    act(() => h.sim.actions.raiseCaptureWarning(PAIRED));
+    await settle();
+    const [alert] = activeNotices(h);
+    expect(alert!.params?.['reason']).toBe('PAIRED_MIC_MISSING');
+    expect(screen.getByTestId(`capture-notice-body-${alert!.id}`)).toHaveTextContent(
+      'Camera 1 (CAM-01) is recording without the microphone of its pair: the audio track of this camera is silent. The recording continues. This is Pair 1, the transcribed pair: the session has no transcript.',
+    );
+    expect(screen.queryByTestId(`capture-notice-search-${alert!.id}`)).toBeNull();
+    expect(screen.queryByTestId(`capture-notice-rescan-${alert!.id}`)).toBeNull();
+
+    act(() => h.sim.actions.clearCaptureWarning(PAIRED));
+    await settle();
+    expect(activeNotices(h)).toHaveLength(0);
+    expect(screen.queryAllByTestId(/^capture-notice-ALR-/)).toHaveLength(0);
+  });
+});

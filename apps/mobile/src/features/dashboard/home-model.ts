@@ -13,8 +13,11 @@
 import type { SessionState } from '@dems/shared/domain';
 import { DISPLAY_UTC_OFFSET_MINUTES, formatDate } from '@dems/shared/realtime';
 import {
+  CAPTURE_PAIRS,
+  PRIMARY_MIC_CHANNEL,
   SubjectTypeLabel,
   startOfWibDay,
+  type CapturePair,
   type DeviceStats,
   type MicStatus,
   type SessionHistoryEntry,
@@ -123,23 +126,26 @@ export function micReadoutKind(input: { readonly frameFlat: boolean; readonly st
 /** The level line without a level: the unit with the app's "no value" mark. Not a word, so not in the copy. */
 export const MIC_NO_LEVEL_TEXT = '— dBFS';
 
+/** The pair words of a Home MIC tile (register A3): the pair number and whether it is the transcribed pair. */
+export interface MicTilePair {
+  readonly pair: CapturePair['pair'];
+  readonly transcribed: boolean;
+}
+
 /**
- * What a MIC tile says about its input while a session records: the one inside `AUDIO-01`
- * ("Active") or the hot standby ("Standby"); `null` without a recording (ux §3.6 MB-01; D105: the
- * session's pair, not the configured Primary). Pure.
+ * What a MIC tile says about its slot (audit row 209, M3-17; register A3; D134, D138 R157-1): the
+ * pair of its sealed audio track over the shared `CAPTURE_PAIRS` - drawn as "Mic N (Camera N)"
+ * (`devices.pairs.micOfCamera`) - and, for Pair 1 alone (`PRIMARY_MIC_CHANNEL`), the chip
+ * "Transcribed" (`devices.pairs.transcribed`). The pairing is fixed by channel number (D27), so the
+ * label holds with or without an input and with or without a recording (W3T-D3, as the web
+ * Dashboard). `null` for a track that is no microphone track. Pure.
  *
- * Task 4 row 171 (site M5): also `null` when the tile's channel has NO input (`inputId` null: the
- * selector in force holds no complete microphone pair) and when no input is active - an absent
- * input has no role, and nothing is "Standby" to an active input that is absent.
- *
- * D61 (2026-11-04): FOUR simultaneous channels - the pair words belong to the transcription pair
- * alone. A tile whose input is neither the transcribed channel nor its standby (channel 3 or 4)
- * records without a pair word: `null`, never a blanket "STANDBY" for every non-active input.
+ * Replaces `micTileSourceRole` (row 73 / row 171 / D61): op 81 is retired (D134), so no tile says
+ * Active / Standby or reads an audio-source role key any more.
  */
-export function micTileSourceRole(input: { readonly recording: boolean; readonly inputId: string | null | undefined; readonly activeInputId: string | null; readonly standbyInputId: string | null }): 'ACTIVE' | 'STANDBY' | null {
-  if (!input.recording || input.inputId === undefined || input.inputId === null || input.activeInputId === null) return null;
-  if (input.inputId === input.activeInputId) return 'ACTIVE';
-  return input.inputId === input.standbyInputId ? 'STANDBY' : null;
+export function micTilePairOf(trackId: string): MicTilePair | null {
+  const found = CAPTURE_PAIRS.find((entry) => entry.audioTrackId === trackId);
+  return found === undefined ? null : { pair: found.pair, transcribed: found.micChannel === PRIMARY_MIC_CHANNEL };
 }
 
 const FIXED_FLAGS = new Set([

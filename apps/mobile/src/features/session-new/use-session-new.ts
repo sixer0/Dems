@@ -41,7 +41,8 @@ import {
   Permission,
   RecordingProfileId,
   SimPermissionError,
-  evaluatePrecheck,
+  evaluateLiveReadiness,
+  isSourceNotCheckedEvaluation,
   selectPrecheck,
   signedInOperatorId,
   startRefusedReasonOf,
@@ -66,12 +67,21 @@ const selectSessionId = (s: SimState): string | null => s.session?.id ?? null;
 const selectSessionInput = (s: SimState): SessionCreateInput | null => s.session?.input ?? null;
 const selectOperators = (s: SimState): readonly SimOperator[] => s.operators;
 const selectNewestHistory = (s: SimState): SessionHistoryEntry | null => newestHistoryEntry(s.sessionHistory);
-const selectLiveEvaluations = (s: SimState): string[] =>
+/** The flat encoding of a live row the Core has not checked since it started (row 182, register C10). */
+export const LIVE_NOT_CHECKED = encodeEvaluation('NOT_CHECKED', '');
+/** True for a `useLiveReadiness` entry that reads "Not checked" (C11). */
+export function isLiveNotChecked(encoded: string): boolean {
+  return encoded === LIVE_NOT_CHECKED;
+}
+// Audit row 182 (M3-04 R5; register C10; D113, the web's row 150 `selectReadiness`): the step-1 live view reads the shared
+// LIVE reader. On a Core in its own capture an assigned source with no reach reading since the Core started is
+// "Not checked" (`isSourceNotCheckedEvaluation`), never PASS READY; every other answer is `evaluatePrecheck`'s own, so the
+// simulated lane reads exactly as `evaluatePrecheck` (the reader `LiveChecks` used before row 182). The gate (step 2, the run) keeps `evaluatePrecheck`.
+const selectLiveReadiness = (s: SimState): string[] =>
   PRECHECK_ORDER.map((id) => {
-    const evaluation = evaluatePrecheck(s, id);
-    return encodeEvaluation(evaluation.status, evaluation.value);
+    const evaluation = evaluateLiveReadiness(s, id);
+    return isSourceNotCheckedEvaluation(evaluation) ? LIVE_NOT_CHECKED : encodeEvaluation(evaluation.status, evaluation.value);
   });
-const selectMicSignals = (s: SimState): string[] => s.mics.map((mic) => mic.state);
 
 export interface SessionNewData {
   readonly state: SessionState | null;
@@ -97,14 +107,12 @@ export function useSessionNewData(): SessionNewData {
   return { state, sessionId, precheck, input, operators, signedInId, newestHistory };
 }
 
-/** The §5.3 checks evaluated against the live device state (tablet device column), flat-encoded. */
-export function useLiveEvaluations(): string[] {
-  return useSim(selectLiveEvaluations);
-}
-
-/** MIC 1 and MIC 2 states (`READY`, `NO_SIGNAL`, `CLIP`) for the preview meters. */
-export function useMicSignals(): string[] {
-  return useSim(selectMicSignals);
+/**
+ * The live readiness of every check of `PRECHECK_ORDER` (row 182, C10), flat-encoded (`encodeEvaluation`), with
+ * `LIVE_NOT_CHECKED` for a source the Core has not checked since it started (own capture only).
+ */
+export function useLiveReadiness(): string[] {
+  return useSim(selectLiveReadiness);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -168,7 +176,7 @@ export interface FlowActions {
   createAndCheck(values: SessionCreateRequest, then: (outcome: CreateOutcome) => void): void;
   /** WARN + "Acknowledge warnings" → ARMED (PRECHECK_PASSED with the warning count). */
   acknowledgeWarnings(then: FlowSettled): void;
-  /** A resolved BLOCK or WARN outcome → a fresh run of all eight checks. */
+  /** A resolved BLOCK or WARN outcome → a fresh run of every check of `PRECHECK_ORDER` (twelve since D53). */
   retryChecks(then: FlowSettled): void;
   /** CREATE, PRECHECK or ARMED → no session (audit SESSION_CANCELLED). */
   cancelSession(then: FlowSettled): void;

@@ -4,7 +4,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from '@jest/globals';
 import type { CoreLinkInfo, PairingInfo } from '@/runtime';
-import { isLimitFailure, isLiveLogin, liveAttemptFor, liveOfflineNoticeAfter, liveTrustLineFor, liveTrustTextFor, type LiveSignInFailure } from './login-live-model';
+import { DEVICE_ID } from '@dems/shared/sim';
+import { isLimitFailure, isLiveLogin, liveAttemptFor, liveOfflineNoticeAfter, liveTrustLineFor, liveTrustTextFor, reportedPairedCoreIdOf, type LiveSignInFailure } from './login-live-model';
 import { loginEn } from './i18n';
 import type { AttemptOutcome } from './login-model';
 
@@ -21,11 +22,31 @@ describe('isLiveLogin (§9.2)', () => {
 });
 
 describe('the trust line of LIVE mode (L11, AC-C-72)', () => {
+  // M3-10 R1 (row 199, register I6): the reserved demo id is not shown as the Core's; any other id is.
   it('names the device ID the Core gave this tablet, with "Pairing details"', () => {
-    const text = liveTrustTextFor(liveTrustLineFor(pairing({}), 'DEMS-IR-01'));
+    const text = liveTrustTextFor(liveTrustLineFor(pairing({}), 'DEMS-BENCH-01'));
     expect(text.textKey).toBe('features.login.live.trust.paired');
-    expect(text.values).toEqual({ device: 'DEMS-IR-01', tablet: 'DEV-0003' });
+    expect(text.values).toEqual({ device: 'DEMS-BENCH-01', tablet: 'DEV-0003' });
+    expect(text.valueKeys).toBeUndefined();
     expect(text.linkKey).toBe('features.login.live.trust.details');
+  });
+
+  it('I6: the reserved demo id DEMS-IR-01 reads "Not reported" (system.noProducer), the tablet id stays', () => {
+    expect(DEVICE_ID).toBe('DEMS-IR-01');
+    const line = liveTrustLineFor(pairing({}), ' DEMS-IR-01 ');
+    expect(line).toEqual({ kind: 'paired', core: null, tablet: 'DEV-0003', coreNotReported: true });
+    const text = liveTrustTextFor(line);
+    expect(text.textKey).toBe('features.login.live.trust.paired');
+    expect(text.values).toEqual({ tablet: 'DEV-0003' });
+    expect(text.valueKeys).toEqual({ device: 'system.noProducer' });
+    expect(text.linkKey).toBe('features.login.live.trust.details');
+  });
+
+  it('I6 through the shared S9 reader: own capture hides the reserved id only; the simulated lane keeps it (CONTROL)', () => {
+    expect(reportedPairedCoreIdOf('DEMS-IR-01', true)).toBeNull();
+    expect(reportedPairedCoreIdOf('DEMS-BENCH-01', true)).toBe('DEMS-BENCH-01');
+    expect(reportedPairedCoreIdOf('DEMS-IR-01', false)).toBe('DEMS-IR-01');
+    expect(reportedPairedCoreIdOf('DEMS-BENCH-01', false)).toBe('DEMS-BENCH-01');
   });
 
   it('still names the device ID while the Core identity has not reached the replica', () => {

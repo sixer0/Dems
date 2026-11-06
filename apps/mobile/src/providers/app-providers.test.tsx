@@ -104,7 +104,7 @@ describe('AppProviders', () => {
         <Probe />
       </AppProviders>,
     );
-    expect(screen.getByTestId('probe')).toHaveTextContent('Home|query|CONNECTING|out|SIMULATED|compact');
+    expect(screen.getByTestId('probe')).toHaveTextContent('Home|query|CONNECTING|out|LIVE|compact');
   });
 
   it('renders under reduced motion too', () => {

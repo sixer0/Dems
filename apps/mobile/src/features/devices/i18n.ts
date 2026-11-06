@@ -68,7 +68,8 @@ export const devicesEn = {
   other: {
     deviceControl: 'Device Control',
     deviceOfflineTitle: 'Device control offline',
-    deviceOfflineBody: 'Recording continues on the Core. Reconnect this device to regain control.',
+    // M3-12 (D50): the body is the shared W1/W2 pair (devices.other.tabletOfflineIdleBody / tabletOfflineBody),
+    // chosen by the session's RECORDING state; the old mobile body claimed a recording while idle.
     lampOff: 'Lamp off',
   },
   health: {

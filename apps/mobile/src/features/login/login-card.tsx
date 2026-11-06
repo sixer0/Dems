@@ -5,8 +5,8 @@
  * - L4 Username and L5 Password (`TextField` + `InputGroup`, `FieldError`; eye toggle, M-C-16);
  * - L6 Sign In (primary, dark label, `Spinner` while pending);
  * - L7 the fingerprint button (§6.3; hidden without hardware, disabled with a caption otherwise);
- * - L10 Demo operators (`Accordion` + `ListGroup`; a row fills the form; hidden in presentation
- *   mode, D28/Q14);
+ * - L10 dropped (2026-11-05): the tablet runs LIVE only, so no demo credential is filled for the
+ *   operator and no simulator pairing code is shown;
  * - L11 the Core trust line (Core link chip, pairing line, "Pair this device" / "Pairing details" → `/pair`);
  * - L8 the dataset version.
  *
@@ -19,15 +19,15 @@
  * simulation. Each LIVE branch hangs on `controller.live`; the other modes render what they did.
  * - L9: the auth layer's notice (`<AuthNoticeAlert />`: `TOKEN_REUSE`, a dead biometric token, a
  *   disabled account, the 8-hour limit) takes the one Alert slot; the offline Alert names no
- *   address and offers "Use Simulated mode" beside Retry; a sign-in without an answer shows the
- *   refusal presenter's sentences in place;
- * - L10: the plain sentence of condition C1 first, no role chip (a role is the Core's data), no
- *   pairing-code hint (the simulator's code means nothing to the Core server);
- * - L11: "Core: DEMS-IR-01 • paired as DEV-0003", and the link reads "Pairing details".
+ *   address and offers Retry alone (M3-01 L6, D47/D160: the tablet runs LIVE only, so no way out
+ *   to the simulator is offered); a sign-in without an answer shows the refusal presenter's
+ *   sentences in place;
+ * - L11: "Core: DEMS-BENCH-01 • paired as DEV-0003", and the link reads "Pairing details". The Core id
+ *   is shown through I6 (M3-10 R1, row 199): the reserved demo id DEMS-IR-01 reads "Not reported".
  */
 import { router } from 'expo-router';
-import { Accordion, Alert, Button, Card, FieldError, InputGroup, LinkButton, ListGroup, Spinner, TextField } from 'heroui-native';
-import { Eye, EyeOff, Fingerprint, KeyRound, Lock, User } from 'lucide-react-native';
+import { Alert, Button, Card, FieldError, InputGroup, LinkButton, Spinner, TextField } from 'heroui-native';
+import { Eye, EyeOff, Fingerprint, Lock, User } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Controller } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -41,14 +41,7 @@ import Animated, {
   useSharedValue,
   type AnimatedStyle,
 } from 'react-native-reanimated';
-import {
-  AUTH_IDLE_TIMEOUT_MS,
-  DEMO_OPERATOR_PASSWORD,
-  DEMO_PAIRING_CODE,
-  OPERATORS,
-  useSim,
-  type SimState,
-} from '@dems/shared/sim';
+import { AUTH_IDLE_TIMEOUT_MS, isOwnCaptureCoreState, useSim, type SimState } from '@dems/shared/sim';
 import { derived, fontFamily, motion, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
 import { AuthNoticeAlert } from '@/auth';
 import { RollingNumber } from '@/components/composed/rolling-number';
@@ -69,7 +62,7 @@ import {
 } from '@/motion';
 import { usePairing } from '@/runtime';
 import { BorderBeam } from './login-ambient';
-import { liveTrustLineFor, liveTrustTextFor } from './login-live-model';
+import { liveTrustLineFor, liveTrustTextFor, reportedPairedCoreIdOf } from './login-live-model';
 import {
   alertStatusFor,
   biometricButtonFor,
@@ -78,7 +71,6 @@ import {
   splitAroundToken,
   type LoginNotice,
 } from './login-model';
-import { usePresentationMode } from './presentation-mode';
 import type { LoginController } from './use-login-controller';
 
 const CARD_RADIUS = radius.px.xl;
@@ -149,7 +141,6 @@ export function LoginCard({
     overrides,
     rejectSeq,
     live,
-    switchToSimulated,
   } = controller;
   const usernameRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -218,7 +209,6 @@ export function LoginCard({
                 delayMs={alertDelayMs}
                 coreRetry={coreRetry}
                 live={live}
-                onUseSimulated={switchToSimulated}
               />
             ) : null}
 
@@ -356,7 +346,6 @@ export function LoginCard({
       </Animated.View>
 
       <Animated.View style={[styles.companions, companionStyle]}>
-        <DemoOperators onFill={controller.fill} live={live} />
         {footer === 'inline' ? <LoginFooter controller={controller} settings={settings} loopsAllowed={loopsAllowed} /> : null}
       </Animated.View>
     </View>
@@ -402,11 +391,9 @@ interface NoticeAlertProps {
   coreRetry: LoginController['coreRetry'];
   /** LIVE mode: the Core server is the Core. */
   live: boolean;
-  /** LIVE, Core offline: "Use Simulated mode". */
-  onUseSimulated: () => void;
 }
 
-function NoticeAlert({ notice, settings, delayMs, coreRetry, live, onUseSimulated }: NoticeAlertProps) {
+function NoticeAlert({ notice, settings, delayMs, coreRetry, live }: NoticeAlertProps) {
   const { t } = useTranslation();
   const status = alertStatusFor(notice);
   // An Alert present during the entrance waits for its beat (M-APP-02: the "signed out" Alert
@@ -459,18 +446,14 @@ function NoticeAlert({ notice, settings, delayMs, coreRetry, live, onUseSimulate
           </Button.Label>
         </Button>
       );
-      // LIVE (§3.5): the Core server, no address (the runtime's adapters alone name it), and the
-      // explicit way out. LIVE exists in debug builds only (MD-3), so the second action needs no gate.
+      // LIVE (§3.5): the Core server, no address (the runtime's adapters alone name it), and Retry.
+      // M3-01 L6 (D47, D160): no "Use Simulated mode" way out - the tablet runs LIVE only; the
+      // older sources stay reachable to the debug `core=` link and the tests, never to a control.
       title = live ? t('mobile.live.refusal.offline') : t('login.errors.coreOfflineTitle');
       body = live ? (
         <View style={styles.alertBody}>
           <Text style={styles.alertText}>{t('features.login.live.offlineBody')}</Text>
-          <View style={styles.alertActions}>
-            {retry}
-            <Button testID="login-use-simulated" variant="ghost" size="sm" onPress={onUseSimulated}>
-              <Button.Label>{t('common.coreMode.useSimulated')}</Button.Label>
-            </Button>
-          </View>
+          <View style={styles.alertActions}>{retry}</View>
         </View>
       ) : (
         <View style={styles.alertBody}>
@@ -549,88 +532,23 @@ function LockoutCountdown({ seconds, policy }: { seconds: number; policy: Motion
 }
 
 // ---------------------------------------------------------------------------------------------
-// L10
-// ---------------------------------------------------------------------------------------------
-
-const ROLE_TONE = { INVESTIGATOR: 'accent', SUPERVISOR: 'info', TECHNICIAN: 'default' } as const;
-
-function DemoOperators({ onFill, live }: { onFill: LoginController['fill']; live: boolean }) {
-  const { t } = useTranslation();
-  const presentation = usePresentationMode();
-  // The three demo operators are fixed dataset constants (§6.1), so no store subscription.
-  const operators = OPERATORS;
-  // Unknown (still reading) or presentation mode: the demo credentials are not rendered at all.
-  if (presentation !== false) return null;
-  return (
-    <Accordion variant="surface" selectionMode="single" isCollapsible testID="login-demo-operators" style={styles.demo}>
-      <Accordion.Item value="demo">
-        <Accordion.Trigger testID="login-demo-trigger">
-          <View style={styles.demoTrigger}>
-            <KeyRound size={ICON} color={palette.gold} />
-            <Text style={styles.demoTitle}>{t('login.demoOperators.title')}</Text>
-          </View>
-          <Accordion.Indicator />
-        </Accordion.Trigger>
-        <Accordion.Content>
-          {live ? (
-            // Condition C1 (SR-63): the disclosure says in plain words what it is, before anything else.
-            <Text style={styles.demoHint} testID="login-demo-notice">
-              {t('login.live.demoNotice')}
-            </Text>
-          ) : null}
-          <Text style={styles.demoHint}>{t('login.demoOperators.hint')}</Text>
-          <ListGroup>
-            {operators.map((operator) => (
-              <ListGroup.Item
-                key={operator.id}
-                testID={`login-demo-operator-${operator.username}`}
-                onPress={() => onFill(operator.username, DEMO_OPERATOR_PASSWORD)}
-                accessibilityRole="button"
-                // Fix wave J (JA2-N6): the row is announced with the operator's role. LIVE draws no role
-                // chip (condition C2: the Core may have changed the role), so its label says what the
-                // role is: the one the demo account was created with.
-                accessibilityLabel={t(live ? 'features.login.demo.rowLabelLive' : 'features.login.demo.rowLabel', {
-                  name: operator.displayName,
-                  username: operator.username,
-                  role: t(`common.roles.${operator.role}`),
-                })}
-                accessibilityHint={t('features.login.demo.fillHint', { name: operator.displayName })}
-              >
-                <ListGroup.ItemContent>
-                  <ListGroup.ItemTitle>{operator.displayName}</ListGroup.ItemTitle>
-                  <ListGroup.ItemDescription style={styles.mono}>{operator.username}</ListGroup.ItemDescription>
-                </ListGroup.ItemContent>
-                {live ? null : (
-                  // Condition C2: in LIVE mode a role is the Core's data and may have changed; no chip.
-                  <ListGroup.ItemSuffix>
-                    <StatusChip tone={ROLE_TONE[operator.role]} label={t(`common.roles.${operator.role}`)} icon={null} size="sm" />
-                  </ListGroup.ItemSuffix>
-                )}
-              </ListGroup.Item>
-            ))}
-          </ListGroup>
-          <Text style={[styles.demoHint, styles.mono]} testID="login-demo-password">
-            {t('login.demoOperators.password', { password: DEMO_OPERATOR_PASSWORD })}
-          </Text>
-          {live ? null : (
-            // The simulator's fixed code means nothing to the Core server (§9.2): not rendered in LIVE mode.
-            <Text style={[styles.demoHint, styles.mono]}>{t('features.login.demo.pairingCode', { code: DEMO_PAIRING_CODE })}</Text>
-          )}
-        </Accordion.Content>
-      </Accordion.Item>
-    </Accordion>
-  );
-}
-
-// ---------------------------------------------------------------------------------------------
 // L11
 // ---------------------------------------------------------------------------------------------
+
+/** I6: the values of a trust text that are i18n keys, translated (`device` = "Not reported"). */
+function translatedValues(valueKeys: Readonly<Record<string, string>> | undefined, t: (key: string) => string): Record<string, string> {
+  if (valueKeys === undefined) return {};
+  return Object.fromEntries(Object.entries(valueKeys).map(([name, key]) => [name, t(key)]));
+}
 
 function TrustLine({ controller, settings, loopsAllowed, compact = false }: { controller: LoginController; settings: MotionSettings; loopsAllowed: boolean; compact?: boolean }) {
   const { t } = useTranslation();
   const pairingState = useSim(selectPairingState);
   const device = useSim(selectCoreDeviceId);
+  const ownCapture = useSim(isOwnCaptureCoreState);
   const gate = usePairing();
+  // I6 (M3-10 R1): the simulated lane's line shows the paired copy through the same S9 reader.
+  const shownDevice = reportedPairedCoreIdOf(device, ownCapture) ?? t('system.noProducer');
   // LIVE: the runtime's look of the link (row M2 follow-up, D180): still connecting is not "offline".
   const chip = coreChipFor(controller.coreLink, controller.coreLook);
   // LIVE (§9.2, AC-C-72): the pairing gate says whether this tablet is paired, and as which device.
@@ -659,10 +577,10 @@ function TrustLine({ controller, settings, loopsAllowed, compact = false }: { co
   const textView = (
     <Text style={[styles.trustText, !paired && styles.trustUnpaired]} testID="login-trust-text">
       {liveText
-        ? t(liveText.textKey, liveText.values)
+        ? t(liveText.textKey, { ...liveText.values, ...translatedValues(liveText.valueKeys, t) })
         : paired
-          ? t('mobile.pairing.trustLinePaired', { device })
-          : t('mobile.pairing.trustLineUnpaired', { device })}
+          ? t('mobile.pairing.trustLinePaired', { device: shownDevice })
+          : t('mobile.pairing.trustLineUnpaired', { device: shownDevice })}
     </Text>
   );
   // Fix wave J (JA2-13, N-05): the link is named for what it opens. A paired device opens its pairing
@@ -715,22 +633,6 @@ const styles = StyleSheet.create({
   retry: { alignSelf: 'flex-start', marginTop: spacing[0] },
   alertActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[1], marginTop: spacing[0] },
   countdownRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
-  demo: { borderRadius: CARD_RADIUS, backgroundColor: withAlpha(derived.surface, 0.7) },
-  demoTrigger: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], flex: 1 },
-  demoTitle: {
-    fontFamily: fontFamily.native.semibold,
-    fontSize: typography.body.size,
-    lineHeight: typography.body.lineHeight,
-    color: palette.foreground,
-  },
-  demoHint: {
-    fontFamily: fontFamily.native.normal,
-    fontSize: typography.caption.size,
-    lineHeight: typography.caption.lineHeight,
-    color: palette.gray,
-    marginVertical: spacing[0],
-  },
-  mono: { fontFamily: fontFamily.native.mono },
   trust: { alignItems: 'center', gap: spacing[1] },
   trustCompact: { alignItems: 'center', gap: spacing[0] },
   trustRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', columnGap: spacing[2] },

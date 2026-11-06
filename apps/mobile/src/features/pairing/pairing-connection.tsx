@@ -34,7 +34,8 @@ import {
   fingerprintLines,
   ringStateFor,
   selectCertificateFingerprint,
-  selectCoreDeviceId,
+  selectReportedCoreDeviceId,
+  selectReportedCoreDeviceIdLive,
   selectCoreName,
   selectLastPairingAudit,
   selectPairedAt,
@@ -74,9 +75,16 @@ export interface PairingConnectionProps {
   live?: PairingConnectionLive | null;
 }
 
+/** D212 (row 226): the LIVE "paired" line names no Core when the id is not reported (I6); any other line is unchanged. */
+function liveStatusTextKey(key: string, reportedId: string | null): string {
+  return key === 'paired' && reportedId === null ? 'pairedNoId' : key;
+}
+
 export function PairingConnection({ view, phase, simState, split, ringSize, settings, live = null }: PairingConnectionProps) {
   const { t } = useTranslation();
-  const device = useSim(selectCoreDeviceId);
+  // I6 (M3-10 R1, row 200): the Core id through the S9 rule; the reserved id reads "Not reported".
+  const reportedId = useSim(live === null ? selectReportedCoreDeviceId : selectReportedCoreDeviceIdLive);
+  const device = reportedId ?? t('system.noProducer');
   const room = useSim(selectCoreName);
   const fingerprint = useSim(selectCertificateFingerprint);
   const pairedAt = useSim(selectPairedAt);
@@ -90,7 +98,7 @@ export function PairingConnection({ view, phase, simState, split, ringSize, sett
   const statusText =
     live === null
       ? t(`features.pairing.connection.status.${statusKey}`, { device })
-      : t(`features.pairing.live.connection.status.${statusKey.slice('live.'.length)}`, { device, tablet: live.tabletId ?? '' });
+      : t(`features.pairing.live.connection.status.${liveStatusTextKey(statusKey.slice('live.'.length), reportedId)}`, { device, tablet: live.tabletId ?? '' });
 
   const steps: StepDef[] = STEP_KEYS.map((key, i) => ({
     key,
@@ -144,14 +152,14 @@ export function PairingConnection({ view, phase, simState, split, ringSize, sett
   const items: KeyValueItem[] =
     live === null
       ? [
-          { id: 'device', label: t('features.pairing.identity.device'), value: device, mono: true, testID: 'pairing-identity-device' },
+          { id: 'device', label: t('features.pairing.identity.device'), value: device, mono: reportedId !== null, testID: 'pairing-identity-device' },
           { id: 'room', label: t('features.pairing.identity.room'), value: room, testID: 'pairing-identity-room' },
           pairedAtItem,
           lastAuditItem,
         ]
       : paired
         ? [
-            { id: 'device', label: t('features.pairing.live.identity.coreDevice'), value: device, mono: true, testID: 'pairing-identity-device' },
+            { id: 'device', label: t('features.pairing.live.identity.coreDevice'), value: device, mono: reportedId !== null, testID: 'pairing-identity-device' },
             { id: 'room', label: t('features.pairing.live.identity.coreName'), value: room, testID: 'pairing-identity-room' },
             tabletItem,
             pairedAtItem,

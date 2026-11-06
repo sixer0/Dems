@@ -1,52 +1,63 @@
 /**
- * Step 2 previews (04 §4.4 "CameraFeed ×2 and C-2 ×2 above the list (compact) or beside it
- * (tablet), with the hint 'Speak to test (simulated)'") and the tablet-landscape live device
- * column (the brief's "form + live device check column"; 04 §2.4 expanded: "(step 2) both camera
- * previews and both meters side by side").
+ * Step 2 previews (04 §4.4 "CameraFeed and C-2 above the list (compact) or beside it (tablet),
+ * with the hint 'Speak to test (simulated)'") and the tablet-landscape live device column (the
+ * brief's "form + live device check column"). Audit M3-04 R4 (row 183; D5 pairing, D163): one
+ * preview per camera-microphone pair, all four, over the shared `CAPTURE_PAIRS` - camera tile
+ * "Camera N (Mic N)" (`devices.pairs.cameraOfMic`), meter "Mic N (Camera N)"
+ * (`devices.pairs.micOfCamera`, Pair 1 also "Transcribed", as the web row 158 meters). It
+ * replaced a hard-coded two-entry list (D60 era) that hid pairs 3 and 4.
  *
  * Feeds are the step-72 live loops through CameraFeed (muted, looped, procedural fallback, D50).
  * Meters take the runtime's UI-thread shared values (04 §5.4): no React render per audio frame.
  * Canvases pause while the screen is unfocused or the app is in the background (04 §7.8).
  *
- * Phones play ONE camera live at a time (04 §7.8 compact budget "≤ 3 animated canvases: feed + 2
- * meters"; on dems_phone two concurrent H.264 decodes to texture views stalled the UI thread for
- * 13 s, S78-6): the other camera shows its bundled poster, and tapping it makes it the live one.
- * Tablets play both (budget ≤ 5). Under the D43 test switch (`?motion=off`) both show posters, so
- * uiautomator can idle (step 77's precedent).
+ * Phones play ONE camera live at a time (04 §7.8 compact budget; on dems_phone two concurrent
+ * H.264 decodes to texture views stalled the UI thread for 13 s, S78-6): the other cameras show
+ * their bundled poster, and tapping one makes it the live one. Tablets (`live="both"`) play every
+ * pair. The demo loops play only for a simulated Core (debug and jest; a release build is
+ * LIVE-only, D163 RT-1); a Core in real capture draws the "No preview" tile, which decodes
+ * nothing. Under the D43 test switch (`?motion=off`) all show posters, so uiautomator can idle
+ * (step 77's precedent).
  */
-import { ListGroup, PressableFeedback, Separator, Typography } from 'heroui-native';
-import { Fragment, useState } from 'react';
+import { PressableFeedback, Typography } from 'heroui-native';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
 import { settle, useCoreActions } from '@dems/shared/live';
-import { isLevelNotMeasured, meterInputOfChannel, useSim, type SimState } from '@dems/shared/sim';
+import { CAPTURE_PAIRS, isLevelNotMeasured, meterInputOfChannel, useSim, type CapturePair, type SimState } from '@dems/shared/sim';
 import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { spacing } from '@dems/shared/tokens';
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
-import { SectionCard, StatusChip } from '@/components/kit';
+import { SectionCard } from '@/components/kit';
 import { DEMO_MEDIA_LIVE, demoVideoAssetOf } from '@/components/media';
 // Fix wave H (G70-03, G75-13; D196): `CameraPreview` = this feed for a simulated Core, the "No preview" tile for a Core in real capture.
 import { CameraPreview } from '@/features/devices/camera-preview';
 import { triggerHaptic, useMotionPolicy, useMotionState } from '@/motion';
 import { reportRuntimeIssue, useAudioAccessibilityValue, useAudioSharedValues, useCoreErrorPresenter, useCoreLink, useCoreLinkNotice } from '@/runtime';
-import { CHECK_ORDER, decodeEvaluation, hostClockValue, liveCheckWhileLinkDown, precheckTone, valueKey } from './session-new-model';
-import { CheckIcon } from './check-icon';
-import { useLiveEvaluations, useMicSignals } from './use-session-new';
+// Row 182 (M3-04 R5, C10-C12; ruling D193): the live checks of the column are `LiveReadinessChecks` ("Not checked" on own capture).
+import { LiveReadinessChecks } from './live-readiness';
 
-const selectCameraSignals = (s: SimState): string[] => s.cameras.map((camera) => (camera.online && camera.lens !== 'FAULT' ? 'OK' : 'NO_SIGNAL'));
+/**
+ * Row 183 (M3-04 R4): the signal of a pair's camera and microphone, found BY ID - the camera by its
+ * video track, the microphone by its audio track - never by the position in `s.cameras` / `s.mics`
+ * (a Live Core's lists need not hold four entries in pair order). An entry the state does not hold
+ * is not flagged (as the positional read did past the end of the list): the tile's own source state
+ * speaks for a Core in real capture.
+ */
+const cameraNoSignalOf = (s: SimState, track: VideoTrackId): boolean => {
+  const camera = s.cameras.find((entry) => entry.id === track);
+  return camera !== undefined && !(camera.online && camera.lens !== 'FAULT');
+};
+const micNoSignalOf = (s: SimState, channel: AudioTrackId): boolean => s.mics.find((entry) => entry.id === channel)?.state === 'NO_SIGNAL';
 
-const CAMERAS = [
-  // D60 (2026-11-04): four video tracks exist, but this is the speak-to-test preview: one tile per
-  // MICROPHONE (still two), each showing the lens beside that mic. The selector holds all four lines.
-  { cameraId: 'CAM-1', track: 'VIDEO-01', labelKey: 'common.devices.camera1', channel: 'AUDIO-01', micKey: 'common.devices.mic1' },
-  { cameraId: 'CAM-2', track: 'VIDEO-02', labelKey: 'common.devices.camera2', channel: 'AUDIO-02', micKey: 'common.devices.mic2' },
-] as const satisfies readonly { cameraId: string; track: VideoTrackId; labelKey: string; channel: AudioTrackId; micKey: string }[];
+/** The tile id of a pair: `CAM-<n>` (testIDs `session-new-preview-CAM-<n>`; `previewTrackOf` reads the digit). */
+const previewCameraIdOf = (pair: CapturePair): string => `CAM-${pair.pair}`;
 
 export interface DevicePreviewsProps {
-  /** `row`: the two tiles side by side (phone, tablet portrait). `column`: stacked (device column). */
+  /** `row`: the four pair tiles two by two (phone, tablet portrait). `column`: stacked (device column). */
   layout: 'row' | 'column';
-  /** `one`: one live feed at a time, the other a poster (phones). `both`: two live feeds (tablets). */
+  /** `one`: one live feed at a time, the others posters (phones). `both`: every pair live (tablets). */
   live: 'one' | 'both';
   paused: boolean;
   testID?: string;
@@ -54,8 +65,6 @@ export interface DevicePreviewsProps {
 
 export function DevicePreviews({ layout, live, paused, testID = 'session-new-previews' }: DevicePreviewsProps) {
   const { t } = useTranslation();
-  const cameraSignals = useSim(selectCameraSignals);
-  const micSignals = useMicSignals();
   const testSwitch = useMotionState((s) => s.linkMotion === 'off');
   const [liveIndex, setLiveIndex] = useState(0);
   // Live mode says where the levels come from instead of "(simulated)" (row M1, W67 F-2; §3.2); the words are
@@ -64,11 +73,12 @@ export function DevicePreviews({ layout, live, paused, testID = 'session-new-pre
   return (
     <View testID={testID} style={styles.previews}>
       <View style={layout === 'row' ? styles.row : styles.column}>
-        {CAMERAS.map((camera, index) => (
-          <View key={camera.cameraId} style={layout === 'row' ? styles.tileRow : styles.tileColumn}>
+        {CAPTURE_PAIRS.map((pair, index) => (
+          <View key={pair.videoTrackId} style={layout === 'row' ? styles.tileRow : styles.tileColumn}>
             <PreviewTile
-              cameraId={camera.cameraId}
-              poster={testSwitch || (live === 'one' && index !== liveIndex) ? demoVideoAssetOf(DEMO_MEDIA_LIVE, 'poster', camera.track) : null}
+              cameraId={previewCameraIdOf(pair)}
+              track={pair.videoTrackId}
+              poster={testSwitch || (live === 'one' && index !== liveIndex) ? demoVideoAssetOf(DEMO_MEDIA_LIVE, 'poster', pair.videoTrackId) : null}
               onMakeLive={
                 live === 'one' && !testSwitch && index !== liveIndex
                   ? () => {
@@ -77,11 +87,13 @@ export function DevicePreviews({ layout, live, paused, testID = 'session-new-pre
                     }
                   : undefined
               }
-              cameraLabel={t(camera.labelKey)}
-              channel={camera.channel}
-              micLabel={t(camera.micKey)}
-              cameraNoSignal={cameraSignals[index] === 'NO_SIGNAL'}
-              micNoSignal={micSignals[index] === 'NO_SIGNAL'}
+              cameraLabel={t('devices.pairs.cameraOfMic', { n: pair.pair })}
+              channel={pair.audioTrackId}
+              micLabel={
+                pair.pair === 1
+                  ? `${t('devices.pairs.micOfCamera', { n: pair.pair })} · ${t('devices.pairs.transcribed')}`
+                  : t('devices.pairs.micOfCamera', { n: pair.pair })
+              }
               paused={paused}
             />
           </View>
@@ -96,6 +108,8 @@ export function DevicePreviews({ layout, live, paused, testID = 'session-new-pre
 
 interface PreviewTileProps {
   cameraId: string;
+  /** The pair's video track (`VIDEO-0N`): its camera's signal is read by this id. */
+  track: VideoTrackId;
   /** A still instead of the live loop (`poster` mode); null = live. */
   poster: number | null;
   /** Poster tiles on phones: tap to make this camera the live one. */
@@ -103,13 +117,13 @@ interface PreviewTileProps {
   cameraLabel: string;
   channel: AudioTrackId;
   micLabel: string;
-  cameraNoSignal: boolean;
-  micNoSignal: boolean;
   paused: boolean;
 }
 
-function PreviewTile({ cameraId, poster, onMakeLive, cameraLabel, channel, micLabel, cameraNoSignal, micNoSignal, paused }: PreviewTileProps) {
+function PreviewTile({ cameraId, track, poster, onMakeLive, cameraLabel, channel, micLabel, paused }: PreviewTileProps) {
   const { t } = useTranslation();
+  const cameraNoSignal = useSim((s) => cameraNoSignalOf(s, track));
+  const micNoSignal = useSim((s) => micNoSignalOf(s, channel));
   const policy = useMotionPolicy();
   const actions = useCoreActions();
   const live = useCoreLink().source === 'LIVE';
@@ -136,6 +150,7 @@ function PreviewTile({ cameraId, poster, onMakeLive, cameraLabel, channel, micLa
   };
   const feed = (
     <CameraPreview
+      livePreview
       name={cameraLabel}
       testID={`session-new-feed-${cameraId}`}
       cameraId={cameraId}
@@ -165,7 +180,7 @@ function PreviewTile({ cameraId, poster, onMakeLive, cameraLabel, channel, micLa
         feed
       )}
       <View style={styles.meterRow}>
-        <Typography type="body-xs" weight="medium" color="muted" style={styles.meterLabel}>
+        <Typography type="body-xs" weight="medium" color="muted" testID={`session-new-meter-${channel}-label`}>
           {micLabel}
         </Typography>
         {/* Round two (JW-08 mobile half; contract J-S 6; seen on the tablet: "MIC 1, -60 dBFS" beside "Not checked" at
@@ -206,7 +221,7 @@ export interface LiveDeviceColumnProps {
 }
 
 /**
- * Tablet landscape: previews, meters and the eight §5.3 checks evaluated against the live device
+ * Tablet landscape: previews, meters and the pre-check items (`CHECK_ORDER` = `PRECHECK_ORDER`, twelve since D5) evaluated against the live device
  * state (the same rules the gate applies; the gate itself runs on step 2).
  */
 export function LiveDeviceColumn({ showChecks, afterChecks = false, paused }: LiveDeviceColumnProps) {
@@ -225,59 +240,23 @@ export function LiveDeviceColumn({ showChecks, afterChecks = false, paused }: Li
           description={t(linkDown ? 'features.session-new.devices.liveHintLinkDown' : afterChecks ? 'features.session-new.devices.liveHintAfter' : 'features.session-new.devices.liveHint')}
           testID="session-new-live-checks"
         >
-          <LiveChecks linkDown={linkDown} />
+          <LiveReadinessChecks linkDown={linkDown} />
         </SectionCard>
       ) : null}
     </View>
   );
 }
 
-function LiveChecks({ linkDown }: { linkDown: boolean }) {
-  const { t } = useTranslation();
-  const evaluations = useLiveEvaluations();
-  return (
-    <ListGroup variant="transparent">
-      {CHECK_ORDER.map((id, index) => {
-        const { status, value } = decodeEvaluation(evaluations[index] ?? 'PASS|');
-        // Wave H closing pass Z2: the live TIME row of a Core in its own capture is the host clock - a note, not a warning.
-        const stated = liveCheckWhileLinkDown(id, linkDown);
-        const tone = stated !== null ? stated.tone : precheckTone(status, hostClockValue(id, value));
-        return (
-          <Fragment key={id}>
-            {index > 0 ? <Separator /> : null}
-            <ListGroup.Item testID={`session-new-live-${id}`} className="py-2">
-              <ListGroup.ItemPrefix>
-                <CheckIcon id={id} tone={tone} size={16} />
-              </ListGroup.ItemPrefix>
-              <ListGroup.ItemContent>
-                <ListGroup.ItemTitle>{t(`sessionNew.devices.checks.${id}`)}</ListGroup.ItemTitle>
-              </ListGroup.ItemContent>
-              <ListGroup.ItemSuffix>
-                <StatusChip
-                  size="sm"
-                  tone={tone}
-                  label={stated !== null ? t(stated.key) : t(valueKey(id, value), { defaultValue: value })}
-                  icon={null}
-                  testID={`session-new-live-${id}-value`}
-                />
-              </ListGroup.ItemSuffix>
-            </ListGroup.Item>
-          </Fragment>
-        );
-      })}
-    </ListGroup>
-  );
-}
-
 const styles = StyleSheet.create({
   previews: { gap: spacing[1] },
-  row: { flexDirection: 'row', gap: spacing[2] },
+  // Row 183: four pairs - two per line (each tile at least ~45% of the line, so it wraps to 2 x 2).
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] },
   column: { gap: spacing[3] },
-  tileRow: { flex: 1, minWidth: 0 },
+  tileRow: { flexGrow: 1, flexBasis: '45%', minWidth: 0 },
   tileColumn: { alignSelf: 'stretch' },
   tile: { gap: spacing[1] },
-  meterRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[1] },
-  meterLabel: { width: 44 },
-  meter: { flex: 1 },
+  // Row 183: the pair label ("Mic N (Camera N)") is longer than "MIC 1", so it sits on its own line above the meter.
+  meterRow: { gap: spacing[1] },
+  meter: { alignSelf: 'stretch' },
   columnStack: { gap: spacing[3] },
 });

@@ -1,7 +1,7 @@
 // Pairing model (step 76; 04_mobile_specs §4.2): timeline phases, view state, C-4 statuses, the
 // lockout countdown on the simulator clock and the flat selectors (F74-13).
 import { describe, expect, it } from '@jest/globals';
-import { PairingState } from '@dems/shared/sim';
+import { DEVICE_ID, PairingState, type SimState } from '@dems/shared/sim';
 import { createTestSim } from '@/runtime/testing/test-sim';
 import {
   PAIR_TIMELINE,
@@ -14,6 +14,8 @@ import {
   ringStateFor,
   selectLastPairingAudit,
   selectLockSeconds,
+  selectReportedCoreDeviceId,
+  selectReportedCoreDeviceIdLive,
   stateChipFor,
   stepStatusesFor,
 } from './pairing-model';
@@ -109,5 +111,30 @@ describe('pairing model', () => {
     for (const [canGoBack, reason, signedIn, target] of table) {
       expect([canGoBack, reason, signedIn, leaveTargetFor(canGoBack, reason, signedIn)]).toEqual([canGoBack, reason, signedIn, target]);
     }
+  });
+
+  // M3-10 R1 (row 200; register I6, rule S9 of row 105, row 199's reader; D72, D159, D205): the Core id the pairing card shows.
+  it('I6: the reserved id reads null ("Not reported") on a LIVE link and on an own-capture Core; any other id as it is; the simulated lane keeps DEMS-IR-01', () => {
+    const base = createTestSim({ initialPairing: PairingState.PAIRED }).sim.store.getState();
+    const withId = (id: string, own: 'none' | 'hostClock' | 'platformNotReported' = 'none'): SimState => ({
+      ...base,
+      pairing: { ...base.pairing, coreDeviceId: id },
+      // The seed state is not in its own capture (the CONTROL below holds it); a case only adds the marker.
+      time: own === 'hostClock' ? { ...base.time, hostClock: true as const } : base.time,
+      security: own === 'platformNotReported' ? { ...base.security, platformNotReported: true as const } : base.security,
+    });
+    expect(DEVICE_ID).toBe('DEMS-IR-01');
+    // CONTROL: the simulated lane keeps the dataset's id (the existing pins of pairing-screen.test.tsx).
+    expect(base.pairing.coreDeviceId).toBe(DEVICE_ID);
+    expect(selectReportedCoreDeviceId(withId(DEVICE_ID))).toBe(DEVICE_ID);
+    // LIVE (no own-capture marker before sign-in, D205): the reserved id is not reported; another id as it is.
+    expect(selectReportedCoreDeviceIdLive(withId(DEVICE_ID))).toBeNull();
+    expect(selectReportedCoreDeviceIdLive(withId('DEMS-BENCH-01'))).toBe('DEMS-BENCH-01');
+    // S9 on the simulated lane: a state in its own capture (host clock, or no platform read) does not report the reserved id.
+    expect(selectReportedCoreDeviceId(withId(DEVICE_ID, 'hostClock'))).toBeNull();
+    expect(selectReportedCoreDeviceId(withId(DEVICE_ID, 'platformNotReported'))).toBeNull();
+    expect(selectReportedCoreDeviceId(withId('DEMS-BENCH-01', 'hostClock'))).toBe('DEMS-BENCH-01');
+    // LIVE before pairing: the tablet holds no Core id, and none is invented.
+    expect(selectReportedCoreDeviceIdLive(withId(''))).toBe('');
   });
 });

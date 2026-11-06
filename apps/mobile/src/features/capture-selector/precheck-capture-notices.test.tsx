@@ -300,7 +300,8 @@ describe('task 4 row 169: an unassigned selector slot is a BLOCK item - the tran
     expect(h.state().captureConfig.mics).toHaveLength(0);
     // The meters slice still holds frames under the built-in inputs: the screen does not read them.
     expect(Object.keys(h.state().audio.inputs).length).toBeGreaterThan(0);
-    // The speak-to-test preview stays a two-tile surface (device-previews CAMERAS, D60 ruling) — the four-channel claim of the plane is proven on Session Live.
+    // Since row 183 (D172) the speak-to-test preview draws four tiles and four meters (CAPTURE_PAIRS, "Mic N (Camera N)");
+    // this case reads the meters of channels 1 and 2 only - the four-channel claim of the plane is proven on Session Live.
     for (const channel of ['AUDIO-01', 'AUDIO-02']) {
       expect(screen.getByTestId(`session-new-meter-${channel}-not-measured`)).toHaveTextContent('Not measured');
       expect(screen.queryByTestId(`session-new-meter-${channel}`)).toBeNull();

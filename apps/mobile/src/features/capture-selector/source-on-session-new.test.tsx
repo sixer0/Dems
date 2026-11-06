@@ -74,3 +74,35 @@ describe.each(['tabletLandscape', 'phonePortrait'] as const)('Session New previe
     expect(screen.queryByText('No preview')).toBeNull();
   });
 });
+
+// Audit row 183 (M3-04 R4; D5 pairing, D163): step 2 previews one tile per camera-microphone pair, all four, over
+// the shared `CAPTURE_PAIRS` - the camera tile "Camera N (Mic N)" (T10 `devices.pairs.cameraOfMic`), the meter
+// "Mic N (Camera N)" (T9 `devices.pairs.micOfCamera`; Pair 1 also "Transcribed", as the web row 158 meters).
+// It replaced the two-entry `CAMERAS` list (D60 era): pairs 3 and 4 had no preview and no meter.
+describe.each(['tabletLandscape', 'phonePortrait'] as const)('row 183: four preview pairs on %s', (window) => {
+  const PAIRS = [1, 2, 3, 4] as const;
+
+  it('a Core in SIMULATED capture: four tiles in pair order, each labelled "Camera N (Mic N)" with its meter "Mic N (Camera N)"', async () => {
+    await openStep2({ window });
+    const tiles = screen.getAllByTestId(/^session-new-preview-CAM-\d$/);
+    expect(tiles.map((tile) => tile.props.testID)).toEqual(PAIRS.map((n) => `session-new-preview-CAM-${n}`));
+    for (const n of PAIRS) {
+      expect(screen.getByTestId(`session-new-feed-CAM-${n}`).props.accessibilityLabel).toBe(`Camera ${n} (Mic ${n})`);
+      expect(screen.getByTestId(`session-new-meter-AUDIO-0${n}-label`)).toHaveTextContent(n === 1 ? 'Mic 1 (Camera 1) · Transcribed' : `Mic ${n} (Camera ${n})`, { exact: true });
+      // The meter of the pair reads its own channel (AUDIO-0N), inside the pair's tile.
+      expect(within(screen.getByTestId(`session-new-preview-CAM-${n}`)).getByTestId(`session-new-meter-AUDIO-0${n}`)).toBeTruthy();
+    }
+    // Only Pair 1 is transcribed; the old two-entry words ("MIC 1", "MIC 2") are not drawn as meter labels.
+    expect(screen.getAllByText(/· Transcribed$/)).toHaveLength(1);
+    expect(screen.queryByText(/^MIC [12]$/)).toBeNull();
+  });
+
+  it('REAL capture: all four pairs are "No preview" tiles - no picture, no LIVE / DEMO text', async () => {
+    await openStep2({ window, setup: realCapture });
+    for (const n of PAIRS) {
+      expect(screen.getByTestId(`session-new-feed-CAM-${n}-none`)).toHaveTextContent('No preview');
+      expect(screen.queryByTestId(`session-new-feed-CAM-${n}-video`)).toBeNull();
+      expect(within(screen.getByTestId(`session-new-preview-CAM-${n}`)).queryAllByText(/\b(LIVE|DEMO)\b/)).toHaveLength(0);
+    }
+  });
+});

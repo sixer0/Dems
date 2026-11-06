@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { BackHandler } from 'react-native';
-import { DEMO_OPERATOR_PASSWORD, OPERATORS, PRECHECK_TOTAL_MAX_MS, ScenarioName } from '@dems/shared/sim';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS, PRECHECK_ORDER, PRECHECK_TOTAL_MAX_MS, ScenarioName } from '@dems/shared/sim';
 import { getMissingKeys, i18n, resetMissingKeys } from '@/i18n';
 import { resetMotionStateForTests } from '@/motion';
 import type { TestSim } from '@/runtime/testing/test-sim';
@@ -363,13 +363,15 @@ describe('leaving the flow (§3.6)', () => {
 });
 
 describe('tablet layouts (§2.4)', () => {
-  it('tablet landscape: vertical stepper | step content | live device column with the eight live checks', async () => {
+  // Re-pinned by row 184 (M3-04 R6, I63 §4.3), citing D53: the column draws every check of PRECHECK_ORDER (12), was a literal eight.
+  it('tablet landscape: vertical stepper | step content | live device column with every live check of PRECHECK_ORDER (twelve since D53)', async () => {
     await openFlow({ window: 'tabletLandscape' });
     expect(screen.getByTestId('pane-stepper')).toBeTruthy();
     expect(screen.getByTestId('pane-content')).toBeTruthy();
     expect(screen.getByTestId('pane-devices')).toBeTruthy();
     expect(screen.getByTestId('session-new-column-previews')).toBeTruthy();
-    for (const id of ['CORE', 'LENS_1', 'LENS_2', 'MIC_PRIMARY', 'MIC_STANDBY', 'STORAGE', 'TIME', 'SECURITY']) {
+    expect(PRECHECK_ORDER).toHaveLength(12); // D53
+    for (const id of PRECHECK_ORDER) {
       expect(screen.getByTestId(`session-new-live-${id}`)).toBeTruthy();
     }
   });

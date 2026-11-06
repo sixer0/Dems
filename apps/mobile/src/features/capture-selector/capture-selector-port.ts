@@ -1,8 +1,9 @@
 /**
  * The one way the device selector sends operations 79 `setCaptureCameraSource` and 78
  * `updateCaptureConfig` — the microphone lines BY CHANNEL of D61 (2026-11-04): ONE line by channel
- * (`micLineBody`), or ONE edit `{ unassign: [from], mics: [line] }` when the microphone moves from
- * another channel (`micMoveBody`, R-FLEX row 133) (task 3, blueprint row 68;
+ * (`micLineBody`), or ONE edit when the microphone comes from another channel (`micMoveBody`): the SWAP
+ * `{ mics: [to-line, from-line] }` when this channel holds one (audit row 188, M3-07; D126), else the MOVE
+ * `{ unassign: [from], mics: [line] }` (R-FLEX row 133) - a move only after the operator's confirm (`micMoveGate`) (task 3, blueprint row 68;
  * `masterplan/03_api_contract.md` §2.2-§2.4). Both are
  * operations a tablet or phone session may call (`PERMISSION CAPTURE_CONFIG`; only 89, 95 and 96 are
  * web-console-only), and neither is a simulator action, so there are two ways in:
@@ -22,7 +23,7 @@
 import type { Sim, MicChannel } from '@dems/shared/sim'; // D61 (2026-11-04): the four microphone channels
 import type { VideoTrackId } from '@dems/shared/domain';
 import type { MobileCoreClient } from '@/runtime';
-import { classifyAnswer, factsOfEnvelope, updatedAtOf, type AnswerClass, type AnswerFacts, type SelectorCommand } from './capture-selector-model';
+import { classifyAnswer, factsOfEnvelope, micMoveAskOf, updatedAtOf, type AnswerClass, type AnswerFacts, type MicMoveAsk, type SelectorCommand } from './capture-selector-model';
 
 export interface SelectorAnswer {
   readonly result: AnswerClass;
@@ -61,12 +62,47 @@ export function micLineBody(command: Extract<SelectorCommand, { kind: 'micLine' 
 }
 
 /**
- * The body of operation 78 for ONE microphone MOVE (R-FLEX row 133, T-14; D61): the microphone
- * leaves the channel `from` (`unassign`) and takes the channel `channel` — one edit, so one
- * microphone never stands on two channels.
+ * The body of operation 78 for ONE microphone that comes from another channel (D61; register S1/S2) - one edit,
+ * so one microphone never stands on two channels:
+ *
+ * | The target channel | Body |
+ * |---|---|
+ * | holds microphone `other` | the SWAP `{ mics: [to-line, from-line] }`: `inputId` on `channel`, `other` on `from`, NO `unassign` - no pair is left without its microphone (audit row 188, M3-07 R1; D126; D22(3)). The Core writes ONE `CAPTURE_CONFIG_CHANGED` row (scope MIC, field CHANNEL; D30 K-6) |
+ * | holds none | the MOVE `{ unassign: [from], mics: [line] }` (R-FLEX row 133, T-14): Pair `from` is left incomplete (S2, R156-1) |
  */
-export function micMoveBody(command: Extract<SelectorCommand, { kind: 'micMove' }>): { unassign: MicChannel[]; mics: { channel: MicChannel; inputId: string; deviceId: string }[] } {
-  return { unassign: [command.from], mics: [{ channel: command.channel, inputId: command.inputId, deviceId: command.inputId }] };
+export function micMoveBody(command: Extract<SelectorCommand, { kind: 'micMove' }>): { unassign?: MicChannel[]; mics: { channel: MicChannel; inputId: string; deviceId: string }[] } {
+  const line = { channel: command.channel, inputId: command.inputId, deviceId: command.inputId };
+  if (command.other !== undefined) return { mics: [line, { channel: command.from, inputId: command.other, deviceId: command.other }] };
+  return { unassign: [command.from], mics: [line] };
+}
+
+/**
+ * The confirm step of a microphone move (audit row 188, M3-07: operation 78 is sent once after the confirm,
+ * nothing on Cancel). Making the gate sends nothing; `confirm(send)` sends the command ONCE - a second confirm,
+ * or a confirm after `cancel()`, sends nothing and resolves null. React-free: the selector hook holds one gate,
+ * the dialog (row 189) calls `confirmMove` / `cancelMove`.
+ */
+export interface MicMoveGate {
+  readonly command: Extract<SelectorCommand, { kind: 'micMove' }>;
+  readonly ask: MicMoveAsk;
+  confirm<T>(send: (command: SelectorCommand) => Promise<T>): Promise<T | null>;
+  cancel(): void;
+}
+
+export function micMoveGate(command: Extract<SelectorCommand, { kind: 'micMove' }>): MicMoveGate {
+  let settled = false;
+  return {
+    command,
+    ask: micMoveAskOf(command),
+    confirm<T>(send: (selected: SelectorCommand) => Promise<T>): Promise<T | null> {
+      if (settled) return Promise.resolve(null);
+      settled = true;
+      return send(command);
+    },
+    cancel() {
+      settled = true;
+    },
+  };
 }
 
 /**

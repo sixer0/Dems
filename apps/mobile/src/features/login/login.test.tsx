@@ -1,6 +1,6 @@
 // T-M04 (04_mobile_specs §10.1; MA-06) plus the §4.1 / §6 behaviour of the mobile Login (step 75):
 // generic error with attempts left, 5 failures → locked Alert with a live countdown, the Core-offline
-// Alert with its rate-limited Retry, demo operators hidden in presentation mode, the biometric
+// Alert with its rate-limited Retry, no demo-credentials disclosure (L10 dropped), the biometric
 // button states and a fingerprint sign-in, the signed-out notice, and no credential anywhere.
 //
 // The Login renders through the REAL route tree and guard (step 70) over the REAL simulator auth
@@ -96,6 +96,8 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   resetShellState();
   resetCoreLinkPrefsForTests();
+  // The device default is LIVE since 2026-11-05; this file proves the simulator-backed Login.
+  setCoreLinkSource('SIMULATED');
   resetAuthPrefsForTests();
   // D43 test switch: reduced motion, so the entrance is instant and no loop runs.
   resetMotionStateForTests({ linkMotion: 'off' });
@@ -197,40 +199,23 @@ describe('T-M04 Login (MA-06)', () => {
     expect(sim.store.getState().audit.total).toBe(before); // nothing reached the simulator
   });
 
-  it('hides the demo operators in presentation mode (D28/Q14)', async () => {
-    await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ presentationMode: true, haptics: true }));
+  // M3-01 (S62 §3.15 #7, D160 KD-15): the HOLD deleted "lists the 3 demo operators ... signs in"; rewritten
+  // as its negative, in BOTH presentation modes (the HOLD kept only the presentation-mode-on half).
+  it.each([true, false])('draws no "Demo operators" control and no demo user name, in either presentation mode (L10 dropped; presentation mode %s)', async (presentationMode) => {
+    await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ presentationMode, haptics: true }));
     await mountLogin();
     await flushAsync();
     expect(screen.queryByTestId('login-demo-operators')).toBeNull();
+    expect(screen.queryByTestId('login-demo-trigger')).toBeNull();
+    expect(screen.queryByText('Demo operators')).toBeNull();
     expect(screen.queryByText(`Demo password: ${DEMO_PASSWORD}`)).toBeNull();
-  });
-
-  it('lists the 3 demo operators outside presentation mode; a row fills the form and signs in', async () => {
-    const { sim } = await mountLogin();
-    await flushAsync();
-    expect(screen.getByTestId('login-demo-operators')).toBeTruthy();
-    fireEvent.press(screen.getByTestId('login-demo-trigger'));
-    await flushAsync();
-    for (const operator of OPERATORS) expect(screen.getByTestId(`login-demo-operator-${operator.username}`)).toBeTruthy();
-    // Fix wave J (JA2-N6): each row is announced with the operator's role, not by name and user name only.
-    const ROLE_WORD = { INVESTIGATOR: 'Investigator', SUPERVISOR: 'Supervisor', TECHNICIAN: 'Technician' } as const;
     for (const operator of OPERATORS) {
-      expect(screen.getByTestId(`login-demo-operator-${operator.username}`).props.accessibilityLabel).toBe(
-        `${operator.displayName}, user name ${operator.username}, ${ROLE_WORD[operator.role]}`,
-      );
+      expect(screen.queryByTestId(`login-demo-operator-${operator.username}`)).toBeNull();
+      expect(screen.queryByText(operator.username)).toBeNull();
     }
-    fireEvent.press(screen.getByTestId('login-demo-operator-andi.pratama'));
-    expect(screen.getByTestId('login-username').props.value).toBe('andi.pratama');
-    expect(screen.getByTestId('login-password').props.value).toBe(DEMO_PASSWORD);
-    // The next keystroke releases the override: the input is uncontrolled again (DR-S75-5).
-    fireEvent.changeText(screen.getByTestId('login-password'), `${DEMO_PASSWORD}x`);
-    expect(screen.getByTestId('login-password').props.value).toBeUndefined();
-    fireEvent.changeText(screen.getByTestId('login-password'), DEMO_PASSWORD);
-    await act(async () => {
-      fireEvent.press(screen.getByTestId('login-submit'));
-    });
-    await waitFor(() => expect(screen.getByTestId('screen-home')).toBeTruthy());
-    expect(sim.store.getState().auth.operatorId).toBe('OPR-002');
+    // The Login still works without them: the form is there to type into (L4, L5).
+    expect(screen.getByTestId('login-username')).toBeTruthy();
+    expect(screen.getByTestId('login-password')).toBeTruthy();
   });
 });
 

@@ -1,12 +1,14 @@
 // Fix wave I, driver C - the pure rule of `source-state.ts` (re-gate 70 finding G70b-06; the Home
 // microphone item of re-gate 75; contract note `contract_wave_i_a2.md` §4).
 //
-// `checkedAt` is a PLANNED additive member of a capture device (the name is fixed by the contract note,
-// the shared schema does not carry it yet), so the rule is held here on plain state objects.
+// `checkedAt` and `reach` are typed members of a capture device (P10). Audit row 192 (M3-08 R3, D173): the
+// up/down of a source is the shared reader's (`slotSourceOf` / `isSlotSourceUp`, P12/P13).
+import * as fs from 'fs';
+import * as path from 'path';
 import { describe, expect, it, jest } from '@jest/globals';
-import { createIdleState, DEFAULT_SEED, type SimState } from '@dems/shared/sim';
+import { createIdleState, DEFAULT_SEED, isSlotSourceUp, selectorInForce, slotSourceOf, SlotSourceState, type SimState } from '@dems/shared/sim';
 import { realCaptureView } from '@/features/devices/camera-preview';
-import { cameraStreamWordApplies, checkedFactOf, micLineDeviceIdOf, micLineReportOf, primaryMicReportOf, realCaptureSources, sourceStateWord } from './source-state';
+import { cameraLineReportOf, cameraStreamWordApplies, checkedFactOf, deviceReportOf, micLineDeviceIdOf, micLineReportOf, primaryMicReportOf, realCaptureSources, sourceStateWord } from './source-state';
 
 jest.mock('@shopify/react-native-skia', () =>
   jest.requireActual<typeof import('@/components/media/testing/skia-mock')>('@/components/media/testing/skia-mock').createSkiaMock(),
@@ -21,12 +23,13 @@ function marked(state: SimState, marks: Readonly<Record<string, Mark>>): SimStat
 }
 const word = (state: SimState, channel: 'AUDIO-01' | 'AUDIO-02', live = true) => sourceStateWord(micLineReportOf(state, channel), live);
 
-describe('checkedFactOf: the planned `checkedAt` member, read defensively', () => {
+describe('checkedFactOf: the typed `checkedAt` member (P10), still defensive about wire junk', () => {
   it('absent = the Core does not state it; null = not read since the Core started; a number = read', () => {
     expect(checkedFactOf({ id: 'MIC-01' })).toBeNull();
     expect(checkedFactOf({ id: 'MIC-01', checkedAt: null })).toBe(false);
     expect(checkedFactOf({ id: 'MIC-01', checkedAt: 1_791_636_968_000 })).toBe(true);
-    expect(checkedFactOf({ id: 'MIC-01', checkedAt: 'yesterday' })).toBeNull();
+    // Row 192: the member is typed now; junk can still arrive over the wire (an untyped JSON body).
+    expect(checkedFactOf(JSON.parse('{"id":"MIC-01","checkedAt":"yesterday"}'))).toBeNull();
     expect(checkedFactOf(undefined)).toBeNull();
   });
 });
@@ -117,5 +120,68 @@ describe('realCaptureSources is the rule of `realCaptureView` (one rule, two mod
     for (const devices of lists) for (const live of [true, false]) expect([devices, live, realCaptureSources(devices, live)]).toEqual([devices, live, realCaptureView(devices, live)]);
     expect(realCaptureSources([{ sourceClass: 'DEVELOPMENT' }], true)).toBe(true);
     expect(realCaptureSources([{}], true)).toBe(false);
+  });
+});
+
+// Audit row 192 (M3-08 R3, D173): the selector's source words read the ONE shared reader. Up/down is
+// `isSlotSourceUp(slotSourceOf(...))`; the words on top are this module's (cause, "Not checked", "On").
+describe('row 192: source-state reads the shared slotSourceOf / isSlotSourceUp', () => {
+  const NOW = 1_791_636_968_000;
+  const cameraOf = (state: SimState, trackId: 'VIDEO-01' | 'VIDEO-02') => selectorInForce(state).cameras.find((line) => line.trackId === trackId)?.deviceId ?? '';
+
+  it('a stated NOT_REACHABLE is "Not reachable" though the registry says online (P10; before: "Reachable")', () => {
+    const base = idle();
+    const cam = cameraOf(base, 'VIDEO-01');
+    const state = marked(base, { [cam]: { ...FAKE, online: true, checkedAt: NOW, reach: 'NOT_REACHABLE' }, 'MIC-01': { ...FAKE, online: true, checkedAt: NOW, reach: 'NOT_REACHABLE' } });
+    expect(sourceStateWord(cameraLineReportOf(state, 'VIDEO-01'), true)).toMatchObject({ kind: 'NOT_REACHABLE', key: 'common.developmentRoster.notReachable', tone: 'danger' });
+    expect(word(state, 'AUDIO-01').kind).toBe('NOT_REACHABLE');
+    // The sheet option (a device read alone) says the same.
+    expect(sourceStateWord(deviceReportOf(state, cam, 'CAMERA'), true).kind).toBe('NOT_REACHABLE');
+  });
+
+  it('a stated REACHABLE is a checked fact: "Reachable" with no `checkedAt` number (as web row 129 R7 and roster row 190)', () => {
+    const base = idle();
+    const state = marked(base, { [cameraOf(base, 'VIDEO-01')]: { ...FAKE, online: true, checkedAt: null, reach: 'REACHABLE' } });
+    expect(sourceStateWord(cameraLineReportOf(state, 'VIDEO-01'), true)).toMatchObject({ kind: 'REACHABLE', tone: 'success' });
+  });
+
+  it('the report carries the reader\'s slot state, on camera and microphone lines', () => {
+    const base = idle();
+    const cam = cameraOf(base, 'VIDEO-02');
+    const state = marked(base, { [cam]: { ...FAKE, reach: 'NOT_REACHABLE' }, 'MIC-02': { ...FAKE, online: false } });
+    const selector = selectorInForce(state);
+    expect(cameraLineReportOf(state, 'VIDEO-02').source).toBe(slotSourceOf(selector, state.captureDevices.devices, 'VIDEO-02').state);
+    expect(cameraLineReportOf(state, 'VIDEO-02').source).toBe(SlotSourceState.NOT_REACHABLE);
+    expect(micLineReportOf(state, 'AUDIO-02').source).toBe(SlotSourceState.OFFLINE);
+    expect(micLineReportOf(state, 'AUDIO-01').source).toBe(slotSourceOf(selector, state.captureDevices.devices, 'MIC-01').state);
+  });
+
+  it.each([
+    ['online, no reach', { online: true }],
+    ['online, REACHABLE', { online: true, reach: 'REACHABLE' }],
+    ['online, NOT_REACHABLE', { online: true, reach: 'NOT_REACHABLE' }],
+    ['offline, REACHABLE', { online: false, reach: 'REACHABLE' }],
+    ['offline, no reach', { online: false }],
+  ])('%s: the word is down exactly when isSlotSourceUp says so', (_name, facts) => {
+    const base = idle();
+    const state = marked(base, { [cameraOf(base, 'VIDEO-01')]: { ...FAKE, checkedAt: NOW, ...facts } });
+    const up = isSlotSourceUp(slotSourceOf(selectorInForce(state), state.captureDevices.devices, 'VIDEO-01'));
+    expect(sourceStateWord(cameraLineReportOf(state, 'VIDEO-01'), true).kind === 'NOT_REACHABLE').toBe(!up);
+  });
+
+  it('a camera line naming a device of another kind is down (the reader reads it OFFLINE)', () => {
+    const base = idle();
+    const state: SimState = { ...base, captureConfig: { ...base.captureConfig, cameras: base.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'MIC-01' } : line)) } };
+    expect(cameraLineReportOf(state, 'VIDEO-01').source).toBe(SlotSourceState.OFFLINE);
+    expect(sourceStateWord(cameraLineReportOf(state, 'VIDEO-01'), true)).toMatchObject({ kind: 'NOT_REACHABLE', tone: 'danger' });
+  });
+
+  it('no local source rule and no checkedAt cast remain in source-state.ts', () => {
+    const source = fs.readFileSync(path.join(__dirname, 'source-state.ts'), 'utf8');
+    expect(source).not.toMatch(/as \{ readonly checkedAt\?: unknown \}/);
+    expect(source).not.toMatch(/rosterDeviceState\(\{ online: report\.online, cause: report\.cause \}\)/);
+    expect(source).not.toMatch(/cameras\.find\(\(line\) => line\.trackId === trackId\)/);
+    expect(source).toMatch(/isSlotSourceUp\(/);
+    expect(source).toMatch(/slotSourceOf\(/);
   });
 });

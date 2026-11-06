@@ -18,9 +18,19 @@
  * the reason "Checking your permissions…" (`hint`), and a deep link to the wizard waits for the role
  * (`useStartEntryGuard` returns `'checking'`), then applies the same gate. Before, the buttons were
  * disabled with no reason while the deep link opened the wizard ("the Core decides").
+ *
+ * M3-20 (G-12, decision D163; audit row 212): in Live mode the gate reads the Live session's OWN
+ * effective permission list (`session.permissions`, register V5: the list the Core sent at sign-in
+ * and replaces with every `session.updated`), not the role alone. That list already holds the
+ * identity extras (D55, V3: the vendor `root` account holds CAPTURE_CONFIG whatever its role), so
+ * the tablet gives `root` the capture selector and camera search as the Core and the web
+ * (`usePermission(live, CAPTURE_CONFIG)`) do. The Simulated lane, and Live before a session
+ * exists, keep `roleHas` on the store's role. `known` (and so "Checking your permissions…") still
+ * follows the store's role, and the sentence still names the roles of the matrix.
  */
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLiveSelector } from '@dems/shared/live';
 import { roleHas, selectRole, useSim, type OperatorRole, type Permission } from '@dems/shared/sim';
 import { requiredRoleFor, requiredRolesFor, roleNamesText } from '@/runtime';
 
@@ -37,12 +47,30 @@ export interface RoleGateState {
   readonly requiredRoles: readonly OperatorRole[];
 }
 
-/** The gate for a role and a permission (pure; the hook below reads the role from the store). */
-export function roleGateFor(role: OperatorRole | null, permission: Permission): RoleGateState {
-  const allowed = roleHas(role, permission);
+/**
+ * The gate for an operator (pure; M3-20). `sessionPermissions` is the Live session's own effective
+ * list (V5), or null in the simulator and while no Live session exists: then the role decides
+ * (`roleHas`). With a list, the list decides, so an identity grant (D55) allows and a permission
+ * the Core withheld locks, whatever the role's matrix row says.
+ */
+export function operatorPermissionGate(
+  role: OperatorRole | null,
+  permission: Permission,
+  sessionPermissions: readonly string[] | null,
+): RoleGateState {
+  const allowed = role !== null && (sessionPermissions !== null ? sessionPermissions.includes(permission) : roleHas(role, permission));
   const known = role !== null;
   return { allowed, known, locked: known && !allowed, requiredRole: requiredRoleFor(permission), requiredRoles: requiredRolesFor(permission) };
 }
+
+/** The gate for a role and a permission, by the role alone (pure; the simulator's rule). */
+export function roleGateFor(role: OperatorRole | null, permission: Permission): RoleGateState {
+  return operatorPermissionGate(role, permission, null);
+}
+
+/** The Live session's own permission list (a member of the source: a stable reference), or null. */
+const readSessionPermissions = (live: { readonly session: { readonly permissions: readonly string[] } | null } | null): readonly string[] | null =>
+  live?.session?.permissions ?? null;
 
 export interface RoleGate extends RoleGateState {
   /** "Requires the X role" while locked, "Checking your permissions…" while the role is unknown, else null. */
@@ -52,13 +80,14 @@ export interface RoleGate extends RoleGateState {
 export function useRoleGate(permission: Permission): RoleGate {
   const { t } = useTranslation();
   const role = useSim(selectRole);
+  const sessionPermissions = useLiveSelector(readSessionPermissions);
   return useMemo(() => {
-    const gate = roleGateFor(role, permission);
+    const gate = operatorPermissionGate(role, permission, sessionPermissions);
     const hint = !gate.known
       ? t('mobile.rbac.checking')
       : gate.locked && gate.requiredRole !== null
         ? t('common.rbac.requiresRole', { role: roleNamesText(t, gate.requiredRoles) })
         : null;
     return { ...gate, hint };
-  }, [role, permission, t]);
+  }, [role, permission, sessionPermissions, t]);
 }

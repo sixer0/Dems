@@ -29,8 +29,17 @@
  *
  * The verdict is the Core's `ok` and nothing else: no row, check or finding is ever combined into
  * it, and `ok` is PASS only for the boolean `true`.
+ *
+ * D5 (row 208, M3-16 R3; the web's row 159, D119): a `/2.1` package answers its pair audio files as
+ * `files[]` lines AFTER the camera lines (`AUDIO-0N`); such a line is worded as the audio file of
+ * pair N (`v2FileLabel`: "AUDIO-02 audio file · in VIDEO-02" when the answer lists that camera file)
+ * - never as a camera file. The V-04 codes `AUDIO_FILE_MISSING` / `AUDIO_FILE_UNREADABLE` are read
+ * into `fileFindings` and worded (`v2FileFindingLine`); the notice `AUDIO_TRACKS_MISSING` is a
+ * statement OF the signed manifest (`V2_STATEMENT_NOTICES`, E9 / R159-4), so the view does not list
+ * it under what the signature does not cover. A legacy answer has none of these: it reads as before.
  */
 import type { TFunction } from 'i18next';
+import { AUDIO_TRACK_IDS, VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain';
 import { en } from '@dems/shared/i18n';
 
 export type V2Verdict = 'PASS' | 'FAIL';
@@ -128,6 +137,20 @@ export interface V2Notice {
   readonly report: string;
 }
 
+/** Row 208 (M3-16 R3; web row 159, D119): a V-04 finding that a pair audio file is missing or cannot be read. */
+export type V2FileFindingCode = 'AUDIO_FILE_MISSING' | 'AUDIO_FILE_UNREADABLE';
+export const V2_FILE_FINDING_CODES: readonly V2FileFindingCode[] = ['AUDIO_FILE_MISSING', 'AUDIO_FILE_UNREADABLE'];
+export interface V2FileFinding {
+  readonly code: V2FileFindingCode;
+  readonly trackId: AudioTrackId;
+}
+
+/**
+ * Row 208 (M3-16 R3, E9; web R159-4, D30 K-3): the notices that are statements OF the signed manifest
+ * (it says what the seal knew), not gaps of the signature: drawn under `statementsTitle`, with the Core's own line.
+ */
+export const V2_STATEMENT_NOTICES: readonly string[] = ['AUDIO_TRACKS_MISSING'];
+
 export interface VerifyV2Answer {
   /** The Core's verdict: PASS only for `ok === true`. */
   readonly verdict: V2Verdict;
@@ -159,6 +182,8 @@ export interface VerifyV2Answer {
   readonly chainBreaks: readonly { readonly trackId: string; readonly fromSeq: number }[];
   /** Pending members that were present but not of the expected shape (dropped). */
   readonly malformed: readonly string[];
+  /** Row 208 (M3-16 R3): the pair audio files V-04 found missing or unreadable, in pair order; empty when none is named. */
+  readonly fileFindings: readonly V2FileFinding[];
 }
 
 const FAILURE_CLASSES: readonly string[] = ['TAMPERED', 'CORRUPT', 'MISSING', 'UNREADABLE'];
@@ -166,7 +191,8 @@ const CHECK_STATUSES: readonly string[] = ['PASS', 'FAIL', 'SKIPPED'];
 const SKIP_REASONS: readonly string[] = ['BLOCKED', 'KEY_UNAVAILABLE', 'OUT_OF_SCOPE'];
 const SOURCE_CLASSES: readonly string[] = ['PRODUCTION', 'LOCAL_DEVICE', 'FAKE'];
 const MAX_INTERVALS = 4096;
-const MAX_NOTICES = 8;
+/** The contract's bound (`EvidenceVerifyResultSchema.notices`, `.max(10)` = one per `VERIFY_NOTICE` code; no shared constant exists). Row 206 (M3-15 E3, D163) raised it from 8, as web rows 159 (D119) and 160 (D133) did; a test pins it to the code count. */
+const MAX_NOTICES = 10;
 const NOTICE_CODE = /^[A-Z][A-Z0-9_]{2,63}$/;
 const CHECK_ID = /^V-\d{2}$/;
 /** The largest report this reader walks (a hostile or broken answer must not be drawn at any length). */
@@ -325,7 +351,8 @@ function readSources(value: unknown, malformed: string[]): V2Sources | null {
   if (code === 'NOT_TRUSTWORTHY' || code === 'UNKNOWN') return development === null ? NOT_TRUSTWORTHY_SOURCES : broken();
   // Stated only when the code and the recomputed boolean agree; `null` is never production.
   const state: V2SourcesState | null = code === 'DEVELOPMENT' && development === true ? 'DEVELOPMENT' : code === 'DECLARED_PRODUCTION' && development === false ? 'DECLARED_PRODUCTION' : null;
-  if (state === null || !Array.isArray(value.tracks) || value.tracks.length > 2 || !Array.isArray(value.audioIntervals) || value.audioIntervals.length > MAX_INTERVALS) return broken();
+  // D60 domino (G-11, row 206; web row 159 R159-6): a package names up to four camera files, so up to four source lines (the contract's `.max(VIDEO_TRACK_IDS.length)`).
+  if (state === null || !Array.isArray(value.tracks) || value.tracks.length > VIDEO_TRACK_IDS.length || !Array.isArray(value.audioIntervals) || value.audioIntervals.length > MAX_INTERVALS) return broken();
   const tracks: V2Sources['tracks'][number][] = [];
   for (const entry of value.tracks) {
     const trackId = isRecord(entry) ? text(entry.trackId) : null;
@@ -432,7 +459,49 @@ export function readVerifyV2(answer: unknown): VerifyV2Answer | null {
     failedFragmentCount,
     ...fragmentsOf(checks, answer.fragments, malformed),
     malformed: [...new Set(malformed)],
+    fileFindings: fileFindingsOf(checks),
   };
+}
+
+const isAudioTrack = (value: unknown): value is AudioTrackId => (AUDIO_TRACK_IDS as readonly unknown[]).includes(value);
+
+/** Row 208 (M3-16 R3): the V-04 findings that name a pair audio file as missing or unreadable, once per file and code, in pair order. */
+function fileFindingsOf(checks: readonly V2Check[] | null): readonly V2FileFinding[] {
+  const found = new Map<string, V2FileFinding>();
+  for (const check of checks ?? []) {
+    if (check.status !== 'FAIL') continue;
+    for (const finding of check.findings) {
+      if (!(V2_FILE_FINDING_CODES as readonly string[]).includes(finding.code) || !isAudioTrack(finding.trackId)) continue;
+      const entry: V2FileFinding = { code: finding.code as V2FileFindingCode, trackId: finding.trackId };
+      found.set(`${entry.trackId}#${entry.code}`, entry);
+    }
+  }
+  return [...found.values()].sort((a, b) => (a.trackId === b.trackId ? (a.code < b.code ? -1 : 1) : a.trackId < b.trackId ? -1 : 1));
+}
+
+/** Pair N of an audio track id and its camera, by number (`CAPTURE_PAIRS`, D27); null for any other id. */
+export function v2AudioPairOf(trackId: string): { readonly pair: number; readonly camera: VideoTrackId } | null {
+  if (!isAudioTrack(trackId)) return null;
+  const index = AUDIO_TRACK_IDS.indexOf(trackId);
+  return { pair: index + 1, camera: VIDEO_TRACK_IDS[index] as VideoTrackId };
+}
+
+/**
+ * The label of a file row (row 208, M3-16 R3, E6): a camera file "VIDEO-01 file" as before; an audio file
+ * of a pair "AUDIO-02 audio file · in VIDEO-02" when the answer lists that camera file, else "· Pair 2".
+ */
+export function v2FileLabel(file: Pick<V2FileRow, 'trackId'>, answer: Pick<VerifyV2Answer, 'files'>, t: TFunction): string {
+  const pair = v2AudioPairOf(file.trackId);
+  if (pair === null) return t('evidence.verifyV2.file', { track: file.trackId });
+  return answer.files.some((entry) => entry.trackId === pair.camera)
+    ? t('evidence.verifyV2.audioFile', { track: file.trackId, camera: pair.camera })
+    : t('evidence.verifyV2.audioFileNoCamera', { track: file.trackId, pair: pair.pair });
+}
+
+/** The sentence of one file-level finding (row 208, M3-16 R3, E6 `fileFinding.*`), drawn under "Where it failed". */
+export function v2FileFindingLine(finding: V2FileFinding, t: TFunction): string {
+  const pair = v2AudioPairOf(finding.trackId);
+  return t(`evidence.verifyV2.fileFinding.${finding.code}`, { track: finding.trackId, pair: pair?.pair ?? '' });
 }
 
 /**

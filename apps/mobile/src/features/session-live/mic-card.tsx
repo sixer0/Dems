@@ -27,14 +27,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { isLevelNotMeasured, meterInputOfChannel, useSim, type MicStatus } from '@dems/shared/sim';
+import { capturePairOfMicChannel, isLevelNotMeasured, meterInputOfChannel, useSim, type MicStatus } from '@dems/shared/sim';
 import { MicStateTone, fontFamily, palette, toneHex, typography } from '@dems/shared/tokens';
 import { DbfsMeter, type MeterVariant } from '@/components/composed/dbfs-meter';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { StatusChip } from '@/components/kit';
 import { MicInputSourceBadge } from '@/features/capture-selector/development-source-badge';
 import { useConnectingCameras } from './rec-indicator';
-import { useMicSourceRole } from './use-mic-source';
 import { triggerHaptic, useMotionPolicy } from '@/motion';
 import { useAnimatedReaction } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -156,27 +155,37 @@ export interface MicCardProps extends Omit<MicMeterProps, 'testID'> {
 }
 
 /**
- * MB 4 MIC card: dot chip, meter bars and the dBFS readout.
+ * MB 4 MIC card: dot chip, pair chip(s), meter bars and the dBFS readout.
  *
- * Task 3 M5 (row 73; ux §3.2 step 1, register MB-03): while a session records, the card says whether
- * its input is the one inside `AUDIO-01` ("Active") or the hot standby ("Standby"). The words are the
- * session's pair as the store holds it (D105: not "Primary", which stays the configured role on
- * Devices and can differ after a switch); nothing on the card flips them. The active card is
- * outlined in gold with the always-mounted `SelectionGlow` (E-15: the border is there in both
- * states and the glow is the card's LAST child, so a switch changes two colours and mounts nothing).
+ * Audit row 210 (M3-17; register A3 of masterplan/01_specs_m3.md; D134, D138 R157-1, as the web's row W3T
+ * dashboard tiles and row 157 Session Monitor halves): the card names its PAIR SLOT, "Mic N (Camera N)"
+ * (`devices.pairs.micOfCamera`), and Pair 1 adds the chip "Transcribed" (`devices.pairs.transcribed`). The slot
+ * is fixed by number (D5, `CAPTURE_PAIRS`), so it is named with or without an input and whether or not a
+ * session records. The role words Active / Standby (the role keys of the shared `session.audioSource` catalogue)
+ * are no longer shown: this file reads none of them.
+ *
+ * Audit row 211 (M3-18; D191, D5): the gold outline marks PAIR 1, the transcribed pair, as the web Session
+ * monitor does (`audio-panel.tsx` `data-transcribed` on Pair 1, `session-monitor.css` gold border; row 157).
+ * It is fixed by the channel number, like the "Transcribed" chip beside it, and no longer follows the store's
+ * active input (the unlabelled task 3 M5 / row 73 E-15 mark of the input inside `AUDIO-01`, which op 81's
+ * retirement left without meaning). The card no longer reports `accessibilityState.selected`: the web sets no
+ * selection either, and the chip says "Transcribed" in words. `SelectionGlow` stays always mounted as the
+ * card's LAST child and the border stays in both states (E-15: a state change is a colour change, nothing mounts).
  */
 export function MicCard({ mic, style, ...meter }: MicCardProps) {
   const { t } = useTranslation();
   const tone = MicStateTone[mic.state];
   const label = t(MIC_CHANNEL_NAME_KEY[mic.channel]); // D61 (2026-11-04): four channels
-  const sourceRole = useMicSourceRole(mic.id);
+  // Row 210 (M3-17, A3): the pair slot of the card, by channel number (D5); only Pair 1 is transcribed.
+  const pair = capturePairOfMicChannel(mic.channel).pair;
   // Wave H closing pass Z2 (ruling D137): the card is a LINE. The microphone on it is the one the capture
   // configuration names for this channel (the open session's snapshot first) - not `mic.deviceId`, the
   // channel record's constant `MIC-01` / `MIC-02`, which no selector edit moves.
   // Task 4 row 170: `null` when the channel has no input (no complete pair) - the card then draws no badge of a
   // device and its state line reads "No microphone input".
   const lineInput = useSim((s) => meterInputOfChannel(micLinesInForce(s), mic.id));
-  const active = sourceRole === 'ACTIVE';
+  // Audit row 211 (D191): the gold outline marks Pair 1 (transcribed), as the web Session monitor; fixed by number.
+  const transcribed = pair === 1;
   const levelState = useMicLevelState(mic.id);
   // While the cameras connect the meter's place says CONNECTING and nothing is recorded yet: no second word.
   const connecting = useConnectingCameras();
@@ -191,24 +200,21 @@ export function MicCard({ mic, style, ...meter }: MicCardProps) {
   return (
     <Surface
       variant="secondary"
-      style={[styles.card, active ? styles.cardActive : null, style]}
+      style={[styles.card, transcribed ? styles.cardTranscribed : null, style]}
       testID={`monitor-mic-${mic.channel}`}
-      accessibilityState={{ selected: active }}
     >
       <View style={styles.header}>
         <Chip size="sm" variant="soft" color={tone === 'danger' ? 'danger' : tone === 'warning' ? 'warning' : 'success'}>
           <View style={[styles.dot, { backgroundColor: toneHex[tone] }]} />
           <Chip.Label>{label}</Chip.Label>
         </Chip>
-        {sourceRole !== null ? (
-          <StatusChip
-            size="sm"
-            tone={active ? 'success' : 'default'}
-            label={t(`session.audioSource.role.${sourceRole}`)}
-            icon={null}
-            testID={`monitor-mic-role-${mic.channel}`}
-          />
-        ) : null}
+        {/* Row 210 (M3-17, A3; D138 R157-1): the pair slot, never a role word. */}
+        <View style={styles.pairChips}>
+          <StatusChip size="sm" tone="default" label={t('devices.pairs.micOfCamera', { n: pair })} icon={null} testID={`mic-card-pair-${mic.id}`} />
+          {transcribed ? (
+            <StatusChip size="sm" tone="accent" label={t('devices.pairs.transcribed')} icon={null} testID={`mic-card-transcribed-${mic.id}`} />
+          ) : null}
+        </View>
       </View>
       {/* Pass D2 (ux §8f.2; row 138's request): the one badge; no node unless the Core sent the development class. */}
       {lineInput === null ? null : <MicInputSourceBadge inputId={lineInput} testID={`monitor-mic-source-${mic.channel}`} />}
@@ -225,7 +231,7 @@ export function MicCard({ mic, style, ...meter }: MicCardProps) {
       </Text>
       )}
       {/* E-15 (W93-4): always mounted, last; React sets its opacity. */}
-      <SelectionGlow selected={active} radius={CARD_RADIUS} testID={`monitor-mic-glow-${mic.channel}`} />
+      <SelectionGlow selected={transcribed} radius={CARD_RADIUS} testID={`monitor-mic-glow-${mic.channel}`} />
     </Surface>
   );
 }
@@ -234,9 +240,10 @@ const CARD_RADIUS = 12;
 
 const styles = StyleSheet.create({
   card: { flex: 1, borderRadius: CARD_RADIUS, padding: 12, gap: 10, ...ROW_CARD_BORDER },
-  cardActive: { borderColor: palette.gold },
+  cardTranscribed: { borderColor: palette.gold }, // row 211 (D191): Pair 1, as the web's transcribed half
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  pairChips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 4, flexShrink: 1 },
   /** The meter's place while the cameras connect (the `card` meter's height; no canvas, no level). */
   connecting: { minHeight: 64, alignItems: 'center', justifyContent: 'center' },
   levelState: {

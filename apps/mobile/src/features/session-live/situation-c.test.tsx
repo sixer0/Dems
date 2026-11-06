@@ -14,21 +14,22 @@
 import './testing/monitor-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SESSION_CAPTURE_CHECKPOINTS_EXAMPLE } from '@dems/shared/api';
-import { captureFaultSentence, type SimAlert, type SimState } from '@dems/shared/sim';
+import { captureFaultSentence, type Sim, type SimAlert, type SimState } from '@dems/shared/sim';
 import { camerasNotConnectedOf, captureFaultLine, deviceLabel, failedStartClosingOf, failedStartOf } from '@/features/capture-selector/capture-notices-model';
 import { getMissingKeys, resetMissingKeys, i18n } from '@/i18n';
 import { resetMotionStateForTests } from '@/motion';
 import { RuntimeTestProviders, createTestSim } from '@/runtime/testing/test-sim';
-import { CaptureStartNotice, FailedStartNotice } from './capture-start-notice';
+import { CaptureStartNotice, FailedStartNotice, pairNoticeTestId } from './capture-start-notice';
 import { statusStrip } from './session-live.math';
 import { renderMonitorApp, settle, type MonitorHarness, type MonitorHarnessOptions } from './testing/monitor-harness';
 import { I18nextProvider } from 'react-i18next';
 import { CaptureCheckpoints } from './capture-checkpoints';
 import { captureCheckpointsOf, checkpointAge, ownCaptureOf } from './own-capture';
 import { unmountBeforeTheHooksOfThisGroup } from '@/runtime/testing/scoped-cleanup';
+import { renderLiveMonitor, resetLiveMonitorBed, type LiveMonitorBed } from './testing/live-monitor-bed';
 
 // The cases this file held before the consolidation of the suite (D233), under their own hooks.
 describe('situation c', () => {
@@ -403,4 +404,94 @@ describe('checkpoints: what the Core states of its durable fragments', () => {
     expect(checkpointAge(200_000, 0)).toEqual({ unit: 'lastMinutes', minutes: 3 });
   });
 });
+});
+
+// Audit row 187 (M3-06 R2; S62 register N1-N4, D132): the Session Live notice band shows the Core's
+// PAIRED_MIC_MISSING advisory, one WARNING banner per camera (`session-live-pair-notice-VIDEO-0N`), as N3
+// plus N4 for Pair 1. On the Live bed the engine raises and resolves it through the Core's own INTERNAL
+// pair (`raiseCaptureWarning` / `clearCaptureWarning`), and the band follows the replicated `alerts` slice.
+describe('a camera recording without the microphone of its pair (row 187, M3-06 R2)', () => {
+  unmountBeforeTheHooksOfThisGroup();
+
+  let bed: LiveMonitorBed | null = null;
+  beforeEach(async () => {
+    await resetLiveMonitorBed();
+    resetMissingKeys();
+  });
+  afterEach(() => {
+    bed?.stop();
+    bed = null;
+  });
+
+  const N3_CAM1 = 'Camera 1 (CAM-01) is recording without the microphone of its pair: the audio track of this camera is silent. The recording continues.';
+  const N3_CAM2 = 'Camera 2 (CAM-02) is recording without the microphone of its pair: the audio track of this camera is silent. The recording continues.';
+  const N4 = 'This is Pair 1, the transcribed pair: the session has no transcript.';
+  type Warning = Parameters<Sim['actions']['raiseCaptureWarning']>[0];
+  const PAIR_1 = { code: 'PAIRED_MIC_MISSING', subject: 'CAM-01', trackId: 'VIDEO-01', micChannel: 'MIC-01', micMissing: 'NOT_ASSIGNED', transcribed: true } as unknown as Warning;
+  const PAIR_2 = { code: 'PAIRED_MIC_MISSING', subject: 'CAM-02', trackId: 'VIDEO-02', micChannel: 'MIC-02', micMissing: 'NOT_OPENED' } as unknown as Warning;
+  /** The `status` (tone) the band hands the Alert whose testID is given. */
+  const toneOf = (testID: string) => screen.UNSAFE_root.findAll((node) => node.props.testID === testID && typeof node.props.status === 'string')[0]?.props.status;
+  const pairBanners = () => screen.queryAllByTestId(/^session-live-pair-notice-/);
+
+  it('Live bed: present while the alert is active (Pair 1 says N3 then N4, WARNING, no action), gone once the Core resolves it', async () => {
+    const b = await renderLiveMonitor();
+    bed = b;
+    await b.openMonitor();
+    expect(screen.getByTestId('screen-session-live')).toBeTruthy();
+    expect(pairBanners()).toHaveLength(0);
+
+    await b.changeOnCore((core) => core.sim.actions.raiseCaptureWarning(PAIR_1));
+    expect(b.state().alerts.filter((a) => a.active && a.params?.['reason'] === 'PAIRED_MIC_MISSING')).toHaveLength(1);
+    const pair1 = screen.getByTestId('session-live-pair-notice-VIDEO-01');
+    expect(within(pair1).getByText(`${N3_CAM1} ${N4}`)).toBeTruthy();
+    expect(toneOf('session-live-pair-notice-VIDEO-01')).toBe('warning');
+    // No title of its own and nothing to press: the recording continues, a search fixes nothing.
+    expect(within(pair1).queryAllByRole('button')).toHaveLength(0);
+    // The banner sits in the monitor's banner slot, beside the session-start notice.
+    expect(within(screen.getByTestId('monitor-banner-slot')).getByTestId('session-live-pair-notice-VIDEO-01')).toBeTruthy();
+
+    // Another pair: N3 only, no Pair 1 sentence.
+    await b.changeOnCore((core) => core.sim.actions.raiseCaptureWarning(PAIR_2));
+    const pair2 = screen.getByTestId('session-live-pair-notice-VIDEO-02');
+    expect(within(pair2).getByText(N3_CAM2)).toBeTruthy();
+    expect(within(pair2).queryByText(/Pair 1/)).toBeNull();
+    expect(toneOf('session-live-pair-notice-VIDEO-02')).toBe('warning');
+    expect(pairBanners()).toHaveLength(2);
+
+    // Resolved on the Core: gone at the first state update after it, the other pair stays.
+    await b.changeOnCore((core) => core.sim.actions.clearCaptureWarning(PAIR_1));
+    expect(screen.queryByTestId('session-live-pair-notice-VIDEO-01')).toBeNull();
+    expect(screen.getByTestId('session-live-pair-notice-VIDEO-02')).toBeTruthy();
+    await b.changeOnCore((core) => core.sim.actions.clearCaptureWarning(PAIR_2));
+    expect(pairBanners()).toHaveLength(0);
+    // The camera-not-connected band is not drawn by this notice.
+    expect(screen.queryByTestId('monitor-camera-not-connected')).toBeNull();
+    expect(getMissingKeys()).toEqual([]);
+  });
+
+  it('drawn alone: a malformed track word keeps the banner (named by its alert id); a MIC device kind draws nothing', () => {
+    const paired = (id: string, params: Record<string, unknown>): SimAlert => ({
+      id,
+      at: 0,
+      severity: 'WARNING',
+      kind: 'SYSTEM',
+      message: 'CAM-03 is recording without the microphone of its pair',
+      active: true,
+      acknowledged: false,
+      resolvedAt: null,
+      target: 'CAM-03',
+      params: { reason: 'PAIRED_MIC_MISSING', deviceId: 'CAM-03', deviceKind: 'CAMERA', ...params },
+    });
+    const test = createTestSim({ scenario: 'recording' });
+    test.sim.store.setState((s) => ({ alerts: [...s.alerts, paired('ALR-000951', { trackId: 'VIDEO-09' }), paired('ALR-000952', { trackId: 'VIDEO-03', deviceKind: 'MIC' })] }));
+    render(
+      <RuntimeTestProviders sim={test.sim}>
+        <CaptureStartNotice />
+      </RuntimeTestProviders>,
+    );
+    expect(pairNoticeTestId({ trackId: 'VIDEO-03', alertId: 'ALR-1' })).toBe('session-live-pair-notice-VIDEO-03');
+    expect(pairBanners().map((node) => node.props.testID)).toEqual(['session-live-pair-notice-ALR-000951']);
+    expect(within(screen.getByTestId('session-live-pair-notice-ALR-000951')).getByText(/^CAM-03 is recording without the microphone of its pair/)).toBeTruthy();
+    expect(screen.queryByTestId('session-live-pair-notice-VIDEO-03')).toBeNull();
+  });
 });

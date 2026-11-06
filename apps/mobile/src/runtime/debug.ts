@@ -17,19 +17,22 @@
  * 4. `core=LIVE|SIMULATED|HEARTBEAT` deep links (backend task W51; 04_client_integration_spec MD-7):
  *    sets the Core link source through `setCoreLinkSource`, so a device check needs no taps through
  *    Settings. The choice is stored like the Settings choice (`dems.mobile.prefs.v1`); a launch with
- *    `core=SIMULATED` puts the default back. At a cold start the launch URL's value is applied
+ *    `core=LIVE` puts the default back (LIVE since 2026-11-05). A stored SIMULATED or HEARTBEAT is
+ *    read as LIVE at the next cold start, so the older sources last only while a link asks for
+ *    them (register L4, L5; RT-1). At a cold start the launch URL's value is applied
  *    BEFORE the runtime builds its data source (`applyLaunchCoreSource`), so a launch with
  *    `core=LIVE` never starts the simulator. In LIVE mode `scenario=` is ignored and logged: it
  *    would call a demo control of the Core server that nobody asked for. Under a literal `__DEV__`
- *    test: in a release build the parameter does nothing.
+ *    test: in a release build the parameter does nothing. A later link that crosses the LIVE
+ *    boundary signs the operator out first (row 224, G172-1), as the removed Settings segment did.
  */
 import { useEffect, type RefObject } from 'react';
 import { Linking } from 'react-native';
-import { liveOf } from '@dems/shared/live';
-import { ScenarioName, sha256Hex, type Sim } from '@dems/shared/sim';
+import { liveOf, settle } from '@dems/shared/live';
+import { ScenarioName, SignOutReason, selectIsSignedIn, sha256Hex, type Sim } from '@dems/shared/sim';
 import type { ConnectionBannerKind } from './connection-banner';
 import type { CoreLinkInfo, CoreLinkSource, RuntimeStatus } from './contract';
-import { CORE_LINK_SOURCES, getCoreLinkSource, setCoreLinkSource } from './core-link';
+import { KNOWN_CORE_LINK_SOURCES, getCoreLinkSource, setCoreLinkSource } from './core-link';
 import { reportRuntimeIssue, runtimeLog, type RuntimeLog } from './log';
 
 const SCENARIOS: ReadonlySet<string> = new Set(Object.values(ScenarioName));
@@ -50,7 +53,8 @@ export function scenarioFromUrl(url: string | null | undefined): ScenarioName | 
 
 /**
  * The Core link source named by a URL's `core` query param, or `null` (pure; MD-7). Only the three
- * source names, exactly as written, are accepted; anything else is ignored.
+ * source names, exactly as written, are accepted; anything else is ignored. The developer link can
+ * still ask for SIMULATED or HEARTBEAT, which the device itself no longer offers.
  */
 export function coreSourceFromUrl(url: string | null | undefined): CoreLinkSource | null {
   if (typeof url !== 'string' || url.length === 0 || url.length > 512) return null;
@@ -62,20 +66,51 @@ export function coreSourceFromUrl(url: string | null | undefined): CoreLinkSourc
   } catch {
     return null;
   }
-  return CORE_LINK_SOURCES.find((source) => source === value) ?? null;
+  return KNOWN_CORE_LINK_SOURCES.find((source) => source === value) ?? null;
 }
+
+/** A `core=` link whose sign-out is still out: a second link meanwhile is ignored (row 224). */
+let coreSwitchPending = false;
 
 /**
  * MD-7: sets the Core link source a URL names. Debug builds only: the literal `__DEV__` test makes
  * Metro drop the block from a release bundle, where the parameter does nothing. A value that is
  * already the source changes and stores nothing.
+ *
+ * Row 224 (G172-1, D188): a change that crosses the LIVE boundary while somebody is signed in signs
+ * the operator out FIRST (operation 5 in LIVE, reason USER), then switches, in the order the removed
+ * Settings segment used (`features/settings/core-link-switch.tsx` `confirm`, HEAD before M3-01). A
+ * failed sign-out is logged and the switch still happens: nobody stays signed in (D80). `sim` is the
+ * source of `SimContext`; without it (the launch URL, before any source exists) nobody can be signed in.
  */
-function applyCoreSourceFromUrl(url: string | null | undefined, origin: 'launch' | 'link'): void {
+function applyCoreSourceFromUrl(url: string | null | undefined, origin: 'launch' | 'link', sim?: Sim): void {
   if (__DEV__) {
     const source = coreSourceFromUrl(url);
-    if (source === null || source === getCoreLinkSource()) return;
-    setCoreLinkSource(source);
-    reportRuntimeIssue('info', 'runtime.debug.core', 'Core link source set from a deep link', { source, origin });
+    const from = getCoreLinkSource();
+    if (source === null || source === from) return;
+    const context = { from, source, origin };
+    const change = (): void => {
+      setCoreLinkSource(source);
+      reportRuntimeIssue('info', 'runtime.debug.core', 'Core link source set from a deep link', context);
+    };
+    // The same rule as `crossesLiveBoundary` (features/settings/settings-model.ts), stated here: the runtime does not import a feature.
+    const crosses = from === 'LIVE' || source === 'LIVE';
+    if (!crosses || sim === undefined || !selectIsSignedIn(sim.store.getState())) {
+      change();
+      return;
+    }
+    if (coreSwitchPending) {
+      reportRuntimeIssue('info', 'runtime.debug.core', 'Core link ignored: a sign-out for an earlier one is still out', context);
+      return;
+    }
+    coreSwitchPending = true;
+    settle(() => sim.actions.signOut(SignOutReason.USER), {
+      fail: (error) => reportRuntimeIssue('warn', 'runtime.debug.core.signOut', error, context),
+      done: () => {
+        coreSwitchPending = false;
+        change();
+      },
+    });
   }
 }
 
@@ -152,7 +187,7 @@ export function useDebugScenarioLinks(sim: Sim, enabled: boolean = __DEV__): voi
       // The launch URL's `core=` is applied once per process (the runtime has usually done it
       // before its first source was built); a later deep link is applied when it arrives.
       if (origin === 'launch') void applyLaunchCoreSource(enabled);
-      else applyCoreSourceFromUrl(url, origin);
+      else applyCoreSourceFromUrl(url, origin, sim);
       const scenario = scenarioFromUrl(url);
       if (scenario === null) return;
       // MD-7: never a scenario in LIVE mode. It is a demo control of the Core server.

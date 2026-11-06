@@ -11,7 +11,10 @@
 // lands on `/pair` (no credential) or `/login` (a credential the Core confirms); leaving LIVE signs out
 // at the Core (operation 5, the switch waits for its answer while the dialog holds) and lands on the
 // simulator's `/login`; Cancel changes nothing; SIMULATED <-> HEARTBEAT stays instant; a release build
-// offers no LIVE at all. The owed sign-out when the link is down is W100's (stated in the last case).
+// offers LIVE (M3-02, RT-1, D163; was "offers no LIVE at all"): unpaired it opens on `/pair`, paired it
+// signs in at the Core, and Settings shows it no Core link control. M3-01 (KD-15, D160): the LIVE-only tablet keeps the three LIVE → SIMULATED
+// guarantees on the paths that remain (the debug `core=` link, the link-down owed sign-out, no
+// control that offers SIMULATED); see the describe "LIVE-only".
 //
 // Import order: the test setup, then the router harness (see their headers).
 import './testing/settings-test-setup';
@@ -23,6 +26,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import { router, type Href } from 'expo-router';
 import { useEffect } from 'react';
+import { Linking } from 'react-native';
 import type { Metrics } from 'react-native-safe-area-context';
 import { promisify } from 'node:util';
 import { CORE_API_EXAMPLES, pickReplicatedState, type AuthSessionInfo, type PairingRedeemed, type ReplicatedState } from '@dems/shared/api';
@@ -37,6 +41,7 @@ import { AppProviders, BootGate } from '@/providers';
 import {
   resetCoreErrorPresenterForTests,
   resetCoreLinkPrefsForTests,
+  setCoreLinkSource,
   resetDebugLaunchForTests,
   useAuth,
   useCoreLink,
@@ -69,7 +74,7 @@ class InertSocket implements SocketLike {
 }
 
 /** What the probe inside the providers saw at its last commit. */
-const probe: { actions: CoreActions | null; sim: Sim | null; signedIn: boolean; source: CoreLinkSource | null } = { actions: null, sim: null, signedIn: false, source: null };
+const probe: { actions: CoreActions | null; sim: Sim | null; signedIn: boolean; source: CoreLinkSource | null; online: boolean } = { actions: null, sim: null, signedIn: false, source: null, online: false };
 
 function Probe() {
   const actions = useCoreActions();
@@ -81,6 +86,7 @@ function Probe() {
     probe.sim = sim;
     probe.signedIn = auth.isAuthenticated;
     probe.source = link.source;
+    probe.online = link.state === 'ONLINE';
   });
   return null;
 }
@@ -249,6 +255,7 @@ beforeEach(async () => {
   probe.sim = null;
   probe.signedIn = false;
   probe.source = null;
+  probe.online = false;
   fake = createFakeTransport({
     epoch: 2,
     revision: 10,
@@ -271,6 +278,7 @@ afterEach(async () => {
 describe('SIMULATED → LIVE (§3.3, AC-C-31)', () => {
   it('selecting LIVE shows the dialog; confirming signs the operator out of the simulator and lands on /pair (no credential)', async () => {
     const engine = createTestSim().sim;
+    setCoreLinkSource('SIMULATED'); // the device default is LIVE since 2026-11-05
     scriptCore(engine);
     const app = mountApp('/login');
     await until(() => probe.actions !== null && probe.source === 'SIMULATED', 'the simulator runtime');
@@ -285,7 +293,8 @@ describe('SIMULATED → LIVE (§3.3, AC-C-31)', () => {
     expect(screen.getByText('You will be signed out and the console reloads. Simulated data and Live data are separate.')).toBeTruthy();
     // Nothing happened yet: still signed in, the source unchanged, nothing sent to the Core server.
     expect(simulator.store.getState().auth.status).toBe('SIGNED_IN');
-    expect(await storedSource()).toBeUndefined();
+    // Nothing was written by the dialog: the store still holds the SIMULATED this test started from.
+    expect(await storedSource()).toBe('SIMULATED');
     expect(fake.calls).toHaveLength(0);
 
     fireEvent.press(screen.getByTestId('settings-core-mode-confirm'));
@@ -303,6 +312,7 @@ describe('SIMULATED → LIVE (§3.3, AC-C-31)', () => {
   it('with a credential the Core confirms, the same switch lands on /login', async () => {
     globalThis.__DEMS_SECURE_STORE_MOCK__.seed(SECURE_ITEM_KEYS.deviceCredential, JSON.stringify(STORED));
     const engine = createTestSim().sim;
+    setCoreLinkSource('SIMULATED'); // the device default is LIVE since 2026-11-05
     scriptCore(engine);
     const app = mountApp('/login');
     await until(() => probe.actions !== null && probe.source === 'SIMULATED', 'the simulator runtime');
@@ -320,6 +330,7 @@ describe('SIMULATED → LIVE (§3.3, AC-C-31)', () => {
 
   it('Cancel changes nothing: still signed in, still SIMULATED, nothing stored, nothing sent', async () => {
     const engine = createTestSim().sim;
+    setCoreLinkSource('SIMULATED'); // the device default is LIVE since 2026-11-05
     scriptCore(engine);
     const app = mountApp('/login');
     await until(() => probe.actions !== null && probe.source === 'SIMULATED', 'the simulator runtime');
@@ -341,28 +352,41 @@ describe('SIMULATED → LIVE (§3.3, AC-C-31)', () => {
     expect(app.getPathname()).toBe('/settings/preferences');
     expect(probe.signedIn).toBe(true);
     expect(probe.source).toBe('SIMULATED');
-    expect(await storedSource()).toBeUndefined();
+    expect(await storedSource()).toBe('SIMULATED');
     expect(fake.calls).toHaveLength(0);
   });
 
-  it('SIMULATED → HEARTBEAT stays instant: no dialog, no sign-out (§3.3 step 1)', async () => {
+  it('the control offers no other segment: nothing to press, no dialog, nothing stored', async () => {
     const engine = createTestSim().sim;
+    setCoreLinkSource('SIMULATED'); // the device default is LIVE since 2026-11-05
     scriptCore(engine);
     const app = mountApp('/login');
     await until(() => probe.actions !== null && probe.source === 'SIMULATED', 'the simulator runtime');
     await signInWith(DEMO_OPERATOR_PASSWORD);
     await openPreferences(app);
 
-    fireEvent.press(screen.getByTestId('settings-core-link-HEARTBEAT'));
+    // LIVE alone: the older sources are not drawn, so no other boundary can be crossed from here.
+    expect(screen.getByTestId('settings-core-link-LIVE')).toBeTruthy();
+    expect(screen.queryByTestId('settings-core-link-HEARTBEAT')).toBeNull();
+    expect(screen.queryByTestId('settings-core-link-SIMULATED')).toBeNull();
     await wait(100);
     expect(screen.queryByTestId('settings-core-mode-dialog')).toBeNull();
-    expect(await storedSource()).toBe('HEARTBEAT');
     expect(probe.signedIn).toBe(true);
     expect(app.getPathname()).toBe('/settings/preferences');
   });
 });
 
-describe('LIVE → SIMULATED (§3.3; CPM1-2)', () => {
+// KD-15 (D160; S62 §3.15 #10): the three cases of `describe('LIVE → SIMULATED (§3.3; CPM1-2)')`
+// that the HOLD deleted, rewritten for the LIVE-only tablet (M3-01). The Settings control draws
+// LIVE alone now, so the boundary is no longer crossed from Settings; what the three cases
+// guaranteed is pinned on the paths that remain:
+//   (1) was "the sign-out (operation 5) is sent once and answered; then SIMULATED, on /login" and
+//       "LIVE → HEARTBEAT crosses the boundary too": the source still changes through the debug
+//       `core=` link (RT-1, debug builds only), and a stored LIVE session is not left behind.
+//   (2) was "the link down: the sign-out ends the session here (D80) … the Core is owed it (W100)":
+//       the debt (D90) is kept by the Live source and paid at the next link-up.
+//   (3) the segment the old cases pressed is gone, and no other control offers SIMULATED.
+describe('LIVE-only: the LIVE → SIMULATED guarantees (§3.3; CPM1-2; KD-15, D160)', () => {
   async function liveSignedIn() {
     await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ coreLinkSource: 'LIVE' }));
     globalThis.__DEMS_SECURE_STORE_MOCK__.seed(SECURE_ITEM_KEYS.deviceCredential, JSON.stringify(STORED));
@@ -370,108 +394,149 @@ describe('LIVE → SIMULATED (§3.3; CPM1-2)', () => {
     expect(engine.actions.signIn(OPERATOR.username, DEMO_OPERATOR_PASSWORD).ok).toBe(true);
     scriptCore(engine);
     const app = mountApp('/login');
-    await until(() => probe.actions !== null && probe.source === 'LIVE' && app.getPathname() === '/login', 'the Login screen of LIVE mode');
+    // The Core link is up before the sign-in: a sign-in while it still connects is refused (CORE_OFFLINE).
+    await until(() => probe.actions !== null && probe.source === 'LIVE' && probe.online && app.getPathname() === '/login', 'the Login screen of LIVE mode, the link up');
     await signInWith(MARKER_PASSWORD);
     await openPreferences(app);
+    expect(coreSession).not.toBeNull();
     return app;
   }
 
-  it('the dialog holds while the Core is asked; the sign-out (operation 5) is sent once and answered; then SIMULATED, on /login', async () => {
-    const app = await liveSignedIn();
-    expect(coreSession).not.toBeNull();
-    const held = fake.hold('signOut');
+  it('(1) a stored LIVE session is not left behind when the debug `core=` link changes the source: the sign-out (operation 5) is sent exactly once', async () => {
+    // The runtime's deep-link listener (`runtime/debug.ts` `useDebugScenarioLinks`), captured so the
+    // test can deliver a warm link the way the system does.
+    const linking = Linking as unknown as { addEventListener: unknown };
+    const originalAddEventListener = linking.addEventListener;
+    const urlListeners: ((event: { url: string }) => void)[] = [];
+    linking.addEventListener = (_type: string, listener: (event: { url: string }) => void) => {
+      urlListeners.push(listener);
+      return { remove: () => void urlListeners.splice(urlListeners.indexOf(listener), 1) };
+    };
+    try {
+      const app = await liveSignedIn();
+      expect(fake.log.requestsOf('signOut')).toHaveLength(0);
+      expect(urlListeners.length).toBeGreaterThan(0);
 
-    fireEvent.press(screen.getByTestId('settings-core-link-SIMULATED'));
-    await wait(20);
-    expect(screen.getByText('Switch to Simulated mode?')).toBeTruthy();
-    fireEvent.press(screen.getByTestId('settings-core-mode-confirm'));
-    await until(() => held.call !== null, 'the sign-out request');
-    // The Core has not answered: the dialog holds, its confirm busy (no spinner yet, LB-1), Cancel disabled,
-    // a press of Cancel keeps the dialog, a second confirm sends nothing.
-    expect(screen.getByTestId('settings-core-mode-dialog')).toBeTruthy();
-    expect(screen.getByTestId('settings-core-mode-confirm').props.accessibilityState).toMatchObject({ busy: true });
-    expect(screen.queryByTestId('settings-core-mode-confirm-spinner')).toBeNull();
-    expect(screen.getByTestId('settings-core-mode-cancel').props.accessibilityState).toMatchObject({ disabled: true });
-    fireEvent.press(screen.getByTestId('settings-core-mode-cancel'));
-    await wait(20);
-    expect(screen.getByTestId('settings-core-mode-dialog')).toBeTruthy();
-    // A dismissal (overlay, hardware back) is ignored while busy too (S3-1, LB-6).
-    dismissDialog();
-    await wait(20);
-    expect(screen.getByTestId('settings-core-mode-dialog')).toBeTruthy();
-    fireEvent.press(screen.getByTestId('settings-core-mode-confirm'));
-    await wait(600);
-    expect(screen.getByTestId('settings-core-mode-confirm-spinner')).toBeTruthy();
-    expect(fake.log.requestsOf('signOut')).toHaveLength(1);
-    expect(fake.log.requestsOf('signOut')[0]!.body).toEqual({ reason: 'USER' });
-    expect(probe.source).toBe('LIVE');
-    expect(await storedSource()).toBe('LIVE');
-
-    // The request names THIS session (its bearer is the session's), so the Core closes it, not some other one.
-    expect(bearerOf(held.call!.headers)).toBe(FAKE_CREDENTIALS.sessionToken);
-    // The Core closes the session on its side and answers 204 (a held answer skips the scripted responder).
-    act(() => {
-      coreSession = null;
-      held.release({ status: 204 });
-    });
-    await until(() => probe.source === 'SIMULATED' && app.getPathname() === '/login', 'the Login screen of SIMULATED mode');
-    expect(await storedSource()).toBe('SIMULATED');
-    expect(probe.signedIn).toBe(false);
-    expect(screen.getByTestId('screen-login')).toBeTruthy();
-    expect(fake.log.requestsOf('signOut')).toHaveLength(1);
+      act(() => [...urlListeners].forEach((listener) => listener({ url: 'demsdemo:///home?core=SIMULATED' })));
+      await until(() => probe.source === 'SIMULATED' && app.getPathname() === '/login', 'the Login screen of SIMULATED mode');
+      await wait(300);
+      // Exactly once, for THIS session (its bearer), and answered: the Core holds no session of the tablet.
+      expect(fake.log.requestsOf('signOut')).toHaveLength(1);
+      expect(fake.log.requestsOf('signOut')[0]!.body).toEqual({ reason: 'USER' });
+      expect(bearerOf(fake.log.requestsOf('signOut')[0]!.headers)).toBe(FAKE_CREDENTIALS.sessionToken);
+      expect(coreSession).toBeNull();
+      expect(await storedSource()).toBe('SIMULATED');
+      expect(probe.signedIn).toBe(false);
+      expect(screen.getByTestId('screen-login')).toBeTruthy();
+    } finally {
+      linking.addEventListener = originalAddEventListener;
+    }
   });
 
-  it('LIVE → HEARTBEAT crosses the boundary too: dialog, sign-out at the Core, then the simulator with the mock-core link', async () => {
-    const app = await liveSignedIn();
-    fireEvent.press(screen.getByTestId('settings-core-link-HEARTBEAT'));
-    await wait(20);
-    expect(screen.getByText('Switch to Simulated mode?')).toBeTruthy();
-    fireEvent.press(screen.getByTestId('settings-core-mode-confirm'));
-    await until(() => probe.source === 'HEARTBEAT' && app.getPathname() === '/login', 'the Login screen of HEARTBEAT mode');
-    expect(fake.log.requestsOf('signOut')).toHaveLength(1);
-    expect(coreSession).toBeNull();
-    expect(await storedSource()).toBe('HEARTBEAT');
-  });
-
-  it('the link down: the sign-out ends the session here (D80) and the switch still lands on /login — the Core is owed it (W100)', async () => {
+  it('(2) the link down: the sign-out ends the session here (D80); the Core is owed it, and it is sent once at the next link-up (D90)', async () => {
     const app = await liveSignedIn();
     coreDown = true;
     act(() => void fake.connection().drop());
     await until(() => screen.queryByTestId('settings-preferences') !== null, 'Settings after the drop', 2_000);
     await wait(300);
 
-    fireEvent.press(screen.getByTestId('settings-core-link-SIMULATED'));
-    await wait(20);
-    fireEvent.press(screen.getByTestId('settings-core-mode-confirm'));
-    await until(() => probe.source === 'SIMULATED' && app.getPathname() === '/login', 'the Login screen of SIMULATED mode');
-    // Nothing could be sent; the Core still holds that session until its idle expiry (CPM1-2 residual,
-    // the owed sign-out across the switch is W100's with the web's).
+    act(() => router.push('/settings/security' as Href));
+    await until(() => screen.queryByTestId('settings-security-sign-out') !== null, 'Settings → Security');
+    fireEvent.press(screen.getByTestId('settings-security-sign-out'));
+    await until(() => !probe.signedIn && app.getPathname() === '/login', 'the Login screen after the local sign-out');
+    // Nothing could be sent: the session ended here, the Core still holds it, and the source is LIVE.
     expect(fake.log.requestsOf('signOut')).toHaveLength(0);
     expect(coreSession).not.toBeNull();
-    expect(await storedSource()).toBe('SIMULATED');
+    expect(probe.source).toBe('LIVE');
+
+    // The link comes back: the owed sign-out is sent, once, and the Core's session is closed.
+    coreDown = false;
+    await until(() => fake.log.requestsOf('signOut').length > 0, 'the owed sign-out at the link-up', 60_000);
+    await wait(2_000);
+    expect(fake.log.requestsOf('signOut')).toHaveLength(1);
+    expect(fake.log.requestsOf('signOut')[0]!.body).toEqual({ reason: 'USER' });
+    expect(coreSession).toBeNull();
+    expect(probe.signedIn).toBe(false);
+    expect(probe.source).toBe('LIVE');
+    expect(await storedSource()).toBe('LIVE');
+  });
+
+  it('(3) no control offers SIMULATED: the Settings LIVE segment alone, and no way out on the Login', async () => {
+    const app = await liveSignedIn();
+    expect(screen.getByTestId('settings-core-link-LIVE')).toBeTruthy();
+    expect(screen.queryByTestId('settings-core-link-SIMULATED')).toBeNull();
+    expect(screen.queryByTestId('settings-core-link-HEARTBEAT')).toBeNull();
+    expect(screen.queryByText('Use Simulated mode')).toBeNull();
+    // Pressing the one segment there is changes nothing: it is the source already.
+    fireEvent.press(screen.getByTestId('settings-core-link-LIVE'));
+    await wait(100);
+    expect(screen.queryByTestId('settings-core-mode-dialog')).toBeNull();
+    expect(probe.signedIn).toBe(true);
+
+    // The Login, with the link down (where the way out used to be offered, L6): Retry alone.
+    coreDown = true;
+    act(() => void fake.connection().drop());
+    act(() => router.push('/settings/security' as Href));
+    await until(() => screen.queryByTestId('settings-security-sign-out') !== null, 'Settings → Security');
+    fireEvent.press(screen.getByTestId('settings-security-sign-out'));
+    await until(() => !probe.signedIn && app.getPathname() === '/login', 'the Login screen after the sign-out');
+    await wait(300);
+    expect(screen.getByTestId('screen-login')).toBeTruthy();
+    expect(screen.queryByTestId('login-use-simulated')).toBeNull();
+    expect(screen.queryByText('Use Simulated mode')).toBeNull();
+    expect(probe.source).toBe('LIVE');
+    expect(await storedSource()).toBe('LIVE');
   });
 });
 
-describe('a release build offers no LIVE (MD-3, AC-C-83)', () => {
-  // Fix wave J (JA2-29, N-03; replaces "the LIVE segment is disabled: a press opens no dialog ..."): a
-  // release build shows no Core link control at all, so there is no LIVE segment to press. What the row
-  // is about is unchanged: no way to LIVE, nobody signed out, nothing stored, nothing sent.
-  it('the Core link source is not shown: no LIVE segment, no dialog, nobody signed out, nothing stored', async () => {
+// M3-02 (I63 §4.2; RT-1, D163): the release truth flipped. Was `describe('a release build offers no
+// LIVE (MD-3, AC-C-83)')`, whose one case signed in to the simulator and found no Core link control.
+// A release build now runs the Live source (row 174 lifted the gates), so:
+//   - unpaired, it is a LIVE client on `/pair`, with no simulator and no way to one;
+//   - paired, it signs in at the Core, and Settings still shows no Core link control (Fix wave J,
+//     JA2-29, N-03): nothing to press, no dialog, nobody signed out, nothing stored.
+describe('a release build offers LIVE (MD-3, AC-C-83; RT-1, D163)', () => {
+  it('unpaired, it opens on /pair as a LIVE client: no simulator, no "Use Simulated mode", nobody signed in, nothing stored (D163)', async () => {
     const engine = createTestSim().sim;
     scriptCore(engine);
     devGlobal.__DEV__ = false;
     const app = mountApp('/login');
-    await until(() => probe.actions !== null, 'the simulator runtime');
-    await signInWith(DEMO_OPERATOR_PASSWORD);
+    await until(() => probe.actions !== null && probe.source === 'LIVE' && app.getPathname() === '/pair', 'the Pair screen of LIVE mode');
+    await wait(300);
+    expect(screen.getByTestId('screen-pair')).toBeTruthy();
+    expect(app.getPathname()).toBe('/pair');
+    expect(probe.source).toBe('LIVE');
+    expect(probe.signedIn).toBe(false);
+    expect(screen.queryByTestId('pairing-use-simulated')).toBeNull();
+    expect(screen.queryByText('Use Simulated mode')).toBeNull();
+    // The Live source asked the Core server, with no credential: nothing was signed in or out.
+    expect(fake.log.requestsOf('signIn')).toHaveLength(0);
+    expect(fake.log.requestsOf('signOut')).toHaveLength(0);
+    expect(await storedSource()).toBeUndefined();
+  });
+
+  it('paired, it signs in at the Core; the Core link source is not shown: no segment, no dialog, nobody signed out, nothing stored (D163)', async () => {
+    globalThis.__DEMS_SECURE_STORE_MOCK__.seed(SECURE_ITEM_KEYS.deviceCredential, JSON.stringify(STORED));
+    const engine = createTestSim().sim;
+    scriptCore(engine);
+    devGlobal.__DEV__ = false;
+    const app = mountApp('/login');
+    // The Core link is up before the sign-in: a sign-in while it still connects is refused (CORE_OFFLINE).
+    await until(() => probe.actions !== null && probe.source === 'LIVE' && probe.online && app.getPathname() === '/login', 'the Login screen of LIVE mode, the link up');
+    await signInWith(MARKER_PASSWORD);
     await openPreferences(app);
+    expect(coreSession).not.toBeNull();
+    expect(fake.log.requestsOf('signIn')).toHaveLength(1);
     expect(screen.getByTestId('settings-reduce-motion')).toBeTruthy();
     expect(screen.queryByTestId('settings-core-link-LIVE')).toBeNull();
     expect(screen.queryByTestId('settings-core-link-SIMULATED')).toBeNull();
+    expect(screen.queryByTestId('settings-core-link-HEARTBEAT')).toBeNull();
     expect(screen.queryByText(/Core link source|developer setup/i)).toBeNull();
     await wait(100);
     expect(screen.queryByTestId('settings-core-mode-dialog')).toBeNull();
     expect(probe.signedIn).toBe(true);
+    expect(probe.source).toBe('LIVE');
     expect(await storedSource()).toBeUndefined();
-    expect(fake.calls).toHaveLength(0);
+    expect(fake.log.requestsOf('signOut')).toHaveLength(0);
   });
 });

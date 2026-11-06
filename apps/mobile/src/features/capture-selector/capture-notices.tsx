@@ -16,6 +16,7 @@
  * | Devices screen (tablet; phone through Settings → Device Settings) and Settings → Capture | `CaptureNoticesBanner` |
  * | Session New, the pre-check step | `PrecheckCaptureNotices` + `usePrecheckSentence` (the row and the blocked / warning text come from `params.rule`, D114) |
  * | Home header bell | `captureNoticeTitle` words the item of the alert centre |
+ * | A camera recording without its pair's microphone (audit row 186, M3-06 R3) | `CaptureNoticesBanner`: the sentence N3 (+ N4 for Pair 1) at WARNING, no title, no action (the recording continues; the Core resolves it when the capture ends) |
  *
  * The operator without `CAPTURE_CONFIG` (§8e.3): sees every notification; "Search again" is drawn
  * DISABLED with the role sentence after "Checking your permissions…"; no list is requested.
@@ -29,7 +30,7 @@ import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { useRoleGate } from '@/features/rbac/use-role-gate';
 import { useOpenTabRoot } from '@/navigation/tab-root';
 import { SearchButton } from './camera-search-panel';
-import { captureNoticesOf, deviceLabel, isUnreachableItem, noticeTitle, precheckUnreachableOf, type CaptureNotice } from './capture-notices-model';
+import { captureNoticesOf, deviceLabel, isUnreachableItem, noticeTitle, pairedMicMissingText, precheckUnreachableOf, type CaptureNotice } from './capture-notices-model';
 import { MicRescanControl } from './mic-rescan';
 import { useCameraSearch, useCameraSearchController, type CameraSearch } from './use-camera-search';
 
@@ -39,6 +40,7 @@ const K = 'features.capture-selector.notice';
 
 export function noticeBody(t: Translate, notice: CaptureNotice): string {
   if (notice.kind === 'discoveryEmpty') return t(`${K}.discoveryEmpty.body`);
+  if (notice.kind === 'pairedMicMissing') return pairedMicMissingText(t, notice);
   if (notice.phase === 'SESSION_START') return t(`${K}.unreachable.sessionStart.body`);
   const base =
     notice.deviceKind === 'MIC'
@@ -71,15 +73,18 @@ export function CaptureNoticesBanner({ testID = 'capture-notices' }: CaptureNoti
         <Alert key={notice.alertId} status="warning" testID={`capture-notice-${notice.alertId}`} accessibilityLiveRegion="polite">
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Title>{noticeTitle(t, notice)}</Alert.Title>
+            {/* Row 186: a missing paired microphone is one sentence (N3 + N4) with no title of its own and no action - a search fixes nothing; the recording continues. */}
+            {notice.kind === 'pairedMicMissing' ? null : <Alert.Title>{noticeTitle(t, notice)}</Alert.Title>}
             <Alert.Description testID={`capture-notice-body-${notice.alertId}`}>{noticeBody(t, notice)}</Alert.Description>
-            <View style={styles.actions}>
-              {notice.kind === 'unreachable' && notice.deviceKind === 'MIC' ? (
-                <MicRescanControl compact testID={`capture-notice-rescan-${notice.alertId}`} />
-              ) : (
-                <CameraSearchAgain testID={`capture-notice-search-${notice.alertId}`} />
-              )}
-            </View>
+            {notice.kind === 'pairedMicMissing' ? null : (
+              <View style={styles.actions}>
+                {notice.kind === 'unreachable' && notice.deviceKind === 'MIC' ? (
+                  <MicRescanControl compact testID={`capture-notice-rescan-${notice.alertId}`} />
+                ) : (
+                  <CameraSearchAgain testID={`capture-notice-search-${notice.alertId}`} />
+                )}
+              </View>
+            )}
           </Alert.Content>
         </Alert>
       ))}

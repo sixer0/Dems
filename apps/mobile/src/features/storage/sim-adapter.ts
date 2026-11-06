@@ -14,6 +14,7 @@
  *                TECHNICIAN (MAINTENANCE) may change the policy, INVESTIGATOR sees it read-only (04 §5
  *                roles, S20 "RBAC in the UI via isDisabled + a reason").
  */
+import { SessionState } from '@dems/shared/domain';
 import { Permission, roleHas, type OperatorRole, type SimEvent, type SimEventType, type SimState } from '@dems/shared/sim';
 
 // ── SIM-GAP-M85-1: storage activity ─────────────────────────────────────────────────────────
@@ -53,6 +54,16 @@ export function selectStorageActivity(state: Pick<SimState, 'events'>, count = 5
     if (event && isStorageEvent(event)) out.push(event);
   }
   return out;
+}
+
+/**
+ * M3-13 (row 203, register W5; web twin `apps/core-web/src/lib/event-words.ts` `selectFaultSessionId`,
+ * row 110b / D63): the open session's id while it is in FAULT, else null. A primitive, so the activity
+ * list does not re-render on every session tick.
+ */
+export function selectFaultSessionId(state: Pick<SimState, 'session'>): string | null {
+  const session = state.session;
+  return session !== null && session !== undefined && session.state === SessionState.FAULT ? session.id : null;
 }
 
 // ── SIM-GAP-M85-2: who may change the storage policy ────────────────────────────────────────

@@ -13,6 +13,8 @@
  * | §2.5 "Empty device list" | "No capture devices configured"; the "Search for cameras" action is row 138's (slot below) |
  * | E-15 | each row keeps a 1 dp border in both states (`ROW_CARD_BORDER`) with the always-mounted, React-drawn `SelectionGlow`; the row whose sheet is open is the selected one |
  * | OD-12 | status is text and a chip (`Live`, `Lost`, `Offline`); no frame is decoded or shown |
+ * | M3-07 R4 (audit row 189; T5-T7, T9) | the slots are grouped as the four pairs `selector-pair-N` "Camera N <-> Mic N"; a microphone row's chip reads "Mic N (Camera N)"; "Transcribed" on Pair 1 only; an incomplete pair says T7 |
+ * | M3-07 R1/R2 (audit rows 188/189; S1-S10; D126, D175) | a microphone from another channel is never sent from the sheet: `askMove`, then `MicMoveDialog` (swap S5-S7, move S8-S10); Confirm sends operation 78 once (`confirmMove`), Cancel sends nothing |
  *
  * Task 3 row 138 mounts here (each in its own file of this folder):
  * - flow 9 (G13): the "Search for cameras" action of the empty state (`CameraSearchAgain`); the search panel itself is on the Devices screen;
@@ -26,7 +28,7 @@ import { Camera, Mic } from 'lucide-react-native';
 import { Fragment, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
-import { useSim } from '@dems/shared/sim';
+import { CAPTURE_PAIRS, capturePairOfMicChannel, PRIMARY_MIC_CHANNEL, useSim } from '@dems/shared/sim'; // audit row 189 (M3-07 R4): the four pairs
 import { fontFamily, palette, radius, spacing, typography, type StatusTone } from '@dems/shared/tokens';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { SectionCard, StatusChip } from '@/components/kit';
@@ -38,6 +40,7 @@ import { developmentSourceOf } from './capture-notices-model';
 import { cameraLineStatus, isEmptySlotRow, type AnswerClass, type SelectorCommand, type SelectorGateState } from './capture-selector-model';
 import { CaptureSourceSheet, type SourceSheetRequest } from './capture-source-sheet';
 import { SourceBadge } from './development-source-badge';
+import { MicMoveDialog } from './mic-move-dialog';
 import { MicRescanControl } from './mic-rescan';
 import { cameraLineReportOf, cameraStreamWordApplies, deviceReportOf, realCaptureSources, sourceStateWord } from './source-state';
 import { useCameraSearch } from './use-camera-search';
@@ -68,12 +71,26 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
   const openChannel = request !== null && request.kind === 'mic' ? request.channel : null; // D61
 
   const save = (command: SelectorCommand) => {
+    // Audit row 189 (M3-07 R1/R2; D175, row 188's hand-off R188-1): a microphone that comes from another channel is
+    // NEVER sent from the sheet. The sheet closes and the move waits in the confirm (`askMove`); operation 78 goes out
+    // only from `confirmMove` (S1 for a swap, S2 for a move), and Cancel sends nothing.
+    if (command.kind === 'micMove') {
+      selector.askMove(command);
+      setRequest(null);
+      return;
+    }
     press.run((release) => {
       void selector.send(command).then(() => {
         release();
         // Every answer closes the sheet: a 200 leaves the row pending, a refusal is drawn on the card.
         setRequest(null);
       });
+    });
+  };
+  // Audit row 189: the one place a microphone move is sent - once, through row 188's gate.
+  const confirmMove = () => {
+    press.run((release) => {
+      void selector.confirmMove().then(() => release());
     });
   };
 
@@ -119,6 +136,113 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
   const reportedOf = (trackId: string): { key: string; tone: StatusTone } | null => {
     const [, key, tone] = reported.find((entry) => entry.startsWith(`${trackId}|`))?.split('|') ?? [];
     return key === undefined || tone === undefined ? null : { key, tone: tone as StatusTone };
+  };
+
+  // Audit row 189 (M3-07 R4): the camera row of a pair (the body the camera list drew before the pair groups).
+  const cameraRow = (row: CaptureSelectorData['cameras'][number]): ReactNode => {
+    const track = t(`features.capture-selector.selector.track.${row.trackId}`);
+    // Task 4 row 32 (decision C18 (3)): a track the selector holds no line for is still a row - it says
+    // "Not assigned" and its control offers to assign a camera (the camera command of an assigned row).
+    if (isEmptySlotRow(row)) {
+      return (
+        <Fragment key={row.trackId}>
+          <SelectorRow
+            rowKey={row.trackId}
+            icon="camera"
+            title={track}
+            detail={t('common.captureSlot.notAssigned')}
+            chip={null}
+            stateLabel=""
+            empty
+            selected={openKey === row.trackId}
+            pending={selector.pendingKey === row.trackId}
+            editable={editable}
+            gateHint={gateLine}
+            editLabel={t('common.captureSlot.assignLabel', { slot: t(`common.captureSlot.${row.trackId}`) })}
+            onEdit={() => {
+              const reported = reportedOptions();
+              setRequest({ kind: 'camera', trackId: row.trackId, currentDeviceId: null, options: selector.options, badgeMode: selector.badgeMode, recording: recordingNow, ...(reported === undefined ? {} : { reported }) });
+            }}
+          />
+        </Fragment>
+      );
+    }
+    const status = cameraLineStatus(row);
+    const word = reportedOf(row.trackId);
+    const streamLabel = word !== null ? t(word.key) : t(`features.capture-selector.selector.stream.${status}`);
+    return (
+      <Fragment key={row.trackId}>
+        <SelectorRow
+          rowKey={row.trackId}
+          icon="camera"
+          title={track}
+          detail={[row.deviceId, row.model].filter((part): part is string => part !== null && part !== '').join(' · ')}
+          chip={
+            <StatusChip
+              size="sm"
+              tone={word !== null ? word.tone : STREAM_TONE[status]}
+              label={streamLabel}
+              icon={null}
+              testID={`capture-selector-stream-${row.trackId}`}
+            />
+          }
+          stateLabel={streamLabel}
+          selected={openKey === row.trackId}
+          pending={selector.pendingKey === row.trackId}
+          editable={editable}
+          gateHint={gateLine}
+          editLabel={t('features.capture-selector.selector.changeCameraLabel', { track })}
+          onEdit={() => {
+            const reported = reportedOptions();
+            setRequest({ kind: 'camera', trackId: row.trackId, currentDeviceId: row.deviceId, options: selector.options, badgeMode: selector.badgeMode, recording: recordingNow, ...(reported === undefined ? {} : { reported }) });
+          }}
+        />
+        {/* Row 138 (flow 12): the one badge of this line; nothing when the Core sent no development class. */}
+        <LineBadge sourceClass={row.sourceClass} adapter={row.adapter} deviceKind="CAMERA" mode={selector.badgeMode} testID={`capture-selector-source-${row.trackId}`} />
+      </Fragment>
+    );
+  };
+
+  // Audit row 189 (M3-07 R4): the microphone row of a pair - its chip names the slot T9 "Mic N (Camera N)" (U-13; A3).
+  const micRow = (row: CaptureSelectorData['mics'][number]): ReactNode => {
+    // Task 4 row 32 (decision C18 (3); D61 of 2026-11-04): a CHANNEL no line holds is still a row, keyed by
+    // its channel (there is no input to key it by): the slot's name, "Not assigned", the channel chip, and the offer to assign.
+    const inputId = row.inputId;
+    const rowKey = inputId ?? row.channel;
+    // Audit row 189 (M3-07 R4; register T9, A3; D163): "Mic N (Camera N)" for all four channels - not the channel words
+    // ("Channel 1 (transcribed)" / "Channel 2"); "Transcribed" is said ONCE, on the head of Pair 1.
+    const roleLabel = t('devices.pairs.micOfCamera', { n: capturePairOfMicChannel(row.channel).pair });
+    return (
+      <Fragment key={rowKey}>
+        <SelectorRow
+          rowKey={rowKey}
+          icon="mic"
+          title={inputId ?? t(`common.captureSlot.${row.channel}`)}
+          detail={
+            inputId === null
+              ? t('common.captureSlot.notAssigned')
+              : [row.model, row.transport, row.online ? null : t('features.capture-selector.selector.stream.OFFLINE')].filter((part): part is string => part !== null && part !== '').join(' · ')
+          }
+          chip={<StatusChip size="sm" tone={inputId !== null && row.channel === 'MIC-01' ? 'success' : 'default'} label={roleLabel} icon={null} testID={`capture-selector-channel-${rowKey}`} />}
+          stateLabel={roleLabel}
+          empty={inputId === null}
+          selected={openChannel === row.channel}
+          pending={selector.pendingKey === MIC_ROW_KEY}
+          editable={editable}
+          gateHint={gateLine}
+          editLabel={
+            inputId === null
+              ? t('common.captureSlot.assignLabel', { slot: t(`common.captureSlot.${row.channel}`) })
+              : t(`features.capture-selector.selector.${MIC_CHANGE_LABEL}`, { n: Number(row.channel.slice(-2)) }) // D61: one key, the channel number
+          }
+          // Fix wave H (G70-02): the line's own sheet, with every registered microphone.
+          onEdit={() => setRequest({ kind: 'mic', channel: row.channel, currentInputId: inputId, options: selector.micOptions, badgeMode: selector.badgeMode })}
+        />
+        {inputId === null ? null : (
+          <LineBadge sourceClass={row.sourceClass} adapter={row.adapter} deviceKind="MIC" mode={selector.badgeMode} testID={`capture-selector-source-${inputId}`} />
+        )}
+      </Fragment>
+    );
   };
 
   return (
@@ -172,108 +296,32 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
             </View>
           ) : (
             <ListGroup variant="transparent" testID="capture-selector-rows">
-              {selector.cameras.map((row, index) => {
-                const track = t(`features.capture-selector.selector.track.${row.trackId}`);
-                // Task 4 row 32 (decision C18 (3)): a track the selector holds no line for is still a row - it says
-                // "Not assigned" and its control offers to assign a camera (the camera command of an assigned row).
-                if (isEmptySlotRow(row)) {
-                  return (
-                    <Fragment key={row.trackId}>
-                      {index > 0 ? <Separator /> : null}
-                      <SelectorRow
-                        rowKey={row.trackId}
-                        icon="camera"
-                        title={track}
-                        detail={t('common.captureSlot.notAssigned')}
-                        chip={null}
-                        stateLabel=""
-                        empty
-                        selected={openKey === row.trackId}
-                        pending={selector.pendingKey === row.trackId}
-                        editable={editable}
-                        gateHint={gateLine}
-                        editLabel={t('common.captureSlot.assignLabel', { slot: t(`common.captureSlot.${row.trackId}`) })}
-                        onEdit={() => {
-                          const reported = reportedOptions();
-                          setRequest({ kind: 'camera', trackId: row.trackId, currentDeviceId: null, options: selector.options, badgeMode: selector.badgeMode, recording: recordingNow, ...(reported === undefined ? {} : { reported }) });
-                        }}
-                      />
-                    </Fragment>
-                  );
-                }
-                const status = cameraLineStatus(row);
-                const word = reportedOf(row.trackId);
-                const streamLabel = word !== null ? t(word.key) : t(`features.capture-selector.selector.stream.${status}`);
+              {/* Audit row 189 (M3-07 R4; register T5-T7, T9; web row 156 `selectorPairRows`): the eight slots are drawn as the
+                  four pairs "Camera N <-> Mic N" (D5: Pair N = VIDEO-0N + MIC-0N), in pair order; Pair 1 alone says "Transcribed". */}
+              {CAPTURE_PAIRS.map((pair, index) => {
+                const camera = selector.cameras.find((row) => row.trackId === pair.videoTrackId);
+                const mic = selector.mics.find((row) => row.channel === pair.micChannel);
+                const incomplete = camera === undefined || isEmptySlotRow(camera) || mic === undefined || mic.inputId === null;
                 return (
-                  <Fragment key={row.trackId}>
+                  <View key={pair.pair} testID={`selector-pair-${pair.pair}`} style={styles.pair}>
                     {index > 0 ? <Separator /> : null}
-                    <SelectorRow
-                      rowKey={row.trackId}
-                      icon="camera"
-                      title={track}
-                      detail={[row.deviceId, row.model].filter((part): part is string => part !== null && part !== '').join(' · ')}
-                      chip={
-                        <StatusChip
-                          size="sm"
-                          tone={word !== null ? word.tone : STREAM_TONE[status]}
-                          label={streamLabel}
-                          icon={null}
-                          testID={`capture-selector-stream-${row.trackId}`}
-                        />
-                      }
-                      stateLabel={streamLabel}
-                      selected={openKey === row.trackId}
-                      pending={selector.pendingKey === row.trackId}
-                      editable={editable}
-                      gateHint={gateLine}
-                      editLabel={t('features.capture-selector.selector.changeCameraLabel', { track })}
-                      onEdit={() => {
-                        const reported = reportedOptions();
-                        setRequest({ kind: 'camera', trackId: row.trackId, currentDeviceId: row.deviceId, options: selector.options, badgeMode: selector.badgeMode, recording: recordingNow, ...(reported === undefined ? {} : { reported }) });
-                      }}
-                    />
-                    {/* Row 138 (flow 12): the one badge of this line; nothing when the Core sent no development class. */}
-                    <LineBadge sourceClass={row.sourceClass} adapter={row.adapter} deviceKind="CAMERA" mode={selector.badgeMode} testID={`capture-selector-source-${row.trackId}`} />
-                  </Fragment>
-                );
-              })}
-              {selector.mics.map((row) => {
-                // Task 4 row 32 (decision C18 (3); D61 of 2026-11-04): a CHANNEL no line holds is still a row, keyed by
-                // its channel (there is no input to key it by): the slot's name, "Not assigned", the channel chip, and the offer to assign.
-                const inputId = row.inputId;
-                const rowKey = inputId ?? row.channel;
-                const roleLabel = t(`features.capture-selector.selector.channel.${row.channel}`);
-                return (
-                  <Fragment key={rowKey}>
+                    <View style={styles.pairHead}>
+                      <Text maxFontSizeMultiplier={1.2} style={styles.pairLabel} testID={`selector-pair-label-${pair.pair}`} accessibilityRole="header">
+                        {t('devices.pairs.rowLabel', { n: pair.pair })}
+                      </Text>
+                      {pair.micChannel === PRIMARY_MIC_CHANNEL ? (
+                        <StatusChip size="sm" tone="success" label={t('devices.pairs.transcribed')} icon={null} testID={`selector-pair-transcribed-${pair.pair}`} />
+                      ) : null}
+                    </View>
+                    {incomplete ? (
+                      <Text maxFontSizeMultiplier={1.2} style={styles.pairWarning} testID={`selector-pair-incomplete-${pair.pair}`} accessibilityLiveRegion="polite">
+                        {t('devices.pairs.incomplete', { n: pair.pair })}
+                      </Text>
+                    ) : null}
+                    {camera === undefined ? null : cameraRow(camera)}
                     <Separator />
-                    <SelectorRow
-                      rowKey={rowKey}
-                      icon="mic"
-                      title={inputId ?? t(`common.captureSlot.${row.channel}`)}
-                      detail={
-                        inputId === null
-                          ? t('common.captureSlot.notAssigned')
-                          : [row.model, row.transport, row.online ? null : t('features.capture-selector.selector.stream.OFFLINE')].filter((part): part is string => part !== null && part !== '').join(' · ')
-                      }
-                      chip={<StatusChip size="sm" tone={inputId !== null && row.channel === 'MIC-01' ? 'success' : 'default'} label={roleLabel} icon={null} testID={`capture-selector-channel-${rowKey}`} />}
-                      stateLabel={roleLabel}
-                      empty={inputId === null}
-                      selected={openChannel === row.channel}
-                      pending={selector.pendingKey === MIC_ROW_KEY}
-                      editable={editable}
-                      gateHint={gateLine}
-                      editLabel={
-                        inputId === null
-                          ? t('common.captureSlot.assignLabel', { slot: t(`common.captureSlot.${row.channel}`) })
-                          : t(`features.capture-selector.selector.${MIC_CHANGE_LABEL}`, { n: Number(row.channel.slice(-2)) }) // D61: one key, the channel number
-                      }
-                      // Fix wave H (G70-02): the line's own sheet, with every registered microphone.
-                      onEdit={() => setRequest({ kind: 'mic', channel: row.channel, currentInputId: inputId, options: selector.micOptions, badgeMode: selector.badgeMode })}
-                    />
-                    {inputId === null ? null : (
-                      <LineBadge sourceClass={row.sourceClass} adapter={row.adapter} deviceKind="MIC" mode={selector.badgeMode} testID={`capture-selector-source-${inputId}`} />
-                    )}
-                  </Fragment>
+                    {mic === undefined ? null : micRow(mic)}
+                  </View>
                 );
               })}
               {/* Row 138 (flow 13, G17): "Search again" for microphones, under the microphone rows (always FOUR since D61, 2026-11-04). */}
@@ -289,6 +337,8 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
         </>
       )}
       <CaptureSourceSheet request={request} fullHeight={!isMultiPane} busy={press.busy} pending={press.pending} onSave={save} onClose={() => setRequest(null)} />
+      {/* Audit row 189 (M3-07 R1/R2; S5-S10): the confirm of a microphone swap or move. */}
+      <MicMoveDialog ask={selector.moveAsk} busy={press.busy} pending={press.pending} onConfirm={confirmMove} onCancel={selector.cancelMove} />
     </SectionCard>
   );
 }
@@ -488,4 +538,9 @@ const styles = StyleSheet.create({
   empty: { gap: spacing[2], paddingVertical: spacing[2] },
   emptyText: { fontFamily: fontFamily.native.medium, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.foreground },
   noticeActions: { flexDirection: 'row', gap: spacing[1], marginTop: spacing[1] },
+  // Audit row 189 (M3-07 R4): the pair groups.
+  pair: { gap: spacing[1] },
+  pairHead: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing[1], paddingTop: spacing[1] },
+  pairLabel: { fontFamily: fontFamily.native.medium, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.foreground },
+  pairWarning: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size + 1, lineHeight: typography.caption.lineHeight + 2, color: palette.warning },
 });

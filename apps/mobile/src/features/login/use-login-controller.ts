@@ -25,19 +25,19 @@
  * - the fingerprint result `invalid` (the stored token is dead) shows nothing of its own: the
  *   auth layer's notice says it, and takes the Alert slot (`noticeFor`);
  * - the offline Alert follows the Live link without flicker; Retry asks the Live socket to
- *   reconnect, on the same cooldown; "Use Simulated mode" stores the simulator as the source;
+ *   reconnect, on the same cooldown; there is no "Use Simulated mode" way out (M3-01 L6, D47/D160:
+ *   the tablet runs LIVE only; the older sources stay reachable to the debug `core=` link only);
  * - `coreLook` (row M2 follow-up, decision D180): the chip, the ring and the ambient loops read the
  *   runtime's notice and view of the link (`useCoreLinkNotice()` → `liveCoreLookOf`), never its
  *   two-valued `state`, so a link that is still connecting never reads "offline" or critical.
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { router } from 'expo-router';
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { HeartbeatContext, useRetryCooldown } from '@dems/shared/realtime';
 import { useAuthSession } from '@/auth';
 import { useHaptics } from '@/motion';
-import { newCorrelationId, reportRuntimeIssue, setCoreLinkSource, useAuth, useCoreLink, useCoreLinkNotice, useMobileLive } from '@/runtime';
+import { newCorrelationId, reportRuntimeIssue, useAuth, useCoreLink, useCoreLinkNotice, useMobileLive } from '@/runtime';
 import { isLimitFailure, isLiveLogin, liveAttemptFor, liveOfflineNoticeAfter } from './login-live-model';
 import {
   EMPTY_LOGIN_FORM,
@@ -95,7 +95,7 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
   const [unlockPulse, setUnlockPulse] = useState(0);
   /**
    * The inputs are uncontrolled: a controlled `value` dropped keystrokes on the emulator whenever
-   * the JS thread lagged behind a burst of input (DR-S75-5). A programmatic change (demo fill, the
+   * the JS thread lagged behind a burst of input (DR-S75-5). A programmatic change (the
    * password cleared after an attempt) is pushed into an input as a one-off `value` override, which
    * the next keystroke in that field releases. (Remounting a `secureTextEntry` input with a
    * `defaultValue` came up empty on Android, so overrides are applied to the mounted input.)
@@ -265,17 +265,8 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
     }
   };
 
-  /** L10: a demo operator row fills both fields with the published demo credentials. */
-  const fill = useCallback(
-    (username: string, password: string) => {
-      form.setValue('username', username, { shouldDirty: true });
-      form.setValue('password', password, { shouldDirty: true });
-      form.clearErrors();
-      setCredentialsFlagged(false);
-      setOverrides({ username, password });
-    },
-    [form],
-  );
+  // Audit row 211 (M3-18; D174, D-171-3): the L10 demo `fill` helper was removed - 0 callers (L10 dropped
+  // 2026-11-05: the tablet runs LIVE only and fills no demo credential).
 
   /** A keystroke: clears the red borders and releases that field's override. */
   const onEdit = useCallback((field: keyof FieldOverrides) => {
@@ -306,21 +297,6 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
   }, [heartbeat, mobileLive]);
   const coreRetry = useRetryCooldown(reconnect);
 
-  /**
-   * LIVE, Core offline → "Use Simulated mode" (§3.5; LIVE exists in debug builds only, MD-3). The
-   * runtime mounts the simulator in place of the Live source; the boot router picks the screen.
-   * Nobody is signed in on this screen, so nothing is signed out and nothing is asked first.
-   */
-  const switchToSimulated = useCallback(() => {
-    try {
-      reportRuntimeIssue('info', 'login.useSimulated', 'Core link source set to SIMULATED from the Login screen');
-      setCoreLinkSource('SIMULATED');
-      router.replace('/');
-    } catch (error) {
-      reportRuntimeIssue('error', 'login.useSimulated', error);
-    }
-  }, []);
-
   const notice = noticeFor({
     lockout,
     // LIVE: the Alert of the link, without flicker. HEARTBEAT: the link itself, as before.
@@ -334,7 +310,6 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
     form,
     submit,
     signInWithBiometric,
-    fill,
     onEdit,
     pending,
     notice,
@@ -350,7 +325,6 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
     overrides,
     rejectSeq,
     live,
-    switchToSimulated,
   };
 }
 

@@ -26,12 +26,13 @@ import {
   type AnswerClass,
   type CameraOption,
   type CameraSelectorRow,
+  type MicMoveAsk,
   type MicOption,
   type MicSelectorRow,
   type SelectorCommand,
   type SelectorGateState,
 } from './capture-selector-model';
-import { liveSelectorPort, simSelectorPort, type SelectorPort } from './capture-selector-port';
+import { liveSelectorPort, micMoveGate, simSelectorPort, type MicMoveGate, type SelectorPort } from './capture-selector-port';
 import { PANEL_MAX_RETRIES, panelRetryCooldownMs } from '@/features/devices/panel-boundary';
 
 /** The row a command edits: the camera's track, or the one microphone field. */
@@ -106,6 +107,16 @@ export interface CaptureSelector {
   /** Sends one command; resolves with its class (`ok` included). Never rejects. */
   send(command: SelectorCommand): Promise<AnswerClass>;
   dismissNotice(): void;
+  /**
+   * Audit row 188 (M3-07 R1/R2): the microphone move the operator is asked to confirm (SWAP: S5/S6/S7; MOVE:
+   * S8/S9/S10), or null. `askMove` sends nothing; `confirmMove` sends operation 78 ONCE and resolves with its
+   * class (null when nothing was asked, or the ask was already answered); `cancelMove` sends nothing. The
+   * dialog that calls them is row 189's.
+   */
+  readonly moveAsk: MicMoveAsk | null;
+  askMove(command: Extract<SelectorCommand, { kind: 'micMove' }>): void;
+  confirmMove(): Promise<AnswerClass | null>;
+  cancelMove(): void;
 }
 
 export function useCaptureSelector(): CaptureSelector {
@@ -125,6 +136,7 @@ export function useCaptureSelector(): CaptureSelector {
   const [notice, setNotice] = useState<SelectorNotice | null>(null);
   const [retries, setRetries] = useState(0);
   const [cooldownS, setCooldownS] = useState(0);
+  const [moveGate, setMoveGate] = useState<MicMoveGate | null>(null);
   const lastCommand = useRef<SelectorCommand | null>(null);
   const mounted = useRef(true);
   const inFlight = useRef(false);
@@ -169,7 +181,7 @@ export function useCaptureSelector(): CaptureSelector {
               : command.kind === 'micLine'
                 ? `${command.channel}:${command.inputId}`
                 : command.kind === 'micMove'
-                  ? `${command.from}->${command.channel}`
+                  ? `${command.from}${command.other === undefined ? '->' : '<->'}${command.channel}` // row 188: '<->' is the SWAP
                   : 'MIC',
           deviceId: command.kind === 'camera' ? command.deviceId : null,
           result: answer.result,
@@ -205,6 +217,19 @@ export function useCaptureSelector(): CaptureSelector {
 
   const dismissNotice = useCallback(() => setNotice(null), []);
 
+  // Audit row 188 (M3-07): one move waits for the operator at a time; its gate sends at most once.
+  const askMove = useCallback((command: Extract<SelectorCommand, { kind: 'micMove' }>) => setMoveGate(micMoveGate(command)), []);
+  const confirmMove = useCallback(async (): Promise<AnswerClass | null> => {
+    const gate = moveGate;
+    if (gate === null) return null;
+    setMoveGate(null);
+    return gate.confirm(send);
+  }, [moveGate, send]);
+  const cancelMove = useCallback(() => {
+    moveGate?.cancel();
+    setMoveGate(null);
+  }, [moveGate]);
+
   const cameras = useMemo(() => cameraRows(config, registry), [config, registry]);
   const mics = useMemo(() => micRows(config, registry), [config, registry]);
   const options = useMemo(() => cameraOptions(config, registry), [config, registry]);
@@ -233,5 +258,9 @@ export function useCaptureSelector(): CaptureSelector {
       [config, send],
     ),
     dismissNotice,
+    moveAsk: moveGate?.ask ?? null,
+    askMove,
+    confirmMove,
+    cancelMove,
   };
 }

@@ -7,9 +7,15 @@ import { LIFECYCLE_STAGES, lifecycleStatuses, orderedTracks, shortHash, sizePart
 const track = (trackId: string): EvidenceTrack => ({ trackId, label: trackId, sizeBytes: 1, sha256: trackId }) as EvidenceTrack;
 
 describe('summary model', () => {
-  it('orders the tracks VIDEO-01, VIDEO-02, AUDIO-01, AUDIO-02', () => {
-    const ordered = orderedTracks([track('AUDIO-02'), track('VIDEO-02'), track('AUDIO-01'), track('VIDEO-01')]);
-    expect(ordered.map((t) => t.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'AUDIO-01', 'AUDIO-02']);
+  it('orders all eight tracks VIDEO-01..04, then AUDIO-01..04', () => {
+    const ids = ['AUDIO-04', 'VIDEO-03', 'AUDIO-02', 'VIDEO-04', 'AUDIO-01', 'VIDEO-02', 'AUDIO-03', 'VIDEO-01'];
+    const ordered = orderedTracks(ids.map(track));
+    expect(ordered.map((t) => t.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']);
+  });
+
+  it('orders a partial set and keeps unknown IDs after the known ones', () => {
+    expect(orderedTracks([track('AUDIO-04'), track('VIDEO-03'), track('VIDEO-01')]).map((t) => t.trackId)).toEqual(['VIDEO-01', 'VIDEO-03', 'AUDIO-04']);
+    expect(orderedTracks([track('X-9'), track('AUDIO-01'), track('VIDEO-04')]).map((t) => t.trackId)).toEqual(['VIDEO-04', 'AUDIO-01', 'X-9']);
   });
 
   it('shortens a hash keeping both ends', () => {

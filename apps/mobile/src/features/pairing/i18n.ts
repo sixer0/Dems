@@ -100,6 +100,8 @@ export const pairingEn = {
         verifying: 'About to send the code. Cancel now and nothing is sent.',
         sent: 'The Core is checking the code…',
         paired: 'Paired with {{device}} as {{tablet}}.',
+        // D212 (row 226): the Core id reads I6 "Not reported" -> the sentence names no Core.
+        pairedNoId: 'Paired as {{tablet}}.',
         failed: 'The Core did not accept that code.',
         // The lock is global on the Core: it can come from another device's attempts.
         locked: 'Pairing is locked on the Core for a short time.',
@@ -154,6 +156,8 @@ export const pairingEn = {
     },
     paired: {
       body: 'This device is registered with {{device}} as {{tablet}}. An operator can now sign in on it.',
+      // D212 (row 226): the id-less twin, when the Core id is not reported (I6).
+      bodyNoId: 'This device is registered as {{tablet}}. An operator can now sign in on it.',
     },
     unpair: {
       body: 'You will be signed out. It needs a new pairing code from a supervisor to be used again. A recording in progress continues on the Core.',

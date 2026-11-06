@@ -7,8 +7,17 @@ import { EvidenceLifecycleStage, TrackId } from '@dems/shared/domain';
 import type { EvidenceTrack } from '@dems/shared/sim';
 import type { StepStatus } from '@/components/composed/stepper';
 
-/** The four tracks in the order the book lists them (VIDEO-01/02, then AUDIO-01/02; SYS-003). */
-export const TRACK_ORDER: readonly TrackId[] = [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.AUDIO_01, TrackId.AUDIO_02];
+/** All eight tracks in the order the book lists them (VIDEO-01..04, then AUDIO-01..04; SYS-003, D60/D61); mirrors `RECOVERY_TRACKS`. */
+export const TRACK_ORDER: readonly TrackId[] = [
+  TrackId.VIDEO_01,
+  TrackId.VIDEO_02,
+  TrackId.VIDEO_03,
+  TrackId.VIDEO_04,
+  TrackId.AUDIO_01,
+  TrackId.AUDIO_02,
+  TrackId.AUDIO_03,
+  TrackId.AUDIO_04,
+];
 
 /** Tracks sorted into `TRACK_ORDER`; unknown track IDs keep their order after the known ones. */
 export function orderedTracks(tracks: readonly EvidenceTrack[]): EvidenceTrack[] {

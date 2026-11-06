@@ -54,6 +54,12 @@
  *   signature keeps "Signature (simulated)".
  * - The bundled-package line is drawn only for the package of a demo item: the detail passes
  *   `bundled` for nothing else (G89-09).
+ *
+ * **Per-pair audio** (audit 2026-11-05 row 207, M3-16 R1/R2/R4; E7, E8, E10). The AUDIO-0N files of a
+ * `/2.1` item are listed apart from the camera files, under "Audio files of the camera-microphone pairs",
+ * each "AUDIO-0N · audio of Pair N, in VIDEO-0N" with its own hash (`PairAudio`); the item's signed
+ * `audioTracksMissing` statement follows. The camera rows (`evidence-sealed-file-VIDEO-0N`) are unchanged,
+ * and a legacy item (no AUDIO-0N file, no statement) draws exactly what it drew before.
  */
 import { Alert, Button, Spinner, useToast } from 'heroui-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -88,6 +94,7 @@ import {
 } from './integrity-tab';
 import { hasSealedPackageHere, isDemoItem, isRealItem, readItemFacts, signingKeyClassOf } from './item-facts';
 import { readItemV2 } from './item-v2';
+import { PairAudio } from './pair-audio';
 import { useClockDue } from './use-clock-due';
 import { useCoreVerify } from './use-core-verify';
 import { SCRAMBLE_MS } from './use-scramble';
@@ -220,8 +227,12 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
   const itemV2 = useMemo(() => readItemV2(item), [item]);
   /** A package this Core sealed: its own files are listed, never the v1 track rows (G89-04, G89-09). */
   const sealedHere = hasSealedPackageHere(facts) || isRealItem(facts) || itemV2.isV2;
+  /** Row 207 (M3-16 R1): the pair audio files are listed apart (`PairAudio`), never as a "sealed file" of the camera list. */
+  const pairAudioIds = new Set<string>(itemV2.pairAudioFiles.map((audio) => audio.trackId));
   const sealedFiles: readonly { readonly trackId: string; readonly sha256: string | null }[] =
-    itemV2.files.length > 0 ? itemV2.files : item.tracks.map((track) => ({ trackId: track.trackId, sha256: track.sha256 }));
+    itemV2.files.length > 0
+      ? itemV2.files.filter((file) => !pairAudioIds.has(file.trackId))
+      : item.tracks.map((track) => ({ trackId: track.trackId, sha256: track.sha256 }));
   const signature = facts.signature;
   const verifiedKeyLine = done && v2 !== null && (v2.signingKey === 'DEVELOPMENT' || v2.signingKey === 'NOT_ESTABLISHED') ? v2.signingKey : null;
   /** The key class of a REAL signature, from the item or this screen's verify run; null: no line (simulated, or said by the verify line). */
@@ -323,6 +334,7 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
               </View>
             ))
           )}
+          <PairAudio item={itemV2} />
         </Section>
       ) : (
         <Section title={t('features.evidence.integrity.trackTitle')}>

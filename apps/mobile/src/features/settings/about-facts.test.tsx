@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, cleanup, screen } from '@testing-library/react-native';
 import { Dimensions } from 'react-native';
 import type { ReactTestInstance } from 'react-test-renderer';
-import { DEMO_OPERATOR_PASSWORD, PLATFORM_NOT_REPORTED, SOFTWARE_VERSION } from '@dems/shared/sim';
+import { DEMO_OPERATOR_PASSWORD, DEVICE_ID, PLATFORM_NOT_REPORTED, SOFTWARE_VERSION } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetMotionStateForTests } from '@/motion';
 import { createTestSim, flushAsync, renderWithRuntime } from '@/runtime/testing/test-sim';
@@ -88,3 +88,58 @@ describe('Settings > About: the model\'s versions are not shown as versions of a
   });
 });
 
+// Audit M3-10 R1/R2 (row 197; register I4-I7 of masterplan/01_specs_m3.md; D52, D72, D159; web parity row 105 / CS2).
+// On a Core in its own capture the About section draws the Core id by the shared S9 reader `reportedCoreDeviceIdOf`
+// (the dataset's reserved id DEMS-IR-01 - production `core_device.id` today, D72/D159 - reads "Not reported"), the
+// model-only fields read `system.noProducer`, and neither the DEMO chip nor "Synthetic demo values" is drawn.
+// The simulated lane (CONTROL) keeps the chip, the description and the dataset's values.
+describe('Settings > About on a Core in its own capture: the Core id by I6, model fields by I7, no synthetic chip (M3-10)', () => {
+  const MODEL_FIELDS = ['settings-about-product', 'settings-about-room', 'settings-about-serial', 'settings-about-bsp', 'settings-about-provisioning'] as const;
+  const signedIn = () => {
+    const test = createTestSim();
+    expect(test.sim.actions.signIn('budi.santoso', DEMO_OPERATOR_PASSWORD).ok).toBe(true);
+    return test;
+  };
+
+  it('CONTROL (simulated lane): the DEMO chips, "Synthetic demo values" and the dataset values stay; the id is DEMS-IR-01', async () => {
+    const test = signedIn();
+    const { device } = test.sim.store.getState();
+    renderWithRuntime(<AboutSection />, { sim: test.sim });
+    await flushAsync();
+    expect(device.id).toBe(DEVICE_ID);
+    expect(screen.getByTestId('settings-about-device').props.accessibilityLabel).toBe(`Device ID, ${DEVICE_ID}`);
+    expect(screen.getAllByTestId('settings-about-demo')).toHaveLength(2);
+    expect(screen.getByText('Synthetic demo values')).toBeTruthy();
+    expect(textOf('settings-about-serial')).toContain(device.identity.serialNumber);
+    expect(textOf('settings-about-provisioning')).toContain(device.identity.provisioningRecordId);
+    for (const testID of MODEL_FIELDS) expect({ testID, text: textOf(testID) }).toEqual({ testID, text: expect.not.stringContaining('Not reported') });
+  });
+
+  it('own capture with the reserved id DEMS-IR-01: the id, product, room, serial, BSP and provisioning id read "Not reported"; no chip, no synthetic description', async () => {
+    const test = signedIn();
+    const { device } = test.sim.store.getState();
+    renderWithRuntime(<AboutSection />, { sim: test.sim });
+    await flushAsync();
+    act(() => test.sim.store.setState((s) => ({ security: { ...s.security, ...PLATFORM_NOT_REPORTED } })));
+    expect(test.sim.store.getState().device.id).toBe(DEVICE_ID);
+    expect(screen.getByTestId('settings-about-device').props.accessibilityLabel).toBe('Device ID, Not reported');
+    expect(textOf('settings-about-identity')).not.toContain(DEVICE_ID);
+    for (const testID of MODEL_FIELDS) expect({ testID, text: textOf(testID) }).toEqual({ testID, text: expect.stringContaining('Not reported') });
+    for (const value of [device.room, device.identity.serialNumber, device.identity.bspVersion, device.identity.provisioningRecordId]) {
+      expect(textOf('settings-about')).not.toContain(value);
+    }
+    expect(screen.queryByTestId('settings-about-demo')).toBeNull();
+    expect(screen.queryByText('Synthetic demo values')).toBeNull();
+  });
+
+  it('own capture (host clock) with an installation record DEMS-BENCH-01: that id is shown as it is; still no chip', async () => {
+    const test = signedIn();
+    renderWithRuntime(<AboutSection />, { sim: test.sim });
+    await flushAsync();
+    act(() => test.sim.store.setState((s) => ({ device: { ...s.device, id: 'DEMS-BENCH-01' }, time: { ...s.time, hostClock: true } })));
+    expect(screen.getByTestId('settings-about-device').props.accessibilityLabel).toBe('Device ID, DEMS-BENCH-01');
+    expect(textOf('settings-about-serial')).toContain('Not reported');
+    expect(screen.queryByTestId('settings-about-demo')).toBeNull();
+    expect(screen.queryByText('Synthetic demo values')).toBeNull();
+  });
+});

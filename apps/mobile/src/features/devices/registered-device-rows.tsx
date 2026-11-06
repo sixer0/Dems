@@ -15,13 +15,14 @@ import { Fragment, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSim } from '@dems/shared/sim';
-import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
+import { derived, fontFamily, palette, radius, spacing, typography, type StatusTone } from '@dems/shared/tokens';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { StatusChip } from '@/components/kit';
 import { withAlpha } from '@/components/media';
 import { LOCAL_STATE_TONE } from '@/features/capture-selector/capture-notices-model';
 import { DevelopmentSourceBadge, useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
 import {
+  drawnByOwnTile,
   parseRosterLine,
   rosterDeviceName,
   rosterDeviceState,
@@ -33,6 +34,7 @@ import {
   type RegisteredDevice,
   type RosterKind,
 } from './registered-devices-model';
+import { isDeviceId, rosterTrackStatusOf, STATUS_LABEL_KEY, STATUS_TONE, type DeviceId } from './devices-model';
 
 /** The roster, re-rendering only when a fact of it changes (one flat string from the store). */
 export function useRegisteredDevices(): readonly RegisteredDevice[] {
@@ -45,11 +47,51 @@ export function useRegisteredDevice(deviceId: string | null): RegisteredDevice |
   return deviceId === null ? null : (devices.find((device) => device.id === deviceId) ?? null);
 }
 
+/**
+ * Audit row 222 (D173; M3-08 domino of row 190): THE SELECTION KEY OF A REGISTERED ROW - what its press puts in
+ * `/devices/<key>` and `?selected=<key>`, and what its highlight compares with. A real Core mints its registry ids
+ * from the built-in pattern (the bench's CAM-03 on VIDEO-01), so such a device shares its id with a fixed row of
+ * the screen (fixed row CAM-03 = the VIDEO-03 line). The plain id stays the fixed row's (its route and its
+ * highlight, as before); a registered device whose id is a fixed row's id is keyed `registered.<id>`. Every other
+ * registered id (CAM-05, MIC-06) is its own key, as since row 140. The prefix passes `recordIdSchema`.
+ */
+export const REGISTERED_KEY_PREFIX = 'registered.';
+
+export function registeredSelectionKey(deviceId: string): string {
+  return isDeviceId(deviceId) ? `${REGISTERED_KEY_PREFIX}${deviceId}` : deviceId;
+}
+
+/** What `/devices/<key>` opens: the fixed row's detail (`builtInId`), a registered device's, or neither (not found). */
+export interface DeviceDetailTarget {
+  readonly builtInId: DeviceId | null;
+  readonly registered: RegisteredDevice | null;
+}
+
+/**
+ * Audit row 222 (D173): resolve a detail key. A plain fixed-row id opens that fixed row (CAM-01 on its own line,
+ * and fixed row CAM-03 = VIDEO-03 even while the Core's CAM-03 stands on VIDEO-01). A `registered.<id>` key opens
+ * the Core's device of that id from the roster - unless that device is now back on its OWN line
+ * (`drawnByOwnTile`, row 190), where the fixed row draws it, so the fixed row's detail opens. Anything else is the
+ * registered roster by its id, else not found.
+ */
+export function useDeviceDetailTarget(key: string): DeviceDetailTarget {
+  const marked = key.startsWith(REGISTERED_KEY_PREFIX);
+  const id = marked ? key.slice(REGISTERED_KEY_PREFIX.length) : key;
+  const onOwnTile = useSim((s) => {
+    const device = s.captureDevices.devices.find((entry) => entry.id === id);
+    return device !== undefined && drawnByOwnTile(s.captureConfig, device);
+  });
+  const builtIn = isDeviceId(id) && (!marked || onOwnTile);
+  const registered = useRegisteredDevice(builtIn ? null : id);
+  return { builtInId: builtIn && isDeviceId(id) ? id : null, registered };
+}
+
 export interface RegisteredDeviceRowsProps {
   kind: RosterKind;
+  /** The screen's selection key (`?selected=`); a row is highlighted when it equals the row's `registeredSelectionKey`. */
   selectedId: string | null;
-  /** "View device": the screen opens the details of that registered device. */
-  onPress: (deviceId: string) => void;
+  /** "View device": the screen opens the details of that registered device, by its selection key (row 222). */
+  onPress: (selectionKey: string) => void;
 }
 
 export function RegisteredDeviceRows({ kind, selectedId, onPress }: RegisteredDeviceRowsProps) {
@@ -60,7 +102,7 @@ export function RegisteredDeviceRows({ kind, selectedId, onPress }: RegisteredDe
       {devices.map((device) => (
         <Fragment key={device.id}>
           <Separator />
-          <RegisteredDeviceRow device={device} selected={device.id === selectedId} onPress={onPress} />
+          <RegisteredDeviceRow device={device} selected={registeredSelectionKey(device.id) === selectedId} onPress={onPress} />
         </Fragment>
       ))}
     </>
@@ -72,14 +114,30 @@ export function registeredStateTone(state: ReturnType<typeof rosterDeviceState>,
   return state === 'READY' && !checked ? 'default' : LOCAL_STATE_TONE[state];
 }
 
+/**
+ * THE WORD AND TONE OF A REGISTERED DEVICE'S STATE CHIP (the row and its detail say the same). Audit row 191, B16
+ * (D114; the web's `rosterCardStatus` of W2c2): a device ON a line speaks for its TRACK too. When the registry
+ * reads it READY but its track is not ready (`rosterTrackStatusOf`: FAULT, OFFLINE, NO SIGNAL, CLIP - row 129's
+ * rule over the one source reader), the chip says the track's status, as the fixed row of that track does.
+ * Otherwise the registry rule stands: a negative registry fact ("Not reachable") is never replaced, and a ready
+ * one reads "Not checked" / "Reachable" by the Core's checked fact (wave L, G70c-02).
+ */
+export function useRegisteredStateWord(device: RegisteredDevice, local: boolean): { readonly key: string; readonly tone: StatusTone } {
+  const track = useSim((s) => rosterTrackStatusOf(s, device.slot));
+  const state = rosterDeviceState(device);
+  if (state === 'READY' && track !== null) return { key: STATUS_LABEL_KEY[track], tone: STATUS_TONE[track] };
+  const checked = sourceChecked(device);
+  return { key: sourceStateLabelKey(state, local, checked), tone: registeredStateTone(state, checked) };
+}
+
 function RegisteredDeviceRow({ device, selected, onPress }: { device: RegisteredDevice; selected: boolean; onPress: (deviceId: string) => void }) {
   const { t } = useTranslation();
   const { live } = useSourceBadgeMode();
   const name = rosterDeviceName(t, device, live);
-  const state = rosterDeviceState(device);
   const local = device.adapter === 'LOCAL_DEVICE' && rosterSourceKind(device, live) !== null;
-  // Wave L ruling (G70c-02): READY without a checked fact of the Core is "Not checked".
-  const stateText = t(sourceStateLabelKey(state, local, sourceChecked(device)));
+  // Wave L ruling (G70c-02): READY without a checked fact of the Core is "Not checked". Row 191 (B16): on a line, the track's fault too.
+  const word = useRegisteredStateWord(device, local);
+  const stateText = t(word.key);
   const usedAs = t(`common.developmentRoster.usedAs.${device.slot ?? 'NONE'}`);
   const onKey = rosterOnKey(device, live);
   const Icon = device.kind === 'CAMERA' ? Camera : Mic;
@@ -91,7 +149,7 @@ function RegisteredDeviceRow({ device, selected, onPress }: { device: Registered
         accessibilityState={{ selected }}
         accessibilityLabel={t('features.devices.list.rowLabel', { name, detail: `${usedAs}, ${device.id}`, status: stateText })}
         accessibilityHint={t('features.devices.list.rowHint')}
-        onPress={() => onPress(device.id)}
+        onPress={() => onPress(registeredSelectionKey(device.id))}
         style={[styles.item, selected ? styles.itemSelected : null]}
       >
         <ListGroup.ItemPrefix>
@@ -131,7 +189,7 @@ function RegisteredDeviceRow({ device, selected, onPress }: { device: Registered
         </ListGroup.ItemContent>
         <ListGroup.ItemSuffix style={styles.suffix} pointerEvents="none">
           {/* Fix wave J (JT-14): ONE colour rule for "Not checked" - neutral, as the detail and the assigned cameras draw it. */}
-          <StatusChip size="sm" tone={registeredStateTone(state, sourceChecked(device))} label={stateText} testID={`registered-device-state-${device.id}`} />
+          <StatusChip size="sm" tone={word.tone} label={stateText} testID={`registered-device-state-${device.id}`} />
           <ChevronRight size={20} color={palette.gold} />
         </ListGroup.ItemSuffix>
       </ListGroup.Item>

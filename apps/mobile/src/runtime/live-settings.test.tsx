@@ -1,10 +1,10 @@
 // Backend task W51: what MD-3 does to a screen this row does not write. Settings → App Preferences
-// builds its "Core link source" control from `CORE_LINK_SOURCES`, so the third source shows there as
-// a third segment as soon as the list has it. This file holds what the runtime owes that screen:
-// the segment has its text, a release build shows it disabled, and nothing else of the control
-// moved. The confirmation dialog and the sign-out of a change across the LIVE boundary
-// (04_client_integration_spec §3.3) are the Settings row's and are not tested here: the segment is
-// not pressed.
+// builds its "Core link source" control from `CORE_LINK_SOURCES`, and since 2026-11-05 that list is
+// LIVE only: the device has one source, so the control has one segment. This file holds what the
+// runtime owes that screen: the segment has its text, a release build shows it not at all, and
+// nothing else of the control moved. The confirmation dialog and the sign-out of a change across
+// the LIVE boundary (04_client_integration_spec §3.3) are the Settings row's and are not tested
+// here: the segment is not pressed.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, cleanup, screen } from '@testing-library/react-native';
@@ -59,13 +59,13 @@ describe('Settings → Core link source, with LIVE in the list (MD-3)', () => {
     cleanup();
   });
 
-  it('debug build: three segments, each with its text; SIMULATED is the selected one', async () => {
+  it('debug build: one segment, LIVE, enabled and selected', async () => {
     await mountPreferences();
-    for (const source of CORE_LINK_SOURCES) expect(screen.getByTestId(`settings-core-link-${source}`)).toBeTruthy();
+    expect(CORE_LINK_SOURCES).toEqual(['LIVE']);
     expect(screen.getByTestId('settings-core-link-LIVE')).toHaveTextContent('Live');
     expect(screen.getByTestId('settings-core-link-LIVE').props.accessibilityState?.disabled ?? false).toBe(false);
-    expect(screen.getByTestId('settings-core-link-SIMULATED')).toHaveTextContent('Simulated');
-    expect(screen.getByTestId('settings-core-link-HEARTBEAT')).toHaveTextContent('mock-core heartbeat');
+    expect(screen.queryByTestId('settings-core-link-SIMULATED')).toBeNull();
+    expect(screen.queryByTestId('settings-core-link-HEARTBEAT')).toBeNull();
     expect(getMissingKeys()).toEqual([]);
   });
 

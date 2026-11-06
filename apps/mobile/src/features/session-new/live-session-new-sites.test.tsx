@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { rateLimited, OUTAGE } from '@dems/shared/live/testing';
-import { OPERATORS, PRECHECK_TOTAL_MAX_MS } from '@dems/shared/sim';
+import { OPERATORS, PRECHECK_ORDER, PRECHECK_TOTAL_MAX_MS } from '@dems/shared/sim';
 import { renderLiveSessionNew, resetLiveSessionNewBed, type LiveSessionNewBed, type LiveSessionNewBedOptions } from './testing/live-session-new-bed';
 import { en } from '@dems/shared/i18n';
 import { getMissingKeys, i18n, resetMissingKeys } from '@/i18n';
@@ -229,7 +229,8 @@ describe('S2-2: run the checks again', () => {
     return b;
   }
 
-  it('success: one retry; the Core runs all eight checks again', async () => {
+  // Re-pinned by row 184 (M3-04 R6, I63 §4.3), citing D53: "all eight" -> every check of PRECHECK_ORDER (12).
+  it('success: one retry; the Core runs every check of PRECHECK_ORDER again (twelve since D53)', async () => {
     const b = await openBlock();
     act(() => b.engine.sim.actions.clearFault('STORAGE_FULL'));
     await pressAndSettle('session-new-retry-checks', b);
@@ -237,6 +238,7 @@ describe('S2-2: run the checks again', () => {
     expect(b.state().session?.precheck.outcome).toBeNull();
     await b.runCore(PRECHECK_TOTAL_MAX_MS);
     expect(b.state().session?.state).toBe('ARMED');
+    expect(b.state().session?.precheck.items.map((item) => item.id)).toEqual([...PRECHECK_ORDER]); // D53
   });
 
   it('refusal (example notPermitted): the denied toast; the block stays', async () => {

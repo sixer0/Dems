@@ -187,7 +187,7 @@ describe('Settings', () => {
   });
 
   it('App Preferences: every switch and choice merges into dems.mobile.prefs.v1 (D57); Login reads presentation mode (D88)', async () => {
-    await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ railCollapsed: true, coreLinkSource: 'SIMULATED' }));
+    await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ railCollapsed: true, coreLinkSource: 'HEARTBEAT' }));
     await mount({ section: 'preferences' });
     expect(screen.getByTestId('screen-settings-section')).toBeTruthy();
 
@@ -198,12 +198,13 @@ describe('Settings', () => {
     expect(screen.queryByText(/later/i)).toBeNull();
 
     // The developer group (development build, presentation mode off): Core link source, Performance overlay.
-    expect(within(screen.getByTestId('settings-preferences-debug')).getByTestId('settings-core-link-SIMULATED')).toBeTruthy();
+    // The control offers LIVE alone since 2026-11-05, so the stored HEARTBEAT is read as LIVE and left alone.
+    expect(within(screen.getByTestId('settings-preferences-debug')).getByTestId('settings-core-link-LIVE')).toBeTruthy();
+    expect(within(screen.getByTestId('settings-preferences-debug')).queryByTestId('settings-core-link-SIMULATED')).toBeNull();
     expect(within(screen.getByTestId('settings-preferences-debug')).getByTestId('settings-performance-overlay')).toBeTruthy();
     expect(screen.queryByText(/adb/i)).toBeNull();
     fireEvent(screen.getByTestId('settings-reduce-motion'), 'onSelectedChange', true);
     fireEvent(screen.getByTestId('settings-haptics'), 'onSelectedChange', false);
-    fireEvent.press(screen.getByTestId('settings-core-link-HEARTBEAT'));
     fireEvent(screen.getByTestId('settings-performance-overlay'), 'onSelectedChange', true);
     await flushAsync();
     expect(motionStore.getState().reduceMotionOverride).toBe(true);

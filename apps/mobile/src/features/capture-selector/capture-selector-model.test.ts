@@ -6,6 +6,9 @@
  * D61 (2026-11-04): FOUR simultaneous microphone channels — the microphone rows, options and
  * commands are keyed by CHANNEL (`MIC-01`..`MIC-04`); operation 78's pair replacement (D133 (1)) is
  * superseded by the line by channel, and a microphone another channel holds MOVES (`micMove`).
+ * Audit row 188 (M3-07 R1/R2; D126, D163): onto a channel that holds a microphone that move is the SWAP
+ * `{ mics: [to-line, from-line] }` (register S1); onto an empty one it stays the MOVE (S2); either is sent
+ * once, only after the confirm (`micMoveGate`).
  */
 import { describe, expect, it } from '@jest/globals';
 import { DEFAULT_CAPTURE_CONFIG, DEFAULT_CAPTURE_DEVICES, DEMO_OPERATOR_PASSWORD, OPERATORS, ScenarioName, type CaptureDevicesSlice } from '@dems/shared/sim';
@@ -22,12 +25,13 @@ import {
   isNoChange,
   isSelectorEmpty,
   micLineCommand,
+  micMoveAskOf,
   micOptions,
   micRows,
   selectorGate,
   updatedAtOf,
 } from './capture-selector-model';
-import { liveSelectorPort, micLineBody, micMoveBody, selectorPath, simSelectorPort } from './capture-selector-port';
+import { liveSelectorPort, micLineBody, micMoveBody, micMoveGate, selectorPath, simSelectorPort } from './capture-selector-port';
 
 const withAdopted: CaptureDevicesSlice = {
   devices: [
@@ -139,11 +143,15 @@ describe('task 4 row 32 (D61: eight slots): one row per SLOT, and a command for 
     expect(micLineCommand('MIC-01', 'MIC-01', { mics: [{ inputId: 'MIC-01', channel: 'MIC-01' }] })).toBeNull();
   });
 
-  it('R-FLEX row 133 (T-14; D61): a microphone another channel holds MOVES - ONE edit `{ unassign: [from], mics: [line] }`, never two channels at once', () => {
+  it('M3-07 (audit row 188; D126, D163 - inverts the R-FLEX row 133 pin): a microphone another channel holds is a SWAP when this channel holds one, a MOVE onto an empty channel', () => {
     const config = { mics: DEFAULT_CAPTURE_CONFIG.mics.map((mic) => ({ inputId: mic.inputId, channel: mic.channel })) };
-    expect(micLineCommand('MIC-01', 'MIC-02', config)).toEqual({ kind: 'micMove', from: 'MIC-02', channel: 'MIC-01', inputId: 'MIC-02' });
-    expect(micLineCommand('MIC-03', 'MIC-01', config)).toEqual({ kind: 'micMove', from: 'MIC-01', channel: 'MIC-03', inputId: 'MIC-01' });
+    // A held target: the microphone this channel holds goes back to `from` (S1).
+    expect(micLineCommand('MIC-01', 'MIC-02', config)).toEqual({ kind: 'micMove', from: 'MIC-02', channel: 'MIC-01', inputId: 'MIC-02', other: 'MIC-01' });
+    expect(micLineCommand('MIC-03', 'MIC-01', config)).toEqual({ kind: 'micMove', from: 'MIC-01', channel: 'MIC-03', inputId: 'MIC-01', other: 'MIC-03' });
     expect(micLineCommand('MIC-04', 'MIC-04', config)).toBeNull();
+    // An empty target: the MOVE (S2), no `other`.
+    const noChannel3 = { mics: config.mics.filter((mic) => mic.channel !== 'MIC-03') };
+    expect(micLineCommand('MIC-03', 'MIC-04', noChannel3)).toEqual({ kind: 'micMove', from: 'MIC-04', channel: 'MIC-03', inputId: 'MIC-04' });
     // An unheld device on an empty channel: a bare line, not a move.
     expect(micLineCommand('MIC-01', 'MIC-09', { mics: [] })).toEqual({ kind: 'micLine', channel: 'MIC-01', inputId: 'MIC-09' });
   });
@@ -174,11 +182,57 @@ describe('task 4 row 32 (D61: eight slots): one row per SLOT, and a command for 
     expect(requests).toEqual([{ method: 'POST', path: '/api/v1/capture/config', body: { mics: [{ channel: 'MIC-02', inputId: 'MIC-02', deviceId: 'MIC-02' }] } }]);
   });
 
-  it('`micMove` is ONE operation 78 edit: `unassign` of the channel it leaves, the line it takes (D61, T-14)', () => {
-    const command = { kind: 'micMove', from: 'MIC-02', channel: 'MIC-01', inputId: 'MIC-02' } as const;
-    expect(selectorPath(command)).toBe('/api/v1/capture/config');
-    expect(micMoveBody(command)).toEqual({ unassign: ['MIC-02'], mics: [{ channel: 'MIC-01', inputId: 'MIC-02', deviceId: 'MIC-02' }] });
-    expect(isNoChange(command, DEFAULT_CAPTURE_CONFIG)).toBe(false);
+  it('M3-07 R1/R2 (audit row 188; D126, D163 - the D61/T-14 pin kept for the empty target only): `micMoveBody` is the SWAP S1 for a held target, the MOVE S2 for an empty one', () => {
+    const swap = { kind: 'micMove', from: 'MIC-02', channel: 'MIC-01', inputId: 'MIC-02', other: 'MIC-01' } as const;
+    expect(selectorPath(swap)).toBe('/api/v1/capture/config');
+    const swapBody = micMoveBody(swap);
+    expect(swapBody).toEqual({ mics: [{ channel: 'MIC-01', inputId: 'MIC-02', deviceId: 'MIC-02' }, { channel: 'MIC-02', inputId: 'MIC-01', deviceId: 'MIC-01' }] });
+    expect(swapBody).not.toHaveProperty('unassign');
+    const move = { kind: 'micMove', from: 'MIC-02', channel: 'MIC-01', inputId: 'MIC-02' } as const;
+    expect(selectorPath(move)).toBe('/api/v1/capture/config');
+    expect(micMoveBody(move)).toEqual({ unassign: ['MIC-02'], mics: [{ channel: 'MIC-01', inputId: 'MIC-02', deviceId: 'MIC-02' }] });
+    expect(isNoChange(swap, DEFAULT_CAPTURE_CONFIG)).toBe(false);
+    expect(isNoChange(move, DEFAULT_CAPTURE_CONFIG)).toBe(false);
+    // What the confirm asks (S5/S6 for the swap, S8/S9 for the move): the pair numbers and the two microphones.
+    expect(micMoveAskOf(swap)).toEqual({ kind: 'SWAP', from: 'MIC-02', to: 'MIC-01', fromPair: 2, toPair: 1, deviceId: 'MIC-02', other: 'MIC-01' });
+    expect(micMoveAskOf(move)).toEqual({ kind: 'MOVE', from: 'MIC-02', to: 'MIC-01', fromPair: 2, toPair: 1, deviceId: 'MIC-02' });
+  });
+
+  it('M3-07 (audit row 188): operation 78 is sent ONCE after the confirm, with the SWAP body; nothing before it, nothing on Cancel', async () => {
+    const liveClient = () => {
+      const calls: { operationId: string; input: unknown }[] = [];
+      const client = {
+        call: (operationId: string, input: unknown) => {
+          calls.push({ operationId, input });
+          return Promise.resolve({ ok: true, status: 200, data: { cameras: [], mics: [], locked: false, updatedAt: 11 } });
+        },
+      } as unknown as Parameters<typeof liveSelectorPort>[0];
+      const port = liveSelectorPort(client);
+      return { calls, send: (command: Parameters<typeof port.send>[0]) => port.send(command) };
+    };
+    const swap = { kind: 'micMove', from: 'MIC-02', channel: 'MIC-01', inputId: 'MIC-02', other: 'MIC-01' } as const;
+    // Confirm: nothing before it, ONE call with S1 after it; a second confirm sends nothing.
+    const confirmed = liveClient();
+    const gate = micMoveGate(swap);
+    expect(gate.ask.kind).toBe('SWAP');
+    expect(confirmed.calls).toHaveLength(0);
+    await expect(gate.confirm(confirmed.send)).resolves.toMatchObject({ result: 'ok', updatedAt: 11 });
+    await expect(gate.confirm(confirmed.send)).resolves.toBeNull();
+    expect(confirmed.calls).toEqual([
+      { operationId: 'updateCaptureConfig', input: { body: { mics: [{ channel: 'MIC-01', inputId: 'MIC-02', deviceId: 'MIC-02' }, { channel: 'MIC-02', inputId: 'MIC-01', deviceId: 'MIC-01' }] } } },
+    ]);
+    // Cancel: nothing - and a confirm pressed after the cancel sends nothing either.
+    const cancelled = liveClient();
+    const dropped = micMoveGate(swap);
+    dropped.cancel();
+    await expect(dropped.confirm(cancelled.send)).resolves.toBeNull();
+    expect(cancelled.calls).toHaveLength(0);
+    // The MOVE onto an empty pair passes the same confirm and sends S2 once.
+    const moved = liveClient();
+    const moveGate = micMoveGate({ kind: 'micMove', from: 'MIC-02', channel: 'MIC-01', inputId: 'MIC-02' });
+    expect(moveGate.ask.kind).toBe('MOVE');
+    await moveGate.confirm(moved.send);
+    expect(moved.calls).toEqual([{ operationId: 'updateCaptureConfig', input: { body: { unassign: ['MIC-02'], mics: [{ channel: 'MIC-01', inputId: 'MIC-02', deviceId: 'MIC-02' }] } } }]);
   });
 });
 
@@ -261,6 +315,20 @@ describe('the simulated port (ops 78, 79 of the in-app simulator; D61)', () => {
     expect(mics.some((mic) => mic.channel === 'MIC-04')).toBe(false);
     expect(configAudit(test).length).toBeGreaterThan(0);
     expect(configAudit(test).at(-1)!.details).toMatchObject({ operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', channel: 'MIC-03', to: 'MIC-04' });
+  });
+
+  it('M3-07 (audit row 188; D126): the SWAP against the simulator - channels 1 and 2 trade microphones in ONE request, ONE CHANNEL row, no channel left empty', async () => {
+    const test = signedIn('rina.wijaya');
+    const before = configAudit(test).length;
+    const command = micLineCommand('MIC-01', 'MIC-02', { mics: test.sim.store.getState().captureConfig.mics.map((mic) => ({ inputId: mic.inputId, channel: mic.channel })) });
+    expect(command).toEqual({ kind: 'micMove', from: 'MIC-02', channel: 'MIC-01', inputId: 'MIC-02', other: 'MIC-01' });
+    const answer = await simSelectorPort(test.sim).send(command!);
+    expect(answer.result).toBe('ok');
+    const mics = test.sim.store.getState().captureConfig.mics;
+    expect((['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const).map((channel) => mics.find((mic) => mic.channel === channel)?.inputId)).toEqual(['MIC-02', 'MIC-01', 'MIC-03', 'MIC-04']);
+    const rows = configAudit(test).slice(before);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.details).toMatchObject({ operationId: 'updateCaptureConfig', scope: 'MIC', field: 'CHANNEL', inputId: 'MIC-02', from: 'MIC-02', to: 'MIC-01' });
   });
 
   it('TECHNICIAN: setCaptureCameraSource assigns the camera to the track, one audit row', async () => {

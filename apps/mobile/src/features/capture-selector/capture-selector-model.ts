@@ -16,7 +16,7 @@
  */
 import { VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain';
 // D61 (2026-11-04): the microphone plane mirrors the video plane — the roles became the four numbered channels.
-import { MIC_CHANNEL_IDS, type MicChannel } from '@dems/shared/sim';
+import { MIC_CHANNEL_IDS, capturePairOfMicChannel, type MicChannel } from '@dems/shared/sim';
 import { CaptureDeviceKind, CaptureStreamState, type CaptureConfigSlice, type CaptureDeviceStatus, type CaptureDevicesSlice } from '@dems/shared/sim';
 import { storedProfilesOf } from './camera-profile';
 
@@ -265,14 +265,34 @@ export function micOptionMoveHint(channel: MicChannel, option: Pick<MicOption, '
  * |---|---|
  * | the microphone already on this channel | none (no change) |
  * | a microphone on no channel | operation 78, ONE line by channel (`micLine`) |
- * | a microphone another channel holds | ONE operation 78 edit `{ unassign: [from], mics: [line] }` (`micMove`, R-FLEX row 133 / T-14) — one microphone never stands on two channels |
+ * | a microphone another channel holds, this channel holding none | ONE operation 78 MOVE `{ unassign: [from], mics: [line] }` (`micMove`, register S2; R-FLEX row 133 / T-14) — the pair it leaves is incomplete |
+ * | a microphone another channel holds, this channel holding one | ONE operation 78 SWAP `{ mics: [to-line, from-line] }` (`micMove` with `other`, register S1; audit row 188, M3-07 R1; D126) — the two microphones trade channels, no pair is left without one |
+ *
+ * Either way one microphone never stands on two channels, and the move is sent only after the operator's confirm (`micMoveGate`).
  */
 export function micLineCommand(channel: MicChannel, chosenId: string, config: { readonly mics: readonly { readonly inputId: string; readonly channel: MicChannel }[] }): SelectorCommand | null {
   const held = config.mics.find((line) => line.channel === channel)?.inputId ?? null;
   if (chosenId === held) return null;
   const other = config.mics.find((line) => line.channel !== channel && line.inputId === chosenId);
-  if (other !== undefined) return { kind: 'micMove', from: other.channel, channel, inputId: chosenId };
+  // Audit row 188 (M3-07 R1/R2; D126): a channel that holds a microphone gives it back to `from` (the SWAP, S1);
+  // an empty channel takes the microphone alone (the MOVE, S2).
+  if (other !== undefined) return held === null ? { kind: 'micMove', from: other.channel, channel, inputId: chosenId } : { kind: 'micMove', from: other.channel, channel, inputId: chosenId, other: held };
   return { kind: 'micLine', channel, inputId: chosenId };
+}
+
+/**
+ * What the operator confirms before a microphone move is sent (audit row 188, M3-07 R1/R2; register S5-S10): the
+ * SWAP asks `devices.pairs.swapTitle` / `swapConfirm` / `swap` (S5/S6/S7), the MOVE asks `moveTitle` / `moveConfirm` /
+ * `move` (S8/S9/S10). `fromPair` / `toPair` are the pair numbers of the two channels (D5: `MIC-0N` is Pair N);
+ * `deviceId` is the chosen microphone, `other` the one the target channel gives back. The dialog is row 189's.
+ */
+export type MicMoveAsk =
+  | { readonly kind: 'SWAP'; readonly from: MicChannel; readonly to: MicChannel; readonly fromPair: number; readonly toPair: number; readonly deviceId: string; readonly other: string }
+  | { readonly kind: 'MOVE'; readonly from: MicChannel; readonly to: MicChannel; readonly fromPair: number; readonly toPair: number; readonly deviceId: string };
+
+export function micMoveAskOf(command: Extract<SelectorCommand, { kind: 'micMove' }>): MicMoveAsk {
+  const base = { from: command.from, to: command.channel, fromPair: capturePairOfMicChannel(command.from).pair, toPair: capturePairOfMicChannel(command.channel).pair, deviceId: command.inputId };
+  return command.other === undefined ? { kind: 'MOVE', ...base } : { kind: 'SWAP', ...base, other: command.other };
 }
 
 /** True when the Core holds no selector line and no capture device at all (§2.5 "Empty device list"). */
@@ -347,10 +367,12 @@ export type SelectorCommand =
    */
   | { readonly kind: 'micLine'; readonly channel: MicChannel; readonly inputId: string }
   /**
-   * Operation 78, ONE edit (R-FLEX row 133, T-14; D61): `{ unassign: [from], mics: [line] }` — the
-   * microphone leaves the channel `from` and takes the channel `channel`.
+   * Operation 78, ONE edit: the microphone `inputId` leaves the channel `from` and takes the channel `channel`.
+   * - `other` absent (the target channel holds none): the MOVE `{ unassign: [from], mics: [line] }` (S2; R-FLEX row 133, T-14; D61).
+   * - `other` present (the microphone the target channel holds): the SWAP `{ mics: [to-line, from-line] }`, `other`
+   *   going to `from`, no `unassign` (S1; audit row 188, M3-07 R1; D126; D22(3)).
    */
-  | { readonly kind: 'micMove'; readonly from: MicChannel; readonly channel: MicChannel; readonly inputId: string };
+  | { readonly kind: 'micMove'; readonly from: MicChannel; readonly channel: MicChannel; readonly inputId: string; readonly other?: string };
 
 /** What an operation answered, reduced to the three members both sources carry. */
 export interface AnswerFacts {

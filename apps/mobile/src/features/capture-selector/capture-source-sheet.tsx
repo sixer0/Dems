@@ -5,7 +5,7 @@
  * | Field | Options | Operation on Save |
  * |---|---|---|
  * | the camera of a video track | every REGISTERED camera (`cameraOptions`; a search candidate is never one, PE-125-04) | 79 `setCaptureCameraSource` |
- * | the microphone of any of the FOUR channels (fix wave H, G70-02; ruling D196; D61 of 2026-11-04) | every REGISTERED microphone (`micOptions`) | `micLineCommand`: 78 `updateCaptureConfig` with ONE line by channel, or ONE edit `{ unassign: [from], mics: [line] }` when the microphone moves from another channel (`micOptionMoveHint` says so on the option) |
+ * | the microphone of any of the FOUR channels (fix wave H, G70-02; ruling D196; D61 of 2026-11-04) | every REGISTERED microphone (`micOptions`) | `micLineCommand`: 78 `updateCaptureConfig` with ONE line by channel; a microphone another pair holds (`micOptionMoveHint`; the option reads S11 `devices.pairs.onOtherPair`) is NOT sent from here - the caller asks the confirm first (audit rows 188/189, M3-07; D175): the SWAP `{ mics: [to-line, from-line] }` (S1) when this channel holds a microphone, the MOVE `{ unassign: [from], mics: [line] }` (S2) when it holds none |
  *
  * The sheet is portalled above the simulator's provider, so it reads no store: the options and the
  * current choice come in as props, and Save hands the command to the caller, which holds the port.
@@ -32,7 +32,7 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { ReduceMotion } from 'react-native-reanimated';
 import type { VideoTrackId } from '@dems/shared/domain';
-import type { MicChannel } from '@dems/shared/sim'; // D61 (2026-11-04)
+import { capturePairOfMicChannel, type MicChannel } from '@dems/shared/sim'; // D61 (2026-11-04); audit row 189: the pair of a channel
 import { fontFamily, palette, radius, spacing, typography, type StatusTone } from '@dems/shared/tokens';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { StatusChip } from '@/components/kit';
@@ -247,11 +247,13 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
                     <StatusChip
                       size="sm"
                       tone={option.channel === 'MIC-01' ? 'success' : 'default'}
-                      label={option.channel === null ? t('features.capture-selector.selector.sheet.notAssigned') : t(`features.capture-selector.selector.channel.${option.channel}`)}
+                      // Audit row 189 (M3-07 R4; T9, D163): the slot an option stands on is named "Mic N (Camera N)".
+                      label={option.channel === null ? t('features.capture-selector.selector.sheet.notAssigned') : t('devices.pairs.micOfCamera', { n: capturePairOfMicChannel(option.channel).pair })}
                       icon={null}
                     />
                   }
-                  warning={moveFrom === null ? null : t('features.capture-selector.selector.sheet.onOtherChannel', { n: Number(moveFrom.slice(-2)) })}
+                  // Audit row 189 (M3-07 R3; register S11, verbatim as the web row 156): the option another pair holds says so.
+                  warning={moveFrom === null ? null : t('devices.pairs.onOtherPair', { n: capturePairOfMicChannel(moveFrom).pair })}
                   selected={draft === option.deviceId}
                   disabled={busy}
                   onPress={setDraft}

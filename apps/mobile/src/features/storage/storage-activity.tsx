@@ -11,23 +11,34 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { exportPhaseOfEvent, formatWibTime, type SimEvent } from '@dems/shared/sim';
+import { exportPhaseOfEvent, formatWibTime, useSim, type SimEvent } from '@dems/shared/sim';
 import { derived, fontFamily, palette, typography } from '@dems/shared/tokens';
 import { SectionCard } from '@/components/kit';
 import { listInsert, rowReveal, useMotionSettings } from '@/motion';
-import { ACTIVITY_DOT, activityDetail, activityTone, storageFaultKind } from './storage-model';
+import { selectFaultSessionId } from './sim-adapter';
+import { ACTIVITY_DOT, activityDetail, activityTone, faultClearedStillInFault, storageFaultKind } from './storage-model';
 import { useStorageActivity } from './use-storage-data';
 
 export const ACTIVITY_ROWS = 5;
 
-/** The row text: the event title (plus the storage fault kind), then its detail. */
-export function useActivityText(): (event: SimEvent) => string {
+/**
+ * The row text: the event title (plus the storage fault kind), then its detail. M3-13 (row 203, W4/W5):
+ * a FAULT_CLEARED of the open session still in FAULT (`faultSessionId`) is titled
+ * `common.faultCleared.sessionStillInFault` with the kind in its words; it already names the kind, so
+ * there is no second " · <kind>". Omitted or null: the old title.
+ */
+export function useActivityText(): (event: SimEvent, faultSessionId?: string | null) => string {
   const { t } = useTranslation();
-  return (event) => {
+  return (event, faultSessionId = null) => {
     const fault = storageFaultKind(event);
     // Fix wave J (JW-03, contract J-S 3): an export that was only REQUESTED is not "Evidence exported".
     if (exportPhaseOfEvent(event) === 'REQUESTED') return t('common.truth.exportRequested');
-    const title = fault ? `${t(`common.eventType.${event.type}`)} · ${t(`common.faultKind.${fault}`)}` : t(`common.eventType.${event.type}`);
+    const stillInFault = fault !== null && faultClearedStillInFault(event, faultSessionId);
+    const title = stillInFault
+      ? t('common.faultCleared.sessionStillInFault', { kind: t(`common.faultKind.${fault}`) })
+      : fault
+        ? `${t(`common.eventType.${event.type}`)} · ${t(`common.faultKind.${fault}`)}`
+        : t(`common.eventType.${event.type}`);
     const detail = activityDetail(event);
     if (!detail) return title;
     if (detail.kind === 'text') return `${title} ${detail.text}`;
@@ -42,6 +53,8 @@ export function StorageActivity() {
   const settings = useMotionSettings();
   const events = useStorageActivity(ACTIVITY_ROWS);
   const textOf = useActivityText();
+  // M3-13 (W5): the open session's id while it is in FAULT (a primitive: no re-render per tick).
+  const faultSessionId = useSim(selectFaultSessionId);
   // Rows present at mount reveal in sequence; later rows insert (M-C-07).
   const [initial] = useState<ReadonlySet<string>>(() => new Set(events.map((event) => event.id)));
 
@@ -66,7 +79,8 @@ export function StorageActivity() {
         <View accessibilityLabel={t('storage.activity.listLabel')} style={styles.list}>
           {events.map((event, index) => {
             const time = formatWibTime(event.at);
-            const text = textOf(event);
+            const text = textOf(event, faultSessionId);
+            const stillInFault = faultClearedStillInFault(event, faultSessionId);
             const fresh = !initial.has(event.id);
             return (
               <Animated.View
@@ -77,7 +91,10 @@ export function StorageActivity() {
                 accessibilityLabel={t('features.storage.activity.rowA11y', { time, title: text })}
                 style={[styles.row, index > 0 ? styles.rowDivider : null]}
               >
-                <View style={[styles.dot, { backgroundColor: ACTIVITY_DOT[activityTone(event)] }]} />
+                <View
+                  testID={stillInFault ? 'storage-activity-still-in-fault' : 'storage-activity-dot'}
+                  style={[styles.dot, { backgroundColor: ACTIVITY_DOT[activityTone(event, faultSessionId)] }]}
+                />
                 <Text maxFontSizeMultiplier={1.2} style={styles.time}>
                   {time}
                 </Text>

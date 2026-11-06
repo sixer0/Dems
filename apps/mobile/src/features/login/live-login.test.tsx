@@ -13,16 +13,17 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { useEffect } from 'react';
-import { Text } from 'react-native';
+import { Linking, Text } from 'react-native';
 import type { Metrics } from 'react-native-safe-area-context';
 import { CORE_API_EXAMPLES, pickReplicatedState, type AuthSessionInfo, type PairingRedeemed, type ReplicatedState, type SignInStatus } from '@dems/shared/api';
 import { FAKE_CREDENTIALS, OUTAGE, createFakeTransport, rateLimited, refusal, type FakeAnswer, type FakeConnection, type FakeHttpCall, type FakeReply, type FakeTransport } from '@dems/shared/live/testing';
 import type { SocketLike } from '@dems/shared/realtime';
 import { DEFAULT_SEED, createIdleState, type SimState } from '@dems/shared/sim';
 import { AppProviders } from '@/providers';
-import { createMobileLive, resetCoreErrorPresenterForTests, resetCoreLinkPrefsForTests, resetDebugLaunchForTests, runtimeLog, useAuth, useCoreLink, usePairing, type AuthContract, type MobileLive } from '@/runtime';
+import { applyLaunchCoreSource, createMobileLive, getCoreLinkSource, resetCoreErrorPresenterForTests, resetCoreLinkPrefsForTests, resetDebugLaunchForTests, runtimeLog, useAuth, useCoreLink, usePairing, type AuthContract, type MobileLive } from '@/runtime';
 import { SECURE_ITEM_KEYS } from '@/runtime/secure-credentials';
-import { resetMotionStateForTests } from '@/motion';
+import { FakeHeartbeatSocket, createTestSim } from '@/runtime/testing/test-sim';
+import { MOBILE_PREFS_KEY, resetMotionStateForTests } from '@/motion';
 import { useAuthSession, type AuthSession } from '@/auth';
 import { LoginScreen } from './login-screen';
 
@@ -227,8 +228,8 @@ afterEach(() => {
   fake.assertNoViolations();
 });
 
-describe('the Login screen in LIVE mode shows the three points of the row (AC-C-72, AC-C-104)', () => {
-  it('trust line names the device ID, no role chip, no pairing-code hint, the C1 disclosure sentence', async () => {
+describe('the Login screen in LIVE mode shows the trust line and no demo disclosure (AC-C-72, AC-C-104)', () => {
+  it('trust line names the device ID; no demo disclosure, no role chip, no pairing-code hint', async () => {
     await mountLiveLogin();
     expect(probe()).toContain('link=LIVE/ONLINE');
     expect(probe()).toContain(`pairing=PAIRED/${STORED.deviceId}`);
@@ -236,36 +237,65 @@ describe('the Login screen in LIVE mode shows the three points of the row (AC-C-
     // L11: the trust line names the device ID the Core gave this tablet (§9.2).
     const trust = screen.getByTestId('login-trust-text');
     expect(String(trust.props.children)).toContain(STORED.deviceId);
+    // M3-10 R1 (row 199, I6): the Core identity of the redeem example is the reserved demo id, so it reads "Not reported".
+    expect(STORED.core.deviceId).toBe('DEMS-IR-01');
+    expect(String(trust.props.children)).toContain('Core: Not reported');
+    expect(String(trust.props.children)).not.toContain('DEMS-IR-01');
     // The link reads "Pairing details" in LIVE mode.
     expect(screen.getByTestId('login-pair-link')).toHaveTextContent('Pairing details');
 
-    // Open the demo disclosure.
-    fireEvent.press(screen.getByTestId('login-demo-trigger'));
-    await flush();
+    // L10 is dropped on this device: there is nothing to open and no demo credential is offered.
+    expect(screen.queryByTestId('login-demo-operators')).toBeNull();
+    expect(screen.queryByTestId('login-demo-trigger')).toBeNull();
 
-    // C1: the plain sentence above the list, word for word with the web console.
-    expect(screen.getByTestId('login-demo-notice')).toHaveTextContent('Published demo credentials for synthetic accounts on this local demo. They are not a secret.');
-
-    // Fix wave J (JA2-N6): the rows are announced with a role all the same, worded as what it is in LIVE
-    // mode: the role the demo account was created with (the Core may have changed it, condition C2).
-    expect(screen.getByTestId('login-demo-operator-andi.pratama').props.accessibilityLabel).toMatch(/, user name andi\.pratama, demo account created as Supervisor$/);
-
-    // No role chip in LIVE mode (a role is the Core's data): no rendered text names a seeded role.
+    // No role chip (a role is the Core's data), no pairing-code hint, no seeded user name.
     const texts = screen.UNSAFE_getAllByType(Text).map((node) => String(node.props.children));
     expect(texts.some((text) => /^(Investigator|Supervisor|Technician)$/.test(text))).toBe(false);
-
-    // The simulator's pairing-code hint is not rendered at all in LIVE mode.
     expect(texts.some((text) => /pairing code/i.test(text))).toBe(false);
+    expect(texts.some((text) => /andi\.pratama/i.test(text))).toBe(false);
   });
 
-  it('in Simulated mode the same screen keeps the role chip and the pairing-code hint (behaviour unchanged)', async () => {
-    // Not this row's Live path: guard that the LIVE branches are behind `live` only. Mounted via the
-    // simulator harness in login.test.tsx; here we only assert the LIVE screen never leaks a chip.
+  // M3-01 (S62 §3.15 #6 (a), D160 KD-15): the HOLD dropped the C1 disclosure-sentence case; rewritten as
+  // its LIVE-only guarantee - a LIVE login draws neither the disclosure sentence nor a demo chip.
+  it('(a) a LIVE login shows no disclosure sentence and no demo chip (M3-01, rewrites the HOLD-dropped C1 case)', async () => {
     await mountLiveLogin();
-    fireEvent.press(screen.getByTestId('login-demo-trigger'));
-    await flush();
-    // The three seeded usernames are still offered (they fill the form), just without chips.
-    expect(screen.getByTestId('login-demo-operator-andi.pratama')).toBeTruthy();
+    expect(probe()).toContain('link=LIVE/ONLINE');
+    expect(screen.queryByTestId('login-demo-notice')).toBeNull();
+    const texts = screen.UNSAFE_getAllByType(Text).map((node) => String(node.props.children));
+    expect(texts.some((text) => /Published demo credentials|not a secret/i.test(text))).toBe(false);
+    expect(texts.some((text) => /^Demo operators$/i.test(text))).toBe(false);
+    expect(texts.some((text) => /^(Investigator|Supervisor|Technician)$/.test(text))).toBe(false);
+    expect(screen.queryByTestId('login-demo-operator-andi.pratama')).toBeNull();
+  });
+
+  // M3-01 (S62 §3.15 #6 (b), RT-1 / D163): the HOLD dropped "Simulated keeps chip"; rewritten for the one
+  // path that still reaches the simulator - the debug `core=SIMULATED` link (debug builds and jest only).
+  // The Login there keeps its Core chip (the simulator's link), and still offers no demo operators and no
+  // "Use Simulated mode" way out.
+  it('(b) the debug `core=SIMULATED` link, where it is allowed (RT-1), keeps its Core chip; no demo operators, no way out', async () => {
+    // The preset's `Linking.getInitialURL` is itself a mock: `mockRestore` would leave it with no
+    // implementation (the next mounts' debug hook calls `.then` on it), so its implementation is put back.
+    const presetImpl = jest.mocked(Linking.getInitialURL).getMockImplementation();
+    const initialUrl = jest.spyOn(Linking, 'getInitialURL').mockResolvedValue('demsdemo:///login?core=SIMULATED');
+    try {
+      await applyLaunchCoreSource(true);
+      expect(getCoreLinkSource()).toBe('SIMULATED');
+      const test = createTestSim();
+      render(
+        <AppProviders sim={test.sim} safeAreaMetrics={METRICS} heartbeatSocketFactory={() => new FakeHeartbeatSocket()}>
+          <Probe />
+          <LoginScreen />
+        </AppProviders>,
+      );
+      await flush();
+      expect(probe()).toContain('link=SIMULATED/ONLINE');
+      expect(screen.getByTestId('login-core-chip')).toHaveTextContent('Core online');
+      expect(screen.queryByTestId('login-demo-operators')).toBeNull();
+      expect(screen.queryByTestId('login-use-simulated')).toBeNull();
+      expect(screen.queryByText('Use Simulated mode')).toBeNull();
+    } finally {
+      initialUrl.mockImplementation(presetImpl ?? (() => Promise.resolve(null)));
+    }
   });
 });
 
@@ -293,18 +323,24 @@ describe('the sign-in settle site on the fake transport (CLG (b), S1-1)', () => 
     expect(probe()).toContain('failure=-/-'); // a wrong password is not a limit and not an outage
   });
 
-  it('the Core is unreachable at start: the offline Alert names no address, disables Sign In, and offers Retry and "Use Simulated mode" (§3.5, L9)', async () => {
+  // M3-01 L6 (D47, D160): the tablet runs LIVE only, so the offline Alert offers Retry alone - no element with
+  // the text of `common.coreMode.useSimulated`, in either presentation mode (S62 M3-01 acceptance).
+  it.each([false, true])('the Core is unreachable at start: the offline Alert names no address, disables Sign In, and offers Retry alone - no "Use Simulated mode" (§3.5, L9, L6; presentation mode %s)', async (presentationMode) => {
+    await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ presentationMode, haptics: true }));
     core.reachable = false; // the socket is refused: the Live link never reaches ONLINE
     await mountLiveLogin();
     await elapse(3_000, 500);
     expect(probe()).toContain('link=LIVE/OFFLINE');
     expect(screen.getByTestId('login-alert-core-offline')).toBeTruthy();
-    expect(screen.getByTestId('login-use-simulated')).toBeTruthy();
+    expect(screen.queryByTestId('login-use-simulated')).toBeNull();
+    expect(screen.queryByText('Use Simulated mode')).toBeNull();
     expect(screen.getByTestId('login-core-retry')).toBeTruthy();
     expect(screen.getByTestId('login-submit')).toBeDisabled();
     const texts = screen.UNSAFE_getAllByType(Text).map((node) => String(node.props.children));
     // LIVE names no address: only the runtime's adapters name the Core server.
     expect(texts.some((text) => /127\.0\.0\.1|localhost|:44\d\d/.test(text))).toBe(false);
+    // No rendered text offers the simulator (the shared key stays for the web console only).
+    expect(texts.some((text) => /Use Simulated mode/.test(text))).toBe(false);
   });
 
   it('a sign-in the Core did not answer (link up) shows the refusal presenter in place, not the offline notice', async () => {

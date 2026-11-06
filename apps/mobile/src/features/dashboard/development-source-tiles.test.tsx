@@ -73,6 +73,9 @@ afterEach(() => {
 describe('Home tiles: the development-source badge (LIVE)', () => {
   it('no device carries `sourceClass`: no tile has a badge; the Core marks two devices: exactly their tiles do; the marks go: no badge again', async () => {
     bed = createHomeBed();
+    // Row 196 (M3-09): the Home camera tile mounts the gated live preview, so a reachable camera asks op 112. This
+    // case is about the badge only: the Core answers 409 (the contract's example), and the tile stays the neutral one.
+    bed.fake.answer('createCameraPreviewSession', bed.fake.example('createCameraPreviewSession', 409));
     bed.state = marked(bed.state, {});
     bed.mount(<DashboardScreen />, 'tabletLandscape');
     await bed.signIn();

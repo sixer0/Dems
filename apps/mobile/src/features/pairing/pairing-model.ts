@@ -7,8 +7,10 @@
  * PAIRING_SUCCESS / PAIRING_FAILED / PAIRING_LOCKED / UNPAIRED) belongs to the shared simulator
  * (`packages/shared/src/sim/pairing.ts`); this module never sees or stores a code.
  */
-import { AUDIT_TYPE_CATEGORY, PairingState, type AuditType, type EpochMs, type PairResult, type SimState } from '@dems/shared/sim';
+import { AUDIT_TYPE_CATEGORY, PairingState, isOwnCaptureCoreState, type AuditType, type EpochMs, type PairResult, type SimState } from '@dems/shared/sim';
 import type { GlowRingState } from '@/components/composed/glow-ring.math';
+// I6: the ONE paired-copy reader of row 199 (D205); no second rule here.
+import { reportedPairedCoreIdOf } from '@/features/login/login-live-model';
 import type { StepStatus } from '@/components/composed/stepper';
 
 // ---------------------------------------------------------------------------------------------
@@ -143,7 +145,20 @@ export function stateChipFor(view: PairingView, simState: PairingState): { key: 
 // ---------------------------------------------------------------------------------------------
 
 export const selectPairingState = (s: SimState): PairingState => s.pairing.state;
+/** The paired copy of the Core id AS STORED. Not for display: the card shows it through I6 (below). */
 export const selectCoreDeviceId = (s: SimState): string => s.pairing.coreDeviceId;
+
+/**
+ * I6 (M3-10 R1, S62 §3.7; rule S9 of row 105, CS2; D72, D159; D205): the Core id the pairing card shows,
+ * through row 199's `reportedPairedCoreIdOf` (login-live-model.ts), which feeds the shared S9 reader.
+ * Simulated lane: the state's own `isOwnCaptureCoreState`, so the dataset's DEMS-IR-01 is kept.
+ * LIVE: treated as own capture, because before sign-in the replica carries no own-capture marker (the
+ * Core snapshot is applied on an operator socket only), so the reserved id reads "Not reported";
+ * any other id is shown as it is. `null` = the screen shows `system.noProducer`.
+ */
+export const selectReportedCoreDeviceId = (s: SimState): string | null => reportedPairedCoreIdOf(s.pairing.coreDeviceId, isOwnCaptureCoreState(s));
+/** I6 on a LIVE link (row 199's rule: own capture). */
+export const selectReportedCoreDeviceIdLive = (s: SimState): string | null => reportedPairedCoreIdOf(s.pairing.coreDeviceId, true);
 export const selectCoreName = (s: SimState): string => s.pairing.coreName;
 export const selectCertificateFingerprint = (s: SimState): string => s.pairing.certificateFingerprint;
 export const selectPairedAt = (s: SimState): EpochMs | null => s.pairing.pairedAt;

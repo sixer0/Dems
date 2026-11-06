@@ -83,12 +83,12 @@ export const captureSelectorEn = {
       cameraBody: 'Registered cameras only. A camera found by a search is added on the web console first.',
       // D61 (2026-11-04): the sheet is per CHANNEL; a microphone another channel holds moves here.
       micChannelTitle: 'Microphone for channel {{n}}',
-      micChannelBody: 'Every registered microphone. A microphone on another channel moves here, and its old channel becomes Not assigned.',
+      // D210 (row 226): true for a swap and a move; the confirm that follows states which (S6 / S9).
+      micChannelBody: 'Every registered microphone. Choosing one that another pair holds asks you to confirm a swap, or a move when this pair has none.',
       notAssigned: 'Not assigned',
       refusal: {
         onOtherLine: 'This is the primary microphone. One microphone cannot be on both lines.', // superseded by D61; kept until the wording pass removes it
       },
-      onOtherChannel: 'On channel {{n}}. Choosing it moves the microphone here.',
       feeds: 'Feeds {{track}}',
       // Fix wave J (JA2-24): said on the option BEFORE it is chosen.
       inUseByOtherTrack: 'In use by {{track}}. The Core accepts one camera on both tracks only with a different profile on each; otherwise it refuses the choice.',

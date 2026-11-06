@@ -113,10 +113,37 @@ export function sweepEnd(usedRatioPercent: number): number {
 // ── Activity rows ──────────────────────────────────────────────────────────────────────────────
 export type ActivityTone = 'sealed' | 'info' | 'danger' | 'warning' | 'success' | 'accent';
 
-/** Dot tone per event: sealed violet (D28/Q4), export blue, faults by severity (web parity). */
-export function activityTone(event: Pick<SimEvent, 'type' | 'severity'>): ActivityTone {
+/**
+ * M3-13 (row 203, register W5; tablet twin of web row 110b `faultClearedStillInFault`, D63): true for a
+ * `FAULT_CLEARED` that names the open session while that session is still in FAULT (`faultSessionId`
+ * from `selectFaultSessionId`). A clear does not end a session's FAULT (it stays until recover, op 33),
+ * and the event's severity stays SUCCESS (D60 R110-3), so the list decides the words and the dot from
+ * the session state. The Core-not-running clear keeps its own sentence (same exclusion as the source).
+ * Activity lists only: the device-detail audit log keeps the hash-chained record text (R110b-1).
+ */
+export function faultClearedStillInFault(
+  event: Pick<SimEvent, 'type'> & { params?: SimEvent['params']; sessionId?: string | null },
+  faultSessionId: string | null,
+): boolean {
+  return (
+    event.type === 'FAULT_CLEARED' &&
+    event.params?.coreNotRunning !== true &&
+    faultSessionId !== null &&
+    (event.sessionId ?? null) === faultSessionId
+  );
+}
+
+/**
+ * Dot tone per event: sealed violet (D28/Q4), export blue, faults by severity (web parity). M3-13: a
+ * FAULT_CLEARED of the session still in FAULT is the amber mark (`warning`), not the green of SUCCESS.
+ */
+export function activityTone(
+  event: Pick<SimEvent, 'type' | 'severity'> & { params?: SimEvent['params']; sessionId?: string | null },
+  faultSessionId: string | null = null,
+): ActivityTone {
   if (event.type === 'EVIDENCE_SEALED') return 'sealed';
   if (event.type === 'EVIDENCE_EXPORTED') return 'info';
+  if (faultClearedStillInFault(event, faultSessionId)) return 'warning';
   if (event.severity === 'CRITICAL') return 'danger';
   if (event.severity === 'WARNING') return 'warning';
   if (event.severity === 'SUCCESS') return 'success';

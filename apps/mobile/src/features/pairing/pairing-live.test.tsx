@@ -55,6 +55,7 @@ import { AppProviders } from '@/providers';
 import {
   createMobileLive,
   getCoreLinkSource,
+  isCoreLinkSourceAvailable,
   resetCoreErrorPresenterForTests,
   resetCoreLinkPrefsForTests,
   resetDebugLaunchForTests,
@@ -400,7 +401,9 @@ describe('LIVE mode, unpaired: the screen says what is true (decision D124, item
     expect(label('pairing-fingerprint')).toBe('Certificate fingerprint · SHA-256 (DEMO), Shown after pairing');
     expect(screen.getByText('Enter the 6-digit pairing code that a supervisor issued for this device in the web console.')).toBeTruthy();
     expect(screen.queryByText('Enter the 6-digit pairing code issued by the Core.')).toBeNull();
-    // The gate holds: no back button, and "Use Simulated mode" in place of Cancel.
+    // The gate holds: no back button, and "Use Simulated mode" in place of Cancel. Jest is a debug
+    // build, where the dev-build gate allows a simulated link (row 223 dev-gate control; the release
+    // case is the describe 'a release build ...' below).
     expect(screen.queryByTestId('pairing-back')).toBeNull();
     expect(screen.queryByTestId('pairing-cancel')).toBeNull();
     expect(textOf('pairing-use-simulated')).toBe('Use Simulated mode');
@@ -445,6 +448,139 @@ describe('LIVE mode, unpaired: the screen says what is true (decision D124, item
   });
 });
 
+// Row 223 (D174, D-171-1): the Pair screen offers "Use Simulated mode" only where the dev-build gate
+// of `runtime/core-link.ts` allows a simulated link (`isCoreLinkSourceAvailable`: `isDevBuild` and
+// `KNOWN_CORE_LINK_SOURCES`, RT-1, D163). A release build is LIVE-only from pairing through login
+// (D58, D163; the login half is row 171). The release cases flip the global `__DEV__`, as
+// `live-core-link.test.tsx` and `heartbeat-release-gate.test.tsx` do. The Live source is built
+// first, under jest's debug flag, so the screen runs on a Live source as a release build will once
+// M3-02 (row 174) lifts the `createMobileLive` gate; the panel and the controller then read the flag.
+describe('a release build: the Pair screen offers no simulator (row 223, D174)', () => {
+  type DevGlobal = typeof globalThis & { __DEV__: boolean };
+  const devGlobal = globalThis as DevGlobal;
+  let flow: PairingFlow | null = null;
+  function FlowProbe() {
+    const current = usePairingFlow();
+    useEffect(() => {
+      flow = current;
+    });
+    return null;
+  }
+  const flowNow = (): PairingFlow => {
+    if (flow === null) throw new Error('the probe is not mounted');
+    return flow;
+  };
+  /** Runs `body` with `__DEV__` as a release build has it, then puts jest's value back. */
+  async function asRelease(body: () => Promise<void>): Promise<void> {
+    const original = devGlobal.__DEV__;
+    devGlobal.__DEV__ = false;
+    try {
+      await body();
+    } finally {
+      devGlobal.__DEV__ = original;
+    }
+  }
+  const mountProbe = (live: MobileLive) =>
+    render(
+      <AppProviders
+        sim={live.sim}
+        queryClient={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Number.POSITIVE_INFINITY } } })}
+        safeAreaMetrics={METRICS}
+        heartbeatSocketFactory={() => new MockCoreSocket()}
+      >
+        <PairingScreen />
+        <FlowProbe />
+      </AppProviders>,
+    );
+
+  it('release, the gate holds: no "Use Simulated mode" (by testID or by text); no second button before an attempt, Cancel during one (D186)', async () => {
+    const live = createLive();
+    await asRelease(async () => {
+      expect(isCoreLinkSourceAvailable('SIMULATED')).toBe(false);
+      const { unmount } = await mount({ live });
+      expect(textOf('pairing-simulated-chip')).toBe('LIVE');
+      expect(screen.queryByTestId('pairing-back')).toBeNull();
+      expect(screen.queryByTestId('pairing-use-simulated')).toBeNull();
+      expect(screen.queryByText('Use Simulated mode')).toBeNull();
+      // Nothing on the screen names the simulator any more: not even the one control that used to.
+      expect(screenText()).not.toMatch(/simulat/i);
+      // D186: before an attempt the slot holds no button at all, never one that does nothing.
+      expect(screen.queryByTestId('pairing-cancel')).toBeNull();
+      typeCode(MARKER_CODE);
+      expect(screen.queryByTestId('pairing-cancel')).toBeNull();
+      // During an attempt (before the code leaves the tablet) Cancel is drawn, enabled, and ends it.
+      pressPair();
+      await elapse(PAIR_TIMELINE.commitAt - 100);
+      expect(requests('redeemPairingCode')).toHaveLength(0);
+      expect(textOf('pairing-cancel')).toBe('Cancel');
+      expect(disabled('pairing-cancel')).toBe(false);
+      expect(screen.queryByTestId('pairing-use-simulated')).toBeNull();
+      fireEvent.press(screen.getByTestId('pairing-cancel'));
+      await elapse(PAIR_TIMELINE.commitAt + 2_000);
+      // The gate holds: Cancel goes nowhere, nothing was sent, the source stays LIVE, and the slot is empty again.
+      expect(requests('redeemPairingCode')).toHaveLength(0);
+      expect(mockRouter.back).not.toHaveBeenCalled();
+      expect(mockRouter.replace).not.toHaveBeenCalled();
+      expect(getCoreLinkSource()).toBe('LIVE');
+      expect(screen.queryByTestId('pairing-cancel')).toBeNull();
+      expect(screen.queryByTestId('pairing-use-simulated')).toBeNull();
+      expect([...fake.log.operationIds()].sort()).toEqual(['getAuthSession', 'getSignInStatus']);
+      expect(getMissingKeys()).toEqual([]);
+      unmount();
+    });
+  });
+
+  it('release, the Core server unreachable: the offline Alert offers no way out to the simulator either', async () => {
+    core.reachable = false;
+    const live = createLive();
+    await asRelease(async () => {
+      const { unmount } = await mount({ live });
+      await elapse(500);
+      expect(screen.getByTestId('pairing-alert-offline')).toBeTruthy();
+      expect(screen.queryByTestId('pairing-use-simulated')).toBeNull();
+      expect(screen.queryByTestId('pairing-cancel')).toBeNull();
+      expect(screen.queryByText('Use Simulated mode')).toBeNull();
+      expect(screenText()).not.toMatch(/simulat/i);
+      unmount();
+    });
+  });
+
+  it('release, the controller: `simulatedOffered` is false and `switchToSimulated()` is refused (no store, no navigation, a warn record)', async () => {
+    const live = createLive();
+    await asRelease(async () => {
+      const { unmount } = mountProbe(live);
+      await flush();
+      expect(flowNow()).toMatchObject({ live: true, blocked: true, simulatedOffered: false });
+      const recordsBefore = runtimeLog.records().length;
+      act(() => flowNow().switchToSimulated());
+      await flush();
+      expect(getCoreLinkSource()).toBe('LIVE');
+      expect(mockRouter.replace).not.toHaveBeenCalled();
+      expect(JSON.parse((await AsyncStorage.getItem('dems.mobile.prefs.v1')) ?? '{}')).not.toMatchObject({ coreLinkSource: 'SIMULATED' });
+      expect(runtimeLog.records().slice(recordsBefore).some((record) => record.source === 'PairingScreen.useSimulated' && record.level === 'warn')).toBe(true);
+      expect(screen.queryByTestId('pairing-use-simulated')).toBeNull();
+      unmount();
+    });
+  });
+
+  it('CONTROL, debug build (jest): the same screen offers "Use Simulated mode", and it still stores the simulator and goes to the boot router', async () => {
+    setCoreLinkSource('LIVE');
+    const live = createLive();
+    expect(isCoreLinkSourceAvailable('SIMULATED')).toBe(true);
+    const { unmount } = mountProbe(live);
+    await flush();
+    expect(flowNow()).toMatchObject({ live: true, blocked: true, simulatedOffered: true });
+    expect(textOf('pairing-use-simulated')).toBe('Use Simulated mode');
+    expect(screen.queryByTestId('pairing-cancel')).toBeNull();
+    fireEvent.press(screen.getByTestId('pairing-use-simulated'));
+    expect(getCoreLinkSource()).toBe('SIMULATED');
+    expect(mockRouter.replace).toHaveBeenCalledWith('/');
+    await flush();
+    expect(JSON.parse((await AsyncStorage.getItem('dems.mobile.prefs.v1')) ?? '{}')).toMatchObject({ coreLinkSource: 'SIMULATED' });
+    unmount();
+  });
+});
+
 describe('a correct code (AC-C-75, MP-5, MP-6)', () => {
   it('stores the credential, opens the gate and hands off; the marker code is in no storage and no log (SD-23)', async () => {
     core.redeem = accepting(REDEEMED);
@@ -479,14 +615,19 @@ describe('a correct code (AC-C-75, MP-5, MP-6)', () => {
     // The paired view: the Core identity of the answer, and the ID the Core gave this tablet.
     expect(screen.getByTestId('pairing-paired-card')).toBeTruthy();
     expect(textOf('pairing-state-chip')).toBe('Paired');
-    expect(textOf('pairing-status-line')).toBe(`Paired with ${REDEEMED.core.deviceId} as ${REDEEMED.deviceId}.`);
-    expect(label('pairing-identity-device')).toBe(`Core device, ${REDEEMED.core.deviceId}`);
+    // I6 (M3-10 R1, row 200; D159, D72): the example Core answers the dataset's reserved id, which on a LIVE
+    // link is never this installation's id: the card reads "Not reported"; both sentences name no Core (D212, row 226).
+    expect(REDEEMED.core.deviceId).toBe('DEMS-IR-01');
+    expect(textOf('pairing-status-line')).toBe(`Paired as ${REDEEMED.deviceId}.`);
+    expect(label('pairing-identity-device')).toBe('Core device, Not reported');
     expect(label('pairing-identity-room')).toBe(`Core name, ${REDEEMED.core.name}`);
     expect(label('pairing-identity-tablet')).toBe(`This device, ${REDEEMED.deviceId}`);
     // Nobody is signed in, so the replica holds no audit row: the line is left out, not filled with "No pairing event yet".
     expect(screen.queryByTestId('pairing-identity-last-audit')).toBeNull();
     expect(label('pairing-fingerprint')).toBe(`Certificate fingerprint · SHA-256 (DEMO), ${REDEEMED.core.certificateFingerprint}`);
-    expect(textOf('pairing-paired-body')).toBe(`This device is registered with ${REDEEMED.core.deviceId} as ${REDEEMED.deviceId}. An operator can now sign in on it.`);
+    expect(textOf('pairing-paired-body')).toBe(`This device is registered as ${REDEEMED.deviceId}. An operator can now sign in on it.`);
+    expect(screenText()).not.toContain('DEMS-IR-01');
+    expect(screenText()).not.toContain('with Not reported');
     expect(textOf('pairing-simulated-chip')).toBe('LIVE');
     expect(screenClaims()).not.toMatch(/simulat/i);
     // Nobody is signed in: the hand-off goes on to sign-in.
@@ -511,6 +652,19 @@ describe('a correct code (AC-C-75, MP-5, MP-6)', () => {
     expect(outside).not.toContain(REDEEMED.deviceCredential);
     expect(outside).not.toMatch(/dvc_|ses_|bio_/);
     expect(getMissingKeys()).toEqual([]);
+    unmount();
+  });
+
+  // D212 (row 226): the other branch of the I6 sentences - a Core that reports its own id keeps "with <id>".
+  it('a Core id that is reported: the status line and the paired body name it (D212)', async () => {
+    const reported: PairingRedeemed = { ...REDEEMED, core: { ...REDEEMED.core, deviceId: 'DEMS-BENCH-01' } };
+    core.redeem = accepting(reported);
+    const { unmount } = await mount();
+    await attempt(MARKER_CODE);
+    expect(screen.getByTestId('pairing-paired-card')).toBeTruthy();
+    expect(label('pairing-identity-device')).toBe('Core device, DEMS-BENCH-01');
+    expect(textOf('pairing-status-line')).toBe(`Paired with DEMS-BENCH-01 as ${REDEEMED.deviceId}.`);
+    expect(textOf('pairing-paired-body')).toBe(`This device is registered with DEMS-BENCH-01 as ${REDEEMED.deviceId}. An operator can now sign in on it.`);
     unmount();
   });
 

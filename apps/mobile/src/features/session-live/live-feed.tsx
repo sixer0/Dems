@@ -150,6 +150,7 @@ export function LiveFeed({
 
   const feed = (
     <CameraPreview
+      livePreview
       name={short}
       cameraId={activeCameraId}
       mode="live"

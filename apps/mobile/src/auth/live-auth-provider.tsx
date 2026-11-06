@@ -22,9 +22,9 @@
  * never holds one. Nothing here writes AsyncStorage, and no log line carries a credential, a
  * token, a password or a username.
  *
- * **Release builds (MD-6).** This component is part of every bundle and is never mounted in a
- * release build: no Live source exists there. The token storage and, through it, the secure-store
- * wrapper are loaded behind a literal `__DEV__` test and are not part of a release bundle.
+ * **Release builds (M3-02, RT-1, D163, D199).** A release build runs the Live source since row 174,
+ * so this component is mounted there too (password sign-in). Biometric sign-in stays off in a release
+ * build (D199, G5): the token storage is loaded behind a literal `__DEV__` test and is not part of a release bundle.
  */
 import { useToast } from 'heroui-native';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -90,8 +90,8 @@ const stores = new WeakMap<MobileLive, LiveBiometricStore>();
 
 /**
  * The token storage of a Live source: one per source, so a provider that is mounted again (React
- * StrictMode) keeps the one open attempt. `null` in a release build: the block below, with the
- * module it loads and the secure-store wrapper behind it, is not part of a release bundle (MD-6).
+ * StrictMode) keeps the one open attempt. `null` in a release build, which has a Live source since
+ * row 174 (D199) but no biometric sign-in (G5): the block below and the module it loads are not part of a release bundle.
  */
 function biometricStoreOf(mobile: MobileLive): LiveBiometricStore | null {
   if (__DEV__) {

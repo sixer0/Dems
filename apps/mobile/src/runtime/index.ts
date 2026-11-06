@@ -12,7 +12,7 @@
  * | `sim-adapters` | AsyncStorage snapshot storage, AppState visibility, `createMobileSim` (§5.2) |
  * | `sim-runtime-provider` | `SimRuntimeProvider`: simulator + hydration gate + Core link + banner + keep-awake |
  * | `use-audio-shared-values` | The transient 20 Hz meter path into Reanimated shared values (§5.4) |
- * | `core-link` | SIMULATED (default, Q-M8), HEARTBEAT or LIVE; the `coreLinkSource` preference |
+ * | `core-link` | LIVE (the default and the only source offered, D160, D163); SIMULATED and HEARTBEAT only through the debug `core=` link and the tests (`KNOWN_CORE_LINK_SOURCES`); the `coreLinkSource` preference |
  * | `route-sync`, `session-route-sync` | `resyncTarget` (§3.7 table) and `SessionRouteSync` |
  * | `keep-awake` | `KeepAwakeController` and the `dems-session` tag (§6.6) |
  * | `connection-banner` | Banner logic: offline / resynced / hidden (S7, MA-10) |
@@ -132,6 +132,7 @@ export {
 export {
   CORE_LINK_SOURCES,
   DEFAULT_CORE_LINK_SOURCE,
+  KNOWN_CORE_LINK_SOURCES,
   coreLinkStateFor,
   effectiveCoreLinkSource,
   getCoreLinkSource,
@@ -195,6 +196,7 @@ export {
   type RuntimeLogLevel,
   type RuntimeLogRecord,
 } from './log';
+export { CAMERA_STREAM_PATH, cameraStreamTransportReady, openCameraStream, type CameraStreamResponse, type OpenCameraStreamInput } from './camera-stream-transport';
 export {
   applyLaunchCoreSource,
   coreSourceFromUrl,

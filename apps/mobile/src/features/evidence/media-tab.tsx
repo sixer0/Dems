@@ -1,10 +1,14 @@
 /**
- * Media tab (04_mobile_specs §4.11 D5a; MB 6 905–955): a horizontal strip of the two camera posters
- * with a play overlay and the duration label, then the two MIC tracks. Each opens the Play sheet on
- * that camera or microphone. Posters are `expo-image` (no canvas per poster, §7.8). The strip has
- * no snapshots: the simulator keeps none per evidence item (SIM-GAP-M83-2).
+ * Media tab (04_mobile_specs §4.11 D5a; MB 6 905–955): a horizontal strip of the camera posters the
+ * demo item bundles (`cameraTracksOf`: any of the four video tracks with a poster; the bundled demo
+ * clips exist for cameras 1-2 only, D172) with a play overlay and the duration label, then the demo's
+ * microphone tracks (`MICS`: AUDIO-01 and AUDIO-02, the only audio the bundled demo carries - not the
+ * four channels a Core records, D61). Each opens the Play sheet on that camera or microphone. Posters
+ * are `expo-image` (no canvas per poster, §7.8). The strip has no snapshots: the simulator keeps none
+ * per evidence item (SIM-GAP-M83-2).
  *
- * This tab draws BUNDLED DEMO media only (the two posters and the two microphone tracks of a demo
+ * Kept for the debug / jest `core=SIMULATED` path (D163 RT-1; audit row 211, M3-18): a release build is
+ * LIVE only. This tab draws BUNDLED DEMO media only (the posters and microphone tracks of a demo
  * package): Simulated mode, and in Live mode a demo item whose package the Core named. There the
  * caller passes `demoLabel` and the tab says what the pictures are (wave H C2, G94-02): bundled with
  * this application, not a recording of this Core. A recording this Core sealed never comes here

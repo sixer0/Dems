@@ -23,7 +23,7 @@ import { Stack, router, type Href } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Text } from 'react-native';
 import type { Metrics } from 'react-native-safe-area-context';
-import { DEMO_OPERATOR_PASSWORD, OPERATORS, OperatorRole, Permission, type Sim } from '@dems/shared/sim';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS, OperatorRole, Permission, ROLE_PERMISSIONS, roleHas, type Sim } from '@dems/shared/sim';
 import SessionNewRoute from '@/app/(app)/session/new';
 import SessionDetailRoute from '@/app/(app)/(tabs)/sessions/[sessionId]';
 import SessionsLayout from '@/app/(app)/(tabs)/sessions/_layout';
@@ -35,7 +35,7 @@ import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { AppProviders } from '@/providers';
 import { runtimeLog } from '@/runtime';
 import { FakeHeartbeatSocket, createTestSim, flushAsync } from '@/runtime/testing/test-sim';
-import { roleGateFor } from './use-role-gate';
+import { operatorPermissionGate, roleGateFor } from './use-role-gate';
 
 // The wizard itself is step 78's and is tested there; here only whether it is shown matters.
 jest.mock('@/features/session-new/session-new-screen', () => {
@@ -121,6 +121,37 @@ describe('roleGateFor (pure): the permission, the role the sentence names, and a
 
   it('no signed-in role yet: not allowed, but not "locked" (no sentence, and a route guard does not leave)', () => {
     expect(roleGateFor(null, Permission.SESSION_START)).toEqual({ allowed: false, known: false, locked: false, requiredRole: 'INVESTIGATOR', requiredRoles: ['INVESTIGATOR', 'SUPERVISOR'] });
+  });
+});
+
+// M3-20 (G-12, D163; row 212): a Live session's own permission list decides (V5); the role decides
+// only in the simulator (`sessionPermissions` null), where `roleGateFor` is that same rule.
+describe('operatorPermissionGate (pure, M3-20): the Live session list decides, the role only in the simulator', () => {
+  it('the vendor root: a SUPERVISOR role without CAPTURE_CONFIG, but the session list holds it (D55 identity extra) -> allowed', () => {
+    const rootSession = [...ROLE_PERMISSIONS[OperatorRole.SUPERVISOR], Permission.CAPTURE_CONFIG];
+    expect(roleHas(OperatorRole.SUPERVISOR, Permission.CAPTURE_CONFIG)).toBe(false);
+    expect(operatorPermissionGate(OperatorRole.SUPERVISOR, Permission.CAPTURE_CONFIG, rootSession)).toEqual({ allowed: true, known: true, locked: false, requiredRole: 'TECHNICIAN', requiredRoles: ['TECHNICIAN'] });
+  });
+
+  it('a SUPERVISOR session without CAPTURE_CONFIG -> locked; the sentence names the Technician role', () => {
+    expect(operatorPermissionGate(OperatorRole.SUPERVISOR, Permission.CAPTURE_CONFIG, [...ROLE_PERMISSIONS[OperatorRole.SUPERVISOR]])).toEqual({ allowed: false, known: true, locked: true, requiredRole: 'TECHNICIAN', requiredRoles: ['TECHNICIAN'] });
+  });
+
+  it('a permission the Core withheld from the session locks, whatever the role row says', () => {
+    expect(operatorPermissionGate(OperatorRole.TECHNICIAN, Permission.CAPTURE_CONFIG, [])).toMatchObject({ allowed: false, known: true, locked: true });
+  });
+
+  it('the simulated lane is unchanged: no session list -> the role decides, for every role and permission', () => {
+    for (const role of Object.values(OperatorRole)) {
+      for (const permission of Object.values(Permission)) {
+        expect(operatorPermissionGate(role, permission, null)).toEqual(roleGateFor(role, permission));
+        expect(operatorPermissionGate(role, permission, null).allowed).toBe(roleHas(role, permission));
+      }
+    }
+  });
+
+  it('no signed-in role: not allowed and not locked, even with a list (the role is not known yet)', () => {
+    expect(operatorPermissionGate(null, Permission.CAPTURE_CONFIG, [Permission.CAPTURE_CONFIG])).toMatchObject({ allowed: false, known: false, locked: false });
   });
 });
 

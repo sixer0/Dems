@@ -7,14 +7,14 @@
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { Permission, selectCan, useAudioChannel, useSim, type AuditRow, type CameraStatus, type MicStatus, type SimState } from '@dems/shared/sim';
-import { deviceStatus, isRecording, parseStatusLine, statusLine, type DeviceId, type DeviceStatus } from './devices-model';
+import { Permission, selectCan, SlotSourceState, useAudioChannel, useSim, type AuditRow, type CameraStatus, type MicStatus, type SimState, type SlotSource } from '@dems/shared/sim';
+import { deviceStatus, isRecording, parseStatusLine, statusLine, trackSourceOf, type DeviceId, type DeviceStatus } from './devices-model';
 import type { StatusTone } from '@dems/shared/tokens';
 import { developmentSourceOf } from '@/features/capture-selector/capture-notices-model';
 import { useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
 import { micInputName } from '@/features/capture-selector/mic-input-name';
 import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
-import { cameraLineReportOf, deviceReportOf, realCaptureSources, sourceStateWord } from '@/features/capture-selector/source-state';
+import { cameraLineReportOf, deviceReportOf, realCaptureSources, sourceStateWord, type SourceReport } from '@/features/capture-selector/source-state';
 import { DEVICE_CAMERA, DEVICE_KIND, DEVICE_NAME_KEY, STATUS_LABEL_KEY, STATUS_RANK } from './devices-model';
 import { MicLevelSampler, bookPoe, deviceLog, healthSeries, type BookPoe, type HealthPoint, type HealthSeries } from './sim-adapter';
 
@@ -40,6 +40,23 @@ const CAMERA_LIVE_KEY = 'features.capture-selector.selector.stream.LIVE';
  * selector line's own (`sourceStateWord`, decision D231): "Not checked" at rest unless the Core states a
  * checked fact; a negative fact is never hidden; "Live" only for a camera on a line while a session records.
  */
+/**
+ * Audit row 191 (M3-08 R3/R4): the report a row's word is drawn from, AS THE ONE SOURCE READER STATES IT
+ * (`trackSourceOf`, the shared `slotSourceOf`). The report's own `online` / `checkedAt` reading no longer decides
+ * alone:
+ *
+ * | `trackSourceOf(...).state` | The word's report |
+ * |---|---|
+ * | `NOT_REACHABLE` (stated `reach`) or `OFFLINE` | not reachable (`online: false`): a negative fact is never hidden |
+ * | `REACHABLE` (stated `reach`) | checked: the Core read it, so the roster's "Reachable" / "Ready" |
+ * | `NOT_CHECKED` (no `reach`) | as the Core sent it: "Not checked" unless it states `checkedAt` (wave L, G70c-02; row 190) |
+ */
+function readerReport(report: SourceReport, source: SlotSource): SourceReport {
+  if (source.state === SlotSourceState.NOT_REACHABLE || source.state === SlotSourceState.OFFLINE) return { ...report, online: false };
+  if (source.state === SlotSourceState.REACHABLE) return { ...report, checked: true };
+  return report;
+}
+
 export function sourceRowLine(state: SimState, deviceId: DeviceId, live: boolean): string | null {
   const kind = DEVICE_KIND[deviceId];
   if (kind !== 'camera' && kind !== 'microphone') return null;
@@ -50,14 +67,14 @@ export function sourceRowLine(state: SimState, deviceId: DeviceId, live: boolean
     if (trackId === undefined) return null;
     const report = cameraLineReportOf(state, trackId);
     if (report.deviceId === null) return null;
-    const word = sourceStateWord(report, live, recording);
+    const word = sourceStateWord(readerReport(report, trackSourceOf(state, trackId)), live, recording);
     return recording && word.kind === 'REACHABLE' ? `${CAMERA_LIVE_KEY}|success||` : `${word.key}|${word.tone}||`;
   }
   const line = micLinesInForce(state).find((candidate) => candidate.inputId === deviceId);
   if (line === undefined || line.deviceId === null || line.deviceId === undefined) return null;
   const report = deviceReportOf(state, line.deviceId, 'MIC');
   if (report.deviceId === null) return null;
-  const word = sourceStateWord(report, live, recording);
+  const word = sourceStateWord(typeof line.channel === 'string' ? readerReport(report, trackSourceOf(state, line.channel)) : report, live, recording);
   const source = developmentSourceOf({ sourceClass: report.sourceClass ?? undefined, adapter: report.adapter ?? undefined, deviceKind: 'MIC', live });
   return `${word.key}|${word.tone}|${line.channel ?? ''}|${source ?? ''}`; // D61 (2026-11-04): the line states its channel
 }

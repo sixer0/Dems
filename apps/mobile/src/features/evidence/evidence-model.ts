@@ -28,13 +28,36 @@ import {
 import {
   EVIDENCE_STATUS_STAGE,
   EvidenceStatus,
-  TRACK_ORDER,
+  TRACK_ORDER as SHARED_TRACK_ORDER,
   verifyEvidenceItem,
   type EpochMs,
   type EvidenceItem,
   type EvidenceVerifyResult,
 } from '@dems/shared/sim';
 import type { StatusTone } from '@dems/shared/tokens';
+
+/**
+ * The eight sealed files in display order (M3-14, D161; audit row 205): the four cameras, then the
+ * four pair microphones. Mobile-local on purpose: the shared `TRACK_ORDER` (`sim/evidence.ts`) still
+ * lists the four tracks the simulator records, and M3 changes nothing in shared. Mirrors
+ * `RECOVERY_TRACKS` (`session-recovery/recovery.model.ts`) and the summary's `TRACK_ORDER`.
+ */
+export const EVIDENCE_TRACK_ORDER = [
+  'VIDEO-01',
+  'VIDEO-02',
+  'VIDEO-03',
+  'VIDEO-04',
+  'AUDIO-01',
+  'AUDIO-02',
+  'AUDIO-03',
+  'AUDIO-04',
+] as const satisfies readonly TrackId[];
+
+/** Rank of a track in `EVIDENCE_TRACK_ORDER`; an unknown ID sorts after the eight. */
+function evidenceTrackRank(trackId: string): number {
+  const index = (EVIDENCE_TRACK_ORDER as readonly string[]).indexOf(trackId);
+  return index === -1 ? EVIDENCE_TRACK_ORDER.length : index;
+}
 
 // ---------------------------------------------------------------------------------------------
 // List: filters, search, sort
@@ -259,11 +282,14 @@ function rowOf(check: DemoCheckResult): IntegrityRow {
   };
 }
 
-/** Integrity of a DEMO package: the generator's precomputed report (D51), tracks in TRACK_ORDER. */
+/**
+ * Integrity of a DEMO package: the generator's precomputed report (D51), tracks in
+ * EVIDENCE_TRACK_ORDER (M3-14). One row per track check the package holds: a 4-track package gives 4.
+ */
 export function packageIntegrity(pkg: DemoEvidencePackage): IntegrityModel {
   const report = precomputedReport(pkg);
   const rows = report.checks.map(rowOf);
-  const order = (row: IntegrityRow) => (row.trackId ? TRACK_ORDER.indexOf(row.trackId as (typeof TRACK_ORDER)[number]) : 99);
+  const order = (row: IntegrityRow) => (row.trackId ? evidenceTrackRank(row.trackId) : EVIDENCE_TRACK_ORDER.length + 1);
   return {
     source: 'package',
     verdict: report.result,
@@ -337,7 +363,10 @@ export interface CoreIntegrityView {
   failed: string[];
   /** When the Core ran the verification, on its clock; null before an answer. */
   at: EpochMs | null;
-  /** The four tracks in TRACK_ORDER: the sealed hash, and the hash the Core computed. */
+  /**
+   * The item's tracks in EVIDENCE_TRACK_ORDER (M3-14): the sealed hash, and the hash the Core
+   * computed. Rule: see `coreTrackIds`.
+   */
   tracks: IntegrityRow[];
   /** Manifest and signature, as the Core judged them. */
   checks: IntegrityRow[];
@@ -345,10 +374,24 @@ export interface CoreIntegrityView {
   signature: { value: string; keyId: string; algorithm: string };
 }
 
+/**
+ * The track rows of the Live integrity view (M3-14, audit row 205). Rule: one row per track of
+ * EVIDENCE_TRACK_ORDER that the item holds (its sealed `tracks`) or that the Core's verdict answered,
+ * in that order. An 8-track item gives 8 rows; a 4-track demo or simulated item gives its 4. A track
+ * ID outside the eight is not drawn (as before). Only when neither the item nor the verdict names any
+ * of the eight does it fall back to the shared 4-track `TRACK_ORDER`, the rows drawn before M3-14, so
+ * an item without tracks keeps its four "not reported" rows.
+ */
+function coreTrackIds(item: EvidenceItem, verdict: CoreVerdict | null): readonly TrackId[] {
+  const held = new Set<string>([...item.tracks.map((track) => track.trackId), ...(verdict?.tracks ?? []).map((track) => track.trackId)]);
+  const ids = EVIDENCE_TRACK_ORDER.filter((trackId) => held.has(trackId));
+  return ids.length > 0 ? ids : SHARED_TRACK_ORDER;
+}
+
 /** The Core's sealed record and, when given, the Core's verdict of it (never the tablet's). */
 export function coreIntegrityView(item: EvidenceItem, verdict: CoreVerdict | null): CoreIntegrityView {
   const answered = new Map((verdict?.tracks ?? []).map((track) => [track.trackId, track]));
-  const tracks: IntegrityRow[] = TRACK_ORDER.map((trackId) => {
+  const tracks: IntegrityRow[] = coreTrackIds(item, verdict).map((trackId) => {
     const answer = answered.get(trackId);
     const sealed = item.tracks.find((track) => track.trackId === trackId);
     return {

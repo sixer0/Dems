@@ -1,5 +1,6 @@
 // Backend task W51: the mobile runtime with its three Core link sources (04_client_integration_spec
-// §3.1 MD-3, MD-5, MD-6, §3.4, §7.2, §9.5; AC-C-28, AC-C-29).
+// §3.1 MD-3, MD-5, MD-6, §3.4, §7.2, §9.5; AC-C-28 as revised by D163: a release build carries
+// LIVE only; AC-C-29).
 //
 // What is rendered: the real `AppProviders` (so `SimRuntimeProvider` sits where it sits in the
 // app, under `HeartbeatProvider` and above `AuthProvider`). What is faked: the transport only. In
@@ -176,7 +177,7 @@ afterEach(() => {
 
 describe('SIMULATED and HEARTBEAT: nothing of the Live layer starts (MD-5, SC8)', () => {
   it.each(['SIMULATED', 'HEARTBEAT'] as const)('%s with the simulator the runtime creates: no request, no socket to the Core server, no Live source', async (source) => {
-    if (source !== 'SIMULATED') setCoreLinkSource(source);
+    setCoreLinkSource(source); // the device default is LIVE since 2026-11-05
     const { unmount } = mountApp();
     await settle();
     expect(probe()).toContain(`link=${source}/`);
@@ -194,7 +195,8 @@ describe('SIMULATED and HEARTBEAT: nothing of the Live layer starts (MD-5, SC8)'
     expect(fake.connections).toHaveLength(0);
   });
 
-  it('the default source is SIMULATED: a fresh app starts the simulator and reads its snapshot', async () => {
+  it('a SIMULATED preference starts the simulator and reads its snapshot', async () => {
+    setCoreLinkSource('SIMULATED'); // the device default is LIVE since 2026-11-05
     const { snapshot } = await seedSimulatedRun();
     const { unmount } = mountApp();
     await settle();
@@ -219,8 +221,8 @@ describe('LIVE: the Live source is the data source (MD-5, AC-C-29)', () => {
     writes.mockClear();
 
     const { unmount } = mountApp();
-    // First frame: the preference is not read yet, so the frame is drawn with a simulator object.
-    expect(probe()).toContain('ready=false impl=simulator link=SIMULATED/');
+    // First frame: the preference is not read yet; LIVE is the default, so the Live source is there at once.
+    expect(probe()).toContain('ready=false impl=live link=LIVE/');
     await settle();
 
     expect(probe()).toContain('ready=true impl=live link=LIVE/ONLINE/LIVE');
@@ -265,6 +267,7 @@ describe('LIVE: the Live source is the data source (MD-5, AC-C-29)', () => {
 
   it('crossing the LIVE boundary swaps the data source; SIMULATED and HEARTBEAT share the simulator', async () => {
     scriptUnpairedCore();
+    setCoreLinkSource('SIMULATED'); // the device default is LIVE since 2026-11-05
     const { unmount } = mountApp();
     await settle();
     expect(probe()).toContain('impl=simulator link=SIMULATED/ONLINE/-');
@@ -317,44 +320,67 @@ describe('LIVE: the Live source is the data source (MD-5, AC-C-29)', () => {
   });
 });
 
-describe('release build: Simulated only (MD-3, MD-6, AC-C-28)', () => {
-  it('a LIVE value stored by a debug build starts the simulator: no Live source, no request, no socket', async () => {
+// M3-02 (row 174, RT-1, D163): the release cases (a), (b) and (d) are inverted. Before M3-02 a release
+// build held no Live source (MD-6): a stored LIVE started the simulator from its snapshot (a), a LIVE
+// preference was not followed (b, row 170's interim MD-6 pin), and `createMobileLive()` was `null` (d).
+// Since D163 a release build carries LIVE only and builds its Live source as a debug build does. The
+// defensive MD-6 fallback (c) stays pinned with an injected `null`.
+describe('release build: LIVE only, the Live source is built (RT-1, D163; AC-C-28 revised)', () => {
+  it('(a) a LIVE value stored by an earlier build starts the Live source in release: the simulator snapshot is neither read nor written', async () => {
     const { snapshot } = await seedSimulatedRun();
     await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ coreLinkSource: 'LIVE' }));
+    scriptUnpairedCore();
     devGlobal.__DEV__ = false;
+    const reads = jest.spyOn(AsyncStorage, 'getItem');
+    const writes = jest.spyOn(AsyncStorage, 'setItem');
+    reads.mockClear();
+    writes.mockClear();
     const { unmount } = mountApp();
     await settle();
-    expect(probe()).toContain('ready=true impl=simulator link=SIMULATED/ONLINE/-');
-    expect(probe()).toContain('pairing=free/');
-    expect(probe()).toContain('live=no/none');
-    expect(fake.log.entries).toHaveLength(0);
-    // The simulator ran from its stored snapshot, as in every release build.
-    expect(snapshot).toContain('RECORDING');
-    expect(probe()).toContain('session=RECORDING restored=true');
-    // The stored value is left as it is (§3.4: nothing is deleted when a mode cannot apply).
-    expect(JSON.parse((await AsyncStorage.getItem(MOBILE_PREFS_KEY))!)).toEqual({ coreLinkSource: 'LIVE' });
+    // Moved pin (D163): was `impl=simulator link=SIMULATED/ONLINE/-`, `live=no/none`, `restored=true`.
+    expect(probe()).toContain('ready=true impl=live link=LIVE/ONLINE/LIVE');
+    expect(probe()).toContain('pairing=required/UNPAIRED/-/-');
+    expect(probe()).toContain('live=yes/adapters');
+    expect(probe()).toContain('session=none restored=false');
+    // The one Core socket, with no credential (nothing is stored); every request goes to the loopback Core.
+    expect(coreSockets()).toHaveLength(1);
+    expect(coreSockets()[0]!.headers).toEqual({});
+    for (const call of fake.calls) expect(call.url.startsWith('http://127.0.0.1:4420/api/v1/')).toBe(true);
+    // MD-5 holds in release too: the simulator's snapshot is neither read nor written.
+    expect(reads.mock.calls.map(([key]) => key)).not.toContain(SIM_STORAGE_KEY);
+    expect(writes.mock.calls.map(([key]) => key)).not.toContain(SIM_STORAGE_KEY);
     unmount();
+    await settle();
+    expect(await AsyncStorage.getItem(SIM_STORAGE_KEY)).toBe(snapshot);
+    // The stored value is left as it is (§3.4).
+    expect(JSON.parse((await AsyncStorage.getItem(MOBILE_PREFS_KEY))!)).toEqual({ coreLinkSource: 'LIVE' });
   });
 
-  it('a LIVE preference that reaches the runtime all the same is not followed', async () => {
-    // A debug build chose LIVE; the same process is then asked to behave as a release build.
+  // S62 §3.15 #15 (D160, D163): row 170's interim MD-6 pin ("falls back to the simulator ... until M3-02")
+  // is inverted here by row 174: the LIVE preference that reaches the runtime in a release build is followed.
+  it('(b) a LIVE preference that reaches the runtime in a release build is followed: `createMobileLive` builds the Live source, no MD-6 warning', async () => {
+    scriptUnpairedCore();
     setCoreLinkSource('LIVE');
     devGlobal.__DEV__ = false;
     const built = jest.spyOn(adapters, 'createMobileLive');
     const unavailableBefore = runtimeLog.records().filter((record) => record.source === 'runtime.live.unavailable').length;
     const { unmount } = mountApp();
     await settle();
-    expect(probe()).toContain('impl=simulator link=SIMULATED/ONLINE/-');
-    expect(probe()).toContain('live=no/none');
-    expect(fake.log.entries).toHaveLength(0);
-    // The provider itself asks the build flag: it does not even try to build a Live source.
-    expect(built).not.toHaveBeenCalled();
-    expect(runtimeLog.records().filter((record) => record.source === 'runtime.live.unavailable')).toHaveLength(unavailableBefore);
+    expect(built).toHaveBeenCalled();
+    // Moved pin (D163): every result was `null` before M3-02.
+    expect(built.mock.results.every((result) => result.type === 'return' && result.value !== null)).toBe(true);
+    expect(probe()).toContain('ready=true impl=live link=LIVE/ONLINE/LIVE');
+    expect(probe()).toContain('live=yes/adapters');
+    expect(coreSockets()).toHaveLength(1);
+    // The mock-core heartbeat client is stopped (CL-7), as in a debug build.
+    expect(mockCoreSockets.every((socket) => socket.closed)).toBe(true);
+    expect(runtimeLog.records().filter((record) => record.source === 'runtime.live.unavailable').length).toBe(unavailableBefore);
     unmount();
     built.mockRestore();
   });
 
-  it('a build that holds no Live source (MD-6): LIVE falls back to the simulator, and the log says so', async () => {
+  // (c) kept as the defensive pin (I63 §4.2): the null path of `createMobileLive`'s type survives in the provider.
+  it('(c) defensive MD-6: if `createMobileLive` gave no Live source, LIVE falls back to the simulator, and the log says so', async () => {
     // What a release bundle holds in place of the adapters: a function that returns null.
     const none = jest.spyOn(adapters, 'createMobileLive').mockReturnValue(null);
     setCoreLinkSource('LIVE');
@@ -372,12 +398,20 @@ describe('release build: Simulated only (MD-3, MD-6, AC-C-28)', () => {
     none.mockRestore();
   });
 
-  it('`createMobileLive` builds nothing in a release build', () => {
+  it('(d) `createMobileLive` builds the Live source in a release build, and sends nothing before `start()`', () => {
     devGlobal.__DEV__ = false;
     // Loaded here, so the module sees the flag at call time, as the release bundle sees its constant.
     const { createMobileLive } = jest.requireActual<typeof import('./sim-adapters')>('./sim-adapters');
-    expect(createMobileLive()).toBeNull();
+    const built = createMobileLive();
+    // Moved pin (D163): was `toBeNull()` before M3-02.
+    expect(built).not.toBeNull();
+    expect(built!.live).toBeDefined();
+    expect(built!.sim).toBeDefined();
+    expect(mobileLiveOf(built!.sim)).toBe(built);
+    // MD-5: creating it sends nothing and opens no socket.
     expect(fake.log.entries).toHaveLength(0);
+    expect(fake.connections).toHaveLength(0);
+    built!.stop();
   });
 });
 

@@ -9,10 +9,11 @@ import './testing/devices-test-setup';
 import '@/navigation/testing/router-harness';
 
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
-import { FaultKind } from '@dems/shared/sim';
+import { FaultKind, isOwnCaptureCoreState, ownCaptureCoreFactsTransition, type SimState } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { renderDevicesApp, settle, type DevicesHarness } from './testing/devices-harness';
 import { settledBusyState } from '@/features/capture-selector/settled-busy-state';
+import { deviceStatus } from './devices-model';
 import { unmountBeforeTheHooksOfThisGroup } from '@/runtime/testing/scoped-cleanup';
 
 // The cases this file held before the consolidation of the suite (D233), under their own hooks.
@@ -234,8 +235,20 @@ describe('faults escalate calmly (03M P7)', () => {
     expect(within(screen.getByTestId('devices-attention')).getByText('2 devices need attention')).toBeTruthy();
     await openDetail(h, 'TABLET');
     expect(screen.getByTestId('device-tablet-offline')).toBeTruthy();
-    // Fix wave J (JA2-13): device-neutral - the row stands for this phone or tablet.
-    expect(screen.getByText('Recording continues on the Core. Reconnect this device to regain control.')).toBeTruthy();
+    // M3-12 (D50, re-pinned): nothing records, so the alert says W1 and makes no recording claim.
+    expect(within(screen.getByTestId('device-tablet-offline')).getByText('Operator device offline. Nothing is recording on the Core. Reconnect the device to regain control.')).toBeTruthy();
+    expect(within(screen.getByTestId('device-tablet-offline')).queryByText(/Recording continues/)).toBeNull();
+  });
+
+  it('M3-12 (D50): the tablet-offline alert says "Recording continues on the Core" while a session records', async () => {
+    const h = renderDevicesApp({ recording: true });
+    await settle();
+    h.sim.actions.setTabletLink('OFFLINE');
+    await settle();
+    await openDetail(h, 'TABLET');
+    const alert = screen.getByTestId('device-tablet-offline');
+    expect(within(alert).getByText('Recording continues on the Core. Reconnect the device to regain control.')).toBeTruthy();
+    expect(within(alert).queryByText(/Nothing is recording/)).toBeNull();
   });
 
   it('while recording the lamp is lit in the list and the relay detail reads SEDANG MEREKAM', async () => {
@@ -244,6 +257,67 @@ describe('faults escalate calmly (03M P7)', () => {
     expect(screen.getByTestId('device-rec-lamp-lit')).toBeTruthy();
     await openDetail(h, 'REC-INDICATOR');
     expect(within(screen.getByTestId('device-fact-lamp')).getByText('SEDANG MEREKAM')).toBeTruthy();
+  });
+});
+
+// Audit row 227 (D213; after row 198, D52 / I4): on a Core in its own capture the PoE switch and the Recording Indicator
+// read "Not reported", so their model status never raises the attention line. Real tracks (row 191 reader) still do.
+describe('row 227 - the attention line on a Core in its own capture', () => {
+  const ownCapture = (h: Pick<DevicesHarness, 'sim'>) => act(() => h.sim.store.setState((s) => ownCaptureCoreFactsTransition(s)));
+  const indicatorOffline = (h: Pick<DevicesHarness, 'sim'>) =>
+    act(() => h.sim.store.setState((s) => ({ otherDevices: s.otherDevices.map((device) => (device.id === 'REC-INDICATOR' ? { ...device, online: false } : device)) })));
+  /** Every camera line down: the cameras fault on their tracks, and the PoE switch's model status turns FAULT. */
+  const camerasDown = (h: Pick<DevicesHarness, 'sim'>) => act(() => h.sim.store.setState((s) => ({ cameras: s.cameras.map((camera) => ({ ...camera, online: false })) })));
+
+  it('CONTROL (simulated Core): a model fault of the indicator and of the PoE switch raises attention, as before', async () => {
+    const h = renderDevicesApp();
+    await settle();
+    expect(isOwnCaptureCoreState(h.sim.store.getState())).toBe(false);
+    indicatorOffline(h);
+    await settle();
+    expect(within(screen.getByTestId('devices-attention')).getByText('1 device needs attention')).toBeTruthy();
+    expect(within(screen.getByTestId('devices-attention')).getByText(/Recording Indicator: Fault/)).toBeTruthy();
+    camerasDown(h);
+    await settle();
+    expect(deviceStatus(h.sim.store.getState(), 'POE-SWITCH')).toBe('FAULT');
+    // 4 cameras + the PoE switch + the indicator.
+    expect(within(screen.getByTestId('devices-attention')).getByText('6 devices need attention')).toBeTruthy();
+  });
+
+  it('own capture: a model fault of the indicator or of the PoE switch raises no attention', async () => {
+    const h = renderDevicesApp();
+    ownCapture(h);
+    await settle();
+    expect(isOwnCaptureCoreState(h.sim.store.getState())).toBe(true);
+    expect(screen.queryByTestId('devices-attention')).toBeNull();
+    indicatorOffline(h);
+    await settle();
+    expect(deviceStatus(h.sim.store.getState(), 'REC-INDICATOR')).toBe('FAULT');
+    expect(screen.queryByTestId('devices-attention')).toBeNull();
+    camerasDown(h);
+    await settle();
+    expect(deviceStatus(h.sim.store.getState(), 'POE-SWITCH')).toBe('FAULT');
+    // Only the 4 camera tracks: neither the PoE switch nor the indicator is counted or named.
+    const alert = screen.getByTestId('devices-attention');
+    expect(within(alert).getByText('4 devices need attention')).toBeTruthy();
+    expect(within(alert).queryByText(/PoE|Recording Indicator/)).toBeNull();
+  });
+
+  it('own capture: a camera whose source is NOT_REACHABLE still raises attention', async () => {
+    const h = renderDevicesApp();
+    ownCapture(h);
+    await settle();
+    expect(screen.queryByTestId('devices-attention')).toBeNull();
+    act(() =>
+      h.sim.store.setState((s) => {
+        const camera1 = s.captureConfig.cameras.find((line) => line.trackId === 'VIDEO-01')!.deviceId;
+        return { captureDevices: { ...s.captureDevices, devices: s.captureDevices.devices.map((device) => (device.id === camera1 ? { ...device, reach: 'NOT_REACHABLE' } : device)) } as SimState['captureDevices'] };
+      }),
+    );
+    await settle();
+    const alert = screen.getByTestId('devices-attention');
+    expect(within(alert).getByText('1 device needs attention')).toBeTruthy();
+    expect(within(alert).getByText(/Camera 1: Fault/)).toBeTruthy();
   });
 });
 

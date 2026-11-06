@@ -5,9 +5,9 @@
  * Real simulator state from `createTestSim` (manual clock); no React.
  */
 import { describe, expect, it } from '@jest/globals';
-import { DEFAULT_CAPTURE_CONFIG, DEMO_OPERATOR_PASSWORD, FaultKind, ScenarioName, type AuditRow, type ChannelMicLine } from '@dems/shared/sim';
+import { DEFAULT_CAPTURE_CONFIG, DEMO_OPERATOR_PASSWORD, FaultKind, ScenarioName, SlotSourceState, type AuditRow, type ChannelMicLine, type SimState } from '@dems/shared/sim';
 import { createTestSim } from '@/runtime/testing/test-sim';
-import { DEVICE_IDS, attentionDevices, deviceStatus, parseStatusLine, statusLine } from './devices-model';
+import { DEVICE_IDS, attentionDevices, deviceStatus, parseStatusLine, rosterTrackStatusOf, statusLine, trackSourceOf, trackStatus } from './devices-model';
 import { HEALTH_POINTS, MicLevelSampler, auditRowDevice, bookPoe, channelOf, deviceLog, healthSeries, seriesInputOf } from './sim-adapter';
 
 // Task 4 row 171 (site M6; decision C18 (2); row 164's request): the meter channel of a microphone device is read
@@ -62,6 +62,91 @@ describe('device status', () => {
     expect(statuses.TABLET).toBe('OFFLINE');
     expect(statuses['CAM-01']).toBe('ONLINE');
     expect(attentionDevices(statuses)).toEqual(['CAM-02', 'MIC-02', 'TABLET']);
+  });
+
+  it('row 227 (D213): devices whose state is not reported never raise attention; the others keep their rank', () => {
+    const idle = parseStatusLine(statusLine(createTestSim().sim.store.getState()));
+    const statuses = { ...idle, 'POE-SWITCH': 'FAULT', 'REC-INDICATOR': 'FAULT', 'CAM-01': 'FAULT', 'MIC-02': 'NO_SIGNAL' } as const;
+    const notReported = new Set(['POE-SWITCH', 'REC-INDICATOR'] as const);
+    // CONTROL (no set, the simulated lane): the model faults rank as before.
+    expect(attentionDevices(statuses)).toEqual(['CAM-01', 'POE-SWITCH', 'REC-INDICATOR', 'MIC-02']);
+    expect(attentionDevices(statuses, notReported)).toEqual(['CAM-01', 'MIC-02']);
+    // Only the model-only devices fault: nothing needs attention.
+    expect(attentionDevices({ ...idle, 'POE-SWITCH': 'FAULT', 'REC-INDICATOR': 'FAULT' }, notReported)).toEqual([]);
+  });
+});
+
+// Audit row 191 (M3-08 R3/R4; web rows 128b and 129): ONE source reader (`slotSourceOf` through `trackSourceOf`) and
+// the track status rule. The bench shape (row 190 §1, row 129 §1): the lines hold CAM-03 on VIDEO-01 and MIC-03..06 on
+// channels 1-4, and the registry holds no MIC-01 / MIC-02 - the old built-in-id lookup read FAULT or another channel's row.
+describe('row 191: the track status over the one source reader', () => {
+  type Device = SimState['captureDevices']['devices'][number];
+  const base = (): SimState => createTestSim().sim.store.getState();
+  const withDevices = (state: SimState, map: (device: Device) => Device): SimState => ({ ...state, captureDevices: { ...state.captureDevices, devices: state.captureDevices.devices.map(map) } });
+  const reachOf = (state: SimState, id: string, reach: 'REACHABLE' | 'NOT_REACHABLE' | null): SimState => withDevices(state, (device) => (device.id === id ? { ...device, reach, checkedAt: null } : device));
+
+  it('NOT_REACHABLE gives FAULT; no reach and REACHABLE give the track row\'s own state', () => {
+    const state = base();
+    expect(trackSourceOf(reachOf(state, 'CAM-01', 'NOT_REACHABLE'), 'VIDEO-01').state).toBe(SlotSourceState.NOT_REACHABLE);
+    expect(deviceStatus(reachOf(state, 'CAM-01', 'NOT_REACHABLE'), 'CAM-01')).toBe('FAULT');
+    expect(deviceStatus(reachOf(state, 'CAM-01', null), 'CAM-01')).toBe('ONLINE');
+    expect(deviceStatus(reachOf(state, 'CAM-01', 'REACHABLE'), 'CAM-01')).toBe('ONLINE');
+    // REACHABLE gives the ROW's state, so the track's own fault stands.
+    const lensFault = { ...reachOf(state, 'CAM-01', 'REACHABLE'), cameras: state.cameras.map((camera) => (camera.id === 'VIDEO-01' ? { ...camera, lens: 'FAULT' as const } : camera)) };
+    expect(deviceStatus(lensFault, 'CAM-01')).toBe('FAULT');
+    // A microphone: NOT_REACHABLE is FAULT; REACHABLE keeps NO SIGNAL / CLIP of its channel.
+    expect(deviceStatus(reachOf(state, 'MIC-02', 'NOT_REACHABLE'), 'MIC-02')).toBe('FAULT');
+    const noSignal = { ...reachOf(state, 'MIC-02', 'REACHABLE'), mics: state.mics.map((mic) => (mic.channel === 'MIC-02' ? { ...mic, state: 'NO_SIGNAL' as const } : mic)) };
+    expect(deviceStatus(noSignal, 'MIC-02')).toBe('NO_SIGNAL');
+    // CONTROL: the other tracks are untouched.
+    expect(deviceStatus(reachOf(state, 'CAM-01', 'NOT_REACHABLE'), 'CAM-02')).toBe('ONLINE');
+  });
+
+  it('unassigned gives OFFLINE; offline or not held by the registry gives FAULT; the camera line\'s own `online: false` gives FAULT', () => {
+    const state = base();
+    const unassigned = { ...state, captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-03' ? { ...line, deviceId: null } : line)) } } as SimState;
+    expect(trackStatus(unassigned, 'VIDEO-03')).toBe('OFFLINE');
+    expect(deviceStatus(unassigned, 'CAM-03')).toBe('OFFLINE');
+    expect(deviceStatus(withDevices(state, (device) => (device.id === 'CAM-04' ? { ...device, online: false } : device)), 'CAM-04')).toBe('FAULT');
+    expect(deviceStatus({ ...state, captureDevices: { ...state.captureDevices, devices: state.captureDevices.devices.filter((device) => device.id !== 'CAM-02') } }, 'CAM-02')).toBe('FAULT');
+    const lineDown = { ...state, captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, online: false } : line)) } } as SimState;
+    expect(deviceStatus(lineDown, 'CAM-01')).toBe('FAULT');
+  });
+
+  it('U-05 bench shape: the built-in row speaks for its TRACK, so a registry without MIC-01/MIC-02 does not read FAULT', () => {
+    const state = base();
+    const bench: SimState = {
+      ...state,
+      captureConfig: {
+        ...state.captureConfig,
+        cameras: state.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'CAM-03' } : line.trackId === 'VIDEO-03' ? { ...line, deviceId: 'CAM-01' } : line)),
+        mics: state.captureConfig.mics.map((line) => ({ ...line, deviceId: `MIC-0${String(Number(line.channel.slice(-1)) + 2)}` })),
+      } as SimState['captureConfig'],
+      captureDevices: {
+        ...state.captureDevices,
+        devices: [
+          ...state.captureDevices.devices.filter((device) => device.kind !== 'MIC'),
+          ...['MIC-03', 'MIC-04', 'MIC-05', 'MIC-06'].map((id) => ({ ...state.captureDevices.devices.find((device) => device.kind === 'MIC')!, id, reach: id === 'MIC-04' ? ('NOT_REACHABLE' as const) : null })),
+        ],
+      } as SimState['captureDevices'],
+    };
+    expect(trackSourceOf(bench, 'MIC-01').deviceId).toBe('MIC-03');
+    expect(deviceStatus(bench, 'MIC-01')).toBe('ONLINE');
+    // Channel 2's source (MIC-04) is stated not reachable: its row says so - not channel 4's.
+    expect(deviceStatus(bench, 'MIC-02')).toBe('FAULT');
+    expect(deviceStatus(bench, 'MIC-04')).toBe('ONLINE');
+    expect(trackSourceOf(bench, 'VIDEO-01').deviceId).toBe('CAM-03');
+    expect(deviceStatus(bench, 'CAM-01')).toBe('ONLINE');
+  });
+
+  it('B16 (D114): a registered row on a line takes its track\'s status when the track is not ready; on no line, or ready, the registry rule stands', () => {
+    const state = base();
+    expect(rosterTrackStatusOf(state, null)).toBeNull();
+    expect(rosterTrackStatusOf(state, 'VIDEO-02')).toBeNull();
+    const lensFault = { ...state, cameras: state.cameras.map((camera) => (camera.id === 'VIDEO-02' ? { ...camera, lens: 'FAULT' as const } : camera)) };
+    expect(rosterTrackStatusOf(lensFault, 'VIDEO-02')).toBe('FAULT');
+    const clip = { ...state, mics: state.mics.map((mic) => (mic.channel === 'MIC-03' ? { ...mic, state: 'CLIP' as const } : mic)) };
+    expect(rosterTrackStatusOf(clip, 'MIC-03')).toBe('CLIP');
   });
 });
 

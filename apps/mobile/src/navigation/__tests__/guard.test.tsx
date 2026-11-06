@@ -10,6 +10,7 @@ import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import type { SessionState } from '@dems/shared/domain';
 import { router } from 'expo-router';
 import { peekPendingHref } from '@/navigation/pending-href';
+import { setCoreLinkSource } from '@/runtime';
 import { redirectSystemPath } from '../../app/+native-intent';
 
 jest.mock('@/features/home/pulse-ring', () => ({ PulseRing: () => null }));
@@ -32,6 +33,8 @@ const originalFetch = global.fetch;
 
 beforeEach(() => {
   resetShellState();
+  // These are route-guard tests over a contract stub; the LIVE pairing gate would land them on /pair.
+  setCoreLinkSource('SIMULATED');
   mockSessionNewSteps.length = 0;
   global.fetch = jest.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })) as unknown as typeof fetch;
 });

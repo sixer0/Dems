@@ -7,9 +7,10 @@
  * `/devices/<deviceId>` with the same IDs (step 77), and the route parses them with `recordIdSchema`.
  */
 import { SessionState } from '@dems/shared/domain';
-import type { SimState } from '@dems/shared/sim';
+import { isSlotSourceUp, micChannelOfTrack, slotSourceOf, SlotSourceState, type CaptureSelectorSlot, type SimState, type SlotSource } from '@dems/shared/sim';
 import type { StatusTone } from '@dems/shared/tokens';
-import { DEVICE_IDS, DEVICE_KIND, isDeviceId, type DeviceId } from './device-ids';
+import { selectorInForce } from '@/features/capture-selector/selector-in-force';
+import { DEVICE_CAMERA, DEVICE_IDS, DEVICE_KIND, DEVICE_MIC, isDeviceId, type DeviceId } from './device-ids';
 import { bookPoe } from './sim-adapter';
 
 export { DEVICE_CAMERA, DEVICE_IDS, DEVICE_KIND, DEVICE_MIC, isDeviceId, type DeviceId, type DeviceKind } from './device-ids';
@@ -95,20 +96,74 @@ export const STATUS_LABEL_KEY: Readonly<Record<DeviceStatus, string>> = {
   CLIP: 'features.devices.status.CLIP',
 };
 
-type StatusInput = Pick<SimState, 'cameras' | 'mics' | 'network' | 'tabletLink' | 'otherDevices'>;
+// ── Audit row 191 (M3-08 R3/R4; web rows 128, 128b, 129): ONE source reader and the track status rule ────────
+/** What the track status reads: the slices of the tracks, the selector in force and the Core's device list. */
+export type TrackStatusInput = Pick<SimState, 'cameras' | 'mics' | 'captureConfig' | 'captureDevices' | 'session'>;
+
+/**
+ * THE SOURCE OF A TRACK (a video track `VIDEO-0n` or a microphone channel `MIC-0n`): the shared one reader
+ * `slotSourceOf` (register P12) over the selector IN FORCE and the `captureDevices` slice. The tablet's side of
+ * the web's `trackSourceOf` (`apps/core-web/src/features/devices/model.ts`, row 128b). No reader of the Devices
+ * screens spells its own reach rule (M3-08 R3). Pure.
+ */
+export function trackSourceOf(state: Pick<SimState, 'captureConfig' | 'captureDevices' | 'session'>, slot: CaptureSelectorSlot): SlotSource {
+  return slotSourceOf(selectorInForce(state), state.captureDevices.devices, slot);
+}
+
+/**
+ * THE STATUS OF A TRACK (row 129's rule, M3-08 R4), the same on the web and here:
+ *
+ * | The track's source (`trackSourceOf`) | Status |
+ * |---|---|
+ * | `NOT_ASSIGNED`: the selector names no device | OFFLINE |
+ * | `NOT_REACHABLE` (a stated `reach`), `OFFLINE` (`online: false`, or a device the registry does not hold), or the camera line's own `online: false` | FAULT |
+ * | `REACHABLE`, or `NOT_CHECKED` (`isSlotSourceUp`, P13) | the TRACK's own row: a camera `online && lens READY`, else FAULT; a microphone NO_SIGNAL / CLIP / ONLINE |
+ *
+ * `NOT_CHECKED` claims nothing against the source, so it is never a fault. It is never READY in words either:
+ * the row and the detail say "Not checked" (C11) through `sourceRowLine` (`use-devices-data.ts`). Pure.
+ */
+export function trackStatus(state: TrackStatusInput, slot: CaptureSelectorSlot): DeviceStatus {
+  const source = trackSourceOf(state, slot);
+  if (source.state === SlotSourceState.NOT_ASSIGNED) return 'OFFLINE';
+  if (!isSlotSourceUp(source)) return 'FAULT';
+  if (slot.startsWith('VIDEO-')) {
+    const line = selectorInForce(state).cameras.find((entry) => entry.trackId === slot) as { readonly online?: unknown } | undefined;
+    if (line?.online === false) return 'FAULT';
+    const camera = state.cameras.find((entry) => entry.id === slot);
+    return camera && camera.online && camera.lens === 'READY' ? 'ONLINE' : 'FAULT';
+  }
+  const mic = state.mics.find((entry) => entry.channel === slot);
+  if (!mic) return 'FAULT';
+  if (mic.state === 'NO_SIGNAL') return 'NO_SIGNAL';
+  if (mic.state === 'CLIP' || mic.clipLatched) return 'CLIP';
+  return 'ONLINE';
+}
+
+/**
+ * B16 (D114, row 190 -> 191): the status a REGISTERED device row ON a line shows besides its registry word -
+ * the track's status (`trackStatus`) when it is not a ready one (a fault or a warning of the track), else null
+ * (the registry rule stands: "Not checked" / "Reachable"). Null too on no line. The web's `rosterCardStatus`.
+ */
+export function rosterTrackStatusOf(state: TrackStatusInput, slot: CaptureSelectorSlot | null): DeviceStatus | null {
+  if (slot === null) return null;
+  const status = trackStatus(state, slot);
+  return STATUS_RANK[status] > 0 ? status : null;
+}
+
+type StatusInput = Pick<SimState, 'network' | 'tabletLink' | 'otherDevices'> & TrackStatusInput;
 
 export function deviceStatus(state: StatusInput, deviceId: DeviceId): DeviceStatus {
   switch (DEVICE_KIND[deviceId]) {
+    // Audit row 191 (M3-08 R4; web row 129): a built-in camera / microphone row speaks for its TRACK, read through the
+    // one source reader - not for a slice row looked up by the built-in id (the U-05 defect: on a Core whose lines hold
+    // CAM-03 or MIC-03..06 the built-in id finds no row, or another channel's).
     case 'camera': {
-      const camera = state.cameras.find((entry) => entry.deviceId === deviceId);
-      return camera && camera.online && camera.lens === 'READY' ? 'ONLINE' : 'FAULT';
+      const track = DEVICE_CAMERA[deviceId];
+      return track === undefined ? 'FAULT' : trackStatus(state, track);
     }
     case 'microphone': {
-      const mic = state.mics.find((entry) => entry.deviceId === deviceId);
-      if (!mic) return 'FAULT';
-      if (mic.state === 'NO_SIGNAL') return 'NO_SIGNAL';
-      if (mic.state === 'CLIP' || mic.clipLatched) return 'CLIP';
-      return 'ONLINE';
+      const track = DEVICE_MIC[deviceId];
+      return track === undefined ? 'FAULT' : trackStatus(state, micChannelOfTrack(track));
     }
     case 'poe': {
       // D60 (2026-11-04): the switch reads ACTIVE while ANY camera port feeds — not only the dual-lens CAM 1.
@@ -138,10 +193,21 @@ export function parseStatusLine(line: string): Record<DeviceId, DeviceStatus> {
   return out;
 }
 
-/** Devices that need attention, worst first (FAULT before warnings), list order inside a rank. */
-export function attentionDevices(statuses: Readonly<Record<DeviceId, DeviceStatus>>): DeviceId[] {
-  return DEVICE_IDS.filter((id) => STATUS_RANK[statuses[id]] > 0).sort((a, b) => STATUS_RANK[statuses[b]] - STATUS_RANK[statuses[a]]);
+/**
+ * Devices that need attention, worst first (FAULT before warnings), list order inside a rank.
+ *
+ * Audit row 227 (D213; follows row 198, M3-10 R3, D52 / I4): `notReported` names the devices whose state nobody
+ * reports on this Core - on a Core in its own capture the model-only PoE switch and Recording Indicator
+ * (`NO_PRODUCER_DEVICES` of `device-status-chip.tsx`, under the same gate `useNoProducerView`). Their status is the
+ * simulator's model, read as "Not reported" in the list and the detail, so it never raises attention: the line would
+ * otherwise name a device whose state is not reported. Real tracks (cameras, microphones: the row 191 reader) and the
+ * tablet's own link still do. Empty (the default) on the simulated lane: unchanged. Pure.
+ */
+export function attentionDevices(statuses: Readonly<Record<DeviceId, DeviceStatus>>, notReported: ReadonlySet<DeviceId> = NONE_NOT_REPORTED): DeviceId[] {
+  return DEVICE_IDS.filter((id) => !notReported.has(id) && STATUS_RANK[statuses[id]] > 0).sort((a, b) => STATUS_RANK[statuses[b]] - STATUS_RANK[statuses[a]]);
 }
+
+const NONE_NOT_REPORTED: ReadonlySet<DeviceId> = new Set<DeviceId>();
 
 export function isRecording(state: Pick<SimState, 'session'>): boolean {
   return state.session?.state === SessionState.RECORDING;

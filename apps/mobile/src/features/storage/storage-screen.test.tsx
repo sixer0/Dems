@@ -7,9 +7,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, cleanup, fireEvent, screen } from '@testing-library/react-native';
 // Named imports: the MA-20 scan (`Haptics\.` outside src/motion/haptics, haptics.test.ts) covers tests too.
 import { NotificationFeedbackType, notificationAsync } from 'expo-haptics';
-import { Dimensions } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 import type { ReactTestInstance } from 'react-test-renderer';
 import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
+import { palette } from '@dems/shared/tokens';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetLoopRegistryForTests, resetMotionStateForTests } from '@/motion';
 import { resetCoreLinkPrefsForTests } from '@/runtime';
@@ -288,6 +289,37 @@ describe('Storage screen', () => {
     const rows = rowLabels();
     expect(rows.filter((row) => /, Export requested$/.test(row))).toHaveLength(1);
     expect(rows.filter((row) => /Evidence exported/i.test(row)).length).toBeGreaterThan(0);
+    expect(getMissingKeys()).toEqual([]);
+  });
+
+  it('M3-13 (row 203, W4/W5; tablet half of web U-07 / row 110b): a FAULT_CLEARED of the session still in FAULT reads W4 with the amber mark; a non-FAULT session keeps the old text', async () => {
+    const test = await mount({ scenario: 'recording' });
+    const sessionId = test.sim.store.getState().session?.id;
+    expect(typeof sessionId).toBe('string');
+    const W4 = 'Fault cleared · Storage full. The session is still in FAULT and needs recovery.';
+    const OLD = `Fault cleared · Storage full ${sessionId}`;
+    const dotColor = (testID: string) => StyleSheet.flatten(screen.getByTestId(testID).props.style).backgroundColor;
+    act(() =>
+      test.sim.store.setState(
+        (s) =>
+          ({
+            session: s.session ? { ...s.session, state: 'FAULT' } : s.session,
+            events: [...s.events, { id: 'EVT-203-1', seq: 9_203, at: s.clock.now, type: 'FAULT_CLEARED', severity: 'SUCCESS', message: 'cleared', params: { kind: 'STORAGE_FULL' }, sessionId, deviceId: null }],
+          }) as Partial<typeof s>,
+      ),
+    );
+    await flushAsync();
+    expect(rowLabels()[0]).toContain(W4);
+    expect(rowLabels()[0]).not.toContain('STORAGE_FULL');
+    expect(screen.getAllByTestId('storage-activity-still-in-fault')).toHaveLength(1);
+    expect(dotColor('storage-activity-still-in-fault')).toBe(palette.warning);
+
+    // CONTROL: the same row once the session is no longer in FAULT keeps the old text and no mark.
+    act(() => test.sim.store.setState((s) => ({ session: s.session ? { ...s.session, state: 'RECORDING' } : s.session }) as Partial<typeof s>));
+    await flushAsync();
+    expect(rowLabels()[0]).toContain(OLD);
+    expect(rowLabels()[0]).not.toContain('still in FAULT');
+    expect(screen.queryAllByTestId('storage-activity-still-in-fault')).toHaveLength(0);
     expect(getMissingKeys()).toEqual([]);
   });
 });

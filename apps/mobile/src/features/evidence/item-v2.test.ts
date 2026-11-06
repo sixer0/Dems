@@ -3,7 +3,8 @@
 // holds the same cases for its own copy of the reader.
 import { describe, expect, it } from '@jest/globals';
 import { EXAMPLE_EVIDENCE_ITEM, EvidenceItemSchema } from '@dems/shared/api';
-import { cameraFileOf, itemDevelopmentBadge, readItemV2 } from './item-v2';
+import { CAMERA_FILE_IDS, cameraFileOf, itemDevelopmentBadge, readItemV2 } from './item-v2';
+import { RECORDED_VERIFY_V2_D5, type RecordedVerifyD5Name } from './testing/verify-v2-recorded-d5';
 
 const H = (char: string): string => char.repeat(64);
 const V1_ITEM: Record<string, unknown> = { ...EXAMPLE_EVIDENCE_ITEM };
@@ -74,5 +75,77 @@ describe('developmentSources (R-11): null is never production', () => {
       expect(itemDevelopmentBadge({ developmentSources: false }, live)).toBe(false);
       expect(itemDevelopmentBadge({ developmentSources: null }, live)).toBe(false);
     }
+  });
+});
+
+// Audit 2026-11-05 row 207 (M3-16 R1/R2/R4; register E7, E10; the web's row 159 cases, describe "row 159 (D5)").
+// The file sets are the RECORDED D5 packages of row 206's fixture (`RECORDED_VERIFY_V2_D5`: the real verifier
+// over three /2.1 packages). An op 41 answer carries no file hash, so the hashes below are hex stand-ins (H('0')..H('7') in file order).
+//
+// | Rule | Case |
+// |------|------|
+// | recorded d5Pass: four AUDIO-0N, each the audio of pair N, "in VIDEO-0N"; the camera reader still names four cameras (R4) | 1 |
+// | recorded d5MicMissing (MIC-02 not assigned): three audio files + one statement, silent VIDEO-02 | 2 |
+// | E10: an audio file whose camera file is not in the item is not said to be "in" it | 3 |
+// | a statement that cannot be read whole is no statement | 4 |
+// | LEGACY: a /2 item and a v1 item state neither | 5 |
+describe('row 207 (M3-16): the pair audio files and the missing-microphone statement of an item', () => {
+  const recordedFiles = (name: RecordedVerifyD5Name) =>
+    (RECORDED_VERIFY_V2_D5[name].body['files'] as { fileId: string; trackId: string; fragmentCount: number }[]).map((file, index) => ({
+      trackId: file.trackId,
+      fileName: file.fileId,
+      sizeBytes: 1_000 + index,
+      sha256: H(index.toString(16)),
+      fragmentCount: file.fragmentCount,
+    }));
+  const MIC_02_NOT_ASSIGNED = [{ trackId: 'AUDIO-02', micDeviceId: null, silentIn: ['VIDEO-02'], reason: 'NOT_ASSIGNED' }];
+
+  it('1 - recorded d5Pass: AUDIO-01..04 are the audio of pairs 1..4, each in VIDEO-0N; the item parses; cameraFileOf still names the four cameras', () => {
+    const item = { ...V1_ITEM, ...V2_MEMBERS, files: recordedFiles('d5Pass') };
+    expect(EvidenceItemSchema.safeParse(item).success).toBe(true);
+    const v2 = readItemV2(item);
+    expect(v2.pairAudioFiles.map((a) => [a.trackId, a.pair, a.camera, a.inCamera])).toEqual([
+      ['AUDIO-01', 1, 'VIDEO-01', 'VIDEO-01'],
+      ['AUDIO-02', 2, 'VIDEO-02', 'VIDEO-02'],
+      ['AUDIO-03', 3, 'VIDEO-03', 'VIDEO-03'],
+      ['AUDIO-04', 4, 'VIDEO-04', 'VIDEO-04'],
+    ]);
+    expect(v2.pairAudioFiles.map((a) => a.file.sha256)).toEqual([H('4'), H('5'), H('6'), H('7')]);
+    expect(v2.audioTracksMissing).toEqual([]);
+    expect(CAMERA_FILE_IDS.map((id) => cameraFileOf(v2, id)?.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']);
+  });
+
+  it('2 - recorded d5MicMissing: three audio files and the statement (AUDIO-02, pair 2, no microphone, silent in VIDEO-02)', () => {
+    const item = { ...V1_ITEM, ...V2_MEMBERS, files: recordedFiles('d5MicMissing'), audioTracksMissing: MIC_02_NOT_ASSIGNED };
+    expect(EvidenceItemSchema.safeParse(item).success).toBe(true);
+    const v2 = readItemV2(item);
+    expect(v2.pairAudioFiles.map((a) => a.trackId)).toEqual(['AUDIO-01', 'AUDIO-03', 'AUDIO-04']);
+    expect(v2.audioTracksMissing).toEqual([{ trackId: 'AUDIO-02', pair: 2, camera: 'VIDEO-02', micDeviceId: null, silentIn: 'VIDEO-02', reason: 'NOT_ASSIGNED' }]);
+  });
+
+  it('3 - E10: AUDIO-03 without VIDEO-03 in the item is pair 3 but in no camera file', () => {
+    const files = recordedFiles('d5Pass').filter((file) => file.trackId !== 'VIDEO-03');
+    const v2 = readItemV2({ files });
+    expect(v2.pairAudioFiles.find((a) => a.trackId === 'AUDIO-03')).toMatchObject({ pair: 3, camera: 'VIDEO-03', inCamera: null });
+    expect(v2.pairAudioFiles.find((a) => a.trackId === 'AUDIO-04')).toMatchObject({ inCamera: 'VIDEO-04' });
+  });
+
+  it('4 - a statement with one unreadable entry is no statement (never guessed)', () => {
+    const files = recordedFiles('d5MicMissing');
+    for (const bad of [
+      [...MIC_02_NOT_ASSIGNED, { trackId: 'AUDIO-09', micDeviceId: null, silentIn: [], reason: 'NOT_ASSIGNED' }],
+      [{ trackId: 'AUDIO-02', micDeviceId: 'MIC-04', silentIn: ['VIDEO-02'], reason: 'NOT_ASSIGNED' }],
+      [{ trackId: 'AUDIO-02', micDeviceId: null, silentIn: ['VIDEO-02'], reason: 'NOT_OPENED' }],
+      [{ trackId: 'AUDIO-02', micDeviceId: null, silentIn: ['VIDEO-03'], reason: 'NOT_ASSIGNED' }],
+      [...MIC_02_NOT_ASSIGNED, ...MIC_02_NOT_ASSIGNED],
+      'AUDIO-02',
+    ]) expect(readItemV2({ files, audioTracksMissing: bad }).audioTracksMissing).toEqual([]);
+    expect(readItemV2({ files, audioTracksMissing: [{ trackId: 'AUDIO-02', micDeviceId: 'MIC-04', silentIn: [], reason: 'NOT_OPENED' }] }).audioTracksMissing).toEqual([
+      { trackId: 'AUDIO-02', pair: 2, camera: 'VIDEO-02', micDeviceId: 'MIC-04', silentIn: null, reason: 'NOT_OPENED' },
+    ]);
+  });
+
+  it('5 - LEGACY: a /2 item (camera files only) and a v1 item state neither', () => {
+    for (const item of [{ ...V1_ITEM, ...V2_MEMBERS }, V1_ITEM]) expect(readItemV2(item)).toMatchObject({ pairAudioFiles: [], audioTracksMissing: [] });
   });
 });

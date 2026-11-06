@@ -41,10 +41,9 @@ import { CameraSearchProvider } from '@/features/capture-selector/use-camera-sea
 import { Pane, PaneLayout, SafeScreen, useLayoutClass } from '@/layout';
 import { enterRise, rowReveal, useMotionSettings } from '@/motion';
 import { useRuntimeStatus } from '@/runtime';
-import { useRealCaptureView } from './camera-preview';
 import { DeviceDetail } from './device-detail';
-import { SyntheticValuesChip } from './device-status-chip';
 import { DeviceRow } from './device-row';
+import { NO_PRODUCER_DEVICES, useNoProducerView } from './device-status-chip';
 import { DEVICE_SHORT_NAME_KEY, SECTIONS, STATUS_LABEL_KEY, STATUS_RANK, attentionDevices, isDeviceId, type DeviceId, type DeviceSection, type DeviceStatus } from './devices-model';
 import { PanelBoundary } from './panel-boundary';
 import { RegisteredDeviceRows, useRegisteredDevices } from './registered-device-rows';
@@ -109,17 +108,20 @@ function DevicesList({ selectedId, twoColumns, onSelect }: DevicesListProps) {
   const status = useRuntimeStatus();
   const statuses = useDeviceStatuses();
   const { isMultiPane } = useLayoutClass();
-  const attention = attentionDevices(statuses);
+  // Audit row 227 (D213): on a Core in its own capture (the row 198 gate) the model-only PoE switch and indicator read
+  // "Not reported", so their model status raises no attention; cameras, microphones and the tablet still do.
+  const noProducer = useNoProducerView();
+  const attention = attentionDevices(statuses, noProducer ? NO_PRODUCER_DEVICES : undefined);
   // Row 140 (D137 (2)): the devices the Core registered beyond the built-in ids, from its own list.
   const registered = useRegisteredDevices();
-  const realCapture = useRealCaptureView();
 
   const section = (id: DeviceSection, index: number) => {
     const spec = SECTIONS.find((entry) => entry.id === id)!;
     return (
       <Animated.View key={id} entering={enterRise(index + 1, m)}>
-        {/* Closing pass L-Z (the ONE RULE): the PoE switch, the indicator and the tablet row are values of the simulator's model - marked as that on a Core in its own capture. */}
-        <SectionCard title={t(spec.titleKey)} testID={`devices-section-${id}`} {...(id === 'other' && realCapture ? { action: <SyntheticValuesChip block="other" /> } : {})}>
+        {/* M3-10 R3 (audit row 198; D52, I4): no "Synthetic demo values" chip on any section. On a Core in its own capture the
+            PoE switch and the indicator rows read "Not reported" themselves (`device-row.tsx`); the tablet row is its own link fact. */}
+        <SectionCard title={t(spec.titleKey)} testID={`devices-section-${id}`}>
           <ListGroup variant="transparent">
             {spec.devices.map((deviceId, row) => (
               <Fragment key={deviceId}>

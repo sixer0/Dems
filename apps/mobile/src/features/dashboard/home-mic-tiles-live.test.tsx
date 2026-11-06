@@ -46,7 +46,24 @@ const frame = (dbfs: number, at: number, seq: number): AudioFrame => ({ seq, at,
 const flat = (at: number, seq: number): AudioFrame => ({ seq, at, dbfs: -90, peak: -90, clip: false, noSignal: true });
 const line = (track: 'AUDIO-01' | 'AUDIO-02') => textOf(`home-device-${track}-dbfs`);
 const lines = () => [line('AUDIO-01'), line('AUDIO-02')];
-const role = (track: 'AUDIO-01' | 'AUDIO-02') => (shows(`home-device-${track}-role`) ? textOf(`home-device-${track}-role`) : null);
+// Audit row 209 (M3-17, register A3; D134, D138; ruling D189): the tiles name their PAIR - "Mic N (Camera N)" on every
+// microphone tile, and the one "Transcribed" chip on Pair 1 - instead of a role word (`home-device-AUDIO-0N-role` is
+// gone with op 81). The words are fixed by channel number (D27), so they do not move with a recording or a switch.
+const MIC_TRACKS = ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'] as const;
+const pairLabel = (track: (typeof MIC_TRACKS)[number]) => (shows(`home-mic-tile-pair-${track}`) ? textOf(`home-mic-tile-pair-${track}`) : null);
+const pairWords = () => ({
+  labels: MIC_TRACKS.map(pairLabel),
+  transcribed: [...new Set(screen.queryAllByTestId(/^home-mic-tile-transcribed-/).map((node) => String(node.props.testID)))],
+  transcribedText: shows('home-mic-tile-transcribed-AUDIO-01') ? textOf('home-mic-tile-transcribed-AUDIO-01') : null,
+});
+/** A3 on the four tablet tiles: the four pair labels and exactly one "Transcribed", on Pair 1 (D134, D138). */
+const A3_WORDS = {
+  labels: ['Mic 1 (Camera 1)', 'Mic 2 (Camera 2)', 'Mic 3 (Camera 3)', 'Mic 4 (Camera 4)'],
+  transcribed: ['home-mic-tile-transcribed-AUDIO-01'],
+  transcribedText: 'Transcribed',
+};
+/** No tile reads a role word (`session.audioSource.role.*`, "Channel N (...)"), D134/D138. */
+const noRoleWord = () => MIC_TRACKS.every((track) => !shows(`home-device-${track}-role`));
 
 /** The recording session as a Core holds it (the recording scenario of a signed-in engine). */
 function recordingSession(now: number): NonNullable<SimState['session']> {
@@ -99,11 +116,13 @@ describe('B15: the tablet Home MIC tiles never read "No signal" beside a READY c
     expect(label('home-device-AUDIO-01')).toBe('MIC 1, READY');
     expect(label('home-device-AUDIO-02')).toBe('MIC 2, READY');
     expect(lines()).toEqual(['— dBFS', '— dBFS']);
-    expect(role('AUDIO-01')).toBeNull();
+    // Row 209 (M3-17; D134, D138): the four tiles carry the A3 pair words already at rest, and no role word.
+    expect(pairWords()).toEqual(A3_WORDS);
+    expect(noRoleWord()).toBe(true);
     expect(getMissingKeys()).toEqual([]);
   });
 
-  it('under the `?motion=off` test switch (as the device runs): a recording starts and the tiles show the level of each input, with the channel words (D61)', async () => {
+  it('under the `?motion=off` test switch (as the device runs): a recording starts and the tiles show the level of each input, with the pair words (A3; D134, D138)', async () => {
     const b = await tabletHome(true);
     const now = b.fake.clock.now();
     await b.pushState({ ...b.state, session: recordingSession(now) });
@@ -112,8 +131,10 @@ describe('B15: the tablet Home MIC tiles never read "No signal" beside a READY c
     // Was: "No signal" on both tiles for the whole recording (D249 O-3).
     expect(lines()).toEqual(['-18 dBFS', '-42 dBFS']);
     expect(screen.getByTestId('home-device-AUDIO-01-meter').props.accessibilityValue).toMatchObject({ now: -18, text: '-18 dBFS' });
-    // D61 (2026-11-04): the pair words became the channel words — channel 1 is transcribed, channel 2 records beside it.
-    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Channel 1 (transcribed)', 'Channel 2 (recorded)']);
+    // Row 209 (M3-17; D134, D138). Was the D61 channel words ("Channel 1 (transcribed)", "Channel 2 (recorded)"):
+    // the tiles name their pair, and Pair 1 alone says "Transcribed".
+    expect(pairWords()).toEqual(A3_WORDS);
+    expect(noRoleWord()).toBe(true);
 
     // The test switch still holds the number between flips (uiautomator idle): later frames do not move it.
     b.sendMeters({ 'MIC-01': frame(-9, now + 50, 2), 'MIC-02': frame(-30, now + 50, 2) });
@@ -187,24 +208,27 @@ describe('JW-08 mobile half, round two: a frame the Core marks `notMeasured` is 
   });
 });
 
-describe('MB-01: the tiles say which input is active while a session records (ux §3.6; D105)', () => {
-  it('the words follow the session\'s pair from the Core and leave with the recording', async () => {
+// Re-pinned by audit row 209 (M3-17, register A3; D134, D138; ruling D189). Was MB-01 (ux §3.6; D105): "the tiles say
+// which input is active while a session records" - op 81 is retired (D134), the web tiles name the pair (D138).
+describe('M3-17 (was MB-01): the tiles name their pair, fixed by channel number, through a recording (A3; D134, D138)', () => {
+  it('the pair words hold before, during and after the recording, and a stated audioSource does not move them', async () => {
     const b = await tabletHome(true);
     const now = b.fake.clock.now();
     const session = recordingSession(now);
     await b.pushState({ ...b.state, session });
-    // D61 (2026-11-04): the pair words became the channel words.
-    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Channel 1 (transcribed)', 'Channel 2 (recorded)']);
+    expect(pairWords()).toEqual(A3_WORDS);
+    expect(noRoleWord()).toBe(true);
 
-    // Another console switched (operation 81): the session slice carries the new pair.
+    // A session slice that still carries a switched audioSource (an older Core; op 81 is retired, D134): the words stay.
     await b.pushState({
       ...b.state,
       session: { ...session, audioSource: { sessionId: session.id, activeInputId: 'MIC-02', standbyInputId: 'MIC-01', switchedAt: now + 5_000, intervalFromMs: 5_000 } },
     });
-    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Channel 2 (recorded)', 'Channel 1 (transcribed)']);
+    expect(pairWords()).toEqual(A3_WORDS);
+    expect(noRoleWord()).toBe(true);
 
     await b.pushState({ ...b.state, session: null });
-    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual([null, null]);
+    expect(pairWords()).toEqual(A3_WORDS);
     expect(getMissingKeys()).toEqual([]);
   });
 
@@ -227,7 +251,8 @@ describe('MB-01: the tiles say which input is active while a session records (ux
     await flush();
     // D61: channel 1 names its input and reads its frame; the empty channels have no input and read none.
     expect(lines()).toEqual(['-18 dBFS', '— dBFS']);
-    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Channel 1 (transcribed)', null]);
+    // Row 209 (D134, D138): the pair words do not depend on a line holding the channel (W3T-D3) - all four stand.
+    expect(pairWords()).toEqual(A3_WORDS);
     expect(lines().some((text) => /no signal|-42/i.test(text))).toBe(false);
 
     // CONTROL - the same recording under the complete plane: the levels and the words, as before.
@@ -235,7 +260,8 @@ describe('MB-01: the tiles say which input is active while a session records (ux
     b.sendMeters({ 'MIC-01': frame(-18, now + 50, 2), 'MIC-02': frame(-42, now + 50, 2) });
     await flush();
     expect(lines()).toEqual(['-18 dBFS', '-42 dBFS']);
-    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Channel 1 (transcribed)', 'Channel 2 (recorded)']); // D61 (2026-11-04): the channel words
+    expect(pairWords()).toEqual(A3_WORDS); // row 209 (D134, D138): the pair words, was the D61 channel words
+    expect(noRoleWord()).toBe(true);
     expect(getMissingKeys()).toEqual([]);
   });
 });

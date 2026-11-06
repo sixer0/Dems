@@ -66,6 +66,26 @@ describe('Devices & Inputs lists the devices of the Core\'s list beyond the buil
     expect(screen.queryByTestId('registered-device-row-MIC-05')).toBeNull();
   });
 
+  // Audit row 190 (M3-08 R1, D92; the web's row 131): the bench Core's real CAM-03/CAM-04 (VIDEO-01/02) and MIC-03/MIC-04
+  // (channels 1/2) carry built-in ids. Only a built-in id on its OWN line is a fixed row's; these are registered rows, once each.
+  it('row 190: a real device with a built-in id on another line is listed once; a built-in on its own line is not', async () => {
+    const engine = renderDevicesApp();
+    await flushAsync();
+    act(() =>
+      engine.sim.store.setState((s) => ({
+        captureConfig: {
+          ...s.captureConfig,
+          cameras: s.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'CAM-03' } : line.trackId === 'VIDEO-03' ? { ...line, deviceId: 'CAM-01' } : line)),
+        },
+      })),
+    );
+    await flushAsync();
+    expect(screen.getAllByTestId('registered-device-row-CAM-03')).toHaveLength(1);
+    expect(screen.getAllByTestId('registered-device-row-CAM-01')).toHaveLength(1);
+    expect(screen.queryByTestId('registered-device-row-CAM-02')).toBeNull();
+    expect(screen.queryByTestId('registered-device-row-MIC-01')).toBeNull();
+  });
+
   it('Simulated client mode (D83): the rows are there by the id rule, with what each is used as - and NO badge, NO "is on"', async () => {
     const engine = renderDevicesApp();
     await flushAsync();
@@ -118,6 +138,37 @@ describe('Devices & Inputs lists the devices of the Core\'s list beyond the buil
     act(() => engine.sim.store.setState((s) => ({ alerts: s.alerts.map((entry) => (entry.id === 'ALR-9' ? { ...entry, active: false, resolvedAt: 2 } : entry)) })));
     await flushAsync();
     expect(screen.queryByTestId('registered-device-rate-MIC-05')).toBeNull();
+  });
+
+  // Audit row 191 (B16, D114 via D173; the web's `rosterCardStatus` of W2c2): a registered device ON a line speaks for its
+  // TRACK too - the fixed row's status over the one source reader (row 129's rule) - and its detail says the same.
+  it('row 191 (B16): a registered camera on a line shows its track\'s FAULT; on no fault the registry word stands; the detail agrees', async () => {
+    mockLive = { session: { demoControls: false } };
+    const engine = renderDevicesApp();
+    await flushAsync();
+    development(engine);
+    act(() =>
+      engine.sim.store.setState((s) => ({
+        captureConfig: { ...s.captureConfig, cameras: s.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-02' ? { ...line, deviceId: 'CAM-06' } : line)) },
+      })),
+    );
+    patchDevice(engine, 'CAM-06', { checkedAt: 1, reach: 'REACHABLE' });
+    await flushAsync();
+    expect(screen.getByTestId('registered-device-used-CAM-06')).toHaveTextContent(`${R.usedAs['VIDEO-02']} · CAM-06`);
+    expect(screen.getByTestId('registered-device-state-CAM-06')).toHaveTextContent(R.reachable);
+    act(() => engine.sim.store.setState((s) => ({ cameras: s.cameras.map((camera) => (camera.id === 'VIDEO-02' ? { ...camera, lens: 'FAULT' as const } : camera)) })));
+    await flushAsync();
+    expect(screen.getByTestId('registered-device-state-CAM-06')).toHaveTextContent(en.common.status.fault);
+    // CONTROL: the registered camera on VIDEO-01 is untouched by VIDEO-02's fault; a negative registry fact is never replaced.
+    expect(screen.getByTestId('registered-device-state-CAM-05')).toHaveTextContent('Not checked');
+    patchDevice(engine, 'CAM-06', { reach: 'NOT_REACHABLE' });
+    await flushAsync();
+    expect(screen.getByTestId('registered-device-state-CAM-06')).toHaveTextContent(R.notReachable);
+    engine.app.unmount();
+    patchDevice(engine, 'CAM-06', { reach: 'REACHABLE' });
+    renderWithRuntime(<DeviceDetail deviceId="CAM-06" variant="pane" />, { sim: engine.sim });
+    await flushAsync();
+    expect(screen.getByTestId('registered-detail-state')).toHaveTextContent(en.common.status.fault);
   });
 });
 

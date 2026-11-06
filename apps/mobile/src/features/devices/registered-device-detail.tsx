@@ -16,8 +16,8 @@ import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { KeyValueList, SectionCard, StatusChip, type KeyValueItem } from '@/components/kit';
 import { localDeviceSentenceKey } from '@/features/capture-selector/capture-notices-model';
 import { DevelopmentSourceBadge, useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
-import { registeredStateTone } from './registered-device-rows';
-import { rosterDeviceState, rosterLimitKey, rosterOnKey, rosterSourceKey, rosterSourceKind, sourceChecked, sourceStateLabelKey, type RegisteredDevice } from './registered-devices-model';
+import { useRegisteredStateWord } from './registered-device-rows';
+import { rosterDeviceState, rosterLimitKey, rosterOnKey, rosterSourceKey, rosterSourceKind, type RegisteredDevice } from './registered-devices-model';
 
 export function RegisteredDeviceDetail({ device, header }: { device: RegisteredDevice; header: ReactNode }) {
   const { t } = useTranslation();
@@ -27,6 +27,8 @@ export function RegisteredDeviceDetail({ device, header }: { device: RegisteredD
   const sentenceKey = local ? localDeviceSentenceKey(state, device.kind) : null;
   const onKey = rosterOnKey(device, live);
   const limitKey = rosterLimitKey(device, live);
+  // Audit row 191 (B16, D114): the detail says what the row says (a device on a line speaks for its track too).
+  const word = useRegisteredStateWord(device, local);
   const facts: KeyValueItem[] = [
     { id: 'id', label: t('common.developmentRoster.field.id'), value: device.id, mono: true },
     { id: 'kind', label: t('common.developmentRoster.field.kind'), value: t(`common.developmentRoster.kind.${device.kind}`) },
@@ -48,7 +50,7 @@ export function RegisteredDeviceDetail({ device, header }: { device: RegisteredD
       {header}
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <View style={styles.statusRow}>
-          <StatusChip tone={registeredStateTone(state, sourceChecked(device))} label={t(sourceStateLabelKey(state, local, sourceChecked(device)))} testID="registered-detail-state" />
+          <StatusChip tone={word.tone} label={t(word.key)} testID="registered-detail-state" />
           <Text maxFontSizeMultiplier={1.2} style={styles.deviceId}>
             {device.id}
           </Text>

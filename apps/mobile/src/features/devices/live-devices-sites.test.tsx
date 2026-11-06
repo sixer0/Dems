@@ -12,7 +12,7 @@ import '@/navigation/testing/router-harness';
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { fireEvent, screen, within } from '@testing-library/react-native';
 import { rateLimited } from '@dems/shared/live/testing';
-import { FaultKind } from '@dems/shared/sim';
+import { FaultKind, hostClockTimeTransition, isOwnCaptureCoreState, ownCaptureCoreFactsTransition } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { renderDevicesApp, settle as flushSimulated } from './testing/devices-harness';
 import { notPermitted, renderLiveDevices, resetLiveDevicesBed, type LiveDevicesBed, type LiveDevicesBedOptions } from './testing/live-devices-bed';
@@ -250,6 +250,84 @@ describe('S3-2 and S5-4: Restart (operation 48) through the device-command dialo
     expect(b.state().session?.state).toBe('RECORDING');
     expect(screen.getByTestId('device-action-restart').props.accessibilityState).toMatchObject({ disabled: true });
     expect(screen.getByTestId('device-restart-hint')).toHaveTextContent('Not available while recording');
+  });
+});
+
+// M3-11 (D96, D106; masterplan/01_specs_m3.md register 3.11 D3/D4): a Core in its own capture refuses operations 48-50
+// (409 COMMAND_UNSUPPORTED, DEVICE_COMMAND_NOT_AVAILABLE), so the tablet draws Test signal and Restart disabled with D3
+// beneath them, for every role, and sends nothing. The dialog's 409 handler stays (the cases above). New pins, no moved pin.
+describe('M3-11: device commands on a Core in its own capture', () => {
+  /** D3, verbatim (`common.deviceMenuHint.notAvailable`). */
+  const NOT_AVAILABLE = 'Not available on this Core: it has no control of the device for this command.';
+  /** The device-command operations (48, 49, 50). */
+  const DEVICE_COMMANDS = ['restartDevice', 'testDeviceSignal', 'identifyDevice'] as const;
+  const commandsSent = (b: LiveDevicesBed) => DEVICE_COMMANDS.flatMap((operationId) => b.requests(operationId).map(() => operationId));
+  /** Both facts of such a Core (`ownCaptureCoreFactsTransition`); the one reader takes either. */
+  const ownCapture: LiveDevicesBedOptions['setup'] = (engine) => engine.sim.store.setState(ownCaptureCoreFactsTransition);
+  const disabled = (testID: string) => screen.getByTestId(testID).props.accessibilityState?.disabled === true;
+
+  async function expectBlockedAndSilent(b: LiveDevicesBed): Promise<void> {
+    expect(isOwnCaptureCoreState(b.state())).toBe(true);
+    expect(disabled('device-action-test-signal')).toBe(true);
+    expect(disabled('device-action-restart')).toBe(true);
+    expect(screen.getByTestId('device-command-not-available')).toHaveTextContent(NOT_AVAILABLE);
+    expect(screen.getByTestId('device-action-test-signal').props.accessibilityHint).toBe(NOT_AVAILABLE);
+    expect(screen.getByTestId('device-action-restart').props.accessibilityHint).toBe(NOT_AVAILABLE);
+    // The first and lasting block is said alone: no role or recording sentence beside it.
+    expect(screen.queryByTestId('device-restart-hint')).toBeNull();
+    // Identify (operation 50) is not offered on the tablet.
+    expect(screen.queryByTestId('device-action-identify')).toBeNull();
+    fireEvent.press(screen.getByTestId('device-action-test-signal'));
+    await b.flush();
+    fireEvent.press(screen.getByTestId('device-action-restart'));
+    await b.flush();
+    await b.elapse(200);
+    expect(screen.queryByTestId('device-command-dialog')).toBeNull();
+    expect(commandsSent(b)).toEqual([]);
+  }
+
+  it.each<[string, 'rina.wijaya' | 'budi.santoso' | 'andi.pratama']>([
+    ['TECHNICIAN', 'rina.wijaya'],
+    ['INVESTIGATOR', 'budi.santoso'],
+    ['SUPERVISOR', 'andi.pratama'],
+  ])('%s: Test signal and Restart disabled with D3 beneath them; pressing sends 0 device commands', async (_role, user) => {
+    const b = await openDetail('CAM-02', { user, setup: ownCapture });
+    await expectBlockedAndSilent(b);
+    // Diagnostics (operation 65) is no device command: it keeps its own role gate.
+    expect(disabled('device-action-diagnostics')).toBe(false);
+  });
+
+  it('while the Core records, D3 is still the one sentence (not "Not available while recording")', async () => {
+    const b = await openDetail('MIC-02', { recording: true, setup: ownCapture });
+    expect(b.state().session?.state).toBe('RECORDING');
+    await expectBlockedAndSilent(b);
+    expect(toastShown('Not available while recording')).toBe(false);
+  });
+
+  it('either fact alone is such a Core: the host clock only (`hostClockTimeTransition`)', async () => {
+    const b = await openDetail('POE-SWITCH', { setup: (engine) => engine.sim.store.setState(hostClockTimeTransition) });
+    await expectBlockedAndSilent(b);
+  });
+
+  it('CONTROL - Live on a simulated Core (neither fact): both enabled, no D3, one press sends one command', async () => {
+    const b = await openDetail('CAM-02');
+    expect(isOwnCaptureCoreState(b.state())).toBe(false);
+    expect(disabled('device-action-test-signal')).toBe(false);
+    expect(disabled('device-action-restart')).toBe(false);
+    expect(screen.queryByTestId('device-command-not-available')).toBeNull();
+    await confirmCommand('device-action-test-signal', b);
+    await b.elapse(200);
+    expect(commandsSent(b)).toEqual(['testDeviceSignal']);
+  });
+
+  it('CONTROL - the in-app simulator (Simulated mode): both enabled, no D3', async () => {
+    // The TECHNICIAN, so that the role gate does not disable Restart on its own.
+    const h = renderDevicesApp({ user: 'rina.wijaya', initialUrl: '/devices/CAM-02' });
+    await flushSimulated();
+    expect(disabled('device-action-test-signal')).toBe(false);
+    expect(disabled('device-action-restart')).toBe(false);
+    expect(screen.queryByTestId('device-command-not-available')).toBeNull();
+    h.app.unmount();
   });
 });
 

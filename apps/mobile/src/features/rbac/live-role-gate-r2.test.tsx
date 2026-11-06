@@ -14,7 +14,8 @@ import { act, cleanup, fireEvent, screen } from '@testing-library/react-native';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { DeltaMessage } from '@dems/shared/api';
-import { ROLE_PERMISSIONS, type OperatorRole } from '@dems/shared/sim';
+import { Permission, ROLE_PERMISSIONS, type OperatorRole } from '@dems/shared/sim';
+import { useRoleGate } from '@/features/rbac/use-role-gate';
 import { QuickActions } from '@/features/dashboard/quick-actions';
 import { OPERATOR, createHomeBed, flush, type HomeBed } from '@/features/dashboard/testing/live-home-bed';
 import { usePrimaryAction } from '@/features/dashboard/use-home-data';
@@ -54,6 +55,12 @@ function R2Panel() {
   );
 }
 
+/** M3-20: the CAPTURE_CONFIG gate the selector, camera search and capture notices read (callers unchanged). */
+function CaptureGateProbe() {
+  const gate = useRoleGate(Permission.CAPTURE_CONFIG);
+  return <Text testID="capture-gate">{`allowed=${gate.allowed} locked=${gate.locked} hint=${gate.hint ?? '-'}`}</Text>;
+}
+
 function GuardProbe() {
   const to = useStartEntryGuard();
   return <Text testID="guard-result">{to ?? 'wizard'}</Text>;
@@ -63,12 +70,16 @@ let bed: HomeBed | null = null;
 
 const disabled = (testID: string): boolean => screen.getByTestId(testID).props.accessibilityState?.disabled === true;
 
-/** The Core changes the signed-in operator's role (§6.3): `session.updated`, then the `operators` delta. */
-async function changeRole(b: HomeBed, role: OperatorRole): Promise<void> {
+/**
+ * The Core changes the signed-in operator's role (§6.3): `session.updated`, then the `operators` delta.
+ * `extras` are the identity grants the Core adds to the session's effective list (D55: the vendor
+ * `root` account's CAPTURE_CONFIG; M3-20).
+ */
+async function changeRole(b: HomeBed, role: OperatorRole, extras: readonly Permission[] = []): Promise<void> {
   b.state = { ...b.state, operators: b.state.operators.map((entry) => (entry.id === OPERATOR.id ? { ...entry, role } : entry)) };
   act(() => {
     const socket = b.operatorSocket();
-    socket.sessionUpdated({ id: OPERATOR.id, role }, [...ROLE_PERMISSIONS[role]]);
+    socket.sessionUpdated({ id: OPERATOR.id, role }, [...ROLE_PERMISSIONS[role], ...extras]);
     socket.delta([{ op: 'replace', slice: 'operators', value: JSON.parse(JSON.stringify(b.state.operators)) } as DeltaMessage['ops'][number]]);
   });
   await flush();
@@ -153,6 +164,29 @@ describe('R2 in LIVE mode: a role change pushed by the Core re-gates the control
     expect(mockPush).toHaveBeenCalledWith('/session/new?step=1');
 
     // Nobody signed in again: the gates followed the push.
+    expect(b.requestsOf('signIn')).toHaveLength(signIns);
+  });
+});
+
+// M3-20 (G-12, D163; row 212): in Live mode the gate reads the session's own permission list (V5),
+// which holds the identity extras (D55), so the vendor `root` account gets CAPTURE_CONFIG on the tablet.
+describe('M3-20 in LIVE mode: the gate follows the session permission list, not the role alone', () => {
+  it('SUPERVISOR without CAPTURE_CONFIG is locked; the same SUPERVISOR role with the root identity extra is allowed; and back', async () => {
+    const b = createHomeBed();
+    bed = b;
+    b.mount(<CaptureGateProbe />);
+    await b.signIn();
+    const signIns = b.requestsOf('signIn').length;
+
+    await changeRole(b, 'SUPERVISOR');
+    expect(screen.getByTestId('capture-gate')).toHaveTextContent('allowed=false locked=true hint=Requires the Technician role');
+
+    // The Core's effective list of the vendor root (role SUPERVISOR, CAPTURE_CONFIG by identity).
+    await changeRole(b, 'SUPERVISOR', [Permission.CAPTURE_CONFIG]);
+    expect(screen.getByTestId('capture-gate')).toHaveTextContent('allowed=true locked=false hint=-');
+
+    await changeRole(b, 'SUPERVISOR');
+    expect(screen.getByTestId('capture-gate')).toHaveTextContent('allowed=false locked=true hint=Requires the Technician role');
     expect(b.requestsOf('signIn')).toHaveLength(signIns);
   });
 });

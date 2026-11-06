@@ -116,7 +116,8 @@ describe('app.json launcher icon and splash (05 M-05; D48 background = the canva
     const names = app.plugins.map((p: unknown) => (Array.isArray(p) ? p[0] : p));
     // Step 94 (06_packaging_spec §2.2) appends the local DEMO release-signing plugin.
     // Decision D247 appends the guard that refuses an Android build with an unpatched library.
-    expect(names).toEqual(['expo-router', 'expo-splash-screen', 'expo-video', 'expo-font', 'expo-status-bar', 'expo-local-authentication', './plugins/with-dems-release-signing', './plugins/with-dems-library-patches']);
+    // Row 176 (M3-02 R2, RT-2, D163) appends the loopback-only cleartext network config.
+    expect(names).toEqual(['expo-router', 'expo-splash-screen', 'expo-video', 'expo-font', 'expo-status-bar', 'expo-local-authentication', './plugins/with-dems-release-signing', './plugins/with-dems-library-patches', './plugins/with-dems-loopback-cleartext']);
   });
 });
 

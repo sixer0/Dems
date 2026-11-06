@@ -6,7 +6,7 @@
  *
  * Every function that calls a hook is named `use…` (D66: the device build runs the React Compiler).
  */
-import { audioPairInForce, cameraLinesInForce, micLinesInForce } from '@/features/capture-selector/selector-in-force';
+import { cameraLinesInForce, micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { useMemo } from 'react';
 import {
   CORE_NOT_RUNNING_LABEL,
@@ -45,7 +45,8 @@ import {
   homeStatusOf,
   offlineTile,
   micTileFor,
-  micTileSourceRole,
+  micTilePairOf,
+  type MicTilePair,
   realCaptureCameraTileFor,
   realCaptureMicTileFor,
   primaryActionFor,
@@ -309,8 +310,12 @@ export interface DeviceTileInfo {
   deviceId: string;
   /** The simulator's state word (`READY`, `FAULT`, `NO_SIGNAL`, `CLIP`, or `OFFLINE`). */
   state: string;
-  /** MIC tiles while a session records: the input is the active one or the hot standby (row 73, MB-01); else null. */
-  sourceRole: 'ACTIVE' | 'STANDBY' | null;
+  /**
+   * MIC tiles: the pair of the tile's slot (audit row 209, M3-17, register A3; D134, D138) - "Mic N (Camera N)",
+   * and "Transcribed" on Pair 1 alone. Fixed by channel number, so it holds in every state; null on a camera tile.
+   * Replaces the Active / Standby `sourceRole` of row 73 (op 81 is retired, D134).
+   */
+  pair: MicTilePair | null;
   /**
    * Fix wave I - MIC tiles on a Core in REAL capture: the registered microphone ON this tile's line (the
    * selector's, not the track's built-in one) and the word of what the Core reported for it; null elsewhere.
@@ -319,7 +324,10 @@ export interface DeviceTileInfo {
   line: { readonly deviceId: string | null; readonly stateKey: string; readonly tone: string } | null;
 }
 
-/** Tablet: the four device tiles (2 cameras, 2 mics), in dataset order. */
+/**
+ * Tablet: one device tile per camera and per microphone channel of the dataset (D60/D61: four cameras and
+ * four microphone channels), cameras first, each group in dataset order. Comment corrected by audit row 211 (M3-18).
+ */
 export function useDeviceTiles(): DeviceTileInfo[] {
   const realCapture = useRealCaptureView();
   const { live } = useSourceBadgeMode();
@@ -334,35 +342,26 @@ export function useDeviceTiles(): DeviceTileInfo[] {
       return `${c.id}|${c.deviceId}|${c.online ? c.lens : 'OFFLINE'}||${line}`;
     });
   });
-  // The pair is the one IN FORCE (`audioPairInForce`: the open session's, else the selector's), with the meters' member behind it; primitives only, so
-  // the 20 Hz `audio` slice never re-renders the tiles.
+  // Primitives only, so the 20 Hz `audio` slice never re-renders the tiles. Audit row 209 (M3-17; D134, D138): no
+  // Active / Standby role is read here any more - the tile's pair words come from its track id (`micTilePairOf`).
   const mics = useSim((s) => {
     const recording = s.session?.state === 'RECORDING';
-    // Task 4 row 171 (seam reader 9 of 9 of row 28): the meters' member is read as the slice states it once the seam
-    // `AudioSliceInState` is out - `null` when no input is active; compiles with the seam in and out.
-    const meters: string | null = s.audio.activeInputId;
-    const activeInputId = audioPairInForce(s).activeInputId ?? meters;
-    // D61 (2026-11-04): the STANDBY word belongs to the transcription pair alone - channels 3 / 4 record without a pair word.
-    const standbyInputId = audioPairInForce(s).standbyInputId;
-    const lines = micLinesInForce(s);
     return s.mics.map((m) => {
-      // A channel without an input (`null`), or no active input: no role for the tile.
-      const role = micTileSourceRole({ recording, inputId: meterInputOfChannel(lines, m.id), activeInputId, standbyInputId });
       const word = realCapture ? sourceStateWord(micLineReportOf(s, m.id), live, recording) : null;
       const line = word === null ? '' : `${micLineDeviceIdOf(s, m.id) ?? ''}~${word.key}~${word.tone}`;
-      return `${m.id}|${m.deviceId}|${m.clipLatched ? 'CLIP' : m.state}|${role ?? ''}|${line}`;
+      return `${m.id}|${m.deviceId}|${m.clipLatched ? 'CLIP' : m.state}||${line}`;
     });
   });
   return useMemo(() => {
     const parse = (kind: DeviceTileInfo['kind']) => (entry: string): DeviceTileInfo => {
-      const [trackId = '', deviceId = '', state = '', role = '', line = ''] = entry.split('|');
+      const [trackId = '', deviceId = '', state = '', , line = ''] = entry.split('|');
       const [lineDevice = '', stateKey = '', tone = ''] = line.split('~');
       return {
         kind,
         trackId,
         deviceId,
         state,
-        sourceRole: role === 'ACTIVE' || role === 'STANDBY' ? role : null,
+        pair: kind === 'mic' ? micTilePairOf(trackId) : null,
         line: line === '' ? null : { deviceId: lineDevice === '' ? null : lineDevice, stateKey, tone },
       };
     };

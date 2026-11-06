@@ -10,6 +10,7 @@
  * | Device credential | `dems.live.device.v1` | JSON of `PairingRedeemed` (device ID, credential, `pairedAt`, Core identity) | none: the gate reads it at start |
  * | Biometric token | `dems.live.bio.v1` | the `bio_...` string | `requireAuthentication: true`; none only under MB-6a |
  * | Biometric marker | `dems.live.bio.meta.v1` | JSON: operator ID, display name, device ID, `protected` | none: it is not a secret |
+ * | Owed sign-out (row 224) | `dems.live.owed.v1` | JSON: the debt of a link-down sign-out and its session token | none: read at start; present only while a sign-out is owed |
  *
  * Rules this module keeps:
  * - A value is never logged, never put into an error, never returned inside a failure. A failure
@@ -30,6 +31,7 @@ import {
   DEVICE_ID_PATTERN,
   OPERATOR_ID_PATTERN,
   PairingRedeemedSchema,
+  SESSION_TOKEN_PATTERN,
   type PairingRedeemed,
 } from '@dems/shared/api';
 import { reportRuntimeIssue } from './log';
@@ -372,6 +374,59 @@ export async function rotateBiometricToken(token: string, prompt?: string): Prom
 // ----------------------------------------------------------------------------------------------
 // Debug builds only: the device probe of `./dev-probes.ts` (early proof g).
 // ----------------------------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------------------------
+// Owed sign-out (`dems.live.owed.v1`; row 224, G172-2, D188): no authentication requirement.
+// ----------------------------------------------------------------------------------------------
+
+/**
+ * The item of a sign-out the Core is owed: an operator signed out on this tablet while the link was
+ * down. It holds the debt the Live source names (operator, `issuedAt`, reason, instant; no
+ * credential) and the session token that sign-out must be sent with, so the debt survives a cold
+ * start. Read at start without a prompt; deleted when the debt is paid or found not owed
+ * (`./owed-sign-out.ts`). Not one of `SECURE_ITEM_KEYS` (the three items of §9.1).
+ */
+export const OWED_SIGN_OUT_ITEM_KEY = 'dems.live.owed.v1';
+
+const StoredOwedSignOutSchema = z
+  .object({
+    operatorId: z.string().regex(OPERATOR_ID_PATTERN),
+    issuedAt: z.number().int().nonnegative(),
+    // Only a sign-out the operator asked for is ever sent; a reckoned expiry owes none (D90).
+    reason: z.enum(['USER', 'LOCK']),
+    at: z.number().int().nonnegative(),
+    sessionToken: z.string().regex(SESSION_TOKEN_PATTERN),
+  })
+  .strict();
+
+/** The owed-sign-out item. `sessionToken` is a credential: never logged, never returned in a failure. */
+export type StoredOwedSignOut = z.output<typeof StoredOwedSignOutSchema>;
+
+/** The owed sign-out, or `null` when nothing is owed. `READ_FAILED`, `CORRUPT_ITEM`: it cannot be told. */
+export async function readOwedSignOut(): Promise<SecureStoreRead<StoredOwedSignOut>> {
+  const key = OWED_SIGN_OUT_ITEM_KEY;
+  const read = await rawRead(key, optionsFor(false));
+  if (!read.ok) return record(read, 'readOwedSignOut', key);
+  if (read.value === null) return { ok: true, value: null };
+  const stored = parseStored(StoredOwedSignOutSchema, read.value);
+  return stored === null ? record(refusal('CORRUPT_ITEM'), 'readOwedSignOut', key) : { ok: true, value: stored };
+}
+
+/** Stores the owed sign-out, replacing an earlier one. A value of another shape is refused and nothing is written. */
+export async function writeOwedSignOut(value: StoredOwedSignOut): Promise<SecureStoreOutcome> {
+  const key = OWED_SIGN_OUT_ITEM_KEY;
+  const parsed = StoredOwedSignOutSchema.safeParse(value);
+  if (!parsed.success) return record(refusal('INVALID_VALUE'), 'writeOwedSignOut', key);
+  const written = await rawWrite(key, JSON.stringify(parsed.data), optionsFor(false));
+  return written.ok ? written : record(written, 'writeOwedSignOut', key);
+}
+
+/** Deletes the owed-sign-out item (absent already: ok). */
+export async function deleteOwedSignOut(): Promise<SecureStoreOutcome> {
+  const key = OWED_SIGN_OUT_ITEM_KEY;
+  const deleted = await rawDelete(key);
+  return deleted.ok ? deleted : record(deleted, 'deleteOwedSignOut', key);
+}
 
 /**
  * What the secure-store probe needs beyond the three items: one fixed, non-secret probe item,

@@ -38,11 +38,12 @@ describe('rows (ux §2.2 step 2)', () => {
     expect(screen.getByTestId('capture-selector-detail-VIDEO-01')).toHaveTextContent('CAM-01 · Dual-lens IP camera DL-2');
     expect(screen.getByTestId('capture-selector-detail-VIDEO-02')).toHaveTextContent('CAM-02 · Dual-lens IP camera DL-2');
     expect(screen.getByTestId('capture-selector-stream-VIDEO-01').props.accessibilityLabel).toBe('Live');
-    // D61 (2026-11-04): the rows are CHANNELS - channel 1 carries the transcribed word, channels 2..4 their number.
-    expect(screen.getByTestId('capture-selector-channel-MIC-01').props.accessibilityLabel).toBe('Channel 1 (transcribed)');
-    expect(screen.getByTestId('capture-selector-channel-MIC-02').props.accessibilityLabel).toBe('Channel 2');
-    expect(screen.getByTestId('capture-selector-channel-MIC-03').props.accessibilityLabel).toBe('Channel 3');
-    expect(screen.getByTestId('capture-selector-channel-MIC-04').props.accessibilityLabel).toBe('Channel 4');
+    // M3-07 R4 (audit row 189; register T9; D163 - was the D61 channel words): every microphone slot is named
+    // "Mic N (Camera N)"; "Transcribed" is the head of Pair 1 (`selector-lines.test.tsx`, row 189 group).
+    expect(screen.getByTestId('capture-selector-channel-MIC-01').props.accessibilityLabel).toBe('Mic 1 (Camera 1)');
+    expect(screen.getByTestId('capture-selector-channel-MIC-02').props.accessibilityLabel).toBe('Mic 2 (Camera 2)');
+    expect(screen.getByTestId('capture-selector-channel-MIC-03').props.accessibilityLabel).toBe('Mic 3 (Camera 3)');
+    expect(screen.getByTestId('capture-selector-channel-MIC-04').props.accessibilityLabel).toBe('Mic 4 (Camera 4)');
     // OD-12: the card says so and holds no image.
     expect(screen.getByTestId('capture-selector-no-preview')).toBeTruthy();
     expect(within(card).queryAllByRole('image')).toHaveLength(0);
@@ -139,8 +140,8 @@ describe('editing (ux §2.2 steps 4-5; R-1 AC-1, AC-2)', () => {
     await settle();
     expect(configAudit(h)).toHaveLength(1);
     // D61: a line assigns its channel ALONE - channel 1 reads MIC-05, the other channels keep their inputs.
-    expect(screen.getByTestId('capture-selector-channel-MIC-05').props.accessibilityLabel).toBe('Channel 1 (transcribed)');
-    expect(screen.getByTestId('capture-selector-channel-MIC-02').props.accessibilityLabel).toBe('Channel 2');
+    expect(screen.getByTestId('capture-selector-channel-MIC-05').props.accessibilityLabel).toBe('Mic 1 (Camera 1)'); // T9 (row 189; D163)
+    expect(screen.getByTestId('capture-selector-channel-MIC-02').props.accessibilityLabel).toBe('Mic 2 (Camera 2)');
     expect(screen.queryByTestId(/^capture-selector-notice-/)).toBeNull();
   });
 
@@ -196,6 +197,10 @@ describe('editing (ux §2.2 steps 4-5; R-1 AC-1, AC-2)', () => {
     await settle();
     expect(h.sim.store.getState().session).not.toBeNull();
     fireEvent.press(screen.getByTestId('capture-source-save'));
+    await settle();
+    // M3-07 (audit row 189; D175): MIC-02 on channel 1 is a SWAP - it is sent only from its confirm.
+    expect(configAudit(h)).toHaveLength(0);
+    fireEvent.press(screen.getByTestId('selector-mic-swap-confirm-MIC-01'));
     await settle();
     expect(screen.getByTestId('capture-selector-notice-locked')).toHaveTextContent(/The capture configuration cannot be changed while a session is open\./);
     expect(configAudit(h)).toHaveLength(0);
@@ -324,7 +329,7 @@ describe('task 4 row 32: one row per slot - an empty slot is drawn "Not assigned
     expect(within(screen.getByTestId('capture-selector-edit-VIDEO-01')).getByText('Change')).toBeTruthy();
     for (const slot of ['VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-03', 'MIC-04'] as const) expectEmptySlot(slot);
     // A lone channel-2 line is the channel-2 row; the transcribed row is the empty one (found by CHANNEL, never by place; D61).
-    expect(screen.getByTestId('capture-selector-channel-MIC-02').props.accessibilityLabel).toBe('Channel 2');
+    expect(screen.getByTestId('capture-selector-channel-MIC-02').props.accessibilityLabel).toBe('Mic 2 (Camera 2)'); // T9 (row 189; D163)
     expect(within(screen.getByTestId('capture-selector-edit-MIC-02')).getByText('Change')).toBeTruthy();
     h.app.unmount();
   });

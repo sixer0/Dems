@@ -27,6 +27,13 @@
 // It measures what a raw request does (that is how F55 was found), runs only from a `?probe=` deep
 // link in a debug build, and is in no release bundle.
 //
+// One named allowance of rule 1, ruling D217 (task 2026-11-05 row 195, M3-09; renderer D202): the live
+// camera preview's stream is `multipart/x-mixed-replace`, which the typed client cannot hand on. Its ONE
+// request lives in `runtime/camera-stream-transport.ts`: one import of Expo's streaming fetch and one call,
+// both pinned by their exact text below (`CAMERA_STREAM_IMPORT_LINE`, `CAMERA_STREAM_CALL_LINE`), with the
+// origin and the bearer from the Live source's media transport and `credentials: 'omit'`. Any other network
+// call in that file, a changed call, or the same import in any other file (a feature file included) fails.
+//
 // The texts this file looks for are put together below, so that it does not hold them itself.
 import { describe, expect, it } from '@jest/globals';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -60,6 +67,13 @@ const OTHER_NETWORK = new RegExp(
 );
 /** The Core server's address in any form: its port as a number or in a URL, or one of the shared constants that hold it. */
 const CORE_ADDRESS = new RegExp(`(?<![\\w.])${CORE_SERVER_PORT}(?![\\w])|\\b${['CORE', 'SERVER'].join('_')}_(?:HTTP_ORIGIN|WS_URL|HOST|PORT)\\b`);
+
+/** D217: the one named allowance of rule 1 (row 195): this file, this import and this call, nothing else. */
+const CAMERA_STREAM = 'runtime/camera-stream-transport.ts';
+const STREAM_FETCH = ['stream', 'Fetch'].join('');
+const CAMERA_STREAM_IMPORT_LINE = `import { ${FETCH} as ${STREAM_FETCH} } from 'expo/${FETCH}';`;
+const CAMERA_STREAM_CALL_LINE =
+  `const response = await ${STREAM_FETCH}(\`\${transport.origin}\${path}\`, { method: 'GET', headers: { Authorization: transport.authorization }, credentials: 'omit', signal });`;
 
 /**
  * Code without its comments. The `//` of a URL (`http://…`) is no comment: an address inside a
@@ -112,6 +126,31 @@ function adapterProblems(adapters: string): string[] {
   if (!adapters.includes(`Object.defineProperty(transport, 'headers', {`) || !/enumerable:\s*false/.test(adapters)) problems.push('the media transport does not hide its header');
   if (!adapters.includes('createCoreClient({') || !adapters.includes('createLiveSim({')) problems.push('the typed client or the Live source is not built here');
   return problems;
+}
+
+/**
+ * D217: what the stream transport holds that it must not, as sentences. Empty: its only network text is the
+ * pinned import and the pinned call, and it names no Core address and no socket.
+ */
+function cameraStreamProblems(text: string): string[] {
+  const problems: string[] = [];
+  const lines = text.split('\n').map((line) => line.trim()).filter((line) => line !== '');
+  const network = lines.filter((line) => RAW_FETCH.test(line) || OTHER_NETWORK.test(line));
+  if (JSON.stringify(network) !== JSON.stringify([CAMERA_STREAM_IMPORT_LINE])) problems.push(`the network imports are ${JSON.stringify(network)}`);
+  const uses = lines.filter((line) => line.includes(STREAM_FETCH));
+  if (JSON.stringify(uses) !== JSON.stringify([CAMERA_STREAM_IMPORT_LINE, CAMERA_STREAM_CALL_LINE])) problems.push(`the stream calls are ${JSON.stringify(uses)}`);
+  if (CORE_ADDRESS.test(text)) problems.push('the Core server address');
+  if (RAW_SOCKET.test(text)) problems.push('a socket constructor');
+  return problems;
+}
+
+/** Rule 1 over a list of files: every file with a network call that is neither the debug probe nor the D217 allowance. */
+function ruleOneOffenders(files: readonly { path: string; text: string }[]): string[] {
+  return files
+    .filter((file) => file.path !== PROBE && file.path !== CAMERA_STREAM)
+    .filter((file) => RAW_FETCH.test(file.text) || OTHER_NETWORK.test(file.text))
+    .map((file) => file.path)
+    .sort();
 }
 
 describe('no raw request to the Core server (D69, D34-6 a)', () => {
@@ -172,8 +211,33 @@ describe('no raw request to the Core server (D69, D34-6 a)', () => {
   });
 
   it('rule 1: no production file calls `fetch` or another network API itself (the debug probe is the one exemption)', () => {
-    expect(matching(SRC, RAW_FETCH)).toEqual([PROBE]);
-    expect(matching(SRC, OTHER_NETWORK)).toEqual([PROBE]);
+    // D217: the stream transport of the camera preview is the one named allowance (its own case below).
+    expect(matching(SRC, RAW_FETCH)).toEqual([CAMERA_STREAM, PROBE].sort());
+    expect(matching(SRC, OTHER_NETWORK)).toEqual([CAMERA_STREAM, PROBE].sort());
+    expect(ruleOneOffenders(production(SRC))).toEqual([]);
+  });
+
+  it('rule 1, the D217 allowance is narrow: the stream transport holds the pinned import and the pinned call, and nothing else', () => {
+    const transport = production(SRC).find((file) => file.path === CAMERA_STREAM)!.text;
+    expect(cameraStreamProblems(transport)).toEqual([]);
+    expect(transport.split('\n').filter((line) => line.trim() === CAMERA_STREAM_CALL_LINE)).toHaveLength(1);
+    const after = (planted: string): string => transport.replace(CAMERA_STREAM_CALL_LINE, `${CAMERA_STREAM_CALL_LINE}\n  ${planted}`);
+    // A second request through the same import.
+    expect(cameraStreamProblems(after(`void ${STREAM_FETCH}(\`\${transport.origin}/api/v1/evidence\`);`))).toHaveLength(1);
+    // A raw request beside it.
+    expect(cameraStreamProblems(after(`void ${FETCH}(path);`))).toHaveLength(1);
+    // The pinned call changed: a cookie sent with the bearer.
+    expect(cameraStreamProblems(transport.replace(`credentials: 'omit'`, `credentials: 'include'`))).toHaveLength(1);
+    // The Core address named here.
+    expect(cameraStreamProblems(after(`const origin = ${['CORE', 'SERVER', 'HTTP', 'ORIGIN'].join('_')};`))).toEqual(['the Core server address']);
+  });
+
+  it('rule 1, D217: Expo\'s streaming fetch planted in a feature file (or anywhere but the allowance) still fails', () => {
+    const files = production(SRC);
+    const planted = (path: string, text: string) => ruleOneOffenders([...files.filter((file) => file.path !== path), { path, text }]);
+    expect(planted('features/devices/camera-live-stream.ts', `${CAMERA_STREAM_IMPORT_LINE}\nvoid ${STREAM_FETCH}(url);`)).toEqual(['features/devices/camera-live-stream.ts']);
+    expect(planted('features/evidence/media-session.ts', `import { ${FETCH} } from 'expo/${FETCH}';`)).toEqual(['features/evidence/media-session.ts']);
+    expect(planted('runtime/sim-adapters.ts', CAMERA_STREAM_IMPORT_LINE)).toEqual(['runtime/sim-adapters.ts']);
   });
 
   it('rule 1: the socket constructor is named by the socket factory of the adapters only', () => {

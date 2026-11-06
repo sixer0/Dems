@@ -15,6 +15,8 @@ import {
   isCaptureNoticeAlert,
   localDeviceSentenceKey,
   localDeviceStateOf,
+  pairedMicMissingNoticesOf,
+  pairedMicMissingText,
   precheckUnreachableOf,
 } from './capture-notices-model';
 import { captureSelectorEn } from './i18n';
@@ -64,6 +66,56 @@ describe('situations A and B are the active alerts of the slice, told apart by `
     expect(captureNoticeTitle(t, unreachable)).toContain('features.capture-selector.notice.unreachable.precheck.title');
     expect(captureNoticeTitle(t, alert({ params: { reason: 'CAPTURE_DISCOVERY_EMPTY' } }))).toBe('features.capture-selector.notice.discoveryEmpty.title');
     expect(captureNoticeTitle(t, alert({ kind: 'CAMERA_LOSS' }))).toBeNull();
+  });
+});
+
+// Audit row 186 (M3-06 R1/R3; S62 register N1-N5; D5, D132): the Core's advisory alert of a camera that records without
+// the microphone of its pair. The alert is built as the shared raise writes it (`raiseCaptureNoticeTransition`).
+describe('PAIRED_MIC_MISSING is a notice of its own: `kind: pairedMicMissing` (row 186, M3-06)', () => {
+  /** S62 register N3 with `{{device}}` = "CAM-07" (an id the vocabulary does not name is said as it is) and N4, verbatim. */
+  const N3 = 'CAM-07 is recording without the microphone of its pair: the audio track of this camera is silent. The recording continues.';
+  const N4 = 'This is Pair 1, the transcribed pair: the session has no transcript.';
+  const paired = (over: Record<string, unknown> = {}, alertOver: Partial<SimAlert> = {}) =>
+    alert({ id: 'ALR-000010', target: 'CAM-07', params: { reason: 'PAIRED_MIC_MISSING', deviceId: 'CAM-07', deviceKind: 'CAMERA', sessionId: 'SES-20261106-0001', trackId: 'VIDEO-01', micChannel: 'MIC-01', micMissing: 'NOT_ASSIGNED', ...over }, ...alertOver });
+
+  it('transcribed (Pair 1): ONE notice whose text holds N3 and then N4', () => {
+    const notices = captureNoticesOf([paired({ transcribed: true })]);
+    expect(notices).toEqual([{ kind: 'pairedMicMissing', alertId: 'ALR-000010', deviceId: 'CAM-07', trackId: 'VIDEO-01', micChannel: 'MIC-01', micMissing: 'NOT_ASSIGNED', transcribed: true }]);
+    expect(pairedMicMissingText(t, notices[0] as Parameters<typeof pairedMicMissingText>[1])).toBe(`${N3} ${N4}`);
+    // R3: the bell and the toast (`alertLabel` -> `captureNoticeTitle`) say the same text.
+    expect(captureNoticeTitle(t, paired({ transcribed: true }))).toBe(`${N3} ${N4}`);
+  });
+
+  it('without `transcribed` (another pair): N3 only; only an explicit `true` counts', () => {
+    for (const over of [{}, { transcribed: 'true' }, { transcribed: false }]) {
+      const [notice] = captureNoticesOf([paired({ trackId: 'VIDEO-02', micChannel: 'MIC-02', micMissing: 'NOT_OPENED', ...over })]);
+      expect(notice).toMatchObject({ kind: 'pairedMicMissing', trackId: 'VIDEO-02', micChannel: 'MIC-02', micMissing: 'NOT_OPENED', transcribed: false });
+      expect(captureNoticeTitle(t, paired({ trackId: 'VIDEO-02', ...over }))).toBe(N3);
+      expect(captureNoticeTitle(t, paired({ trackId: 'VIDEO-02', ...over }))).not.toContain('Pair 1');
+    }
+  });
+
+  it('resolved gives none: the notice is gone at the first state update after the Core resolved it', () => {
+    expect(captureNoticesOf([paired({ transcribed: true }, { active: false, resolvedAt: 9 })])).toEqual([]);
+    expect(pairedMicMissingNoticesOf([paired({ transcribed: true }, { active: false, resolvedAt: 9 })])).toEqual([]);
+  });
+
+  it('a malformed `micMissing` is dropped (closed words), as are a track and a channel outside their sets; the WARNING itself stays', () => {
+    const [notice] = captureNoticesOf([paired({ micMissing: 'UNPLUGGED', trackId: 'VIDEO-09', micChannel: 'MIC-1' })]);
+    expect(notice).toEqual({ kind: 'pairedMicMissing', alertId: 'ALR-000010', deviceId: 'CAM-07', trackId: null, micChannel: null, micMissing: null, transcribed: false });
+    expect(captureNoticesOf([paired({ micMissing: 42 })])[0]).toMatchObject({ micMissing: null });
+  });
+
+  it('names a CAMERA or it is no notice; other readers of the notices are not moved by it', () => {
+    expect(captureNoticesOf([paired({ deviceKind: 'MIC' })])).toEqual([]);
+    expect(captureNoticesOf([paired({ deviceId: undefined }, { target: undefined })])).toEqual([]);
+    expect(captureNoticesOf([paired({ deviceId: undefined })])[0]).toMatchObject({ deviceId: 'CAM-07' });
+    expect(captureNoticesOf([paired({}, { kind: 'CAPTURE_FAULT' })])).toEqual([]);
+    expect(isCaptureNoticeAlert(paired())).toBe(true);
+    // The pair notices are their own list (row 187 reads it); the unreachable readers (situation C, the devices rows) do not see them.
+    const unreachable = alert({ id: 'ALR-000011', target: 'CAM-02', params: { reason: 'CAPTURE_DEVICE_UNREACHABLE', deviceId: 'CAM-02', deviceKind: 'CAMERA', phase: 'SESSION_START' } });
+    expect(pairedMicMissingNoticesOf([paired(), unreachable]).map((notice) => notice.alertId)).toEqual(['ALR-000010']);
+    expect(captureNoticesOf([paired(), unreachable]).filter((notice) => notice.kind === 'unreachable').map((notice) => notice.alertId)).toEqual(['ALR-000011']);
   });
 });
 

@@ -216,11 +216,15 @@ export function valueKey(id: PrecheckCheckId, value: string): string {
       return `common.enums.coreLinkState.${value}`;
     case 'LENS_1':
     case 'LENS_2':
+    case 'LENS_3': // audit M3-04 R2 (register C6; D53)
+    case 'LENS_4':
       return `common.enums.lensState.${value}`;
     case 'MIC_1':
     case 'MIC_2':
     case 'MIC_PRIMARY':
     case 'MIC_STANDBY':
+    case 'MIC_3': // audit M3-04 R2 (register C6): channels 3/4 read the microphone words, never the lens words
+    case 'MIC_4':
       return `common.enums.micState.${value}`;
     case 'STORAGE':
       return `common.enums.storageState.${value}`;
@@ -240,8 +244,13 @@ export function valueKey(id: PrecheckCheckId, value: string): string {
 
 /** The microphone input a channel-keyed check stands for (`MIC_1` = `MIC-01`, `MIC_2` = `MIC-02`). */
 const CHECK_MIC_INPUT: Readonly<Partial<Record<PrecheckCheckId, string>>> = { MIC_1: 'MIC-01', MIC_2: 'MIC-02' };
-/** D61 (2026-11-04): the role-keyed checks stand for the transcription channels 1 and 2. */
-const CHECK_MIC_CHANNEL: Readonly<Partial<Record<PrecheckCheckId, 'MIC-01' | 'MIC-02'>>> = { MIC_PRIMARY: 'MIC-01', MIC_STANDBY: 'MIC-02' };
+/** The four selector channels a microphone check can stand for (D61). */
+export type CheckMicChannel = 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04';
+/**
+ * D61 (2026-11-04): the role-keyed checks stand for the transcription channels 1 and 2; audit M3-04 R3
+ * (D53, row 83): `MIC_3` / `MIC_4` stand for channels 3 and 4.
+ */
+const CHECK_MIC_CHANNEL: Readonly<Partial<Record<PrecheckCheckId, CheckMicChannel>>> = { MIC_PRIMARY: 'MIC-01', MIC_STANDBY: 'MIC-02', MIC_3: 'MIC-03', MIC_4: 'MIC-04' };
 
 /**
  * Flat encoding of the selector's microphone lines for `useSim` (F74-13; D61: by CHANNEL):
@@ -254,8 +263,8 @@ export function micRoleLine(state: { session: { state?: string | null; captureCo
 }
 
 export interface CheckMicBinding {
-  /** D61: the CHANNEL the checked line holds (`MIC-01`, `MIC-02`). */
-  readonly channel: 'MIC-01' | 'MIC-02';
+  /** D61: the CHANNEL the checked line holds (`MIC-01`..`MIC-04`; audit M3-04 R3). */
+  readonly channel: CheckMicChannel;
   /** The input that holds it (`MIC-01`, `MIC-02`). */
   readonly inputId: string;
 }
@@ -275,10 +284,10 @@ export function checkMicBinding(id: PrecheckCheckId, roleLine: string): CheckMic
   const input = CHECK_MIC_INPUT[id];
   const channel = CHECK_MIC_CHANNEL[id];
   const found = input !== undefined ? lines.find(([inputId]) => inputId === input) : channel !== undefined ? lines.find(([, held]) => held === channel) : undefined;
-  return found ? { inputId: found[0], channel: found[1] as 'MIC-01' | 'MIC-02' } : null;
+  return found ? { inputId: found[0], channel: found[1] as CheckMicChannel } : null;
 }
 
-/** The eight checks in the book's order (§5.3), for rows that have not been created yet. */
+/** The checks in the book's order (§5.3; twelve since D53, row 83), for rows that have not been created yet. */
 export const CHECK_ORDER: readonly PrecheckCheckId[] = PRECHECK_ORDER;
 
 /**

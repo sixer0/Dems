@@ -1,20 +1,24 @@
-// Task 3 M5, blueprint row 73 (register MB-03; ux spec §3 flow 2; operation 81 `switchAudioSource`;
-// specs R-3 AC-2..4; D4 OD-09, OD-11; D84 / D91 "Connecting cameras…"). The mic cards and the manual
-// switch of the Session Live monitor, on the REAL `/session/live` route over a test simulator in the
-// recording scenario (session 0024, opened by the investigator AKP Budi Santoso).
+// Task 3 M5, blueprint row 73 (register MB-03; ux spec §3 flow 2; specs R-3 AC-2..4; D4 OD-11; D84 / D91
+// "Connecting cameras…"). The mic cards and the microphone warnings of the Session Live monitor, on the REAL
+// `/session/live` route over a test simulator in the recording scenario (session 0024, opened by the
+// investigator AKP Budi Santoso).
 //
-// What is held: the cards say "Active" / "Standby" from the store's pair; the toggle is behind the
-// gate (checking, the role, the session holder) and a confirmation; a confirmed switch writes exactly
-// one AUDIO_SOURCE_SWITCHED row; a cancelled one writes nothing; a MIC_SILENT warning names the input
-// and NEVER switches (M5-WARN-1, the client half); the monitor reads "Connecting cameras…" until the
-// first durable fragment. The Live twin is `live-mic-source.test.tsx`.
+// Audit row 185 (M3-05; D5, D134, D136, D138; register O4-O6 of masterplan/01_specs_m3.md): operation 81 is
+// RETIRED. What is held: no element offers a switch for any role or state; `actions.switchAudioSource` is never
+// called (spy count 0) and no AUDIO_SOURCE_SWITCHED row is written; the silence warning shows the D5 sentence
+// (O5) and no button; the no-signal notice offers no switch; CONTROL - the in-app simulator itself refuses op 81
+// with AUDIO_SOURCE_FIXED_BY_PAIRING. The switch-era cases (the confirmed switch, the gate and its reasons, the
+// refusal sentences, the busy confirmation; I63 §4.4 `mic-source.test.tsx:86-150`) were deleted with the
+// control. The cards name their pair slot (rows 209/210) and, since row 211 (D191), the gold outline marks Pair 1,
+// the transcribed pair, as the web Session monitor - not the input inside AUDIO-01.
+// The Live twin is `live-mic-source.test.tsx`.
 //
 // Import order matters: the gorhom mock, then the router harness.
 import './testing/monitor-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, describe, expect, it } from '@jest/globals';
-import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { act, render, screen, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { MicInputId } from '@dems/shared/domain';
 import type { SimState } from '@dems/shared/sim';
@@ -32,10 +36,6 @@ afterEach(() => {
 
 const SUPERVISOR = 'andi.pratama';
 const TECHNICIAN = 'rina.wijaya';
-const CHECKING = 'Checking your permissions…';
-const HOLDER = 'Only the operator who opened this session or a supervisor can switch the microphone.';
-const ROLE = 'Requires the Investigator or Supervisor role';
-
 async function open(options: MonitorHarnessOptions = {}): Promise<MonitorHarness> {
   const h = renderMonitorApp({ window: 'phonePortrait', ...options });
   await settle();
@@ -45,191 +45,175 @@ async function open(options: MonitorHarnessOptions = {}): Promise<MonitorHarness
 }
 
 // D61 (2026-11-04): the cards are keyed by CHANNEL (`MIC-0N`), not by number.
-const chipText = (channel: 1 | 2 | 3 | 4) => {
+/** The role words the cards showed before row 210 (`session.audioSource.role.*`: "Channel 1 (transcribed)" / "Channel 2 (recorded)"), and the bare words. */
+const ROLE_WORDS = /^(Channel [1-4] \((transcribed|recorded)\)|Active|Standby)$/;
+// RE-PINNED by row 210 (M3-17; register A3; D138 R157-1, D134): the card shows its pair slot "Mic N (Camera N)"
+// (Pair 1 also "Transcribed") and NO role word. It read the chip words "Channel 1 (transcribed)" -> 'Active',
+// "Channel 2 (recorded)" -> 'Standby', none -> null. RE-PINNED by row 211 (M3-18; D191, D5): the gold outline no
+// longer follows the store's active input; it marks Pair 1, the transcribed pair, as the web Session monitor
+// (`data-transcribed`), and the card reports no `accessibilityState.selected`. The helper reads that mark:
+// 'Transcribed' (the chip, with the gold glow) or null (neither).
+const markOf = (channel: 1 | 2 | 3 | 4) => {
   const card = within(screen.getByTestId(`monitor-mic-MIC-0${channel}`));
-  // D61 (2026-11-04): the chip words are the shared channel words - ACTIVE reads "Channel 1 (transcribed)", STANDBY "Channel 2 (recorded)".
-  return card.queryByText('Channel 1 (transcribed)') !== null ? 'Active' : card.queryByText('Channel 2 (recorded)') !== null ? 'Standby' : null;
+  expect(card.queryAllByText(ROLE_WORDS, { includeHiddenElements: true })).toHaveLength(0);
+  expect(card.getByTestId(`mic-card-pair-AUDIO-0${channel}`)).toHaveTextContent(`Mic ${channel} (Camera ${channel})`);
+  expect(screen.getByTestId(`monitor-mic-MIC-0${channel}`).props.accessibilityState?.selected).toBeUndefined();
+  const chip = card.queryByTestId(`mic-card-transcribed-AUDIO-0${channel}`);
+  expect(glowOf(channel)).toBe(chip === null ? 0 : 1);
+  return chip === null ? null : 'Transcribed';
 };
 const glowOf = (channel: 1 | 2 | 3 | 4) => (StyleSheet.flatten(screen.getByTestId(`monitor-mic-glow-MIC-0${channel}`, { includeHiddenElements: true }).props.style) as { opacity?: number }).opacity;
-const isDisabled = (testID: string) => screen.getByTestId(testID).props.accessibilityState?.disabled === true;
+/** Register O5 (D138): the shared `session.audioSource.silent.body` with the app's thresholds (-50 dBFS, 10 s). */
+const O5 = 'Below -50 dBFS for 10 s. Recording continues. The microphone of each pair is fixed by setup: check its cable or the device.';
+/** Every testID the retired switch drew (task 3 M5 and task 4 row 170). */
+const SWITCH_IDS = [
+  'monitor-mic-switch',
+  'monitor-mic-switch-dialog',
+  'monitor-mic-switch-confirm',
+  'monitor-mic-switch-cancel',
+  'monitor-mic-switch-reason',
+  'monitor-mic-switch-refusal',
+  'monitor-mic-switch-no-pair',
+  'monitor-mic-silent-switch',
+  'monitor-mic-no-signal-switch',
+] as const;
+/** Row 185 (register O4): no element offers a switch - none of the retired testIDs, no "Switch to ..." text (E1), no switch sentence. */
+function expectNoSwitchOffered(): void {
+  for (const id of SWITCH_IDS) expect(screen.queryByTestId(id, { includeHiddenElements: true })).toBeNull();
+  expect(screen.queryAllByText(/^Switch to/, { includeHiddenElements: true })).toHaveLength(0);
+  expect(screen.queryAllByText(/Switch microphone|can be switched|nothing to switch|was not switched/, { includeHiddenElements: true })).toHaveLength(0);
+}
 const switches = (state: SimState) => state.audit.rows.filter((row) => row.type === 'AUDIO_SOURCE_SWITCHED');
 const pairOf = (state: SimState) => [state.session?.audioSource?.activeInputId ?? state.audio.activeInputId, state.audio.activeInputId];
 
-describe('the MIC cards say which input is inside AUDIO-01 (ux §3.2 step 1; D105 "Active" / "Standby")', () => {
-  it('MIC 1 Active with the gold glow, MIC 2 Standby without; the words are the store\'s pair', async () => {
+// RE-PINNED by row 211 (M3-18; D191): was 'the MIC cards say which input is inside AUDIO-01 (ux §3.2 step 1; D105 "Active" / "Standby")'.
+describe('the MIC cards mark Pair 1, the transcribed pair, with the gold outline, as the web Session monitor (D191, D5)', () => {
+  it('Pair 1 (Mic 1) is outlined in gold beside its "Transcribed" chip, Pair 2 is not; no card reports a selection', async () => {
     const h = await open();
-    expect(chipText(1)).toBe('Active');
-    expect(chipText(2)).toBe('Standby');
+    expect(markOf(1)).toBe('Transcribed');
+    expect(markOf(2)).toBeNull();
     expect(glowOf(1)).toBe(1);
     expect(glowOf(2)).toBe(0);
-    expect(screen.getByTestId('monitor-mic-MIC-01').props.accessibilityState).toMatchObject({ selected: true });
-    expect(screen.getByTestId('monitor-mic-MIC-02').props.accessibilityState).toMatchObject({ selected: false });
+    // RE-PINNED by row 211 (M3-18; D191): was accessibilityState { selected: true } / { selected: false } - the web sets no selection either.
+    for (const n of [1, 2, 3, 4] as const) expect(screen.getByTestId(`monitor-mic-MIC-0${n}`).props.accessibilityState?.selected).toBeUndefined();
     expect(h.sim.store.getState().audio.activeInputId).toBe('MIC-01');
     expect(getMissingKeys()).toEqual([]);
   });
 
-  it('both glow layers stay mounted through a switch: only their state changes (E-15)', async () => {
+  it('both glow layers stay mounted when the store\'s active input changes, and the outline stays on Pair 1 (E-15; D191: fixed by pairing)', async () => {
     const h = await open();
     const glow = (channel: 1 | 2 | 3 | 4) => screen.getByTestId(`monitor-mic-glow-MIC-0${channel}`, { includeHiddenElements: true });
     expect(glow(1)).toBeTruthy();
     expect(glow(2)).toBeTruthy();
-    act(() => h.sim.actions.switchAudioSource(MicInputId.MIC_02));
-    expect(chipText(1)).toBe('Standby');
-    expect(chipText(2)).toBe('Active');
-    expect(glowOf(1)).toBe(0);
-    expect(glowOf(2)).toBe(1);
+    // MOVED by row 185 (M3-05; D136): op 81 is retired, so no switch moves the pair - the store's statement does
+    // (in LIVE, a Core delta). The cards follow the store, as before.
+    act(() =>
+      h.sim.store.setState(
+        (s) =>
+          ({
+            session: { ...s.session!, audioSource: { ...(s.session!.audioSource ?? {}), sessionId: s.session!.id, activeInputId: 'MIC-02', standbyInputId: 'MIC-01' } },
+            audio: { ...s.audio, activeInputId: 'MIC-02' },
+          }) as never,
+      ),
+    );
+    // RE-PINNED by row 211 (M3-18; D191): was card 1 unmarked (glow 0) and card 2 'Active' (glow 1) - the mark followed the store's input.
+    expect(markOf(1)).toBe('Transcribed');
+    expect(markOf(2)).toBeNull();
+    expect(glowOf(1)).toBe(1);
+    expect(glowOf(2)).toBe(0);
     expect(glow(1)).toBeTruthy();
     expect(glow(2)).toBeTruthy();
   });
 });
 
-describe('the confirmed switch (ux §3.2 steps 2-4; G4; OD-09)', () => {
-  it('the session holder: the toggle is offered, a press only opens the confirmation, Cancel sends nothing and writes no audit row', async () => {
-    const h = await open();
-    expect(isDisabled('monitor-mic-switch')).toBe(false);
-    expect(within(screen.getByTestId('monitor-mic-switch')).getByText('Switch to MIC 2')).toBeTruthy();
-    expect(screen.queryByTestId('monitor-mic-switch-reason')).toBeNull();
-    expect(screen.queryByTestId('monitor-mic-switch-dialog')).toBeNull();
+describe('row 185 (M3-05 R1; register O4; D134, D136): op 81 is retired - no element offers a switch, for any role or state', () => {
+  it.each([
+    ['the session holder (INVESTIGATOR)', undefined],
+    ['a SUPERVISOR who did not open the session', SUPERVISOR],
+    ['a TECHNICIAN', TECHNICIAN],
+  ] satisfies [string, string | undefined][])('%s: recording, connecting, another holder, a silent input, an input without a signal - nothing offers a switch; switchAudioSource is never called', async (_name, operator) => {
+    const h = await open(operator === undefined ? {} : { operator });
+    const spy = jest.spyOn(h.sim.actions, 'switchAudioSource');
+    expectNoSwitchOffered();
+    // "Connecting cameras…" (D84): the same.
+    act(() => h.sim.store.setState((s) => ({ session: { ...s.session!, captureDurable: false } as typeof s.session })));
+    expectNoSwitchOffered();
+    act(() => h.sim.store.setState((s) => ({ session: { ...s.session!, captureDurable: true } as typeof s.session })));
+    // Another operator opened the session (OD-09 gated the toggle; nothing is gated now, nothing is offered).
+    act(() => h.sim.store.setState((s) => ({ session: { ...s.session!, createdBy: 'OPR-999' } })));
+    expectNoSwitchOffered();
+    // A silent input for 30 s of the simulator's clock: a warning only.
+    act(() => h.sim.actions.raiseCaptureWarning({ code: 'MIC_SILENT', subject: 'MIC-01' }));
+    expect(screen.getByTestId('monitor-mic-silent')).toBeTruthy();
+    expectNoSwitchOffered();
+    act(() => h.advance(30_000, 1_000));
+    act(() => h.sim.actions.clearCaptureWarning({ code: 'MIC_SILENT', subject: 'MIC-01' }));
+    // An input without a signal: a notice only.
+    act(() => {
+      h.sim.actions.inject('MIC_NO_SIGNAL');
+    });
+    expect(screen.getByTestId('monitor-mic-no-signal')).toBeTruthy();
+    expectNoSwitchOffered();
 
-    fireEvent.press(screen.getByTestId('monitor-mic-switch'));
-    const dialog = within(screen.getByTestId('monitor-mic-switch-dialog'));
-    expect(dialog.getByText('Switch the active microphone to MIC 2?')).toBeTruthy();
-    expect(dialog.getByText('Recording continues on all four channels. MIC 1 moves to channel 2 as the transcription switches. The switch is written to the audit log.')).toBeTruthy();
-    // The press alone changed nothing.
-    expect(pairOf(h.sim.store.getState())).toEqual(['MIC-01', 'MIC-01']);
+    expect(spy).toHaveBeenCalledTimes(0);
     expect(switches(h.sim.store.getState())).toHaveLength(0);
-
-    fireEvent.press(screen.getByTestId('monitor-mic-switch-cancel'));
-    expect(screen.queryByTestId('monitor-mic-switch-dialog')).toBeNull();
-    expect(pairOf(h.sim.store.getState())).toEqual(['MIC-01', 'MIC-01']);
-    expect(switches(h.sim.store.getState())).toHaveLength(0);
-    expect(chipText(1)).toBe('Active');
-  });
-
-  it('confirm: one command, the cards follow the store, exactly one AUDIO_SOURCE_SWITCHED row; a second switch goes back', async () => {
-    const h = await open();
-    const sessionId = h.sim.store.getState().session!.id;
-    fireEvent.press(screen.getByTestId('monitor-mic-switch'));
-    fireEvent.press(screen.getByTestId('monitor-mic-switch-confirm'));
-
-    expect(screen.queryByTestId('monitor-mic-switch-dialog')).toBeNull();
-    const state = h.sim.store.getState();
-    expect(pairOf(state)).toEqual(['MIC-02', 'MIC-02']);
-    expect(state.session?.audioSource).toMatchObject({ sessionId, activeInputId: 'MIC-02', standbyInputId: 'MIC-01' });
-    expect(state.session?.state).toBe('RECORDING');
-    expect(chipText(1)).toBe('Standby');
-    expect(chipText(2)).toBe('Active');
-    expect(screen.queryAllByText('Active microphone: MIC 2').length).toBeGreaterThan(0);
-    // The toggle now offers the way back.
-    expect(within(screen.getByTestId('monitor-mic-switch')).getByText('Switch to MIC 1')).toBeTruthy();
-
-    // What the CONTRACT names of the audit row (C3 §5.2): its type, its session, its actor — one row.
-    const rows = switches(state);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ type: 'AUDIO_SOURCE_SWITCHED', sessionId, actorId: state.auth.operatorId });
-    const details = rows[0]!.details as Readonly<Record<string, unknown>>;
-    // The inputs, under the contract's keys or the simulator's present ones (D105: the contract wins).
-    expect(details.fromInput ?? details.fromInputId).toBe('MIC-01');
-    expect(details.toInput ?? details.toInputId).toBe('MIC-02');
-    expect(Object.keys(details)).not.toContain('trigger');
-    // Fix pass F-M5 (review R74-05; D105 "the contract wins"): the simulator writes the contract's keys
-    // (C3 §5.2) with the media times. It wrote `deviceId` (the MICROPHONE's device), which the contract
-    // does not name. `sendingDeviceId` (the paired device that sent a command, E-30) is added by the
-    // Core for a command a device sent; the in-app simulator has no sending device and writes none.
-    expect(Object.keys(details).sort()).toEqual(['fromInput', 'fromMs', 'toInput', 'toMs']);
-
-    fireEvent.press(screen.getByTestId('monitor-mic-switch'));
-    fireEvent.press(screen.getByTestId('monitor-mic-switch-confirm'));
-    expect(pairOf(h.sim.store.getState())).toEqual(['MIC-01', 'MIC-01']);
-    expect(switches(h.sim.store.getState())).toHaveLength(2);
-    expect(chipText(1)).toBe('Active');
+    expect(h.sim.store.getState().session?.state).toBe('RECORDING');
     expect(getMissingKeys()).toEqual([]);
+    spy.mockRestore();
   });
 
-  it('a SUPERVISOR who did not open the session may switch', async () => {
-    const h = await open({ operator: SUPERVISOR });
-    expect(h.sim.store.getState().session?.createdBy).not.toBe(h.sim.store.getState().auth.operatorId);
-    expect(isDisabled('monitor-mic-switch')).toBe(false);
-    fireEvent.press(screen.getByTestId('monitor-mic-switch'));
-    fireEvent.press(screen.getByTestId('monitor-mic-switch-confirm'));
-    expect(pairOf(h.sim.store.getState())).toEqual(['MIC-02', 'MIC-02']);
-    expect(switches(h.sim.store.getState())).toHaveLength(1);
-  });
-
-  it('a TECHNICIAN: the toggle is drawn, disabled, with the role sentence; a press does nothing', async () => {
-    const h = await open({ operator: TECHNICIAN });
-    expect(screen.getByTestId('monitor-mic-switch')).toBeTruthy();
-    expect(isDisabled('monitor-mic-switch')).toBe(true);
-    expect(within(screen.getByTestId('monitor-mic-switch-reason')).getByText(ROLE)).toBeTruthy();
-    fireEvent.press(screen.getByTestId('monitor-mic-switch'));
-    expect(screen.queryByTestId('monitor-mic-switch-dialog')).toBeNull();
-    expect(switches(h.sim.store.getState())).toHaveLength(0);
-    // The cards still say which input is active: reading is not gated.
-    expect(chipText(1)).toBe('Active');
-  });
-
-  it('an INVESTIGATOR who did not open the session: disabled with the holder sentence (OD-09)', async () => {
+  it('CONTROL - the in-app simulator itself refuses op 81 with AUDIO_SOURCE_FIXED_BY_PAIRING (shared behaviour, read-only): nothing moves, no row', async () => {
     const h = await open();
-    act(() => h.sim.store.setState((s) => ({ session: { ...s.session!, createdBy: 'OPR-999' } })));
-    expect(isDisabled('monitor-mic-switch')).toBe(true);
-    expect(within(screen.getByTestId('monitor-mic-switch-reason')).getByText(HOLDER)).toBeTruthy();
-    fireEvent.press(screen.getByTestId('monitor-mic-switch'));
-    expect(screen.queryByTestId('monitor-mic-switch-dialog')).toBeNull();
+    let thrown: unknown = null;
+    try {
+      h.sim.actions.switchAudioSource(MicInputId.MIC_02);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toMatchObject({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' });
+    expect(pairOf(h.sim.store.getState())).toEqual(['MIC-01', 'MIC-01']);
     expect(switches(h.sim.store.getState())).toHaveLength(0);
-  });
-
-  it('the gate closing under an open confirmation closes it: nothing can be confirmed for a holder who no longer is one', async () => {
-    const h = await open();
-    fireEvent.press(screen.getByTestId('monitor-mic-switch'));
-    expect(screen.getByTestId('monitor-mic-switch-dialog')).toBeTruthy();
-    act(() => h.sim.store.setState((s) => ({ session: { ...s.session!, createdBy: 'OPR-999' } })));
-    expect(screen.queryByTestId('monitor-mic-switch-dialog')).toBeNull();
-    expect(switches(h.sim.store.getState())).toHaveLength(0);
+    expect(markOf(1)).toBe('Transcribed'); // RE-PINNED by row 211 (D191): was 'Active' - the outline marks Pair 1
   });
 });
 
-describe('MIC_SILENT warns and never switches (ux §3.2 step 8, G5; OD-11; M5-WARN-1, the client half)', () => {
-  it('the warning names the silent input; the active input and the audit log stay as they were, for as long as it shows', async () => {
+describe('MIC_SILENT warns and never switches (ux §3.2 step 8; OD-11; M5-WARN-1, the client half; row 185: O5, no button)', () => {
+  it('the warning names the silent input with the D5 sentence and no button; the active input and the audit log stay as they were, for as long as it shows', async () => {
     const h = await open();
     expect(screen.queryByTestId('monitor-mic-silent')).toBeNull();
     act(() => h.sim.actions.raiseCaptureWarning({ code: 'MIC_SILENT', subject: 'MIC-01' }));
     const warning = within(screen.getByTestId('monitor-mic-silent'));
     expect(warning.getByText('MIC 1 is silent')).toBeTruthy();
-    expect(warning.getByText('Below -50 dBFS for 10 s. Recording continues. The microphone is never switched automatically.')).toBeTruthy();
+    // RE-PINNED by row 185 (M3-05 R4; D138; I63 §4.4 `mic-source.test.tsx:198`): register O5. It was
+    // "Below -50 dBFS for 10 s. Recording continues. The microphone is never switched automatically."
+    expect(warning.getByText(O5)).toBeTruthy();
+    expect(warning.queryAllByRole('button')).toHaveLength(0);
+    expect(warning.queryByText('Switch to channel 2')).toBeNull();
 
     // 30 s of the simulator's clock with the warning on screen: no switch, by anything.
     act(() => h.advance(30_000, 1_000));
     expect(screen.getByTestId('monitor-mic-silent')).toBeTruthy();
     expect(pairOf(h.sim.store.getState())).toEqual(['MIC-01', 'MIC-01']);
     expect(switches(h.sim.store.getState())).toHaveLength(0);
-    expect(chipText(1)).toBe('Active');
+    expect(markOf(1)).toBe('Transcribed'); // RE-PINNED by row 211 (D191): was 'Active' - the outline marks Pair 1
     expect(h.sim.store.getState().session?.state).toBe('RECORDING');
   });
 
-  it('"Switch to standby" opens the SAME confirmation and sends nothing by itself; the confirm switches', async () => {
-    const h = await open();
-    act(() => h.sim.actions.raiseCaptureWarning({ code: 'MIC_SILENT', subject: 'MIC-01' }));
-    fireEvent.press(screen.getByTestId('monitor-mic-silent-switch'));
-    expect(within(screen.getByTestId('monitor-mic-switch-dialog')).getByText('Switch the active microphone to MIC 2?')).toBeTruthy();
-    expect(switches(h.sim.store.getState())).toHaveLength(0);
-    expect(pairOf(h.sim.store.getState())).toEqual(['MIC-01', 'MIC-01']);
-    fireEvent.press(screen.getByTestId('monitor-mic-switch-confirm'));
-    expect(pairOf(h.sim.store.getState())).toEqual(['MIC-02', 'MIC-02']);
-    expect(switches(h.sim.store.getState())).toHaveLength(1);
-  });
-
-  it('a silent STANDBY input is named without the action; a TECHNICIAN sees the action disabled; the warning leaves when it is cleared', async () => {
+  it('a silent input of either channel, for a TECHNICIAN too: named with O5, no button; the warning leaves when it is cleared', async () => {
     const h = await open({ operator: TECHNICIAN });
-    act(() => h.sim.actions.raiseCaptureWarning({ code: 'MIC_SILENT', subject: 'MIC-01' }));
-    expect(isDisabled('monitor-mic-silent-switch')).toBe(true);
-    fireEvent.press(screen.getByTestId('monitor-mic-silent-switch'));
-    expect(screen.queryByTestId('monitor-mic-switch-dialog')).toBeNull();
-    act(() => h.sim.actions.clearCaptureWarning({ code: 'MIC_SILENT', subject: 'MIC-01' }));
-    expect(screen.queryByTestId('monitor-mic-silent')).toBeNull();
-
-    act(() => h.sim.actions.raiseCaptureWarning({ code: 'MIC_SILENT', subject: 'MIC-02' }));
-    expect(within(screen.getByTestId('monitor-mic-silent')).getByText('MIC 2 is silent')).toBeTruthy();
-    expect(screen.queryByTestId('monitor-mic-silent-switch')).toBeNull();
+    for (const [input, name] of [
+      ['MIC-01', 'MIC 1'],
+      ['MIC-02', 'MIC 2'],
+    ] as const) {
+      act(() => h.sim.actions.raiseCaptureWarning({ code: 'MIC_SILENT', subject: input }));
+      const warning = within(screen.getByTestId('monitor-mic-silent'));
+      expect(warning.getByText(`${name} is silent`)).toBeTruthy();
+      expect(warning.getByText(O5)).toBeTruthy();
+      expect(warning.queryAllByRole('button')).toHaveLength(0);
+      expectNoSwitchOffered();
+      act(() => h.sim.actions.clearCaptureWarning({ code: 'MIC_SILENT', subject: input }));
+      expect(screen.queryByTestId('monitor-mic-silent')).toBeNull();
+    }
     expect(switches(h.sim.store.getState())).toHaveLength(0);
   });
 });
@@ -260,98 +244,47 @@ describe('"Connecting cameras…" until the first durable fragment (D84, D91; ux
     act(() => h.sim.store.setState((s) => ({ session: { ...s.session!, captureDurable: false } as typeof s.session })));
     expect(within(screen.getByTestId('monitor-rec-label')).getByText('Connecting cameras…')).toBeTruthy();
     expect(screen.queryByTestId('monitor-timer')).toBeNull();
-    // The mic switch is mounted once in this arrangement too.
+    // The microphone warnings are mounted once in this arrangement too (row 185: they hold no switch).
     expect(screen.getAllByTestId('monitor-mic-source')).toHaveLength(1);
   });
 });
 
-describe('the panel alone: the states a signed-in monitor cannot hold still (E-16, P-13, LB-1)', () => {
-  const base: MicSourcePanelProps = {
-    recording: true,
-    activeInputId: MicInputId.MIC_01,
-    standbyInputId: MicInputId.MIC_02,
-    block: null,
-    silentInputId: null,
-    confirmOpen: false,
-    busy: false,
-    pending: false,
-    refusal: null,
-    onAsk: () => undefined,
-    onCancel: () => undefined,
-    onConfirm: () => undefined,
-  };
-  const draw = (props: Partial<MicSourcePanelProps>) => {
+describe('the panel alone (row 185): the warnings name their input and offer nothing, whatever the pair', () => {
+  const draw = (props: MicSourcePanelProps) => {
     const test = createTestSim();
     return render(
       <RuntimeTestProviders sim={test.sim}>
-        <MicSourcePanel {...base} {...props} />
+        <MicSourcePanel {...props} />
       </RuntimeTestProviders>,
     );
   };
 
-  it('an unknown role: the toggle is drawn, disabled, with "Checking your permissions…" — never hidden, never enabled', () => {
-    draw({ block: { kind: 'CHECKING' } });
-    expect(isDisabled('monitor-mic-switch')).toBe(true);
-    expect(within(screen.getByTestId('monitor-mic-switch-reason')).getByText(CHECKING)).toBeTruthy();
-    expect(screen.getByTestId('monitor-mic-switch').props.accessibilityHint).toBe(CHECKING);
-  });
-
-  it('a lost Core link: disabled with the monitor\'s read-only sentence', () => {
-    draw({ block: { kind: 'WAITING' } });
-    expect(isDisabled('monitor-mic-switch')).toBe(true);
-    expect(within(screen.getByTestId('monitor-mic-switch-reason')).getByText('Session actions are paused until the Core link is back.')).toBeTruthy();
-  });
-
-  it('no recording: the toggle is not drawn, its reason is (ux §3.5 hidden-with-reason)', () => {
-    draw({ recording: false, block: { kind: 'NOT_RECORDING' } });
-    expect(screen.queryByTestId('monitor-mic-switch')).toBeNull();
-    expect(within(screen.getByTestId('monitor-mic-switch-reason')).getByText('The microphone can be switched while a session is recording.')).toBeTruthy();
-    // Task 4 row 170: the incomplete-pair sentence belongs to a recording; it is not drawn here.
-    expect(screen.queryByTestId('monitor-mic-switch-no-pair')).toBeNull();
+  it('nothing silent: the container only - no warning, no switch control, no pair sentence', () => {
+    draw({ activeInputId: MicInputId.MIC_01, silentInputId: null });
+    expect(screen.getByTestId('monitor-mic-source')).toBeTruthy();
+    expect(screen.queryByTestId('monitor-mic-silent')).toBeNull();
+    expect(screen.queryByTestId('monitor-mic-no-signal')).toBeNull();
+    expectNoSwitchOffered();
   });
 
   it.each([
-    ['no standby', { standbyInputId: null }],
-    ['no active input', { activeInputId: null }],
-    ['neither', { activeInputId: null, standbyInputId: null }],
-  ] satisfies [string, Partial<MicSourcePanelProps>][])('task 4 row 170, an absent member of the pair (%s): no toggle and no dialog name an input; one sentence says why', (_name, props) => {
-    draw(props);
-    expect(screen.queryByTestId('monitor-mic-switch')).toBeNull();
-    expect(screen.getByTestId('monitor-mic-switch-no-pair')).toHaveTextContent('The transcription pair (channels 1 and 2) is not complete. There is nothing to switch.');
-    expect(screen.queryByText(/MIC 1|MIC 2|Switch to/)).toBeNull();
+    ['the transcribed input', MicInputId.MIC_01, MicInputId.MIC_01],
+    ['another input', MicInputId.MIC_01, MicInputId.MIC_02],
+    ['with no transcribed input (task 4 row 170: an absent pair member)', null, MicInputId.MIC_01],
+  ] satisfies [string, string | null, string][])('silent, %s: named, the O5 sentence, no button', (_name, activeInputId, silentInputId) => {
+    draw({ activeInputId, silentInputId });
+    expect(within(screen.getByTestId('monitor-mic-silent')).getByText(O5)).toBeTruthy();
+    expect(within(screen.getByTestId('monitor-mic-silent')).queryAllByRole('button')).toHaveLength(0);
+    expectNoSwitchOffered();
     expect(getMissingKeys()).toEqual([]);
-  });
-
-  it('task 4 row 170: a warning still names its input when the pair is incomplete, and offers no switch', () => {
-    draw({ standbyInputId: null, silentInputId: MicInputId.MIC_01 });
-    expect(within(screen.getByTestId('monitor-mic-silent')).getByText(/MIC 1/)).toBeTruthy();
-    expect(screen.queryByTestId('monitor-mic-silent-switch')).toBeNull();
-    expect(screen.queryByTestId('monitor-mic-switch')).toBeNull();
-  });
-
-  it('the command is out: the confirm is busy, shows the spinner late, and Cancel is disabled', () => {
-    draw({ confirmOpen: true, busy: true, pending: false });
-    expect(screen.getByTestId('monitor-mic-switch-confirm').props.accessibilityState).toMatchObject({ busy: true });
-    expect(isDisabled('monitor-mic-switch-cancel')).toBe(true);
-    expect(screen.queryByTestId('monitor-mic-switch-confirm-spinner')).toBeNull();
-  });
-
-  it('each refusal that stays on the cards has its fixed sentence (ux §3.5)', () => {
-    const view = draw({ refusal: 'CONFLICT' });
-    expect(within(screen.getByTestId('monitor-mic-switch-refusal')).getByText('The requested microphone cannot become the active source.')).toBeTruthy();
-    view.rerender(
-      <RuntimeTestProviders sim={createTestSim().sim}>
-        <MicSourcePanel {...base} refusal="NOT_OPEN" />
-      </RuntimeTestProviders>,
-    );
-    expect(within(screen.getByTestId('monitor-mic-switch-refusal')).getByText('That session is not the open session.')).toBeTruthy();
   });
 });
 
 // Integration pass D5 (ruling D137): the input behind a meter channel is the microphone line at its
 // position in the capture configuration, not the fixed table of the built-in pair.
 describe('a replaced pair, MIC-03 / MIC-01 (ruling D137)', () => {
-  it('card 2 is the second line: its meter reads MIC-01 and it says Active while MIC-01 records; card 1 (MIC-03) says Standby', async () => {
+  // RE-PINNED by row 211 (D191): was "... and it says Active while MIC-01 records; card 1 (MIC-03) says Standby".
+  it('card 2 is the second line: its meter reads MIC-01 while MIC-01 records; the gold outline stays on card 1 (MIC-03), Pair 1', async () => {
     const h = renderMonitorApp({ window: 'phonePortrait' });
     await settle();
     act(() => {
@@ -385,10 +318,11 @@ describe('a replaced pair, MIC-03 / MIC-01 (ruling D137)', () => {
     });
     h.openMonitor();
     expect(screen.getByTestId('screen-session-live')).toBeTruthy();
-    expect(chipText(1)).toBe('Standby');
-    expect(chipText(2)).toBe('Active');
-    expect(glowOf(1)).toBe(0);
-    expect(glowOf(2)).toBe(1);
+    // RE-PINNED by row 211 (M3-18; D191): was card 1 unmarked (glow 0) and card 2 'Active' (glow 1).
+    expect(markOf(1)).toBe('Transcribed');
+    expect(markOf(2)).toBeNull();
+    expect(glowOf(1)).toBe(1);
+    expect(glowOf(2)).toBe(0);
     expect(screen.getByTestId('monitor-meter-MIC-01').props.accessibilityValue).toMatchObject({ now: -20 });
     expect(screen.getByTestId('monitor-meter-MIC-02').props.accessibilityValue).toMatchObject({ now: -30 });
     expect(silentInputOf([{ kind: 'MIC_SILENT', target: 'AUDIO-02' }] as never, 'MIC-03', [{ inputId: 'MIC-03', channel: 'MIC-01' }, { inputId: 'MIC-01', channel: 'MIC-02' }])).toBe('MIC-01'); // D61: the line states its channel
@@ -423,22 +357,23 @@ describe('task 4 row 170: a microphone line is ABSENT - the cards and the switch
     return h;
   }
 
-  it.each(['phonePortrait', 'tabletLandscape'] as const)('%s, a lone channel-2 line: the other channels read "No microphone input", the held one says no role and draws no badge; the toggle is replaced by its sentence (D61)', async (window) => {
+  it.each(['phonePortrait', 'tabletLandscape'] as const)('%s, a lone channel-2 line: the other channels read "No microphone input", the held one says no role and draws no badge; no switch control and no pair sentence (D61; row 185)', async (window) => {
     const h = await openWithLines(['MIC-02'], window);
     // The meters slice still holds frames under the built-in inputs: the cards do not read them.
     expect(Object.keys(h.sim.store.getState().audio.inputs)).toEqual(expect.arrayContaining(['MIC-01', 'MIC-02']));
     // D61: the held channel HAS its input (a line names it) - but with no active input it says no role.
     expect(screen.getByTestId('monitor-mic-level-state-MIC-02')).not.toHaveTextContent('No microphone input');
-    expect(chipText(2)).toBeNull();
+    expect(markOf(2)).toBeNull();
     for (const channel of [1, 3, 4] as const) {
       expect(screen.getByTestId(`monitor-mic-level-state-MIC-0${channel}`)).toHaveTextContent('No microphone input');
-      expect(chipText(channel)).toBeNull();
+      // RE-PINNED by row 211 (M3-18; D191): was null / glow 0 on all three - Pair 1 keeps its outline with or without an input (the slot is fixed, D5).
+      expect(markOf(channel)).toBe(channel === 1 ? 'Transcribed' : null);
       expect(screen.queryByTestId(`monitor-mic-role-MIC-0${channel}`)).toBeNull();
       expect(screen.queryByTestId(`monitor-mic-source-MIC-0${channel}`)).toBeNull();
-      expect(glowOf(channel)).toBe(0);
+      expect(glowOf(channel)).toBe(channel === 1 ? 1 : 0);
     }
-    expect(screen.queryByTestId('monitor-mic-switch')).toBeNull();
-    expect(screen.getByTestId('monitor-mic-switch-no-pair')).toHaveTextContent('The transcription pair (channels 1 and 2) is not complete. There is nothing to switch.');
+    // MOVED by row 185 (M3-05; D136): the incomplete-pair sentence went with the toggle - there is no switch to explain.
+    expectNoSwitchOffered();
     expect(switches(h.sim.store.getState())).toHaveLength(0);
     expect(getMissingKeys()).toEqual([]);
   });
@@ -446,64 +381,51 @@ describe('task 4 row 170: a microphone line is ABSENT - the cards and the switch
   it('no microphone line at all: the same four cards, and nothing is sent (D61)', async () => {
     const h = await openWithLines([]);
     for (const channel of [1, 2, 3, 4] as const) expect(screen.getByTestId(`monitor-mic-level-state-MIC-0${channel}`)).toHaveTextContent('No microphone input');
-    expect(screen.queryByTestId('monitor-mic-switch')).toBeNull();
-    expect(screen.getByTestId('monitor-mic-switch-no-pair')).toBeTruthy();
+    expectNoSwitchOffered(); // MOVED by row 185 (D136): no pair sentence either
     expect(switches(h.sim.store.getState())).toHaveLength(0);
   });
 
-  it('CONTROL - the seeded four-channel selector: the cards read their inputs and the toggle is offered, as before (D61)', async () => {
+  it('CONTROL - the seeded four-channel selector: the cards read their inputs (D61); row 185: a complete pair offers no toggle either', async () => {
     await open();
     for (const channel of [1, 2, 3, 4] as const) expect(screen.getByTestId(`monitor-mic-level-state-MIC-0${channel}`)).not.toHaveTextContent('No microphone input');
-    expect(screen.getByTestId('monitor-mic-switch')).toBeTruthy();
-    expect(screen.queryByTestId('monitor-mic-switch-no-pair')).toBeNull();
+    expectNoSwitchOffered(); // MOVED by row 185 (D136): was "the toggle is offered"
   });
 });
 
 // Fix wave J round two (JA2-06): the ACTIVE microphone without a signal was easy to miss on the monitor - only its
-// small meter said so. The fault is stated above the switch, by name, with the same confirmed switch.
-describe('JA2-06: a microphone the Core reports without a signal is said on the monitor', () => {
-  it('the active input: a danger notice names it, offers "Switch to MIC 2" through the SAME confirmation, and sends nothing by itself', async () => {
+// small meter said so. The fault is stated on the monitor, by name. Row 185 (M3-05; D136, D138): it offers no switch.
+describe('JA2-06: a microphone the Core reports without a signal is said on the monitor (row 185: no switch)', () => {
+  it('the active input: a notice names it, says the pair is fixed by setup, offers no switch and sends nothing', async () => {
     const h = await open();
+    const spy = jest.spyOn(h.sim.actions, 'switchAudioSource');
     expect(screen.queryByTestId('monitor-mic-no-signal')).toBeNull();
     act(() => {
       h.sim.actions.inject('MIC_NO_SIGNAL');
     });
     const notice = within(screen.getByTestId('monitor-mic-no-signal'));
     expect(notice.getByText('MIC 1: no signal')).toBeTruthy();
-    expect(notice.getByText(/The transcribed microphone delivers no audio\./)).toBeTruthy();
+    // MOVED by row 185 (D138): the body no longer ends "... until the signal returns or you switch."
+    expect(notice.getByText('The transcribed microphone delivers no audio. The recording continues without sound from it until the signal returns. The microphone of each pair is fixed by setup: check its cable or the device.')).toBeTruthy();
+    expect(notice.queryAllByRole('button')).toHaveLength(0);
+    expectNoSwitchOffered();
+    expect(spy).toHaveBeenCalledTimes(0);
     expect(switches(h.sim.store.getState())).toHaveLength(0);
-    fireEvent.press(screen.getByTestId('monitor-mic-no-signal-switch'));
-    expect(within(screen.getByTestId('monitor-mic-switch-dialog')).getByText('Switch the active microphone to MIC 2?')).toBeTruthy();
-    expect(switches(h.sim.store.getState())).toHaveLength(0);
-    fireEvent.press(screen.getByTestId('monitor-mic-switch-confirm'));
-    expect(switches(h.sim.store.getState())).toHaveLength(1);
     expect(getMissingKeys()).toEqual([]);
+    spy.mockRestore();
   });
 
-  it('CONTROL - no such fault, no notice; the presentation alone: a standby input without a signal offers no switch', () => {
-    const props: MicSourcePanelProps = {
-      recording: true,
-      activeInputId: MicInputId.MIC_01,
-      standbyInputId: MicInputId.MIC_02,
-      block: null,
-      silentInputId: null,
-      noSignalInputId: MicInputId.MIC_02,
-      confirmOpen: false,
-      busy: false,
-      pending: false,
-      refusal: null,
-      onAsk: () => undefined,
-      onCancel: () => undefined,
-      onConfirm: () => undefined,
-    };
+  it('CONTROL - no such fault, no notice; the presentation alone: another input without a signal is named, and offers no switch either', () => {
+    const props: MicSourcePanelProps = { activeInputId: MicInputId.MIC_01, silentInputId: null, noSignalInputId: MicInputId.MIC_02 };
     const test = createTestSim();
     const view = render(
       <RuntimeTestProviders sim={test.sim}>
         <MicSourcePanel {...props} />
       </RuntimeTestProviders>,
     );
-    expect(within(screen.getByTestId('monitor-mic-no-signal')).getByText('MIC 2: no signal')).toBeTruthy();
-    expect(screen.queryByTestId('monitor-mic-no-signal-switch')).toBeNull();
+    const notice = within(screen.getByTestId('monitor-mic-no-signal'));
+    expect(notice.getByText('MIC 2: no signal')).toBeTruthy();
+    expect(notice.getByText('This microphone channel records beside the transcribed one, which is not affected.')).toBeTruthy();
+    expectNoSwitchOffered();
     view.rerender(
       <RuntimeTestProviders sim={test.sim}>
         <MicSourcePanel {...props} noSignalInputId={null} />

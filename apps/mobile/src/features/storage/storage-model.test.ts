@@ -2,12 +2,13 @@
 // implementation/28 model tests).
 import { describe, expect, it } from '@jest/globals';
 import { GB, TB, createSim, selectStorage, type SimEvent } from '@dems/shared/sim';
-import { canManageStoragePolicy, isStorageEvent, selectStorageActivity } from './sim-adapter';
+import { canManageStoragePolicy, isStorageEvent, selectFaultSessionId, selectStorageActivity } from './sim-adapter';
 import {
   RATE_GB_PER_HOUR,
   activityDetail,
   activityTone,
   donutGeometry,
+  faultClearedStillInFault,
   formatShortBytes,
   hoursMinutes,
   isEscalation,
@@ -82,6 +83,22 @@ describe('storage-model', () => {
     expect(storageFaultKind(event({ type: 'FAULT_RAISED', params: { kind: 'STORAGE_FULL' } }))).toBe('STORAGE_FULL');
     expect(storageFaultKind(event({ type: 'EVIDENCE_SEALED' }))).toBeNull();
   });
+
+  it('M3-13 (row 203, W5; web row 110b): a FAULT_CLEARED of the session still in FAULT is the amber mark; any other row keeps its tone', () => {
+    const cleared = event({ type: 'FAULT_CLEARED', severity: 'SUCCESS', params: { kind: 'STORAGE_FULL' }, sessionId: 'SES-20261105-0032' });
+    expect(faultClearedStillInFault(cleared, 'SES-20261105-0032')).toBe(true);
+    expect(activityTone(cleared, 'SES-20261105-0032')).toBe('warning');
+    // CONTROL: no FAULT session, another session, no session on the event, the Core-not-running clear, a raise.
+    expect(faultClearedStillInFault(cleared, null)).toBe(false);
+    expect(activityTone(cleared, null)).toBe('success');
+    expect(activityTone(cleared)).toBe('success');
+    expect(faultClearedStillInFault(cleared, 'SES-20261105-0001')).toBe(false);
+    expect(faultClearedStillInFault({ ...cleared, sessionId: null }, 'SES-20261105-0032')).toBe(false);
+    expect(faultClearedStillInFault({ ...cleared, params: { kind: 'STORAGE_FULL', coreNotRunning: true } }, 'SES-20261105-0032')).toBe(false);
+    const raised = { ...cleared, type: 'FAULT_RAISED' as const, severity: 'CRITICAL' as const };
+    expect(faultClearedStillInFault(raised, 'SES-20261105-0032')).toBe(false);
+    expect(activityTone(raised, 'SES-20261105-0032')).toBe('danger');
+  });
 });
 
 describe('sim-adapter (SIM-GAP-M85-1, SIM-GAP-M85-2)', () => {
@@ -100,6 +117,12 @@ describe('sim-adapter (SIM-GAP-M85-1, SIM-GAP-M85-2)', () => {
     expect(rows.map((row) => row.id)).toEqual(['e', 'd', 'a']);
     expect(rows[0]).toBe(events[4]);
     expect(selectStorageActivity(state, 2).map((row) => row.id)).toEqual(['e', 'd']);
+    // M3-13 (row 203): the FAULT session's id, else null (web `selectFaultSessionId`, row 110b).
+    const session = (state: string) => ({ session: { id: 'SES-20261105-0032', state } }) as unknown as Parameters<typeof selectFaultSessionId>[0];
+    expect(selectFaultSessionId(session('FAULT'))).toBe('SES-20261105-0032');
+    expect(selectFaultSessionId(session('RECOVERY'))).toBeNull();
+    expect(selectFaultSessionId(session('RECORDING'))).toBeNull();
+    expect(selectFaultSessionId({ session: null })).toBeNull();
   });
 
   it('only Supervisor and Technician may change the storage policy', () => {

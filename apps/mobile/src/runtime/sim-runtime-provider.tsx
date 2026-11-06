@@ -20,7 +20,7 @@
  * (`createMobileLive`, `sim-adapters.ts`): the replica of the Core server's state, in the same
  * `SimContext`, so every `useSim` selector reads it unchanged.
  *
- * | | SIMULATED, HEARTBEAT | LIVE (debug builds only) |
+ * | | SIMULATED, HEARTBEAT (debug `core=` link and tests only, RT-1) | LIVE (every build type, M3-02) |
  * |---|---|---|
  * | Data source | The simulator | The Live source; the simulator is not created, its snapshot is neither read nor written (MD-5) |
  * | `HeartbeatContext` below this provider | The mock-core client of `HeartbeatProvider` | The heartbeat view of the Live source's one socket; the mock-core client is stopped, and started again on leaving LIVE |
@@ -33,8 +33,9 @@
  * Exactly one data source exists per runtime mount (MD-5). Which one is decided by the stored
  * Core link source and, in a debug build, the launch URL's `core=` parameter (MD-7). Changing
  * across the LIVE boundary unmounts one source and mounts the other; SIMULATED ↔ HEARTBEAT keeps
- * the simulator, as before. A release build never builds a Live source: LIVE is not available
- * there, and `createMobileLive` is `() => null` in its bundle (MD-6).
+ * the simulator, as before. A release build carries LIVE only (RT-1, D163; AC-C-28 revised) and
+ * builds its Live source like a debug build since M3-02 (row 174 lifted the `__DEV__` gates of
+ * `createMobileLive` and `snapshotAllowed`). The MD-6 fallback below stays as a defensive path.
  */
 import { useToast } from 'heroui-native';
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, useCallback, type ReactNode } from 'react';
@@ -71,7 +72,6 @@ import {
   effectiveCoreLinkSource,
   getCoreLinkSource,
   hydrateCoreLinkSource,
-  isCoreLinkSourceAvailable,
   isCoreLinkSourceHydrated,
   tabletLinkForHeartbeat,
   useCoreLinkSource,
@@ -133,10 +133,11 @@ function useHeartbeatState(): HeartbeatState {
 
 /**
  * The Core link source of a runtime that holds a SIMULATOR. A LIVE preference cannot apply to it
- * (an injected simulator, or a build without a Live source): the link then reads as the default.
+ * (an injected simulator, or a build without a Live source): the link then reads SIMULATED, which
+ * is what the data actually is. It never reads LIVE while a simulator answers the actions.
  */
 export function simulatorLinkSource(preferred: CoreLinkSource): CoreLinkSource {
-  return preferred === 'LIVE' ? DEFAULT_CORE_LINK_SOURCE : preferred;
+  return preferred === 'LIVE' ? 'SIMULATED' : preferred;
 }
 
 /**
@@ -150,14 +151,15 @@ export function decideCoreLinkSource(): Promise<CoreLinkSource> {
 }
 
 /**
- * MD-5: may the simulator this provider creates read its stored snapshot? In a release build
- * always, and at once (`undefined`: no wait, as before): LIVE cannot be the source there. In a
- * debug build only once the source is decided and is not LIVE; with LIVE the simulator object of
- * the first frame is dropped without having read or written anything.
+ * MD-5: may the simulator this provider creates read its stored snapshot? In every build type, only
+ * once the source is decided and is not LIVE; with LIVE the simulator object of the first frame is
+ * dropped without having read or written anything. The source is judged as the provider judges it
+ * (`effectiveCoreLinkSource`), so a release build, which carries LIVE only, never restores a
+ * snapshot. M3-02 (row 174, RT-1, D163) lifted the release `__DEV__` test here together with the
+ * gate of `createMobileLive` (register L9).
  */
 function snapshotAllowed(): Promise<boolean> | undefined {
-  if (!isCoreLinkSourceAvailable('LIVE')) return undefined;
-  return decideCoreLinkSource().then((source) => source !== 'LIVE');
+  return decideCoreLinkSource().then((source) => effectiveCoreLinkSource(source) !== 'LIVE');
 }
 
 export function SimRuntimeProvider({ children, sim, simOptions, resyncBus }: SimRuntimeProviderProps) {
@@ -181,7 +183,8 @@ export function SimRuntimeProvider({ children, sim, simOptions, resyncBus }: Sim
   const mobile = sim !== undefined ? mobileLiveOf(sim) : (owned?.mobile ?? null);
   useOuterHeartbeatPaused(mobile !== null);
 
-  // MD-6: LIVE was asked for and this build holds no Live source. The simulator runs instead.
+  // MD-6, defensive since M3-02 (every build holds a Live source, RT-1, D163): LIVE was asked for and
+  // `createMobileLive` gave none. The simulator runs instead, and the log says so.
   const liveUnavailable = wantsLive && owned !== null && owned.mobile === null;
   useEffect(() => {
     if (liveUnavailable) {

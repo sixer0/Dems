@@ -32,6 +32,7 @@ import {
   SignedOutLanding,
   createRuntimeContract,
   isPairingGateHeld,
+  setCoreLinkSource,
   notePairingGate,
   releasePairingGate,
   resetPairingGateForTests,
@@ -293,6 +294,8 @@ describe('E2E-S-1: after a sign-out the app lands on Login, not on a public scre
 
 describe('E2E-S-4: while the gate holds, a warm deep link to a guarded screen opens Pair', () => {
   it('the cause, shown: `/home` became `/login`, which Expo Router drops while `(auth)` is not in the navigator', async () => {
+    // The gate is only held where pairing is required: SIMULATED is the state this test shows the cause of.
+    setCoreLinkSource('SIMULATED');
     const runtime = new FakeRuntime({ pairing: LIVE_UNPAIRED });
     const app = renderLayout('/stack-check', runtime);
     expect(app.getPathname()).toBe('/stack-check');

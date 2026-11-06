@@ -82,6 +82,22 @@ describe('Devices takes the Core through the light Live API (CLG c, AC-C-53)', (
   });
 });
 
+describe('M3-11 (D96, D106): the device commands on a Core in its own capture', () => {
+  it('one reader (`isOwnCaptureCoreState`) disables Test signal and Restart before any send; D3 from `deviceMenuHint`', () => {
+    const detail = fileText('device-detail.tsx');
+    expect(detail).toMatch(/const commandsNotAvailable = useSim\(isOwnCaptureCoreState\);/);
+    expect(detail).toMatch(/const testSignalBlocked = commandsNotAvailable \|\|/);
+    expect(detail).toMatch(/const restartBlocked = commandsNotAvailable \|\|/);
+    expect(detail).toMatch(/onPress=\{\(\) => \(testSignalBlocked \? undefined : setCommand\('TEST_SIGNAL'\)\)\}/);
+    expect(detail).toMatch(/onPress=\{\(\) => \(restartBlocked \? undefined : setCommand\('RESTART'\)\)\}/);
+    // D106: the reason sentence lives in `common.deviceMenuHint`, never in the `deviceMenu` vocabulary map.
+    expect(matching(/'common\.deviceMenuHint\.notAvailable'/)).toEqual(['device-detail.tsx']);
+    expect(matching(/'common\.deviceMenu\.notAvailable'/)).toEqual([]);
+    // The 409 handler of the dialog stays (defence in depth).
+    expect(fileText('device-command-dialog.tsx')).toMatch(/SimErrorCode\.COMMAND_UNSUPPORTED\) return t\('features\.devices\.live\.unsupported'/);
+  });
+});
+
 describe('what belongs to the runtime stays there (rules 3, 4 and 7)', () => {
   it('the folder names no network API, no Core server address, no storage package, no Live source module, no timer', () => {
     const forbidden: Record<string, RegExp> = {

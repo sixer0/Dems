@@ -1,16 +1,18 @@
 /**
  * The Core link (04_mobile_specs §4.4 step 2, §5.2 "Core link", §5.5; Q-M8 approved in D38).
  *
- * - **SIMULATED (default):** the in-app simulator is the Core. The link is the simulator's
+ * - **SIMULATED (retired on this device):** the in-app simulator is the Core. The link is the simulator's
  *   `tabletLink` (CONNECTED → ONLINE), which demo controls can drop (`setTabletLink('OFFLINE')`).
  * - **HEARTBEAT (alternative):** the link follows the mock-core heartbeat over `adb reverse`
  *   (`ws://127.0.0.1:4400/ws`): LIVE → ONLINE, anything else → OFFLINE. The runtime then drives the
  *   simulator's `tabletLink` from it, so the precheck CORE check blocks while mock-core is down
  *   (MA-10, S32-5) and the Devices screen shows the tablet offline.
- * - **LIVE (backend task W51; 04_client_integration_spec §3.1, MD-3, §9.5):** the Core server is the
+ * - **LIVE (the only source since 2026-11-05):** the Core server is the
  *   Core (`ws://127.0.0.1:4420/ws` over `adb reverse`). The data is the server's replica, not the
  *   simulator's, and the link follows the heartbeat of that one socket: LIVE → ONLINE, anything
- *   else → OFFLINE. Debug builds only, as HEARTBEAT: a release build is Simulated-only.
+ *   else → OFFLINE. SIMULATED and HEARTBEAT remain in the type for the shared simulator and the
+ *   web console; on this device they are no longer selectable and a stored value of them is read
+ *   as LIVE.
  *
  * The source is a user preference in the shared key `dems.mobile.prefs.v1`, field `coreLinkSource`.
  * This module owns only that field and writes it with `AsyncStorage.mergeItem` (D57: every writer
@@ -25,16 +27,20 @@ import { MOBILE_PREFS_KEY } from '@/motion/prefs';
 import type { CoreLinkSource } from './contract';
 import { reportRuntimeIssue } from './log';
 
-export const DEFAULT_CORE_LINK_SOURCE: CoreLinkSource = 'SIMULATED';
-export const CORE_LINK_SOURCES: readonly CoreLinkSource[] = ['SIMULATED', 'HEARTBEAT', 'LIVE'];
+export const DEFAULT_CORE_LINK_SOURCE: CoreLinkSource = 'LIVE';
+/** What the device offers: one source. Settings builds its control from this list. */
+export const CORE_LINK_SOURCES: readonly CoreLinkSource[] = ['LIVE'];
+/** Every name that still runs: the older sources stay reachable to the debug `core=` link and the tests. */
+export const KNOWN_CORE_LINK_SOURCES: readonly CoreLinkSource[] = ['SIMULATED', 'HEARTBEAT', 'LIVE'];
 
 /**
- * Whether a source can be used in this build (06_packaging_spec §2.6, D112; MD-3). The packaged
- * release APK is Simulated-only: HEARTBEAT and LIVE need `adb reverse` to the developer Mac and the
- * release manifest allows no cleartext, so both are debug-build (`__DEV__`) options only.
+ * Whether a source can be used in this build (register L5, RT-1, D163). LIVE is available in every
+ * build type, and a release build allows LIVE only. A debug build (and jest, where `__DEV__` is
+ * true) keeps the older sources of `KNOWN_CORE_LINK_SOURCES` reachable to the debug `core=` link
+ * and to the tests, never to a UI control: Settings builds its control from `CORE_LINK_SOURCES`.
  */
 export function isCoreLinkSourceAvailable(source: CoreLinkSource, isDevBuild: boolean = __DEV__): boolean {
-  return source === 'SIMULATED' || isDevBuild;
+  return source === 'LIVE' || (isDevBuild && KNOWN_CORE_LINK_SOURCES.includes(source));
 }
 
 /** The source the build actually uses: an unavailable stored or requested choice → the default. */
@@ -85,7 +91,7 @@ export function parseCoreLinkSource(raw: string | null): CoreLinkSource {
     throw new TypeError(`${MOBILE_PREFS_KEY} is not a JSON object`);
   }
   const source = (value as Record<string, unknown>).coreLinkSource;
-  return source === 'HEARTBEAT' || source === 'SIMULATED' || source === 'LIVE' ? source : DEFAULT_CORE_LINK_SOURCE;
+  return source === 'LIVE' ? source : DEFAULT_CORE_LINK_SOURCE;
 }
 
 export async function readCoreLinkSource(): Promise<CoreLinkSource> {
@@ -121,7 +127,7 @@ export function hydrateCoreLinkSource(): Promise<void> {
   hydration ??= readCoreLinkSource()
     .then((source) => {
       // A choice made before the read finished wins over the stored value.
-      // A HEARTBEAT or LIVE value stored by a debug build falls back to SIMULATED in a release build.
+      // A SIMULATED or HEARTBEAT value stored by an older build is read as LIVE.
       if (!useCoreLinkPrefsStore.getState().hydrated) {
         useCoreLinkPrefsStore.setState({ source: effectiveCoreLinkSource(source), hydrated: true });
       }
@@ -136,7 +142,7 @@ export function hydrateCoreLinkSource(): Promise<void> {
 /** Sets the source now and persists it by merge. */
 export function setCoreLinkSource(source: CoreLinkSource): void {
   if (!isCoreLinkSourceAvailable(source)) {
-    // Release builds are Simulated-only (06 §2.6); Settings renders the option disabled.
+    // A release build allows LIVE only (L5, RT-1); Settings offers LIVE alone in every build.
     reportRuntimeIssue('warn', 'runtime.coreLink.unavailableSource', new Error(`${source} is not available in this build`), { source });
     return;
   }

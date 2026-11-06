@@ -23,14 +23,16 @@
  * | Socket | React Native's `WebSocket`, with the bearer header as its third argument (CL-8); no subprotocol |
  * | Credentials | Held IN MEMORY. The stored device credential is read once, at start, through the wrapper `./secure-credentials`; the client's credential provider and the socket's header provider read memory only (D81) |
  * | Secrets port | The session token: memory only. The device credential: memory first, then the wrapper. A value is gone from memory before the port resolves |
+ * | Owed sign-out (row 224, G172-2) | `./owed-sign-out.ts`: a sign-out made while the link was down keeps its session token (memory, and the wrapper's item for a cold start) until the Live source has paid it; that token is presented by the socket and by `getAuthSession` / `signOut` only, then forgotten |
  * | Visibility | `AppState`, as for the simulator; coming back to the foreground with a STALE link reconnects at once |
  * | Reports | Every report of the Live source and every failure of the typed client goes to the persistent runtime log. A rejection without an answer of the Core is judged by the link first (R5, `probe-failure.ts`): never an `error` |
  * | Probes | A probe or the keep-alive that timed out is asked once more before its result is handed on (row FX-M1, E2E-T-1): a starved JS thread must not read as an unreachable Core |
  * | Pairing gate | Written to `pairing-gate-snapshot.ts` while the source runs, for `+native-intent` (row FX-M1, E2E-S-4) |
  *
- * **Release builds hold none of it.** The Live source, the typed client and the wrapper are loaded
- * inside a block under a literal `__DEV__` test (MD-6): Metro folds the block away in a release
- * build before it collects a module's dependencies, so `createMobileLive` is then `() => null`.
+ * **Every build holds it (M3-02, RT-1, D163).** A release build carries LIVE only (AC-C-28 as revised
+ * by D163). Until M3-02 the Live source, the typed client and the wrapper were loaded inside a block
+ * under a literal `__DEV__` test (MD-6), so a release bundle held none of it; row 174 lifted that
+ * gate. The three modules are still loaded at the first `createMobileLive` call, not at module load.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
@@ -51,6 +53,7 @@ import {
 } from '@dems/shared/sim';
 import { PAIRING_CHECKING, type PairingInfo, type PairingNotice } from './contract';
 import { reportRuntimeIssue } from './log';
+import { createMobileOwedSignOut } from './owed-sign-out';
 import { notePairingGate, releasePairingGate } from './pairing-gate-snapshot';
 import { PROBE_OPERATIONS, isRecheckable, isUnanswered, judgeLiveRejection, type JudgedReport } from './probe-failure';
 import { createCoreClock, registerCoreClock } from './core-clock';
@@ -406,13 +409,16 @@ export const COMMAND_TIMEOUT_STARVED_MS = 1_000;
 
 /**
  * The app's Live source (MD-5: created only when the Core link source is LIVE). Nothing is sent
- * and no socket is opened until `start()`. Returns `null` in a release build (MD-6): the block
- * below, with the three modules it loads, is not part of a release bundle.
+ * and no socket is opened until `start()`. Built in every build type since M3-02 (RT-1, D163: a
+ * release build carries LIVE only); the `__DEV__` gate of MD-6 is lifted (row 174). The result type
+ * keeps `null` for the provider's defensive MD-6 fallback (`sim-runtime-provider.tsx`), which no
+ * build reaches any more.
  */
 export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | null {
-  if (__DEV__) {
-    /* eslint-disable @typescript-eslint/no-require-imports -- the three modules must stay inside the __DEV__ block (MD-6) */
-    const { LIVE_DEVICE_CLEANUP_GAVE_UP_CODE, asSim, createLiveSim } = require('@dems/shared/live/source') as typeof import('@dems/shared/live/source');
+  // A plain block (was `if (__DEV__)`, MD-6): its scope is unchanged, so the body below is not re-indented.
+  {
+    /* eslint-disable @typescript-eslint/no-require-imports -- the three modules load at the first call, not at module load */
+    const { LIVE_DEVICE_CLEANUP_GAVE_UP_CODE, LIVE_SESSION_OPERATION, asSim, createLiveSim } = require('@dems/shared/live/source') as typeof import('@dems/shared/live/source');
     const { LIVE_COMMAND_TIMEOUT_MS, createCoreClient } = require('@dems/shared/client') as typeof import('@dems/shared/client');
     const store = require('./secure-credentials') as typeof import('./secure-credentials');
     const Device = require('expo-device') as typeof import('expo-device');
@@ -430,6 +436,18 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
     // ── Memory: the only place a request or a socket reads a credential from (D81). ──
     const memory: { device: PairingRedeemed | null; session: string | null } = { device: null, session: null };
     const bearer = (): string | null => memory.session ?? memory.device?.deviceCredential ?? null;
+    /**
+     * Row 224 (G172-2, D188): a sign-out owed to the Core keeps the token of its session here, apart
+     * from `memory.session`, until the Live source has paid it or found it not owed (`./owed-sign-out.ts`).
+     */
+    const owed = createMobileOwedSignOut({
+      store: { read: () => store.readOwedSignOut(), write: (value) => store.writeOwedSignOut(value), remove: () => store.deleteOwedSignOut() },
+      sessionToken: () => memory.session,
+    });
+    /** The socket's bearer and that of `OWED_SETTLEMENT_OPERATIONS`: an owed sign-out's token comes before the device credential. */
+    const settlementBearer = (): string | null => memory.session ?? owed.token() ?? memory.device?.deviceCredential ?? null;
+    /** The two requests of the Live source's `settleDebt`: which session the token names, then its sign-out. */
+    const OWED_SETTLEMENT_OPERATIONS: readonly string[] = [LIVE_SESSION_OPERATION, 'signOut'];
     /** The bearer of an operation of `DEVICE_CREDENTIAL_OPERATIONS`: never the session token. */
     const deviceBearer = (): string | null => memory.device?.deviceCredential ?? null;
 
@@ -508,6 +526,7 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
     // operation: the session token when signed in, except where the Core wants the device itself.
     const sessionClient = createCoreClient({ ...transport, credentials: bearer });
     const deviceClient = createCoreClient({ ...transport, credentials: deviceBearer });
+    const settlementClient = createCoreClient({ ...transport, credentials: settlementBearer });
     type LooseResult = { readonly ok: boolean; readonly kind?: unknown; readonly status?: number | null };
     type LooseClient = { call(operationId: string, input?: unknown): Promise<LooseResult> };
     /** Probe attempts in a row without an answer, per operation (R5: the consecutive count of `judgeLiveRejection`). */
@@ -525,7 +544,13 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
       // a JS thread starved past it (E2E-T-1: the Core answered in 28 ms, the 8 s ran out) reads as "no
       // answer"; by the re-check the thread has caught up, so its answer measures the network.
       call: (async (operationId: string, input?: unknown) => {
-        const chosen = (DEVICE_CREDENTIAL_OPERATIONS.includes(operationId) ? deviceClient : sessionClient) as unknown as LooseClient;
+        const chosen = (
+          DEVICE_CREDENTIAL_OPERATIONS.includes(operationId)
+            ? deviceClient
+            : OWED_SETTLEMENT_OPERATIONS.includes(operationId)
+              ? settlementClient
+              : sessionClient
+        ) as unknown as LooseClient;
         const calledAt = now();
         const first = await chosen.call(operationId, input);
         if (!isRecheckable(operationId, first)) {
@@ -633,6 +658,9 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
         }
       },
       sessionCleared: () => {
+        // The session slot is emptied. Row 224 (G172-2): the token of a sign-out owed for a LOCAL end is
+        // not lost with it: the Live source wrote the debt (`owed.port.write`, which took the token from
+        // this slot) before it reported the end, and the port presents it until the debt is settled.
         memory.session = null;
       },
       biometricToken: (operatorId) => biometric?.token(operatorId) ?? null,
@@ -703,11 +731,13 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
         factory: options.socketFactory ?? createMobileSocketFactory(),
         // Synchronous, from memory, asked whenever a socket is opened.
         headers: () => {
-          const value = bearer();
+          // Row 224: an owed sign-out's token opens the OPERATOR socket the Live source pays the debt on.
+          const value = settlementBearer();
           return value === null ? null : { Authorization: `Bearer ${value}` };
         },
       },
       secrets,
+      owedSignOut: owed.port,
       device: () => liveDeviceDescription(Device.modelName, Constants.expoConfig?.version),
       visibility,
       now,
@@ -806,6 +836,10 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
         // A failed or unreadable item counts as absent (MP-4); the wrapper has logged it by code.
         const stored = read.value !== null && read.value.ok ? read.value.value : null;
         if (memory.device === null && stored !== null) memory.device = stored;
+        // Row 224: an owed sign-out of an earlier process is in memory before the source starts (its
+        // `read` at start, and the socket's header, are synchronous). It never rejects.
+        const owedRead = await withinBudget(() => owed.load(), MOBILE_SECRETS_BUDGET_MS, timers, 'runtime.live.owedSignOut.read', now);
+        if (owedRead.late) reportRuntimeIssue('error', 'runtime.live.owedSignOut.read', 'The stored owed sign-out was not read in time; nothing counts as owed');
         loaded = true;
         if (memory.device !== null) setPairing('PAIRED', null, memory.device.deviceId);
         else setPairing('UNPAIRED', null, null);
@@ -869,6 +903,5 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
     });
     return mobile;
   }
-  return null;
 }
 

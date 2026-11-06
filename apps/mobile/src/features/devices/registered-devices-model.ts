@@ -10,23 +10,26 @@
  *
  * | Fact | From (never client state) |
  * |---|---|
- * | which devices | `captureDevices.devices` of kind CAMERA / MIC whose id is not a built-in id |
+ * | which devices | `captureDevices.devices` of kind CAMERA / MIC, except a built-in id on its OWN line (`drawnByOwnTile`, D92 / M3-08 R1) |
  * | badge, kind text, the name "Core Mac's ..." | `sourceClass`, `adapter` (decided by the Core; Live mode only, D83 / D131) |
  * | 'is on' | `sourceOpen` — an optional member of the shared `captureDevices` slice (SEC35-44 (4); `packages/shared/src/api/state-slices.ts`): a runtime fact, absent = not on. `sourceOnKeyOf` is the ONE rule of every surface (fix F-M4, R69-02) |
  * | used as | the selector line that names the device (`captureConfig`) |
- * | state | `online`, and the named cause of the active "not reachable" notice of the device |
+ * | state | `online`, the Core's stated `reach` (a stated NOT_REACHABLE is never hidden, register P10), and the named cause of the active "not reachable" notice of the device |
  * | rate warning | an active advisory alert `params.reason: MIC_RATE_AT_LIMIT` with the device as `target` |
  *
  * A selector hands a screen `rosterLine(state)`: ONE string, so it compares by value (F74-13) and a
  * 20 Hz meter frame renders nothing.
  */
 import type { SimState } from '@dems/shared/sim';
+import { DEVICE_CAMERA } from './device-ids';
 import { captureNoticesOf, developmentSourceOf, localDeviceStateOf, type DevelopmentSourceKind, type LocalDeviceState } from '@/features/capture-selector/capture-notices-model';
 import { micInputName, type MicNameTranslate } from '@/features/capture-selector/mic-input-name';
 
-/** The four ids the screens' own rows already draw. */
-// D60 (2026-11-04): the built-in set is the seed's — four cameras and two microphones; the roster lists what the Core holds beyond these.
-// D61 (2026-11-04): the four-channel microphone plane seeds MIC-03/MIC-04 as built-ins too (nine built-ins).
+/**
+ * The eight built-in ids the screens' own rows already draw: the seed's four cameras (D60) and four
+ * microphones (D61, the four-channel plane). The roster lists what the Core holds beyond these; a built-in id
+ * on another line than its own is listed too (`drawnByOwnTile`, audit row 190). Comment corrected by audit row 211 (M3-18, D173).
+ */
 export const BUILT_IN_SOURCE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'];
 
 /** `params.reason` of the advisory alert of a microphone whose rate controller is at its limit (capture protocol 4). */
@@ -50,6 +53,11 @@ export interface RegisteredDevice {
   readonly sourceOpen: boolean;
   /** Fix wave L (G70c-02 ruling): the Core STATES when it last checked the device (`checkedAt`, a finite number). Absent / null: no checked fact. */
   readonly checked?: boolean;
+  /**
+   * Audit row 190 (M3-08 R2, register P10): the outcome of the Core's last reach reading (`captureDevices.devices[].reach`,
+   * typed, read without a cast). Null: not stated (absent after a Core restart). It never changes `online`.
+   */
+  readonly reach: CaptureDeviceReachWord | null;
   readonly slot: RosterSlot | null;
   /** The named cause of the device's active "not reachable" notice, or null. */
   readonly cause: string | null;
@@ -58,12 +66,41 @@ export interface RegisteredDevice {
 
 type RosterState = Pick<SimState, 'captureDevices' | 'captureConfig' | 'alerts'>;
 
-/** The roster in the Core's order: cameras and microphones beyond the built-in ids. */
+/** One device of the `captureDevices` slice, as the shared simulator types it (P10 members `checkedAt` / `reach` included). */
+type CaptureDeviceEntry = SimState['captureDevices']['devices'][number];
+
+/** The words of `reach` (`CaptureDeviceReach` of the contract), as the slice types them. */
+export type CaptureDeviceReachWord = NonNullable<CaptureDeviceEntry['reach']>;
+
+/**
+ * Audit row 190 (M3-08 R1; D92, the web's row 131 `drawnByOwnTile`): TRUE only for the device a fixed
+ * row of the Devices screens draws - a built-in id standing on the line its own id names (`CAM-0n` on
+ * `VIDEO-0n`, `DEVICE_CAMERA`; `MIC-0n` on channel `MIC-0n`). Such a device appears once, as that row,
+ * and is no roster row.
+ *
+ * Why the line and not the id alone: the built-in ids are the demonstration model's seed, but a real
+ * Core mints its registry ids from the same pattern (the bench Core of 2026-11-05: ONVIF cameras
+ * `CAM-03`/`CAM-04` on VIDEO-01/02, USB microphones `MIC-03`/`MIC-04` on channels 1/2). The earlier
+ * rule - skip every built-in id - hid exactly the devices feeding the tracks. A built-in id on another
+ * line, or on none (Fix wave L, G70c-08), is a registered device like any other.
+ */
+export function drawnByOwnTile(config: Pick<SimState['captureConfig'], 'cameras' | 'mics'>, device: Pick<CaptureDeviceEntry, 'id' | 'kind'>): boolean {
+  if (!BUILT_IN_SOURCE_IDS.includes(device.id)) return false;
+  if (device.kind === 'CAMERA') {
+    const line = config.cameras.find((entry) => entry.deviceId === device.id);
+    return line !== undefined && (DEVICE_CAMERA as Readonly<Record<string, string | undefined>>)[device.id] === line.trackId;
+  }
+  if (device.kind !== 'MIC') return false;
+  const line = config.mics.find((entry) => entry.deviceId === device.id);
+  return line !== undefined && line.channel === device.id;
+}
+
+/** The roster in the Core's order: every camera and microphone of the Core's list except a built-in id on its own line (`drawnByOwnTile`). */
 export function registeredDevicesOf(state: RosterState): RegisteredDevice[] {
   const notices = captureNoticesOf(state.alerts);
   const out: RegisteredDevice[] = [];
   for (const device of state.captureDevices.devices) {
-    if ((device.kind !== 'CAMERA' && device.kind !== 'MIC') || BUILT_IN_SOURCE_IDS.includes(device.id)) continue;
+    if ((device.kind !== 'CAMERA' && device.kind !== 'MIC') || drawnByOwnTile(state.captureConfig, device)) continue;
     const kind: RosterKind = device.kind;
     const camera = kind === 'CAMERA' ? state.captureConfig.cameras.find((line) => line.deviceId === device.id) : undefined;
     const mic = kind === 'MIC' ? state.captureConfig.mics.find((line) => line.deviceId === device.id) : undefined;
@@ -76,7 +113,9 @@ export function registeredDevicesOf(state: RosterState): RegisteredDevice[] {
       model: device.model,
       host: device.host,
       adapter: device.adapter ?? null,
-      checked: sourceChecked({ checkedAt: (device as { readonly checkedAt?: unknown }).checkedAt }),
+      // M3-08 R2 (P10): the typed members, no cast. A stated reach is a checked fact (it always comes dated by `checkedAt`).
+      checked: sourceChecked({ checkedAt: device.checkedAt }) || (device.reach ?? null) !== null,
+      reach: device.reach ?? null,
       sourceClass: device.sourceClass ?? null,
       online: device.online,
       streamState: device.streamState,
@@ -115,9 +154,13 @@ export function rosterDeviceName(t: MicNameTranslate, device: Pick<RegisteredDev
   return t('common.developmentRoster.name', { kind: t('common.developmentRoster.kind.CAMERA'), id: device.id });
 }
 
-/** The state of a roster device: a named cause wins over `online` (§8f.3). */
-export function rosterDeviceState(device: Pick<RegisteredDevice, 'online' | 'cause'>): LocalDeviceState {
-  return localDeviceStateOf(device.online && device.cause === null, device.cause === 'UNREACHABLE' ? null : device.cause);
+/**
+ * The state of a roster device: a named cause wins over `online` (§8f.3). Audit row 190 (M3-08 R2,
+ * register P10 "a client prefers a stated `reach` over the word it draws from `online`"): a stated
+ * `NOT_REACHABLE` is a negative fact and is never hidden behind `online: true`.
+ */
+export function rosterDeviceState(device: Pick<RegisteredDevice, 'online' | 'cause'> & { readonly reach?: CaptureDeviceReachWord | null }): LocalDeviceState {
+  return localDeviceStateOf(device.online && device.cause === null && device.reach !== 'NOT_REACHABLE', device.cause === 'UNREACHABLE' ? null : device.cause);
 }
 
 /**

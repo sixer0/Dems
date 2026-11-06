@@ -2,7 +2,8 @@
 //
 // | Finding | Proven here |
 // |---|---|
-// | G70-02 | the sheet of EACH of the FOUR channels (D61, 2026-11-04) offers EVERY registered microphone (MIC-05 too); a microphone on no channel is put on a channel by operation 78's ONE line by channel; a microphone another channel holds is an ENABLED move option that says so (R-FLEX row 133), and its Save is ONE edit `{ unassign: [from], mics: [line] }`, so one microphone never stands on two channels; a refusal of the Core is drawn in place; the badge and the limit sentence of the Core Mac's microphone are on its option in real capture; lock and role keep the new control disabled |
+// | G70-02 | the sheet of EACH of the FOUR channels (D61, 2026-11-04) offers EVERY registered microphone (MIC-05 too); a microphone on no channel is put on a channel by operation 78's ONE line by channel; a microphone another pair holds is an ENABLED option that says so (S11), and its Save opens the confirm (M3-07, audit rows 188/189; D126, D163, D175): Swap sends ONE edit `{ mics: [to-line, from-line] }` (S1) when the target holds a microphone, Move ONE edit `{ unassign: [from], mics: [line] }` (S2) when it holds none, Cancel sends nothing - one microphone never stands on two channels; a refusal of the Core is drawn in place; the badge and the limit sentence of the Core Mac's microphone are on its option in real capture; lock and role keep the new control disabled |
+// | M3-07 R4 (row 189) | the slots are grouped as four pairs `selector-pair-N`, each microphone chip reads "Mic N (Camera N)" (T9), and "Transcribed" is drawn once, on Pair 1 |
 // | G70-02 (cameras) | CONFIRMED: a registered camera (CAM-05, D60: CAM-03/CAM-04 are built-ins) can be put on each of the four video tracks from the tablet and the phone sheet |
 // | G70-06 | INVESTIGATOR: the role sentence is drawn ONCE at the foot of Capture Sources |
 // | M4-PC-1 | "Checking your permissions…" renders while no signed-in operator is in the store, and nothing is enabled |
@@ -76,6 +77,15 @@ async function chooseAndSave(id: string): Promise<void> {
   await settle();
   await settle();
 }
+/** Audit row 189 (M3-07; D175): a microphone move is sent only from the confirm of the TARGET channel's dialog. */
+async function confirmMove(channel: string): Promise<void> {
+  fireEvent.press(screen.getByTestId(`selector-mic-swap-confirm-${channel}`));
+  await settle();
+  await settle();
+}
+/** Register S6 and S11, verbatim (shared `i18n/en/devices.ts` `devices.pairs.swapConfirm` / `onOtherPair`). */
+const S6_MIC02_TO_PAIR1 = 'Microphone MIC-02 moves to Pair 1; microphone MIC-01 moves to Pair 2.';
+const S11 = (n: number) => `in Pair ${n} - choosing it swaps the microphones`;
 
 // D61 (2026-11-04): the selector plane is FOUR simultaneous channels MIC-01..MIC-04 - every microphone
 // row is a CHANNEL row, operation 78 assigns a line by channel (the pair replacement of D133 (1) is
@@ -93,22 +103,30 @@ describe.each(WINDOWS)('G70-02 on %s: every registered microphone on each of the
     // D61: a line assigns its channel ALONE - channels 2..4 keep what they hold.
     expect(mics(h)).toEqual({ 'MIC-01': 'MIC-05', 'MIC-02': 'MIC-02', 'MIC-03': 'MIC-03', 'MIC-04': 'MIC-04' });
     expect(configAudit(h).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByTestId('capture-selector-channel-MIC-05').props.accessibilityLabel).toBe('Channel 1 (transcribed)');
+    expect(screen.getByTestId('capture-selector-channel-MIC-05').props.accessibilityLabel).toBe('Mic 1 (Camera 1)'); // M3-07 R4, T9 (row 189; D163)
     expect(screen.queryByTestId(/^capture-selector-notice-/)).toBeNull();
   });
 
-  it('channel 1: choosing the microphone of channel 2 MOVES it (one operation 78 edit, the old channel clears)', async () => {
+  it('channel 1: choosing the microphone of channel 2 SWAPS the two (one operation 78 edit, no channel left empty; M3-07, audit row 188, D126/D163 - was the D61 MOVE)', async () => {
     const h = renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     register(h);
     await openLine('MIC-01');
     // D61 (R-FLEX row 133 / T-14): the held option is ENABLED and says where it stands.
     expect(option('MIC-02').props.accessibilityState?.disabled).not.toBe(true);
-    expect(screen.getByTestId('capture-source-warning-MIC-02')).toHaveTextContent('On channel 2. Choosing it moves the microphone here.');
+    expect(screen.getByTestId('capture-source-warning-MIC-02')).toHaveTextContent(S11(2)); // M3-07 R3 (row 189; D163)
+    const before = configAudit(h).length;
     await chooseAndSave('MIC-02');
-    // The microphone left channel 2 - the old channel is Not assigned, never traded (D61).
-    expect(mics(h)).toEqual({ 'MIC-01': 'MIC-02', 'MIC-03': 'MIC-03', 'MIC-04': 'MIC-04' });
-    expect(configAudit(h)).toHaveLength(2);
+    // Row 189 (D175): the Save opened the swap confirm and sent NOTHING yet.
+    expect(screen.getByTestId('selector-mic-swap-text-MIC-01')).toHaveTextContent(S6_MIC02_TO_PAIR1);
+    expect(configAudit(h)).toHaveLength(before);
+    await confirmMove('MIC-01');
+    expect(screen.queryByTestId('selector-mic-swap-dialog-MIC-01')).toBeNull();
+    // M3-07 R1 (audit row 188; D126, D163 inverts the D61 pin "never traded"): channel 1 held MIC-01, so the two
+    // microphones TRADE channels (register S1) - channel 2 is never left without a microphone.
+    expect(mics(h)).toEqual({ 'MIC-01': 'MIC-02', 'MIC-02': 'MIC-01', 'MIC-03': 'MIC-03', 'MIC-04': 'MIC-04' });
+    // ONE CAPTURE_CONFIG_CHANGED row of the operation-80 form for the swap (D30 K-6).
+    expect(configAudit(h).slice(before).map((row) => [row.details?.['scope'], row.details?.['field']])).toEqual([['MIC', 'CHANNEL']]);
   });
 
   it('channel 2: its own sheet; MIC-05 saved becomes channel 2, the transcribed channel stays', async () => {
@@ -132,7 +150,7 @@ describe.each(WINDOWS)('G70-02 on %s: every registered microphone on each of the
     await openLine('MIC-02');
     // D61 (2026-11-04): nothing is refused any more - a held microphone moves here.
     expect(option('MIC-01').props.accessibilityState?.disabled).not.toBe(true);
-    expect(screen.getByTestId('capture-source-warning-MIC-01')).toHaveTextContent('On channel 1. Choosing it moves the microphone here.');
+    expect(screen.getByTestId('capture-source-warning-MIC-01')).toHaveTextContent(S11(1)); // M3-07 R3 (row 189; D163)
     fireEvent.press(option('MIC-01'));
     await settle();
     expect(disabled('capture-source-save')).toBe(false);
@@ -330,6 +348,90 @@ describe('row W5 (Q-02): a production camera is assigned with one of its stored 
     expect(cameraOf(h, 'VIDEO-01')).toBe('CAM-01');
   });
 });
+
+// Audit row 189 (S62 M3-07 R1-R4; register T5-T7, T9, S1, S2, S5-S11; decisions D126, D163, D175). The swap and the move
+// are sent ONLY from their confirm; the web's row 156 is the reference. Live stand-in: the recorded `client.call`.
+describe.each(WINDOWS)('M3-07 (row 189) on %s: pair groups, the swap and move confirms', (window) => {
+  const SWAP_BODY = { mics: [{ channel: 'MIC-01', inputId: 'MIC-02', deviceId: 'MIC-02' }, { channel: 'MIC-02', inputId: 'MIC-01', deviceId: 'MIC-01' }] };
+  const op78 = (call: jest.MockedFunction<Call>) => call.mock.calls.filter(([operationId]) => operationId === 'updateCaptureConfig');
+
+  it('R4: four groups selector-pair-1..4 "Camera N <-> Mic N", each microphone chip "Mic N (Camera N)", exactly ONE "Transcribed" (Pair 1)', async () => {
+    renderDevicesApp({ user: 'rina.wijaya', window });
+    await settle();
+    const card = screen.getByTestId('capture-selector');
+    expect(within(card).getAllByTestId(/^selector-pair-[0-9]+$/).map((group) => group.props.testID)).toEqual(['selector-pair-1', 'selector-pair-2', 'selector-pair-3', 'selector-pair-4']);
+    for (const n of [1, 2, 3, 4]) {
+      const group = screen.getByTestId(`selector-pair-${n}`);
+      expect(within(group).getByTestId(`selector-pair-label-${n}`)).toHaveTextContent(`Camera ${n} <-> Mic ${n}`);
+      // The pair's own two slots, and only those.
+      expect(within(group).getByTestId(`capture-selector-row-VIDEO-0${n}`)).toBeTruthy();
+      expect(within(group).getByTestId(`capture-selector-channel-MIC-0${n}`).props.accessibilityLabel).toBe(`Mic ${n} (Camera ${n})`);
+      expect(within(group).getAllByTestId(/^capture-selector-row-(?!wrap-)/)).toHaveLength(2);
+      expect(within(group).queryByTestId(`selector-pair-incomplete-${n}`)).toBeNull(); // the seeded selector: every pair complete
+    }
+    expect(within(card).getAllByText('Transcribed')).toHaveLength(1);
+    expect(within(screen.getByTestId('selector-pair-1')).getByTestId('selector-pair-transcribed-1')).toBeTruthy();
+    // The channel words of D61 are no longer drawn on the selector.
+    expect(within(card).queryByText(/^Channel [1-4]/)).toBeNull();
+  });
+
+  it('R1: the swap dialog says S6 verbatim; Cancel sends NOTHING; Confirm sends operation 78 EXACTLY ONCE with the swap body S1', async () => {
+    const call = liveAnswering(() => ({ ok: true, status: 200, data: { updatedAt: 0 } }));
+    mockLive = { client: { call } };
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    await settle();
+    register(h);
+    await openLine('MIC-01');
+    expect(screen.getByTestId('capture-source-warning-MIC-02')).toHaveTextContent(S11(2)); // R3
+    expect(screen.queryByTestId('capture-source-warning-MIC-05')).toBeNull();
+    await chooseAndSave('MIC-02');
+    // E2: choosing the microphone of Pair 2 for Pair 1 opens selector-mic-swap-dialog-MIC-01 with S5 / S6 / S7.
+    const dialog = screen.getByTestId('selector-mic-swap-dialog-MIC-01');
+    expect(within(dialog).getByText('Swap the microphones of Pair 2 and Pair 1?')).toBeTruthy(); // S5 {from: 2, to: 1}
+    expect(screen.getByTestId('selector-mic-swap-text-MIC-01').props.children).toBe(S6_MIC02_TO_PAIR1); // S6, the whole text node
+    expect(within(screen.getByTestId('selector-mic-swap-confirm-MIC-01')).getByText('Swap')).toBeTruthy(); // S7
+    expect(op78(call)).toHaveLength(0);
+    // Cancel: the dialog goes, nothing is sent.
+    fireEvent.press(screen.getByTestId('selector-mic-swap-cancel-MIC-01'));
+    await settle();
+    await settle();
+    expect(screen.queryByTestId('selector-mic-swap-dialog-MIC-01')).toBeNull();
+    expect(op78(call)).toHaveLength(0);
+    // Again, and Confirm: ONE operation 78, the S1 body (no `unassign`).
+    await openLine('MIC-01');
+    await chooseAndSave('MIC-02');
+    await confirmMove('MIC-01');
+    expect(op78(call)).toEqual([['updateCaptureConfig', { body: SWAP_BODY }]]);
+    expect(op78(call)[0]?.[1]).not.toHaveProperty('body.unassign');
+    expect(screen.queryByTestId('selector-mic-swap-dialog-MIC-01')).toBeNull();
+    // A second press has nothing left to confirm: still exactly one.
+    expect(screen.queryByTestId('selector-mic-swap-confirm-MIC-01')).toBeNull();
+    await settle();
+    expect(op78(call)).toHaveLength(1);
+  });
+
+  it('R2: an EMPTY target pair asks the move S8-S10; Confirm sends S2 once, and the pair it leaves says T7', async () => {
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    await settle();
+    // Pair 3 holds no microphone.
+    act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, mics: s.captureConfig.mics.filter((line) => line.channel !== 'MIC-03') } })));
+    await settle();
+    expect(screen.getByTestId('selector-pair-incomplete-3')).toHaveTextContent('Pair 3 is incomplete: recording needs a camera and a microphone'); // T7
+    await openLine('MIC-03');
+    expect(screen.getByTestId('capture-source-warning-MIC-02')).toHaveTextContent(S11(2));
+    const before = configAudit(h).length;
+    await chooseAndSave('MIC-02');
+    const dialog = screen.getByTestId('selector-mic-swap-dialog-MIC-03');
+    expect(within(dialog).getByText('Move the microphone of Pair 2 to Pair 3?')).toBeTruthy(); // S8
+    expect(screen.getByTestId('selector-mic-swap-text-MIC-03').props.children).toBe('Microphone MIC-02 moves to Pair 3; Pair 2 is left without a microphone.'); // S9
+    expect(within(screen.getByTestId('selector-mic-swap-confirm-MIC-03')).getByText('Move')).toBeTruthy(); // S10
+    expect(configAudit(h)).toHaveLength(before);
+    await confirmMove('MIC-03');
+    expect(mics(h)).toEqual({ 'MIC-01': 'MIC-01', 'MIC-03': 'MIC-02', 'MIC-04': 'MIC-04' });
+    expect(screen.getByTestId('selector-pair-incomplete-2')).toHaveTextContent('Pair 2 is incomplete: recording needs a camera and a microphone');
+    expect(screen.queryByTestId('selector-pair-incomplete-3')).toBeNull();
+  });
+});
 });
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -381,10 +483,11 @@ describe.each(['tabletLandscape', 'phonePortrait'] as const)('G70b-03 on %s: a s
     expect(label('VIDEO-01')).toMatch(/^Video track 1, CAM-01.*, Live$/);
     expect(label('VIDEO-02')).toMatch(/^Video track 2, CAM-02.*, Live$/);
     // D61 (2026-11-04): the rows are CHANNELS - channel 1 carries the transcribed word.
-    expect(label('MIC-01')).toMatch(/^MIC-01, .+, Channel 1 \(transcribed\)$/);
-    expect(label('MIC-02')).toMatch(/^MIC-02, .+, Channel 2$/);
-    expect(label('MIC-03')).toMatch(/^MIC-03, .+, Channel 3$/);
-    expect(label('MIC-04')).toMatch(/^MIC-04, .+, Channel 4$/);
+    // M3-07 R4 (row 189; T9, D163): the microphone rows end with their pair word "Mic N (Camera N)" (was the channel word, D61).
+    expect(label('MIC-01')).toMatch(/^MIC-01, .+, Mic 1 \(Camera 1\)$/);
+    expect(label('MIC-02')).toMatch(/^MIC-02, .+, Mic 2 \(Camera 2\)$/);
+    expect(label('MIC-03')).toMatch(/^MIC-03, .+, Mic 3 \(Camera 3\)$/);
+    expect(label('MIC-04')).toMatch(/^MIC-04, .+, Mic 4 \(Camera 4\)$/);
     for (const key of ROWS) expect(busy(key)).toBe(false);
   });
 
@@ -403,8 +506,8 @@ describe.each(['tabletLandscape', 'phonePortrait'] as const)('G70b-03 on %s: a s
     await settle();
     // D61 (2026-11-04): the line assigns channel 1 alone - the other channels keep their inputs.
     expect(Object.fromEntries(h.sim.store.getState().captureConfig.mics.map((line) => [line.channel, line.inputId]))).toEqual({ 'MIC-01': 'MIC-05', 'MIC-02': 'MIC-02', 'MIC-03': 'MIC-03', 'MIC-04': 'MIC-04' });
-    expect(label('MIC-05')).toMatch(/^MIC-05, .+, Channel 1 \(transcribed\)$/);
-    expect(label('MIC-02')).toMatch(/^MIC-02, .+, Channel 2$/);
+    expect(label('MIC-05')).toMatch(/^MIC-05, .+, Mic 1 \(Camera 1\)$/); // T9 (row 189; D163)
+    expect(label('MIC-02')).toMatch(/^MIC-02, .+, Mic 2 \(Camera 2\)$/);
     for (const key of ROWS) {
       if (key === 'MIC-01') continue; // the input left the selector - its row is gone (D61)
       expect(typeof label(key)).toBe('string');
@@ -432,8 +535,13 @@ describe.each(['tabletLandscape', 'phonePortrait'] as const)('G70b-03 on %s: a s
     await settle();
     fireEvent.press(screen.getByTestId('capture-source-save'));
     await settle();
+    // Row 189 (D175): the swap waits in its confirm - nothing is out and no row is busy until Swap is pressed.
+    expect(call.mock.calls.filter(([operationId]) => operationId === 'updateCaptureConfig')).toHaveLength(0);
+    for (const key of ROWS) expect(busy(key)).toBe(false);
+    fireEvent.press(screen.getByTestId('selector-mic-swap-confirm-MIC-01'));
+    await settle();
     // In flight: ALL FOUR microphone rows share one pending key (D61: the plane has four channels); the camera rows are not.
-    for (const [key, word] of [['MIC-01', 'Channel 1 \\(transcribed\\)'], ['MIC-02', 'Channel 2'], ['MIC-03', 'Channel 3'], ['MIC-04', 'Channel 4']] as const) {
+    for (const [key, word] of [['MIC-01', 'Mic 1 \\(Camera 1\\)'], ['MIC-02', 'Mic 2 \\(Camera 2\\)'], ['MIC-03', 'Mic 3 \\(Camera 3\\)'], ['MIC-04', 'Mic 4 \\(Camera 4\\)']] as const) {
       expect(busy(key)).toBe(true);
       expect(label(key)).toMatch(new RegExp(`^${key}, Saving…, ${word}$`));
     }

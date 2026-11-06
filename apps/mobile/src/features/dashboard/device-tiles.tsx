@@ -16,7 +16,11 @@
  * - under the test switch it still holds its number, but it is read again in the render in which the
  *   input's no-signal flag flips, so a tile mounted before the recording no longer keeps "No signal"
  *   for the whole recording (D249 O-3). The flag is a boolean selector: one render per flip, none per frame;
- * - while a session records, the tile says "Active" or "Standby" (the session's pair, read from the store).
+ *
+ * Audit row 209 (M3-17; register A3; D134, D138 R157-1): a MIC tile names its pair - "Mic N (Camera N)"
+ * (`home-mic-tile-pair-AUDIO-0N`) - and Pair 1 alone adds the chip "Transcribed"
+ * (`home-mic-tile-transcribed-AUDIO-01`), in every state, as the web Dashboard (row W3T). The former
+ * "Active" / "Standby" role chip is gone: op 81 is retired (D134).
  */
 import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { useIsFocused, useRouter, type Href } from 'expo-router';
@@ -93,8 +97,9 @@ function DeviceTile({ tile, index, live }: { tile: DeviceTileInfo; index: number
   const line = tile.line;
   const tone = !live ? 'default' : line !== null ? ((line.tone as StatusTone) ?? 'default') : (STATE_TONE[tile.state] ?? 'default');
   const stateWord = !live ? t('features.dashboard.tiles.state.unknown') : line !== null ? t(line.stateKey) : t(stateKeyFor(tile));
-  // Fix wave K (G75c-07; ux 8e.2, D84): RECORDING before the first durable fragment - no meter, no level and no
-  // "Active" / "Standby" is drawn on a microphone tile: real capture sends no level yet, and a bar would read as a recording.
+  // Fix wave K (G75c-07; ux 8e.2, D84): RECORDING before the first durable fragment - no meter and no level is drawn
+  // on a microphone tile: real capture sends no level yet, and a bar would read as a recording. (No role word either:
+  // since row 209 no tile draws one; the pair words are a fixed label, not a level.)
   const connecting = useConnectingCameras();
 
   return (
@@ -121,6 +126,7 @@ function DeviceTile({ tile, index, live }: { tile: DeviceTileInfo; index: number
           ) : (
             <MicInputSourceBadge inputId={tile.line?.deviceId ?? tile.deviceId} testID={`home-device-${tile.trackId}-source`} />
           )}
+          {tile.pair !== null ? <MicPairWords tile={tile} pair={tile.pair} /> : null}
           {!live ? <TileUnknown tile={tile} name={name} /> : tile.kind === 'camera' ? <FeedThumb tile={tile} name={name} /> : connecting ? <MicConnecting tile={tile} name={name} /> : <MicMeter tile={tile} name={name} />}
         </Surface>
       </PressableFeedback>
@@ -137,6 +143,7 @@ function FeedThumb({ tile, name }: { tile: DeviceTileInfo; name: string }) {
   const poster = DEMO_MEDIA_LIVE.poster[cameraIndex === 2 ? 'VIDEO-02' : 'VIDEO-01'];
   return (
     <CameraPreview
+      livePreview
       name={name}
       testID={`home-device-${tile.trackId}-feed`}
       cameraId={`CAM-${cameraIndex}`}
@@ -272,16 +279,26 @@ function MicMeter({ tile, name }: { tile: DeviceTileInfo; name: string }) {
         <Text testID={`home-device-${tile.trackId}-dbfs`} maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.dbfs}>
           {a11y.text}
         </Text>
-        {tile.sourceRole !== null ? (
-          <StatusChip
-            testID={`home-device-${tile.trackId}-role`}
-            size="sm"
-            tone={tile.sourceRole === 'ACTIVE' ? 'success' : 'default'}
-            label={t(`session.audioSource.role.${tile.sourceRole}`)}
-            icon={null}
-          />
-        ) : null}
       </View>
+    </View>
+  );
+}
+
+/**
+ * Audit row 209 (M3-17; register A3; D134, D138): the pair words of a MIC tile - "Mic N (Camera N)",
+ * plus the chip "Transcribed" on Pair 1 alone (the web Dashboard's `device-tile-pair-*` and
+ * `device-tile-transcribed-AUDIO-01`, row W3T). No role word is read.
+ */
+function MicPairWords({ tile, pair }: { tile: DeviceTileInfo; pair: NonNullable<DeviceTileInfo['pair']> }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.pairRow}>
+      <Text testID={`home-mic-tile-pair-${tile.trackId}`} maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.pairLabel}>
+        {t('devices.pairs.micOfCamera', { n: pair.pair })}
+      </Text>
+      {pair.transcribed ? (
+        <StatusChip testID={`home-mic-tile-transcribed-${tile.trackId}`} size="sm" tone="success" label={t('devices.pairs.transcribed')} icon={null} />
+      ) : null}
     </View>
   );
 }
@@ -308,6 +325,15 @@ const styles = StyleSheet.create({
   meterRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   meter: { flex: 1, height: 12 },
   readoutRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  // Row 209 (A3): the pair label and, on Pair 1, its "Transcribed" chip; wraps like the head on a narrow tile.
+  pairRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 6, rowGap: 4 },
+  pairLabel: {
+    flexShrink: 1,
+    fontFamily: fontFamily.native.normal,
+    fontSize: typography.caption.size,
+    lineHeight: typography.caption.lineHeight,
+    color: palette.gray,
+  },
   dbfs: {
     flexShrink: 1,
     fontFamily: fontFamily.native.mono,

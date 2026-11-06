@@ -53,7 +53,8 @@ export const sessionNewEn = {
     reasonItem: '{{check}} ({{value}})',
     previewTitle: 'Camera and audio preview',
     liveTitle: 'Live device status',
-    liveHint: 'The same eight checks run when you continue.',
+    // Row 182 (D53): the list holds every check of PRECHECK_ORDER (twelve), so the hint names no count.
+    liveHint: 'The same checks run again when you continue.',
     liveHintAfter: 'The devices check of this session has passed. This is the status the Core reports now.',
     noteTime: 'A note, not a warning: the Core takes its time from the host system clock.',
     noteSecurity: 'A note, not a warning: this Core reads no TPM and no Secure Boot state.',

@@ -1,87 +1,29 @@
-// Task 3 M5, blueprint row 73 (ux spec §3 flow 2, G4 / G5; operation 81; specs R-3; OD-09, OD-11): the
-// pure rules of the mic switch — the gate and its order, the session holder, the refusal classes, the
-// input a silence warning names, and the defensive read of `captureDurable` (D84, D91).
+// Task 3 M5, blueprint row 73 (ux spec §3 flow 2; OD-11): the pure reads of the monitor's microphone pair -
+// the pair as the Core holds it, the input a silence or no-signal warning names, and the defensive read of
+// `captureDurable` (D84, D91).
+//
+// Audit row 185 (M3-05 R1/R3; D5, D134, D136): op 81 is retired, so the gate of the toggle and the refusal
+// classes (`micSwitchGate`, `isSessionHolder`, `sessionStartRoles`, `switchRefusal`, `switchFailureFacts`) were
+// removed with it. Their cases (the G4 / G5 order, the holder, the CONFLICT / NOT_RECORDING / NOT_OPEN / OTHER
+// classes; I63 §4.4 `mic-source-model.test.ts:64-84`) are replaced by the pin below that none is exported:
+// spec M3-05 R3, second branch - no refusal path is left, so no `'FIXED_BY_PAIRING'` class (O7) is added.
 import { describe, expect, it } from '@jest/globals';
 import { MicInputId } from '@dems/shared/domain';
-import { OperatorRole, SimNotFoundError, SimTransitionError, type SimState } from '@dems/shared/sim';
-import {
-  captureDurableOf,
-  inputOfChannel,
-  isSessionHolder,
-  micSourceRole,
-  micSwitchGate,
-  selectActiveInputId,
-  selectConnectingCameras,
-  selectStandbyInputId,
-  sessionStartRoles,
-  noSignalInputOf,
-  silentInputOf,
-  switchFailureFacts,
-  switchRefusal,
-  type MicLine,
-  type MicSwitchGateInput,
-} from './mic-source-model';
+import type { SimState } from '@dems/shared/sim';
+import * as model from './mic-source-model';
 
-const ALLOWED: MicSwitchGateInput = { roleKnown: true, linkDown: false, recording: true, canStart: true, holder: true };
+const { captureDurableOf, inputOfChannel, micSourceRole, selectActiveInputId, selectConnectingCameras, selectStandbyInputId, noSignalInputOf, silentInputOf } = model;
+type MicLine = model.MicLine;
 
-describe('G4 / G5: the gate of the mic toggle (ux §3.4; E-16, P-13, OD-09)', () => {
-  it('is open only when the role is known, the link is up, a session records, SESSION_START is held and the operator is the holder', () => {
-    expect(micSwitchGate(ALLOWED)).toBeNull();
-  });
-
-  it('an unknown role is "Checking", never a refusal and never an enable — whatever else is true', () => {
-    expect(micSwitchGate({ ...ALLOWED, roleKnown: false })).toEqual({ kind: 'CHECKING' });
-    expect(micSwitchGate({ roleKnown: false, linkDown: true, recording: false, canStart: false, holder: false })).toEqual({ kind: 'CHECKING' });
-  });
-
-  it('the order of the reasons: checking, the link, the session, the role, the holder', () => {
-    const nothing = { roleKnown: true, linkDown: true, recording: false, canStart: false, holder: false };
-    expect(micSwitchGate(nothing)).toEqual({ kind: 'WAITING' });
-    expect(micSwitchGate({ ...nothing, linkDown: false })).toEqual({ kind: 'NOT_RECORDING' });
-    expect(micSwitchGate({ ...nothing, linkDown: false, recording: true })).toEqual({
-      kind: 'ROLE',
-      roles: [OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR],
-    });
-    expect(micSwitchGate({ ...nothing, linkDown: false, recording: true, canStart: true })).toEqual({ kind: 'HOLDER' });
-  });
-
-  it('the roles the sentence names are the ones that hold SESSION_START', () => {
-    expect(sessionStartRoles()).toEqual([OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR]);
-  });
-
-  it('the session holder is the operator who opened it, or any SUPERVISOR (OD-09)', () => {
-    expect(isSessionHolder({ operatorId: 'OPR-001', role: OperatorRole.INVESTIGATOR, createdBy: 'OPR-001' })).toBe(true);
-    expect(isSessionHolder({ operatorId: 'OPR-009', role: OperatorRole.INVESTIGATOR, createdBy: 'OPR-001' })).toBe(false);
-    expect(isSessionHolder({ operatorId: 'OPR-002', role: OperatorRole.SUPERVISOR, createdBy: 'OPR-001' })).toBe(true);
-    expect(isSessionHolder({ operatorId: 'OPR-003', role: OperatorRole.TECHNICIAN, createdBy: 'OPR-001' })).toBe(false);
-    // Nobody signed in and a session without a creator are not "the same nobody".
-    expect(isSessionHolder({ operatorId: null, role: null, createdBy: null })).toBe(false);
-  });
-});
-
-describe('the refusals of operation 81 (ux §3.2 steps 6-7, §3.5)', () => {
-  it('classes a Live rejection by its code and status, never by its text', () => {
-    expect(switchRefusal({ code: 'AUDIO_SOURCE_CONFLICT', status: 409, message: 'anything' })).toBe('CONFLICT');
-    expect(switchRefusal({ code: 'INVALID_STATE', status: 409 })).toBe('NOT_RECORDING');
-    expect(switchRefusal({ code: 'NOT_FOUND', status: 404 })).toBe('NOT_OPEN');
-    expect(switchRefusal({ status: 404 })).toBe('NOT_OPEN');
-    expect(switchRefusal({ code: 'INTERNAL', status: 500 })).toBe('OTHER');
-    expect(switchRefusal(new Error('AUDIO_SOURCE_CONFLICT'))).toBe('OTHER');
-    expect(switchRefusal(null)).toBe('OTHER');
-  });
-
-  it('classes what the simulator throws', () => {
-    expect(switchRefusal(new SimTransitionError(null, 'switchAudioSource'))).toBe('NOT_RECORDING');
-    expect(switchRefusal(new SimNotFoundError('captureMic', 'MIC-09'))).toBe('NOT_OPEN');
-  });
-
-  it('the facts for the runtime log hold the class, the code and the status only', () => {
-    expect(switchFailureFacts({ code: 'AUDIO_SOURCE_CONFLICT', status: 409, message: 'secret text', token: 'x' })).toEqual({
-      refusal: 'CONFLICT',
-      code: 'AUDIO_SOURCE_CONFLICT',
-      status: 409,
-    });
-    expect(switchFailureFacts(new Error('boom'))).toEqual({ refusal: 'OTHER', code: 'none', status: 0 });
+describe('row 185 (M3-05; D136): op 81 is retired - the model offers no switch gate and no refusal class', () => {
+  it('none of the switch-era exports is left; the reads the cards and the warnings use are', () => {
+    for (const name of ['micSwitchGate', 'isSessionHolder', 'sessionStartRoles', 'switchRefusal', 'switchFailureFacts']) {
+      expect(Object.prototype.hasOwnProperty.call(model, name)).toBe(false);
+    }
+    // CONTROL: the reads that stay are still exported functions.
+    for (const name of ['selectActiveInputId', 'selectStandbyInputId', 'micSourceRole', 'silentInputOf', 'noSignalInputOf', 'captureDurableOf']) {
+      expect(typeof (model as Readonly<Record<string, unknown>>)[name]).toBe('function');
+    }
   });
 });
 

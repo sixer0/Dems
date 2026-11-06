@@ -40,7 +40,7 @@ import { enterRise, useMotionSettings } from '@/motion';
 import { useAuth, useCoreErrorPresenter } from '@/runtime';
 import { PairingCodePanel } from './pairing-code-panel';
 import { PairingConnection } from './pairing-connection';
-import { selectCoreDeviceId } from './pairing-model';
+import { selectReportedCoreDeviceId, selectReportedCoreDeviceIdLive } from './pairing-model';
 import { UnpairDialog } from './unpair-dialog';
 import { useDialogPresence } from './use-dialog-presence';
 import { usePairingFlow } from './use-pairing-flow';
@@ -64,7 +64,9 @@ export function PairingScreen() {
   const { isAuthenticated } = useAuth();
   const { toast } = useToast();
   const flow = usePairingFlow();
-  const device = useSim(selectCoreDeviceId);
+  // I6 (M3-10 R1): the Core id through the S9 rule; the reserved id reads "Not reported" (system.noProducer).
+  const reportedId = useSim(flow.live ? selectReportedCoreDeviceIdLive : selectReportedCoreDeviceId);
+  const device = reportedId ?? t('system.noProducer');
   const presentCoreError = useCoreErrorPresenter();
   const [unpairAsked, setUnpairAsked] = useState(false);
   const [unpairBusy, setUnpairBusy] = useState(false);
@@ -146,6 +148,7 @@ export function PairingScreen() {
                 <PairingCodePanel
                   flow={flow}
                   device={device}
+                  deviceReported={reportedId !== null}
                   signedIn={isAuthenticated}
                   settings={settings}
                   onRequestUnpair={() => setUnpairAsked(true)}

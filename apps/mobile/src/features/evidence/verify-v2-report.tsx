@@ -11,6 +11,13 @@
  * fragment the answer names ("VIDEO-02 fragment 3 tampered (…)"); then the per-check list V-01 to
  * V-15, when the answer carries the report. The source line never changes the verdict.
  *
+ * D5 (row 208, M3-16 R3; the web's row 159): an AUDIO-0N row reads "AUDIO-02 audio file · in VIDEO-02"
+ * (`v2FileLabel`, E6); a missing or unreadable pair audio file is named in words under "Where it failed"
+ * (`evidence-v2-file-findings`); the notice AUDIO_TRACKS_MISSING is listed under "Stated in the signed
+ * manifest" (`statementsTitle`, E9) with the Core's own line, and every other notice stays under "Not
+ * covered by the package signature". A legacy answer has no AUDIO row, no such finding and no such
+ * notice: it draws exactly as before.
+ *
  * Every value drawn is the answer's (`verify-v2.ts`); a part the answer does not carry is not
  * drawn. Plain React Native views only: nothing here is animated, so there is no Reanimated state
  * to lose (E-13), and every row keeps a constant 1 px border whose colour alone says FAIL (E-15).
@@ -19,7 +26,7 @@ import { CircleCheck, CircleMinus, CircleX, FileText, FlaskConical, ShieldQuesti
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
-import { V2_SIGNING_KEY_LINE, V2_SOURCES_LINE, v2CheckName, v2FilePartOutcome, v2FragmentLine, v2Rows, type V2FilePart, type V2Check, type V2Notice, type V2Row, type V2SigningKey, type V2Sources, type VerifyV2Answer } from './verify-v2';
+import { V2_SIGNING_KEY_LINE, V2_SOURCES_LINE, V2_STATEMENT_NOTICES, v2CheckName, v2FileFindingLine, v2FileLabel, v2FilePartOutcome, v2FragmentLine, v2Rows, type V2FilePart, type V2Check, type V2Notice, type V2Row, type V2SigningKey, type V2Sources, type VerifyV2Answer } from './verify-v2';
 
 export interface VerifyV2ReportProps {
   answer: VerifyV2Answer;
@@ -30,7 +37,12 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
   const rows = v2Rows(answer);
   const failed = answer.verdict === 'FAIL';
   const namesPlace = answer.failedFragments.length > 0 || answer.chainBreaks.length > 0;
-  const fileFailed = answer.files.some((file) => !file.ok);
+  // Row 208 (M3-16 R3): a failed file row that a file-level finding explains (a missing / unreadable pair audio file) needs no "fragment not named" line.
+  const explained = new Set<string>(answer.fileFindings.map((finding) => finding.trackId));
+  const fileFailed = answer.files.some((file) => !file.ok && !explained.has(file.trackId));
+  // E9 (R159-4): AUDIO_TRACKS_MISSING is a statement of the signed manifest, never "not covered".
+  const statements = answer.notices.filter((notice) => V2_STATEMENT_NOTICES.includes(notice.code));
+  const notCovered = answer.notices.filter((notice) => !V2_STATEMENT_NOTICES.includes(notice.code));
 
   return (
     <View style={styles.root} testID={`evidence-verify-v2-${answer.verdict}`}>
@@ -52,7 +64,7 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
 
       <View style={styles.list} accessibilityLabel={t('evidence.verifyV2.resultTitle')} testID="evidence-v2-rows">
         {rows.map((row) => (
-          <ResultRow key={row.id} row={row} checks={answer.checks} />
+          <ResultRow key={row.id} row={row} checks={answer.checks} label={row.file ? v2FileLabel(row.file, answer, t) : undefined} />
         ))}
       </View>
 
@@ -78,6 +90,18 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
           ) : null}
         </View>
       ) : null}
+      {answer.fileFindings.length > 0 ? (
+        <View style={[styles.row, styles.rowFail]} accessibilityRole="alert" testID="evidence-v2-file-findings">
+          <Text maxFontSizeMultiplier={1.2} style={[styles.strong, styles.failText]}>
+            {t('evidence.verifyV2.fragment.title')}
+          </Text>
+          {answer.fileFindings.map((finding) => (
+            <Text key={`${finding.trackId}#${finding.code}`} maxFontSizeMultiplier={1.2} style={styles.body} testID={`evidence-v2-file-finding-${finding.trackId}-${finding.code}`}>
+              {v2FileFindingLine(finding, t)}
+            </Text>
+          ))}
+        </View>
+      ) : null}
       {failed && !namesPlace && fileFailed ? (
         <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-v2-fragment-not-named">
           {t('evidence.verifyV2.fragment.notNamed')}
@@ -85,7 +109,8 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
       ) : null}
 
       {answer.checks !== null ? <CheckReport checks={answer.checks} /> : null}
-      {answer.notices.length > 0 ? <Notices notices={answer.notices} /> : null}
+      {statements.length > 0 ? <Statements notices={statements} /> : null}
+      {notCovered.length > 0 ? <Notices notices={notCovered} /> : null}
     </View>
   );
 }
@@ -126,6 +151,27 @@ function Notices({ notices }: { notices: readonly V2Notice[] }) {
     <View style={styles.list} accessibilityLabel={t('evidence.verifyV2Key.noticesTitle')} testID="evidence-v2-notices">
       <Text maxFontSizeMultiplier={1.2} style={styles.strong}>
         {t('evidence.verifyV2Key.noticesTitle')}
+      </Text>
+      {notices.map((notice) => (
+        <Text key={notice.code} maxFontSizeMultiplier={1.2} style={styles.caption} testID={`evidence-v2-notice-${notice.code}`}>
+          {notice.report}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * WHAT THE SIGNED MANIFEST STATES (row 208, M3-16 R3, E9; web row 159, R159-4): the notice
+ * AUDIO_TRACKS_MISSING - the microphone of a pair did not record and its camera file holds a silent
+ * track. It fails nothing; it is said, with the Core's own line, so that the silence is never read as a quiet room.
+ */
+function Statements({ notices }: { notices: readonly V2Notice[] }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.list} accessibilityRole="text" accessibilityLabel={t('evidence.verifyV2.statementsTitle')} testID="evidence-v2-statements">
+      <Text maxFontSizeMultiplier={1.2} style={styles.strong}>
+        {t('evidence.verifyV2.statementsTitle')}
       </Text>
       {notices.map((notice) => (
         <Text key={notice.code} maxFontSizeMultiplier={1.2} style={styles.caption} testID={`evidence-v2-notice-${notice.code}`}>
@@ -182,7 +228,7 @@ function SourcesLine({ sources }: { sources: V2Sources }) {
   );
 }
 
-function ResultRow({ row, checks }: { row: V2Row; checks: readonly V2Check[] | null }) {
+function ResultRow({ row, checks, label: fileLabel }: { row: V2Row; checks: readonly V2Check[] | null; label?: string }) {
   const { t } = useTranslation();
   const Icon = row.ok ? CircleCheck : CircleX;
   const part = (ok: boolean): string => t(`evidence.verifyV2.outcome.${ok ? 'PASS' : 'FAIL'}`);
@@ -193,7 +239,8 @@ function ResultRow({ row, checks }: { row: V2Row; checks: readonly V2Check[] | n
     const outcome = v2FilePartOutcome(row.file, name, checks);
     return t(`evidence.verifyV2.outcome.${outcome === 'NOT_RUN' ? 'SKIPPED' : outcome}`);
   };
-  const label = row.file ? t('evidence.verifyV2.file', { track: row.file.trackId }) : t(`evidence.verifyV2.rows.${row.id as 'transcript' | 'manifest' | 'signature'}`);
+  // Row 208 (E6): a file row's label is `v2FileLabel` (an AUDIO-0N row is the audio file of its pair); the fallback keeps the camera wording.
+  const label = row.file ? (fileLabel ?? t('evidence.verifyV2.file', { track: row.file.trackId })) : t(`evidence.verifyV2.rows.${row.id as 'transcript' | 'manifest' | 'signature'}`);
   return (
     <View style={[styles.row, row.ok ? null : styles.rowFail]} testID={`evidence-v2-row-${row.id}-${row.ok ? 'ok' : 'fail'}`}>
       <View style={styles.rowHead}>

@@ -20,9 +20,11 @@
  * asks for the one function in `packages/shared`. Until then the cases of `stream-facts.test.ts` hold it
  * to the Core's answers.
  */
-import type { SimState } from '@dems/shared/sim';
+import type { VideoTrackId } from '@dems/shared/domain';
+import { isSlotSourceUp, SlotSourceState, type SimState } from '@dems/shared/sim';
 import { captureNoticesOf } from '@/features/capture-selector/capture-notices-model';
 import { cameraLinesInForce } from '@/features/capture-selector/selector-in-force';
+import { trackSourceOf } from './devices-model';
 
 export interface StreamFacts {
   readonly resolution: string | null;
@@ -113,11 +115,17 @@ type Line = { readonly trackId?: unknown; readonly deviceId?: unknown; readonly 
  * The fault, from what the Core reports, in this order: the line's lost stream; the line or its registered
  * device not reachable (`online: false`), or an active "not reachable" notice that names the device; the
  * camera slice's own fault of the track (`online: false`, a lens fault) - the engine's fault state.
+ *
+ * Audit row 191 (M3-08 R3): the device's state is read through the ONE source reader (`trackSourceOf` of
+ * `devices-model.ts`, the shared `slotSourceOf`): a stated `reach: NOT_REACHABLE`, `online: false` and a device
+ * the registry does not hold are each "not reachable" (`isSlotSourceUp` false). A line that names no device
+ * states no fault here (the track's status says OFFLINE).
  */
 export function statedTrackOf(state: FactsState, pick: (line: Line) => boolean): StatedTrack {
   const line = (cameraLinesInForce(state) as readonly Line[]).find(pick);
   if (line === undefined) return { ...STREAM_FACTS_NOT_STATED, fault: null };
-  const device = state.captureDevices.devices.find((entry) => entry.id === line.deviceId);
+  const source = typeof line.trackId === 'string' ? trackSourceOf(state, line.trackId as VideoTrackId) : null;
+  const sourceDown = source !== null && source.state !== SlotSourceState.NOT_ASSIGNED && !isSlotSourceUp(source);
   const camera = state.cameras.find((entry) => entry.id === line.trackId);
   const noticed = captureNoticesOf(state.alerts).some((notice) => notice.kind === 'unreachable' && notice.deviceId === line.deviceId);
   // Row W5 (Q-01): an active capture fault the Core raised about the line's camera, after the line's own lost stream.
@@ -127,7 +135,7 @@ export function statedTrackOf(state: FactsState, pick: (line: Line) => boolean):
       ? 'STREAM_LOST'
       : raised !== null
         ? raised
-        : line.online === false || device?.online === false || noticed
+        : line.online === false || sourceDown || noticed
         ? 'NOT_REACHABLE'
         : camera !== undefined && (!camera.online || camera.lens === 'FAULT')
           ? 'NO_SIGNAL'

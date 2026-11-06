@@ -1,5 +1,8 @@
 // Home view model and choreography (step 77; 04_mobile_specs §4.3, §3.7, §7.3; D28/Q1, D28/Q2, D61).
 import { describe, expect, it } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { en } from '@dems/shared/i18n';
 import type { SessionHistoryEntry } from '@dems/shared/sim';
 import { FULL_MOTION, REDUCED_MOTION, SLOW_MOTION } from '@/motion';
 import {
@@ -20,7 +23,7 @@ import {
   MIC_NO_LEVEL_TEXT,
   micReadoutKind,
   micTileFor,
-  micTileSourceRole,
+  micTilePairOf,
   primaryActionFor,
   recentRowsFor,
   storageTileFor,
@@ -189,20 +192,35 @@ describe('H3 tiles', () => {
     expect(micReadoutKind({ frameFlat: false, state: 'READY', notMeasured: false })).toBe('LEVEL');
   });
 
-  it('MIC tile source role: Active / Standby only while a session records (D61: the pair words belong to the transcription pair alone)', () => {
-    expect(micTileSourceRole({ recording: true, inputId: 'MIC-01', activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBe('ACTIVE');
-    expect(micTileSourceRole({ recording: true, inputId: 'MIC-02', activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBe('STANDBY');
-    expect(micTileSourceRole({ recording: false, inputId: 'MIC-01', activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBeNull();
-    expect(micTileSourceRole({ recording: true, inputId: undefined, activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBeNull();
-    // D61 (2026-11-04): four simultaneous channels - a tile outside the transcription pair records without a pair word.
-    expect(micTileSourceRole({ recording: true, inputId: 'MIC-03', activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBeNull();
-    expect(micTileSourceRole({ recording: true, inputId: 'MIC-04', activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBeNull();
+  // Re-pinned by audit row 209 (M3-17, register A3; D134, D138 R157-1). Was: "MIC tile source role: Active / Standby
+  // only while a session records" (row 73, D61) - op 81 is retired (D134) and the web Dashboard tiles show the pair
+  // words (D138), so the tablet Home tiles name their pair instead of a role.
+  it('MIC tile pair words (A3; D134, D138): the four microphone tracks name Pair 1..4, and exactly one - Pair 1 - is "Transcribed"', () => {
+    const tracks = ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'];
+    const pairs = tracks.map((track) => micTilePairOf(track));
+    expect(pairs).toEqual([
+      { pair: 1, transcribed: true },
+      { pair: 2, transcribed: false },
+      { pair: 3, transcribed: false },
+      { pair: 4, transcribed: false },
+    ]);
+    expect(pairs.filter((entry) => entry?.transcribed === true)).toHaveLength(1);
+    // The four labels the tiles draw with `devices.pairs.micOfCamera` and the chip `devices.pairs.transcribed` (shared en catalogue).
+    const micOfCamera = (n: number) => en.devices.pairs.micOfCamera.replace(/\{\{n\}\}/g, String(n));
+    expect(pairs.map((entry) => (entry === null ? null : micOfCamera(entry.pair)))).toEqual(['Mic 1 (Camera 1)', 'Mic 2 (Camera 2)', 'Mic 3 (Camera 3)', 'Mic 4 (Camera 4)']);
+    expect(en.devices.pairs.transcribed).toBe('Transcribed');
   });
 
-  it('task 4 row 171: a tile whose channel has no input says no role, and nothing is "Standby" to an absent active input', () => {
-    expect(micTileSourceRole({ recording: true, inputId: null, activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBeNull();
-    expect(micTileSourceRole({ recording: true, inputId: 'MIC-02', activeInputId: null, standbyInputId: null })).toBeNull();
-    expect(micTileSourceRole({ recording: true, inputId: null, activeInputId: null, standbyInputId: null })).toBeNull();
+  // Re-pinned by audit row 209 (D134, D138). Was: "task 4 row 171: a tile whose channel has no input says no role" -
+  // no tile says a role any more; the pair is fixed by channel number (D27), so it holds with or without an input.
+  it('row 209 (D134, D138): no role word - a non-microphone track has no pair, and the Home tile sources read no `session.audioSource.role.*` key', () => {
+    expect(micTilePairOf('VIDEO-01')).toBeNull();
+    expect(micTilePairOf('MIC-01')).toBeNull();
+    expect(micTilePairOf('')).toBeNull();
+    const roleKeyReads = ['home-model.ts', 'use-home-data.ts', 'device-tiles.tsx']
+      .map((file) => readFileSync(join(__dirname, file), 'utf8'))
+      .reduce((count, source) => count + (source.match(/session\.audioSource\.role/g) ?? []).length, 0);
+    expect(roleKeyReads).toBe(0);
   });
 
   it('storage: USED percent (D28/Q1) with READY / LOW / FULL tones', () => {

@@ -25,6 +25,8 @@ jest.mock('expo-keep-awake', () => ({
 beforeEach(async () => {
   await AsyncStorage.clear();
   resetCoreLinkPrefsForTests();
+  // The device default is LIVE since 2026-11-05; this file proves the simulator-backed runtime.
+  setCoreLinkSource('SIMULATED');
   resetAuthPrefsForTests();
   jest.mocked(KeepAwake.activateKeepAwakeAsync).mockClear();
   jest.mocked(KeepAwake.deactivateKeepAwake).mockClear();

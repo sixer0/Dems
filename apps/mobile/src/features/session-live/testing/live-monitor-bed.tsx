@@ -15,12 +15,11 @@
  *   delta first, or the answer first and the delta when the test calls `sendHeldDeltas()`. The Live
  *   source holds the command's continuation until the store holds that revision (CL-16).
  * - The meters are the socket's own `meters` frames (`sendMeters`), never a request (CL-11b, I8).
- * - Task 3 M5 (row 73; register MB-13): the mic switch. Operation 81 `switchAudioSource` is hosted
- *   like the other session commands (the engine runs the action; the answer is the contract's
- *   `AudioSourceState`, the delta carries `session` with the new pair), `sendMeters` names the
- *   engine's active input (it named `MIC-01` always), and `raiseMicSilent()` / `clearMicSilent()`
- *   are the warning raiser's two internal actions on the engine. A test that needs a refusal of
- *   operation 81 installs its own answer with `bed.fake.answer('switchAudioSource', ...)`.
+ * - Task 3 M5 (row 73; register MB-13): the microphones. `sendMeters` names the engine's active input
+ *   (it named `MIC-01` always), and `raiseMicSilent()` / `clearMicSilent()` are the warning raiser's
+ *   two internal actions on the engine. Audit row 185 (M3-05; D136): operation 81 `switchAudioSource`
+ *   is RETIRED - the bed answers every call `409 AUDIO_SOURCE_FIXED_BY_PAIRING`, as the Core does, and
+ *   the tablet is expected to send none (`requests('switchAudioSource')` stays empty).
  *
  * Rules the fake's authors gave every client row (decision F59): connect scripts add up (one script
  * here, installed once); the fake clock is advanced in steps with the promise jobs in between
@@ -368,13 +367,10 @@ export async function renderLiveMonitor({
     engine.sim.actions.resetClip(bodyOf(call).channel as AudioTrackId);
     return { status: 204 };
   });
-  // Operation 81 (task 3 M5, row 73): the engine switches; the answer is the pair it holds now.
-  hosted('switchAudioSource', (call) => {
-    engine.sim.actions.switchAudioSource(bodyOf(call).inputId as MicInputId);
-    const pair = engine.sim.store.getState().session?.audioSource;
-    if (pair == null) return refusal(409, 'AUDIO_SOURCE_CONFLICT', 'The requested microphone cannot become the active source.');
-    return { status: 200, body: JSON.parse(JSON.stringify(pair)) as Readonly<Record<string, unknown>> };
-  });
+  // Operation 81 is RETIRED (audit row 185, M3-05; D136): the model Core answers EVERY call as the Core does,
+  // `409 AUDIO_SOURCE_FIXED_BY_PAIRING` (the contract's `fixedByPairing` example), with nothing changed and no
+  // audit row. The tablet sends it nowhere; a request seen here is a regression the tests count.
+  answered('switchAudioSource', () => fake.example('switchAudioSource', 409, 'fixedByPairing'));
 
   fake.onConnect((connection) => {
     if (connection.state !== 'CONNECTING') return;

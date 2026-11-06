@@ -55,7 +55,8 @@ export const sessionLiveEn = {
   },
 
   // S2, task 3 M5 (row 73; D84, erratum PE-128-79): RECORDING before the first durable fragment.
-  // The mic switch itself speaks the shared words of the web twin (`session.audioSource.*`).
+  // The microphone warnings speak the shared words of the web twin (`session.audioSource.silent.*`); the switch
+  // words are retired with op 81 (audit row 185, register O6) and no longer read here.
   connecting: 'Connecting cameras…',
 
   // S5 action tiles (MB 4: Snapshot, Bookmark, Audio Monitor, Settings).
@@ -123,20 +124,15 @@ export const sessionLiveEn = {
     endedBody: 'Opening the next screen…',
   },
 
-  // Round two (JA2-06): a microphone the Core reports without a signal, said above the switch.
+  // Round two (JA2-06): a microphone the Core reports without a signal, said on the monitor (row 185: no switch).
   // D61 (2026-11-04): all four channels record at once - "active" is the TRANSCRIBED channel, and any
   // other silent channel records beside it without touching the transcript.
   micNoSignal: {
     title: '{{mic}}: no signal',
-    activeBody: 'The transcribed microphone delivers no audio. The recording continues without sound from it until the signal returns or you switch.',
+    // Audit row 185 (M3-05; D5, D138): no "or you switch" - the microphone of each pair is fixed by setup.
+    activeBody: 'The transcribed microphone delivers no audio. The recording continues without sound from it until the signal returns. The microphone of each pair is fixed by setup: check its cable or the device.',
     standbyBody: 'This microphone channel records beside the transcribed one, which is not affected.',
   },
-
-  // Task 4 row 170 (site M4): the selector in force holds no complete TRANSCRIPTION PAIR (channels 1
-  // and 2; D61 of 2026-11-04), so there is nothing to switch from or to. Said where the toggle would
-  // be; reachable only in Simulated mode (a Core in its own capture refuses the start of a session
-  // while a slot is unassigned, decision C25).
-  micPairIncomplete: 'The transcription pair (channels 1 and 2) is not complete. There is nothing to switch.',
 
   // Toasts for refused simulator actions (SimTransitionError, D61).
   errors: {

@@ -1,7 +1,7 @@
 // T-M10 (04_mobile_specs §10.1; MA-29 step 2, MA-30 step-2 part): the Start Session Devices Check,
 // the book's §5.3 pre-recording gate, on the real simulator with fake time (the simulator's manual
 // clock drives the seeded 300–700 ms per check; jest's fake timers hold every UI timer).
-//   PASS  → eight checks resolve in sequence, the simulator arms itself, Next leads to Ready;
+//   PASS  → every check of PRECHECK_ORDER (twelve since D53) resolves in sequence, the simulator arms itself, Next leads to Ready;
 //   WARN  → a warning Alert and "Acknowledge warnings"; Next only after the tick, then ARMED;
 //   BLOCK → a danger Alert naming the reason, Next disabled, "Run checks again" after the fix.
 // Import order: the test setup, then the router harness (see their headers).
@@ -11,7 +11,14 @@ import '@/navigation/testing/router-harness';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE } from '@dems/shared/api';
-import { OPERATORS, PRECHECK_ORDER, PRECHECK_TOTAL_MAX_MS, type PrecheckItem } from '@dems/shared/sim';
+import {
+  OPERATORS,
+  PRECHECK_CHECK_MAX_MS,
+  PRECHECK_CHECK_MIN_MS,
+  PRECHECK_ORDER,
+  PRECHECK_TOTAL_MAX_MS,
+  type PrecheckItem,
+} from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetMotionStateForTests } from '@/motion';
 import type { TestSim } from '@/runtime/testing/test-sim';
@@ -70,24 +77,31 @@ const checkStatus = (id: string) => screen.queryByTestId(`session-new-check-${id
 const nextButton = () => screen.getByTestId('session-new-next');
 
 describe('T-M10 Devices Check: the §5.3 gate (MA-29 step 2, MA-30)', () => {
-  it('PASS: eight checks resolve one after another within 4.9 s, then the simulator arms and Next leads to Ready', async () => {
+  // Re-pinned by row 184 (M3-04 R6, I63 §4.3), citing D53: the gate runs PRECHECK_ORDER.length checks
+  // (12 since D53, was 8). The timing bound is shared's PRECHECK_TOTAL_MAX_MS (4_900, unchanged) and
+  // the per-check bounds are shared's PRECHECK_CHECK_MIN_MS / PRECHECK_CHECK_MAX_MS (300 / 700).
+  it('PASS: every check of PRECHECK_ORDER resolves one after another within PRECHECK_TOTAL_MAX_MS (4.9 s), then the simulator arms and Next leads to Ready', async () => {
+    const total = PRECHECK_ORDER.length; // D53: 12
+    // D53: twelve checks at the per-check floor must still fit the unchanged shared bound.
+    expect(total * PRECHECK_CHECK_MIN_MS).toBeLessThanOrEqual(PRECHECK_TOTAL_MAX_MS);
     const h = await openGate();
     expect(screen.getByTestId('screen-session-new')).toBeTruthy();
     expect(screen.getByTestId('session-new-step-2')).toBeTruthy();
-    // All eight rows, in the book's order, with the first one running.
+    // All PRECHECK_ORDER rows (D53: twelve), in the book's order, with the first one running.
     for (const id of PRECHECK_ORDER) expect(screen.getByTestId(`session-new-check-${id}`)).toBeTruthy();
     expect(screen.getByTestId('session-new-check-CORE-spinner')).toBeTruthy();
     expect(checkStatus('CORE')).toBeNull();
     expect(nextButton().props.accessibilityState?.disabled).toBe(true);
 
-    // The seeded schedule: each check 300–700 ms, the whole gate ≤ 4.9 s.
+    // The seeded schedule: each check PRECHECK_CHECK_MIN_MS–PRECHECK_CHECK_MAX_MS, the whole gate ≤ PRECHECK_TOTAL_MAX_MS.
     const items = h.state().session!.precheck.items;
+    expect(items).toHaveLength(total); // D53
     const startedAt = h.state().session!.precheck.startedAt!;
     let previous = startedAt;
     for (const item of items) {
       const duration = item.resolvesAt! - previous;
-      expect(duration).toBeGreaterThanOrEqual(300);
-      expect(duration).toBeLessThanOrEqual(700);
+      expect(duration).toBeGreaterThanOrEqual(PRECHECK_CHECK_MIN_MS);
+      expect(duration).toBeLessThanOrEqual(PRECHECK_CHECK_MAX_MS);
       previous = item.resolvesAt!;
     }
     expect(previous - startedAt).toBeLessThanOrEqual(PRECHECK_TOTAL_MAX_MS);
@@ -95,13 +109,13 @@ describe('T-M10 Devices Check: the §5.3 gate (MA-29 step 2, MA-30)', () => {
     // Resolve in sequence: after the first check's time only CORE has a chip.
     h.tick(items[0]!.resolvesAt! - startedAt);
     expect(checkStatus('CORE')).toBeTruthy();
-    expect(screen.getByText('1 of 8 checked')).toBeTruthy();
+    expect(screen.getByText(`1 of ${total} checked`)).toBeTruthy(); // D53: was '1 of 8 checked'
     expect(checkStatus('SECURITY')).toBeNull();
 
     h.tick(PRECHECK_TOTAL_MAX_MS);
     for (const id of PRECHECK_ORDER) expect(screen.getByTestId(`session-new-check-${id}-status`)).toBeTruthy();
-    expect(screen.getByText('8 of 8 checked')).toBeTruthy();
-    expect(screen.getAllByText('PASS').length).toBeGreaterThanOrEqual(8);
+    expect(screen.getByText(`${total} of ${total} checked`)).toBeTruthy(); // D53: was '8 of 8 checked'
+    expect(screen.getAllByText('PASS').length).toBeGreaterThanOrEqual(total); // D53: was 8
     expect(screen.getByTestId('session-new-gate-pass')).toBeTruthy();
     expect(h.state().session!.state).toBe('ARMED');
     expect(auditTypes(h.state())).toContain('PRECHECK_PASSED');

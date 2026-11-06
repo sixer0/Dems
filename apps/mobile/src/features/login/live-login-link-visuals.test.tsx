@@ -365,6 +365,7 @@ describe('LIVE: the chip and the ring follow the runtime\'s view of the link (L-
 
 describe('SIMULATED and HEARTBEAT on the real providers: as before', () => {
   it('SIMULATED: "Core online" and a ready ring; the simulator\'s tablet link dropped: "Core offline" and a critical ring', async () => {
+    setCoreLinkSource('SIMULATED'); // the device default is LIVE since 2026-11-05
     const test = createTestSim();
     render(
       <AppProviders sim={test.sim} safeAreaMetrics={METRICS} heartbeatSocketFactory={() => new FakeHeartbeatSocket()}>

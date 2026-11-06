@@ -26,7 +26,7 @@ import { animateBreath, animateFade, useAmbientLoop, useMotionSettings, useMotio
 import { useSim } from '@dems/shared/sim';
 import { PreviewThumb, useRealCaptureView } from './camera-preview';
 import { DeviceMicMeter } from './device-mic-meter';
-import { DeviceStatusChip, DeviceStatusDot } from './device-status-chip';
+import { DeviceStatusChip, DeviceStatusDot, useNoProducerView } from './device-status-chip';
 // D61 (2026-11-04): `micChannelNumber` reads the ordinal out of the channel code the mics slice states.
 import { DEVICE_CAMERA, DEVICE_KIND, DEVICE_NAME_KEY, STATUS_LABEL_KEY, STATUS_TONE, detailFactsOf, micChannelNumber, relayWords, type DeviceId, type DeviceStatus } from './devices-model';
 import { useBookPoe, useCamera, useIsRecording, useMic, useSourceRow } from './use-devices-data';
@@ -134,6 +134,22 @@ function PoeRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
   const poe = useBookPoe();
   // SIM-GAP-M84-1 / D79: the design book's 2 ports (PoE CAM 1 active, CAM 2/AUX spare).
   const summary = t('devices.other.poeSummary', { active: poe.active, spare: poe.spare });
+  // M3-10 R3 (audit row 198; D52, I4; web row 107): on a Core in its own capture the switch has no producer - "Not reported", no summary, no state.
+  const notReported = useNoProducerView();
+  if (notReported) {
+    const word = t('system.noProducer');
+    return (
+      <RowFrame
+        deviceId={deviceId}
+        selected={selected}
+        onPress={onPress}
+        name={t(DEVICE_NAME_KEY[deviceId])}
+        statusText={word}
+        prefix={<IconTile icon={EthernetPort} color={palette.gold} />}
+        suffix={<NeutralWord text={word} testID={`device-status-${deviceId}`} />}
+      />
+    );
+  }
   return (
     <RowFrame
       deviceId={deviceId}
@@ -160,6 +176,22 @@ function RelayRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
   const recording = useIsRecording();
   // Fix wave J (JA2-33): one statement from the Core's session fact - "Lamp off" at rest, never "Active" beside a red beacon.
   const words = relayWords(status, recording);
+  // M3-10 R3 (audit row 198; D52, I4; web row 107): on a Core in its own capture the indicator has no producer - "Not reported", no lamp.
+  const notReported = useNoProducerView();
+  if (notReported) {
+    const word = t('system.noProducer');
+    return (
+      <RowFrame
+        deviceId={deviceId}
+        selected={selected}
+        onPress={onPress}
+        name={t(DEVICE_NAME_KEY[deviceId])}
+        statusText={word}
+        prefix={<RecLamp lit={false} fault={false} />}
+        suffix={<NeutralWord text={word} testID={`device-status-${deviceId}`} />}
+      />
+    );
+  }
   return (
     <RowFrame
       deviceId={deviceId}

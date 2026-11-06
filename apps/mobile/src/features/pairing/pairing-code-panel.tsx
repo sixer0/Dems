@@ -22,7 +22,8 @@
  * | 429 | A warning: a limit, not a wrong code; no count; the code stays; Retry after `retry-after` (decision D116) |
  * | No answer, a 5xx, a credential that could not be stored | "Pairing is not available right now." with a paced Retry |
  * | The request is out | Cancel is disabled: a request that left cannot be taken back |
- * | The gate holds | "Use Simulated mode" in place of Cancel (LIVE exists in debug builds only) |
+ * | The gate holds, debug build | "Use Simulated mode" in place of Cancel (`flow.simulatedOffered`, the dev-build gate of `core-link.ts`) |
+ * | The gate holds, release build | No second button before an attempt; Cancel while an attempt runs. No way out of LIVE (row 223, D174, D186, RT-1) |
  */
 import { Alert, Button, InputOTP, REGEXP_ONLY_DIGITS, Spinner } from 'heroui-native';
 import { CircleCheck } from 'lucide-react-native';
@@ -44,15 +45,17 @@ const COUNTDOWN_TOKEN = '\u0000';
 export interface PairingCodePanelProps {
   flow: PairingFlow;
   device: string;
+  /** D212 (row 226): false when `device` is I6 "Not reported"; the LIVE paired body then names no Core. */
+  deviceReported: boolean;
   /** Signed in: the hand-off returns to the app; signed out: to sign-in. */
   signedIn: boolean;
   settings: MotionSettings;
   onRequestUnpair: () => void;
 }
 
-export function PairingCodePanel({ flow, device, signedIn, settings, onRequestUnpair }: PairingCodePanelProps) {
+export function PairingCodePanel({ flow, device, deviceReported, signedIn, settings, onRequestUnpair }: PairingCodePanelProps) {
   if (flow.view === 'paired') {
-    return <PairedPanel flow={flow} device={device} signedIn={signedIn} settings={settings} onRequestUnpair={onRequestUnpair} />;
+    return <PairedPanel flow={flow} device={device} deviceReported={deviceReported} signedIn={signedIn} settings={settings} onRequestUnpair={onRequestUnpair} />;
   }
   if (!flow.live) return <CodeEntry flow={flow} settings={settings} />;
   return (
@@ -133,10 +136,14 @@ function CodeEntry({ flow, settings }: { flow: PairingFlow; settings: MotionSett
           <Button.Label>{pairing ? t('features.pairing.code.pairing') : t('mobile.pairing.pair')}</Button.Label>
         </Button>
         {flow.live && flow.blocked && !pairing ? (
-          // The gate holds: there is no screen to cancel to. LIVE exists in debug builds only (MD-3).
-          <Button testID="pairing-use-simulated" variant="outline" size="lg" onPress={flow.switchToSimulated}>
-            <Button.Label>{t('features.pairing.live.code.useSimulated')}</Button.Label>
-          </Button>
+          // The gate holds and no attempt runs: there is no screen to cancel to. The simulator is
+          // offered only where the build allows a simulated link (debug, jest). A release build draws
+          // no second button here, never one that does nothing (row 223, D174, D186).
+          flow.simulatedOffered ? (
+            <Button testID="pairing-use-simulated" variant="outline" size="lg" onPress={flow.switchToSimulated}>
+              <Button.Label>{t('features.pairing.live.code.useSimulated')}</Button.Label>
+            </Button>
+          ) : null
         ) : (
           <Button
             testID="pairing-cancel"
@@ -328,7 +335,7 @@ function invalidBody(t: ReturnType<typeof useTranslation>['t'], live: boolean, a
   return attemptsRemaining > 0 ? t('features.pairing.live.code.attemptsBeforeLock', { count: attemptsRemaining }) : t('features.pairing.live.code.invalidBody');
 }
 
-function PairedPanel({ flow, device, signedIn, settings, onRequestUnpair }: PairingCodePanelProps) {
+function PairedPanel({ flow, device, deviceReported, signedIn, settings, onRequestUnpair }: PairingCodePanelProps) {
   const { t } = useTranslation();
   const entering =
     settings.policy === 'reduced'
@@ -342,7 +349,7 @@ function PairedPanel({ flow, device, signedIn, settings, onRequestUnpair }: Pair
         action={<StatusChip testID="pairing-paired-chip" tone="success" label={t('common.pairingState.PAIRED')} icon={CircleCheck} size="sm" />}
       >
         <Text maxFontSizeMultiplier={1.2} style={styles.body} testID="pairing-paired-body">
-          {flow.live ? t('features.pairing.live.paired.body', { device, tablet: flow.tabletId ?? '' }) : t('features.pairing.paired.body', { device })}
+          {flow.live ? t(deviceReported ? 'features.pairing.live.paired.body' : 'features.pairing.live.paired.bodyNoId', { device, tablet: flow.tabletId ?? '' }) : t('features.pairing.paired.body', { device })}
         </Text>
         <View style={styles.actions}>
           {/* The manual hand-off: the same target as the automatic one (E2E-S-1), never the press event as a reason. */}

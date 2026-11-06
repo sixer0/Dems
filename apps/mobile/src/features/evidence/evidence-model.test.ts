@@ -11,6 +11,9 @@ import { createTestSim } from '@/runtime/testing/test-sim';
 import {
   EVIDENCE_FILTERS,
   EVIDENCE_STATUS_SPEC,
+  EVIDENCE_TRACK_ORDER,
+  coreIntegrityView,
+  type CoreVerdict,
   LIFECYCLE_STAGES,
   checkExportReason,
   clampPosition,
@@ -35,6 +38,7 @@ import {
   simulatedIntegrity,
 } from './evidence-model';
 import { clipMsFor, mediaForEvidence, posterForEvidence } from './evidence-media';
+import { RECORDED_VERIFY_V2_D5 } from './testing/verify-v2-recorded-d5';
 import { SCRAMBLE_MAX_UPDATES, SCRAMBLE_MS, SCRAMBLE_STEP_MS, scrambleFrame } from './use-scramble';
 
 /** The simulator's dataset at the demo instant (13 items, D61). */
@@ -187,6 +191,68 @@ describe('integrity: the package result, "verified by the Core" (D51)', () => {
     expect(model.label).toBe('SIMULATED');
     expect(model.signature.algorithm).toBe('SIMULATED-SHA256');
     expect(simulatedIntegrity(bySuffix('0001'), Date.now()).verdict).toBe('PASS');
+  });
+});
+
+describe('M3-14: the eight-track order of the integrity rows (audit row 205, D161)', () => {
+  /** An item that holds the given tracks, each with a stand-in sealed hash (not a real digest). */
+  const withTracks = (trackIds: readonly string[]): EvidenceItem => {
+    const base = bySuffix('0001');
+    return { ...base, tracks: trackIds.map((trackId) => ({ ...base.tracks[0]!, trackId, sha256: `sealed-${trackId}` })) } as EvidenceItem;
+  };
+  const EIGHT = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'];
+
+  it('EVIDENCE_TRACK_ORDER is the eight tracks, cameras first', () => {
+    expect([...EVIDENCE_TRACK_ORDER]).toEqual(EIGHT);
+  });
+
+  it('an 8-track item gives 8 rows in EVIDENCE_TRACK_ORDER, from the sealed hashes, before an answer', () => {
+    const shuffled = withTracks(['AUDIO-04', 'VIDEO-03', 'AUDIO-01', 'VIDEO-01', 'AUDIO-03', 'VIDEO-04', 'AUDIO-02', 'VIDEO-02']);
+    const view = coreIntegrityView(shuffled, null);
+    expect(view.tracks).toHaveLength(8);
+    expect(view.tracks.map((row) => row.trackId)).toEqual(EIGHT);
+    expect(view.tracks.map((row) => row.expected)).toEqual(EIGHT.map((id) => `sealed-${id}`));
+    expect(view.failed).toEqual([]);
+  });
+
+  it('a recorded D5 v2 answer (no v1 tracks, row 206 fixture) keeps the 8 rows of an 8-track item', () => {
+    const d5 = RECORDED_VERIFY_V2_D5.d5Pass.body as unknown as CoreVerdict;
+    expect(d5.tracks).toEqual([]);
+    const view = coreIntegrityView(withTracks(EIGHT), d5);
+    expect(view.tracks.map((row) => row.trackId)).toEqual(EIGHT);
+  });
+
+  it('a v1 answer that fails AUDIO-03 names it (the shared 4-track order dropped it)', () => {
+    const item = withTracks(EIGHT);
+    const verdict = {
+      evidenceId: item.id,
+      ok: false,
+      at: 1791500000000,
+      manifestOk: true,
+      signatureOk: true,
+      tracks: EIGHT.map((trackId) => ({ trackId, ok: trackId !== 'AUDIO-03', expected: `sealed-${trackId}`, actual: trackId === 'AUDIO-03' ? 'other' : `sealed-${trackId}` })),
+    } as unknown as CoreVerdict;
+    const view = coreIntegrityView(item, verdict);
+    expect(view.tracks).toHaveLength(8);
+    expect(view.failed).toEqual(['track:AUDIO-03']);
+  });
+
+  it('rule: a 4-track demo item gives its 4 rows, not 8 (rows only for tracks the item holds or the Core answered)', () => {
+    const demo = bySuffix('0001');
+    expect(demo.tracks.map((track) => track.trackId).sort()).toEqual(['AUDIO-01', 'AUDIO-02', 'VIDEO-01', 'VIDEO-02']);
+    expect(coreIntegrityView(demo, null).tracks.map((row) => row.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'AUDIO-01', 'AUDIO-02']);
+    expect(packageIntegrity(getDemoEvidencePackage('0001')!).tracks).toHaveLength(4);
+  });
+
+  it('rule: an item with no track and no answer keeps the four rows of the shared order (pre-M3-14 behaviour)', () => {
+    expect(coreIntegrityView(withTracks([]), null).tracks.map((row) => row.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'AUDIO-01', 'AUDIO-02']);
+  });
+
+  it('packageIntegrity sorts an 8-track package into EVIDENCE_TRACK_ORDER (VIDEO-03 no longer first)', () => {
+    const pkg = getDemoEvidencePackage('0001')!;
+    const extra = ['AUDIO-04', 'VIDEO-03', 'AUDIO-03', 'VIDEO-04'].map((trackId) => ({ id: `track:${trackId}`, ok: true, expected: 'x', actual: 'x' }));
+    const wide = { ...pkg, verification: { ...pkg.verification, checks: [...extra, ...pkg.verification.checks] } } as typeof pkg;
+    expect(packageIntegrity(wide).tracks.map((row) => row.trackId)).toEqual(EIGHT);
   });
 });
 

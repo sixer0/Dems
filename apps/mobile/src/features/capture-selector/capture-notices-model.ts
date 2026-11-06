@@ -13,12 +13,24 @@
  * | The state of a local device | `localDeviceStateOf` | §8f.3: the row keeps its name and its badge; nothing replaces it |
  * | What an answer of operation 97 means | `classifyRescanAnswer` | §8g.1 states 4, 6, 7, 8 |
  * | Situation C (row 139): a start with no camera, and one camera of two | `failedStartOf`, `camerasNotConnectedOf` | a failed start is FAULT with `captureDurable: false`; its cause is the alert's `params.reason`; the degraded warning is the `SESSION_START` phase |
+ * | A camera recording without the microphone of its pair (audit row 186, M3-06; S62 register N1-N5; D5, D132) | `captureNoticesOf` (`kind: 'pairedMicMissing'`), `pairedMicMissingNoticesOf`, `pairedMicMissingText` | the ACTIVE `SYSTEM` alert with `params.reason: 'PAIRED_MIC_MISSING'` (raised by the Core at the start of a capture, resolved when it ends); words = the shared sentence N3, plus N4 for Pair 1 (`params.transcribed: true`) |
  *
  * Names, never values (§8e.1): a notification carries a device id and counts. The LABEL is resolved
  * here from the id; no address, no user name and no URL is read from an alert.
  */
 import { CaptureInputScanSchema, type CaptureInputScan } from '@dems/shared/api';
-import { CaptureStartRule, captureFaultSentence, type PrecheckItem, type SimAlert } from '@dems/shared/sim';
+import { VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain';
+import {
+  CaptureAdvisoryReason,
+  CaptureStartRule,
+  MIC_CHANNEL_IDS,
+  PAIRED_MIC_MISSING_REASONS,
+  PAIRED_MIC_MISSING_UNTRANSCRIBED_SENTENCE,
+  captureFaultSentence,
+  type MicChannel,
+  type PrecheckItem,
+  type SimAlert,
+} from '@dems/shared/sim';
 import { micInputName, micInputNumber } from './mic-input-name';
 
 // ── Flow 11: situations A and B ──────────────────────────────────────────────────────────
@@ -41,13 +53,59 @@ export type CaptureNotice =
       readonly cause: NoticeCause;
       /** How many devices the one search of the pre-check found; null when no count was sent. */
       readonly searchCount: number | null;
+    }
+  | {
+      /**
+       * Audit row 186 (M3-06 R1; S62 register N2/N5): a camera of the running capture records without the
+       * microphone of its pair, so its audio track is silent; the recording continues. Advice at WARNING
+       * (shared `CAPTURE_ADVISORY_SEVERITY`), no action: the Core resolves it when the capture ends.
+       */
+      readonly kind: 'pairedMicMissing';
+      readonly alertId: string;
+      /** The camera (the alert's device; N1 device kind `CAMERA`). */
+      readonly deviceId: string;
+      /** The camera line's track `VIDEO-0N`; null when the Core sent none or a word outside the closed set. */
+      readonly trackId: VideoTrackId | null;
+      /** The channel of its pair `MIC-0N`; null when absent or outside the closed set. */
+      readonly micChannel: MicChannel | null;
+      /** Why that channel is not recorded (`NOT_ASSIGNED` / `NOT_OPENED`); null when absent or outside the closed set. */
+      readonly micMissing: PairedMicMissingReason | null;
+      /** Pair 1, the transcribed pair: the session has no transcript (N4). Only an explicit `true` counts. */
+      readonly transcribed: boolean;
     };
+
+/** One notice of a camera recording without the microphone of its pair (row 186). */
+export type PairedMicMissingNotice = Extract<CaptureNotice, { kind: 'pairedMicMissing' }>;
+export type PairedMicMissingReason = (typeof PAIRED_MIC_MISSING_REASONS)[number];
 
 const text = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? value : null);
 
+/** A word of a closed set, or null: a malformed word is dropped, never shown or guessed (S62 M3-06 "closed words"). */
+const closedWord = <T extends string>(words: readonly T[], value: unknown): T | null => (typeof value === 'string' && (words as readonly string[]).includes(value) ? (value as T) : null);
+
+/**
+ * The `PAIRED_MIC_MISSING` notice of one alert (row 186), or null when it names no camera. The optional
+ * words are read as the shared raise writes them (`raiseCaptureNoticeTransition`, audit row 149): a value
+ * outside its closed set is LEFT OUT (null), and the notice itself stays - the camera's silent audio
+ * track is still true and still a WARNING the operator must see.
+ */
+function pairedMicMissingOf(alert: SimAlert, params: NonNullable<SimAlert['params']>): PairedMicMissingNotice | null {
+  const deviceId = text(params['deviceId']) ?? text(alert.target);
+  if (deviceId === null || params['deviceKind'] !== 'CAMERA') return null;
+  return {
+    kind: 'pairedMicMissing',
+    alertId: alert.id,
+    deviceId,
+    trackId: closedWord(VIDEO_TRACK_IDS, params['trackId']),
+    micChannel: closedWord(MIC_CHANNEL_IDS, params['micChannel']),
+    micMissing: closedWord(PAIRED_MIC_MISSING_REASONS, params['micMissing']),
+    transcribed: params['transcribed'] === true,
+  };
+}
+
 /**
  * The notifications a screen draws now: the ACTIVE `SYSTEM` alerts whose `params.reason` is one of
- * the two notice reasons, newest first. A resolved alert is not in the result, so a banner is gone at
+ * the two notice reasons or, since audit row 186 (M3-06), `PAIRED_MIC_MISSING`, newest first. A resolved alert is not in the result, so a banner is gone at
  * the first state update after the Core resolved it (§8e.4); no timer hides anything.
  */
 export function captureNoticesOf(alerts: readonly SimAlert[]): CaptureNotice[] {
@@ -58,6 +116,11 @@ export function captureNoticesOf(alerts: readonly SimAlert[]): CaptureNotice[] {
     const reason = params['reason'];
     if (reason === NOTICE_REASON_DISCOVERY_EMPTY) {
       notices.push({ kind: 'discoveryEmpty', alertId: alert.id });
+      continue;
+    }
+    if (reason === CaptureAdvisoryReason.PAIRED_MIC_MISSING) {
+      const paired = pairedMicMissingOf(alert, params);
+      if (paired !== null) notices.push(paired);
       continue;
     }
     if (reason !== NOTICE_REASON_DEVICE_UNREACHABLE) continue;
@@ -79,10 +142,15 @@ export function captureNoticesOf(alerts: readonly SimAlert[]): CaptureNotice[] {
   return notices.sort((a, b) => (a.alertId < b.alertId ? 1 : a.alertId > b.alertId ? -1 : 0));
 }
 
-/** True when the alert is one of the two notices (the alert centre then words it from `params`). */
+/** True when the alert is one of the notices of `captureNoticesOf` (the alert centre then words it from `params`). */
 export function isCaptureNoticeAlert(alert: Pick<SimAlert, 'kind' | 'params'>): boolean {
   const reason = alert.kind === 'SYSTEM' ? alert.params?.['reason'] : null;
-  return reason === NOTICE_REASON_DISCOVERY_EMPTY || reason === NOTICE_REASON_DEVICE_UNREACHABLE;
+  return reason === NOTICE_REASON_DISCOVERY_EMPTY || reason === NOTICE_REASON_DEVICE_UNREACHABLE || reason === CaptureAdvisoryReason.PAIRED_MIC_MISSING;
+}
+
+/** The active `PAIRED_MIC_MISSING` notices, newest first (row 186; the Session Live band of row 187 reads these). */
+export function pairedMicMissingNoticesOf(alerts: readonly SimAlert[]): PairedMicMissingNotice[] {
+  return captureNoticesOf(alerts).flatMap((notice) => (notice.kind === 'pairedMicMissing' ? [notice] : []));
 }
 
 /**
@@ -120,8 +188,21 @@ export function deviceLabel(t: NoticeTranslate, deviceId: string): string {
   return micInputNumber(deviceId) === null ? deviceId : t(`${NOTICE_KEYS}.device`, { name: micInputName(t, deviceId), id: deviceId });
 }
 
+/**
+ * The words of a `PAIRED_MIC_MISSING` notice (row 186, S62 M3-06 R2/R3): the shared sentence N3
+ * (`captureFaultSentence`, the table behind `common.captureFault.reason.PAIRED_MIC_MISSING`) with the
+ * camera named as this app names it, then for Pair 1 the shared second sentence N4 - the order and the
+ * space of the Core's own alert text (`raiseCaptureNoticeTransition`). Nothing is worded here.
+ */
+export function pairedMicMissingText(t: NoticeTranslate, notice: PairedMicMissingNotice): string {
+  const sentence = captureFaultSentence(CaptureAdvisoryReason.PAIRED_MIC_MISSING, deviceLabel(t, notice.deviceId));
+  return notice.transcribed ? `${sentence} ${PAIRED_MIC_MISSING_UNTRANSCRIBED_SENTENCE}` : sentence;
+}
+
 export function noticeTitle(t: NoticeTranslate, notice: CaptureNotice): string {
   if (notice.kind === 'discoveryEmpty') return t(`${NOTICE_KEYS}.discoveryEmpty.title`);
+  // Row 186: the notice IS its sentence (the bell and the toast say it whole, as before through the alert's text).
+  if (notice.kind === 'pairedMicMissing') return pairedMicMissingText(t, notice);
   const device = deviceLabel(t, notice.deviceId);
   return notice.phase === 'SESSION_START' ? t(`${NOTICE_KEYS}.unreachable.sessionStart.title`, { device }) : t(`${NOTICE_KEYS}.unreachable.precheck.title`, { device });
 }

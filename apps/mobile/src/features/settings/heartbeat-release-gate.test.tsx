@@ -1,5 +1,5 @@
-// Release builds are Simulated-only (06_packaging_spec §2.6; D112, step 94): the Heartbeat Core-link
-// option is a debug-build option. Jest runs with `__DEV__ === true` (react-native's jest setup), so the
+// Release builds offer LIVE only (M3-02, RT-1, D163; was "Simulated-only", 06_packaging_spec §2.6, D112,
+// step 94): the Heartbeat and Simulated Core-link sources are debug-build options. Jest runs with `__DEV__ === true` (react-native's jest setup), so the
 // release case flips the global for the test and restores it afterwards. The Settings screen renders
 // inside the real AppProviders with an injected, hydrated test simulator (step 73's harness), as in
 // settings-screen.test.tsx.
@@ -83,33 +83,44 @@ describe('Heartbeat Core link in release builds (06 §2.6, D112)', () => {
     cleanup();
   });
 
-  it('pure gate: Heartbeat only in debug builds; Simulated always; an unavailable choice falls back', () => {
-    expect(isCoreLinkSourceAvailable('SIMULATED', false)).toBe(true);
+  // M3-02 (I63 §4.2; RT-1, D163): a release build offers LIVE, and LIVE alone. The older sources are
+  // debug-build options only (was: "Simulated always", release Simulated-only).
+  it('pure gate: release offers LIVE only; Heartbeat and Simulated only in debug builds; an unavailable choice falls back to LIVE', () => {
+    expect(isCoreLinkSourceAvailable('LIVE', false)).toBe(true); // D163: release offers LIVE
+    expect(isCoreLinkSourceAvailable('SIMULATED', false)).toBe(false); // D163: no Simulated in release
     expect(isCoreLinkSourceAvailable('HEARTBEAT', false)).toBe(false);
+    expect(isCoreLinkSourceAvailable('LIVE', true)).toBe(true);
+    expect(isCoreLinkSourceAvailable('SIMULATED', true)).toBe(true);
     expect(isCoreLinkSourceAvailable('HEARTBEAT', true)).toBe(true);
-    expect(effectiveCoreLinkSource('HEARTBEAT', false)).toBe('SIMULATED');
+    expect(effectiveCoreLinkSource('SIMULATED', false)).toBe('LIVE'); // D163
+    expect(effectiveCoreLinkSource('HEARTBEAT', false)).toBe('LIVE');
+    expect(effectiveCoreLinkSource('LIVE', false)).toBe('LIVE');
+    expect(effectiveCoreLinkSource('SIMULATED', true)).toBe('SIMULATED');
     expect(effectiveCoreLinkSource('HEARTBEAT', true)).toBe('HEARTBEAT');
-    // Jest is a debug build: the default follows __DEV__.
+    // Jest is a debug build: the gate still follows __DEV__.
     expect(isCoreLinkSourceAvailable('HEARTBEAT')).toBe(true);
   });
 
-  it('release: setCoreLinkSource(HEARTBEAT) is ignored and nothing is written', async () => {
+  it('release: setCoreLinkSource(HEARTBEAT) and setCoreLinkSource(SIMULATED) are ignored and nothing is written (D163)', async () => {
     asReleaseBuild();
     const { result } = renderHook(() => useCoreLinkSource());
     act(() => setCoreLinkSource('HEARTBEAT'));
     await flushAsync();
-    expect(result.current).toBe('SIMULATED');
+    expect(result.current).toBe('LIVE');
+    act(() => setCoreLinkSource('SIMULATED'));
+    await flushAsync();
+    expect(result.current).toBe('LIVE');
     expect(await storedPrefs()).not.toHaveProperty('coreLinkSource');
   });
 
-  it('release: a HEARTBEAT value stored by a debug build hydrates as SIMULATED', async () => {
+  it('release: a HEARTBEAT value stored by a debug build hydrates as LIVE', async () => {
     await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ coreLinkSource: 'HEARTBEAT' }));
     asReleaseBuild();
     const { result } = renderHook(() => useCoreLinkSource());
     await act(async () => {
       await hydrateCoreLinkSource();
     });
-    expect(result.current).toBe('SIMULATED');
+    expect(result.current).toBe('LIVE');
   });
 
   // Fix wave J (JA2-29, N-03; replaces "shows the Heartbeat option disabled with the developer-only hint"):
@@ -126,13 +137,14 @@ describe('Heartbeat Core link in release builds (06 §2.6, D112)', () => {
     expect(getMissingKeys()).toEqual([]);
   });
 
-  it('debug: the Heartbeat option stays enabled (dev lanes unchanged)', async () => {
+  // Since 2026-11-05 the control offers LIVE alone: the HEARTBEAT lane is no longer a segment to press,
+  // and the dev lanes are still reachable through the debug `core=` link (live-core-link.test.tsx).
+  it('debug: Settings draws the LIVE segment alone', async () => {
     await mountPreferences();
-    const heartbeat = screen.getByTestId('settings-core-link-HEARTBEAT');
-    expect(heartbeat.props.accessibilityState?.disabled ?? false).toBe(false);
+    expect(screen.getByTestId('settings-core-link-LIVE').props.accessibilityState?.disabled ?? false).toBe(false);
+    expect(screen.queryByTestId('settings-core-link-HEARTBEAT')).toBeNull();
     expect(screen.queryByText(/developer setup only/i)).toBeNull();
-    fireEvent.press(heartbeat);
     await flushAsync();
-    expect(await storedPrefs()).toMatchObject({ coreLinkSource: 'HEARTBEAT' });
+    expect(await storedPrefs()).not.toHaveProperty('coreLinkSource');
   });
 });
