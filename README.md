@@ -107,6 +107,10 @@ The audit deployed each fix wave as one lockstep copy of the changed files of on
 7. Start `postgresql@18-main` and the three DEMS units.
 8. Smoke: health 200, console and LCD 200, one `CAPTURE_BOOT_CHECKS_PASSED` with `REAL_PRODUCTION`, ledger unchanged. Pin the smoke to the worker version now deployed (`capture-worker/0.8.0`; an older pin gave a false red in DBW4). Restore the dump only if the smoke fails.
 
+### Bench host configuration
+
+The systemd units and the nftables rule of the bench host, and a template of the Core's environment file (`core.env.example`, built from the code), are in [`deploy/bench-config/`](deploy/bench-config/README.md) (decisions D274, D275). The real `/etc/dems/core.env` is never published: its README gives the full deploy-time configuration guide (environment file, PostgreSQL roles and connection files, migrations, unit install, boot verification). Share a filled `core.env` only privately, over SSH between team machines.
+
 ### Tablet app
 
 **Debug and release builds.**

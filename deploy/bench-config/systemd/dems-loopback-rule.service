@@ -1,0 +1,12 @@
+[Unit]
+Description=DEMS loopback rule for the camera listeners
+Before=dems-core.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/dems/loopback-ingest.nft
+ExecStop=/usr/sbin/nft delete table inet dems_loopback
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=DEMS bench Wi-Fi watchdog (reload rtw88 / reboot when the gateway is lost)
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dems-wifi-watchdog

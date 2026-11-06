@@ -1,0 +1,8 @@
+table inet dems_loopback
+delete table inet dems_loopback
+table inet dems_loopback {
+    chain output {
+        type filter hook output priority filter; policy accept;
+        oifname "lo" ip daddr 127.0.0.1 tcp dport 8554-8564 meta skuid != "dems-core" counter reject with tcp reset
+    }
+}
