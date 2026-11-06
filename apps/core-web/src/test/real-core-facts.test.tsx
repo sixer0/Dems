@@ -855,7 +855,8 @@ describe("every page of a Core in its own capture: Security & Audit, Devices, Da
       const state = sim.store.getState()
       expect(countedDevicesOf(state)).toBe(COUNTED_DEVICES)
       const real = { ...state, security: { ...state.security, ...SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE }, time: { ...HOST_CLOCK_TIME } }
-      expect(countedDevicesOf(real)).toEqual(COUNTED_DEVICES.filter((id) => id !== 'GNSS' && id !== 'TPM'))
+      // Row W4-2 (L6, D215), pin moved by delta: a self-capture Core counts no PoE switch and no recording lamp either.
+      expect(countedDevicesOf(real)).toEqual(COUNTED_DEVICES.filter((id) => id !== 'GNSS' && id !== 'TPM' && id !== 'POE-SWITCH' && id !== 'REC-INDICATOR'))
       expect(selectBanner(real)).toMatchObject({ kind: 'READY', issues: 0, worst: null })
       // Before the fix the same state counted "GNSS Receiver: NO FIX" for ever.
       expect(selectBanner({ ...state, time: { ...HOST_CLOCK_TIME, hostClock: undefined } as never }).worst).toBe('GNSS')
@@ -1487,7 +1488,8 @@ describe("the Core's own fact, \"Not reported\", or nothing: hashes, verify rows
       expect(simulated.otherTotal).toBe(5)
       realCore(sim)
       const own = selectSummary(sim.store.getState())
-      expect([own.otherOk, own.otherTotal]).toEqual([3, 3])
+      // Row W4-2 (L6, D215), pin moved by delta: nor the PoE switch and the lamp (no producer) - the tablet link is left.
+      expect([own.otherOk, own.otherTotal]).toEqual([1, 1])
     })
     it('System (U-14): no synthetic block - services, health, update and the banner read "Not reported"; the maintenance actions stay', async () => {
       mount('/system', 'idle', realCore)

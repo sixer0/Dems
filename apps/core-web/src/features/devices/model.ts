@@ -6,6 +6,7 @@
  */
 import { SessionState, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain'
 import { cameraLinesInForce, captureMicLines, isHostClockTime, isPlatformNotReported, isSlotSourceUp, micChannelOfTrack, selectorInForce, slotSourceOf, SlotSourceState, type SimState } from '@dems/shared/sim'
+import { isSelfCaptureCore } from '@/lib/own-capture'
 import { bookPoe, DEVICE_CAMERA, DEVICE_MIC, rearPorts, type DeviceId } from './sim-adapter'
 
 export type DeviceStatusCode =
@@ -184,8 +185,16 @@ export function deviceStatus(state: StatusInput, id: DeviceId): DeviceStatusCode
  */
 export type ViewDeviceTarget = 'BUILT_IN_DRAWER' | 'REGISTERED_DRAWER' | 'SELECTOR'
 
-export function viewDeviceTarget(deviceId: string, realCaptureCore: boolean, builtInSourceIds: readonly string[]): ViewDeviceTarget {
+/*
+ * Row W4-2 (L4, D220; the web twin of tablet row 222): `hasRosterCard` is true when the page draws the device as a
+ * REGISTERED card (`registeredRoster`: a camera / microphone of the Core's list that `drawnByOwnTile` does not keep on
+ * its own tile - a built-in id on another line or on none). Such a device opens its registered drawer, as the roster's
+ * own "View device" does (`index.tsx` `onView={setRegisteredId}`); before, the camera search sent any CAM-01..04 to
+ * the built-in drawer of the TRACK of that name while the device fed another track. Default false = the old rule.
+ */
+export function viewDeviceTarget(deviceId: string, realCaptureCore: boolean, builtInSourceIds: readonly string[], hasRosterCard = false): ViewDeviceTarget {
   if (realCaptureCore) return 'REGISTERED_DRAWER'
+  if (hasRosterCard) return 'REGISTERED_DRAWER'
   if ((COUNTED_DEVICES as readonly string[]).includes(deviceId)) return 'BUILT_IN_DRAWER'
   return builtInSourceIds.includes(deviceId) ? 'SELECTOR' : 'REGISTERED_DRAWER'
 }
@@ -228,8 +237,15 @@ export const BANNER_TONE: Record<BannerKind, DeviceTone> = {
 export function countedDevicesOf(state: Pick<SimState, 'time' | 'security'>): readonly CountedDeviceId[] {
   const hostClock = isHostClockTime(state.time)
   const tpmNotRead = isPlatformNotReported(state.security) && state.security.tpm.ok
-  if (!hostClock && !tpmNotRead) return COUNTED_DEVICES
-  return COUNTED_DEVICES.filter((id) => !(id === 'GNSS' && hostClock) && !(id === 'TPM' && tpmNotRead))
+  // Row W4-2 (L6, D215; the web twin of tablet row 227): a Core in its own capture has no producer for the PoE switch
+  // book view or the relay lamp - their rows read "Not reported" (`other-devices.tsx`, the same `isSelfCaptureCore`
+  // rule). Neither is counted: a MODEL PoE FAULT ("PoE Switch: FAULT", `bookPoe`) raised the banner on a Core that
+  // has no PoE switch, and the lamp's model STANDBY counted as a ready device nobody read.
+  const noProducer = isSelfCaptureCore(state)
+  if (!hostClock && !tpmNotRead && !noProducer) return COUNTED_DEVICES
+  return COUNTED_DEVICES.filter(
+    (id) => !(id === 'GNSS' && hostClock) && !(id === 'TPM' && tpmNotRead) && !(noProducer && (id === 'POE-SWITCH' || id === 'REC-INDICATOR')),
+  )
 }
 
 export function selectBanner(state: SimState): BannerModel {

@@ -101,6 +101,11 @@ export interface IdleMeterNotice {
   readonly deviceId: string | null;
   /** A short code word (`CARD_ABSENT`, `EXIT_1`), never a value of a card, a path or a program's output. */
   readonly detail: string;
+  /**
+   * Row W4-7 (D238): on a notice about ONE CARD's helper (`HELPER_ENDED`, `HELPER_NOT_STARTED` of a card), every
+   * microphone read of that card, in input order (`deviceId` is the first of them). Absent on the other notices.
+   */
+  readonly deviceIds?: readonly string[];
 }
 
 export interface IdleMeterLimits {
@@ -201,9 +206,10 @@ export function createIdleMeters(deps: IdleMetersDeps): IdleMeters {
   /** Moves on every suspension and at the close: a start of an older generation starts nothing more. */
   let generation = 0;
 
-  const notice = (code: IdleMeterNoticeCode, deviceId: string | null, detail: string = NO_DETAIL): void => {
+  const notice = (code: IdleMeterNoticeCode, deviceId: string | null, detail: string = NO_DETAIL, deviceIds?: readonly string[]): void => {
     try {
-      deps.onNotice?.(Object.freeze({ code, deviceId, detail: DETAIL_WORD.test(detail) ? detail : NO_DETAIL }));
+      const word = DETAIL_WORD.test(detail) ? detail : NO_DETAIL;
+      deps.onNotice?.(Object.freeze(deviceIds === undefined ? { code, deviceId, detail: word } : { code, deviceId, detail: word, deviceIds: Object.freeze([...deviceIds]) }));
     } catch {
       // An observer never changes what the unit does.
     }
@@ -397,12 +403,17 @@ export function createIdleMeters(deps: IdleMetersDeps): IdleMeters {
       void helper.ended.then((exit) => {
         if (running.get(entry.key) === own) running.delete(entry.key);
         if (own.stopping) return;
-        notice(IdleMeterNoticeCode.HELPER_ENDED, inputs[0]?.deviceId ?? null, exit.spawnFailed ? 'NOT_STARTED' : typeof exit.exitCode === 'number' ? `EXIT_${String(exit.exitCode)}` : (exit.signal ?? NO_DETAIL));
+        notice(
+          IdleMeterNoticeCode.HELPER_ENDED,
+          inputs[0]?.deviceId ?? null,
+          exit.spawnFailed ? 'NOT_STARTED' : typeof exit.exitCode === 'number' ? `EXIT_${String(exit.exitCode)}` : (exit.signal ?? NO_DETAIL),
+          inputs.map((input) => input.deviceId),
+        );
       });
       try {
         await helper.started;
       } catch (error) {
-        notice(IdleMeterNoticeCode.HELPER_NOT_STARTED, inputs[0]?.deviceId ?? null, detailOf(error));
+        notice(IdleMeterNoticeCode.HELPER_NOT_STARTED, inputs[0]?.deviceId ?? null, detailOf(error), inputs.map((input) => input.deviceId));
         continue;
       }
       // Suspended while the door was starting it: it ends at once.

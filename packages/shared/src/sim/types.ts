@@ -918,8 +918,16 @@ export type CaptureIngestStateName = 'WAITING' | 'CONNECTED' | 'ENDED';
  * 2026-11-04 maps them onto the channel plane: `PRIMARY` is the input on channel `MIC-01`,
  * `STANDBY` the input on channel `MIC-02` (`sim/audio.ts`, `channelOfWorkerMicRole`). A worker
  * widened to the four channels is a separate protocol lane.
+ *
+ * Row W4-6 (D235, 2026-11-06): the role alone cannot name channels 3 and 4 (both are `STANDBY` on
+ * that lane), so a level may also name its MICROPHONE by `deviceId` (`MIC-03`, the capture-device
+ * ID of `captureConfig.mics[].deviceId`). When it does, the line is found by that ID and the role
+ * is not read; only a level without `deviceId` is placed by its role (the older callers). The
+ * worker wire (capture-protocol) already carries `deviceId` on every level: no protocol change.
  */
 export interface CaptureTelemetryLevel {
+  /** The microphone this level is of (capture-device ID). Preferred over `role` when present (row W4-6, D235). */
+  deviceId?: string;
   role: MicRole;
   /** dBFS, at most 0. `null`: the input delivers no samples (the meter shows NO SIGNAL). */
   dbfs: number | null;
@@ -1871,7 +1879,7 @@ export interface SimActions {
    * One TELEMETRY frame of the capture worker (about 20 Hz). The levels go to the meters through
    * the audio subsystem and are never stored. The ingest states set `online` and `streamState` of
    * the camera in `captureDevices` and `captureConfig`; a frame that changes neither commits
-   * nothing. Unknown device IDs and roles are ignored (`captureTelemetryIgnored` names them, and
+   * nothing. Unknown device IDs, mic IDs and roles are ignored (`captureTelemetryIgnored` names them, and
    * the Core server logs each once). Writes no audit row and no event.
    */
   applyCaptureTelemetry(telemetry: CaptureTelemetryInput): void;

@@ -8,7 +8,8 @@ import { ArrowRight, Cctv, ChevronDown, Mic } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { noLiveLevelsOf, useSim } from '@dems/shared/sim'
 import { DbfsMeter } from '@/components/composed'
-import { CameraPreview } from '@/features/devices/camera-preview'
+import { ReachGatedCameraPreview } from '@/features/devices/reach-gated-preview'
+import { useDocumentVisible } from '@/features/devices/idle-meter-lease'
 import { useRealCaptureCore } from '@/features/devices/source-class'
 import { trackFaultText, useCameraCaptureFault, useStatedFormat } from '@/features/devices/stream-facts'
 import { useMotionPolicy } from '@/motion'
@@ -23,8 +24,8 @@ const MIC_SHORT = { 'AUDIO-01': 'common.devices.mic1', 'AUDIO-02': 'common.devic
 
 /**
  * R: CAMERA & INPUT STATUS (01_specs §14.5.2 R; research/04 §3.2 R). A grid of kit
- * `Card variant="tertiary"` tiles: one per camera track (D60, 2026-11-04: four; poster thumbnails,
- * `live={false}` so only the main feed decodes video, D70) and the two microphones with a DbfsMeter
+ * `Card variant="tertiary"` tiles: one per camera track (D60, 2026-11-04: four; `live={false}`: no demo loop decodes
+ * here, D70 - on a Core in real capture each thumb is the Core's reach-gated live picture, row W4-1 / D231) and the microphones with a DbfsMeter
  * `compact` on the transient channel. Tiles reveal 60 ms apart (M-PG-SM t = 460).
  */
 /** The stored stream statement of a track on a Core in real capture, or its fault (`features/devices/stream-facts.ts`). Nothing off such a Core. */
@@ -41,6 +42,8 @@ function StatedFormat({ cameraId }: { cameraId: VideoTrackId }) {
 export function InputsPanel({ paused }: { paused: boolean }) {
   const { t } = useTranslation()
   const realCapture = useRealCaptureCore()
+  // Row W4-1 (L8, D231): the thumbs are the Core's live pictures while the tab is visible (a hidden tab closes them).
+  const visible = useDocumentVisible()
   const m = useMotionPolicy()
   const cameraStore = useSim((s) => s.cameras)
   const micStore = useSim((s) => s.mics)
@@ -75,10 +78,13 @@ export function InputsPanel({ paused }: { paused: boolean }) {
         {cameras.map((camera) => (
           <motion.div key={camera.id} variants={m.variants.row} className="min-w-0">
             <Card variant="tertiary" className="sm-input-tile" data-device={camera.id} data-ready={camera.ready ? 'true' : 'false'}>
-              <CameraPreview
+              {/* Row W4-1 (L8, D231): reach-gated as the feed (no token while NOT_REACHABLE). The 108 x 61 px thumb has no room
+                  for "Try again" (session-monitor.css hides it there): the feed of the selected camera carries it. */}
+              <ReachGatedCameraPreview
                 cameraId={camera.id}
                 variant="thumb"
                 live={false}
+                livePreview={visible}
                 noSignal={!camera.ready}
                 ariaLabel={camera.name}
                 className="sm-input-thumb"

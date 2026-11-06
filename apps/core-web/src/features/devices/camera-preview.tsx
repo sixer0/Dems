@@ -36,9 +36,15 @@ import { deferEffectStart } from '@/lib/effect-start'
  * | A Core in real capture, `livePreview` set by the caller and a PRODUCTION camera on the track | `LivePreview`: the Core's live picture (operation 112, decisions D51 / D53) |
  * | A Core in real capture otherwise | The neutral "No preview" tile: a stock picture beside real evidence reads as the camera's picture |
  *
- * `livePreview` is set only by Devices & Inputs (camera tiles), Session New (camera previews) and the
- * Session Monitor (live session feed). The Dashboard and the inputs thumbnails keep the tile. (It is not
- * `live`: that prop of `CameraFeed` is the demo loop's decode switch, which the callers already set.)
+ * `livePreview` is set by Devices & Inputs (camera tiles, with `autoPreview`) and, through
+ * `ReachGatedCameraPreview` (`reach-gated-preview.tsx`: no token while the Core states NOT_REACHABLE), by
+ * Session New (camera previews), the Session Monitor (live feed, full-screen view and input thumbnails) and
+ * the Dashboard (camera tiles and the active session's thumbnail; row W4-1, D231). (It is not `live`: that
+ * prop of `CameraFeed` is the demo loop's decode switch, which the callers already set.) Viewers of one
+ * camera share its one pipeline on the Core: `CAMERA_PREVIEW_LIMITS` = 1 pipeline per camera, 4 in all,
+ * 4 viewers per camera, 16 in all (`packages/shared/src/api/devices.ts`). One console tab shows one page,
+ * so it holds at most 2 viewers of a camera (Dashboard: tile + session thumbnail; Session Monitor: feed or
+ * full-screen view + thumbnail) and 5 in all.
  * D62 (2026-11-05) adds `autoPreview`, set only by the Devices tile: its session then opens by itself
  * while the track's selector line reads online (debounced ~1 s, at most the Core's global pipeline
  * cap of `CAMERA_PREVIEW_LIMITS.pipelines` sessions, closed on

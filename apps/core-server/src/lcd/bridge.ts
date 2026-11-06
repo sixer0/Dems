@@ -1,6 +1,6 @@
 import type { LcdIntegrationStatus } from '@dems/shared/api';
 import { SessionState, TrackRecState, VIDEO_TRACK_IDS } from '@dems/shared/domain'; // VIDEO_TRACK_IDS: D60 (2026-11-04)
-import { isSlotSourceUp, slotSourceOf } from '@dems/shared/sim'; // audit fix row L3 (D104): row 128's one source rule
+import { SlotSourceState, slotSourceOf } from '@dems/shared/sim'; // audit fix row L3 (D104): row 128's one source rule; row L3b (D158): stated REACHABLE only
 import { z } from 'zod';
 import type { EngineHost } from '../engine';
 
@@ -34,6 +34,14 @@ const TRACKS = VIDEO_TRACK_IDS; // D60 (2026-11-04): the panel's channels follow
  * `recording` keeps its own facts (durable session, assigned LIVE stream, REC / DEGRADED): a reach
  * reading never stops a REC lamp of a stream the Core still records - the console likewise shows
  * the track's REC state beside a FAULT lens. A SIMULATED Core is unchanged (no reach rule).
+ *
+ * Audit fix row L3b (D158, O-163-1; fix wave W4, D232): an honest panel. The lamp has two states
+ * only, so it cannot say "Not checked" (D113) as the console does. `isSlotSourceUp` lets NOT_CHECKED
+ * draw ready (it claims nothing against the source); a lit lamp, though, is a claim FOR it. So the
+ * lamp lights only on a stated REACHABLE, or on an open source (the Core holds the track's stream
+ * LIVE, the strongest reach fact there is). No reach reading since a Core start, NOT_REACHABLE,
+ * OFFLINE or NOT_ASSIGNED -> unlit. Same reading (`slotSourceOf` over `captureDevices.devices[]`),
+ * stricter threshold; NOT_REACHABLE stays unlit even with a LIVE stream (row L3 case kept).
  */
 export function lcdChannelsOf(state: CommittedState | null, count: number, real: boolean): LcdIntegrationStatus['channels'] {
   const session = state?.session;
@@ -46,8 +54,11 @@ export function lcdChannelsOf(state: CommittedState | null, count: number, real:
     const streamReady = camera?.online === true && camera.lens === 'READY' &&
       (!real || (slot !== undefined && slot.deviceId !== '' && slot.online));
     // Audit fix row L3: the assigned device plus its reach, as operations 44 / 46 read it (real capture only).
-    const cameraConnected = streamReady &&
-      (!real || (state !== null && track !== null && isSlotSourceUp(slotSourceOf(state.captureConfig, state.captureDevices.devices, track))));
+    // Row L3b (D158): lit only on a stated REACHABLE or an open (LIVE) stream; NOT_CHECKED no longer lights it.
+    const source = real && state !== null && track !== null
+      ? slotSourceOf(state.captureConfig, state.captureDevices.devices, track).state : null;
+    const cameraConnected = streamReady && (!real || source === SlotSourceState.REACHABLE ||
+      (source === SlotSourceState.NOT_CHECKED && slot?.streamState === 'LIVE'));
     return {
       channel: index + 1, track, deviceId: slot?.deviceId ?? null,
       cameraConnected,

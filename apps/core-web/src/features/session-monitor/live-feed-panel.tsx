@@ -11,6 +11,7 @@ import { selectSystemState, useSim } from '@dems/shared/sim'
 import { GlowRing } from '@/components/composed'
 import { RecIndicator, useSimSecond, type CameraFeedHandle } from '@/components/media'
 import { ReachGatedCameraPreview } from '@/features/devices/reach-gated-preview'
+import { useDocumentVisible } from '@/features/devices/idle-meter-lease'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
@@ -20,6 +21,7 @@ import { logSessionMonitorError } from './log'
 import { captureFailedStartText, type CaptureFailedStart } from '@/lib/capture-notices'
 import { selectCoreSealsInterrupted, selectFeed, type SessionPhase } from './model'
 import { Panel } from './panel'
+import { useReachRecheckOnOpen } from './reach-recheck'
 
 // D60 (2026-11-04): the switch iterates the four video tracks from the shared truth.
 const CAMERA_IDS: readonly VideoTrackId[] = VIDEO_TRACK_IDS
@@ -82,6 +84,10 @@ export function LiveFeedPanel({
   const [pendingCamera, setPendingCamera] = useState<VideoTrackId | null>(null)
   const selectedCamera = pendingCamera ?? feed.activeCameraId
   const [fullscreen, setFullscreen] = useState(false)
+  // Row W4-1 (L8, D231): the feed's stream closes on a hidden tab like the Devices tile's; opening the monitor asks the
+  // Core ONCE per stale unreachable camera whether it answers again (the "Try again" path, `reach-recheck.ts`).
+  const visible = useDocumentVisible()
+  useReachRecheckOnOpen()
   // Row 139 (D84; ux §8e.2): before the first durable fragment nothing is presented as live.
   const live = (phase === 'RECORDING' && !feed.connecting) || phase === 'FINALIZING'
   const label = t('session.feed.cameraLabel', { camera: feed.cameraName, room: feed.room })
@@ -170,7 +176,7 @@ export function LiveFeedPanel({
             dimmed={paused && live}
             live={live && !fullscreen}
             // Decisions D51 / D53: the live session feed shows the Core's live picture; the full-screen view takes it over (one viewer).
-            livePreview={!fullscreen}
+            livePreview={!fullscreen && visible}
             actions={live ? fullscreenButton : undefined}
             className="sm-feed aspect-auto h-full"
           />
@@ -229,7 +235,7 @@ export function LiveFeedPanel({
                 noSignal={feed.noSignal}
                 dimmed={paused}
                 live
-                livePreview
+                livePreview={visible}
                 className="sm-feed sm-feed-full aspect-auto h-full"
                 actions={
                   <Button

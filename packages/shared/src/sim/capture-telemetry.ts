@@ -50,13 +50,31 @@ function captureMics(state: SimState): readonly CaptureConfigMic[] {
   return captureMicLines(state);
 }
 
+/** Whether a level names its microphone (row W4-6): a non-empty string. Anything else is "no ID given". */
+function hasMicId(deviceId: unknown): deviceId is string {
+  return typeof deviceId === 'string' && deviceId.length > 0;
+}
+
+/**
+ * The mic input of a level: by its microphone ID when it names one (row W4-6, D235), else by its role.
+ */
+export function micInputOfCaptureLevel(state: SimState, level: Pick<CaptureTelemetryLevel, 'role' | 'deviceId'>): CaptureMicInputId | null {
+  return micInputOfCaptureRole(state, level.role, level.deviceId);
+}
+
 /**
  * The mic input that holds `role` in the capture configuration, or null when no row names it.
+ * Row W4-6 (D235): when `deviceId` (the microphone's capture-device ID) is given, the line holding
+ * that microphone answers instead, whatever the role says; the role is read only without an ID.
  * D61 of 2026-11-04: the selector is keyed by CHANNEL; the worker protocol (v4, unchanged here)
  * still names the two transcription roles, and `channelOfWorkerMicRole` maps them to channels 1
  * and 2. Any `MIC-NN` line: each assigned channel has its meter (ruling D137 generalized).
  */
-export function micInputOfCaptureRole(state: SimState, role: MicRole): CaptureMicInputId | null {
+export function micInputOfCaptureRole(state: SimState, role: MicRole, deviceId?: string): CaptureMicInputId | null {
+  // Row W4-6 (D235, 2026-11-06): a level that names its microphone is placed by that ID alone. The role lane
+  // collapses channels 2-4 into `STANDBY` (all three landed on channel 2, the last one winning), so the role is NOT
+  // a fallback for an ID the lines do not hold: that level is ignored, never moved onto another channel.
+  if (hasMicId(deviceId)) return captureMics(state).find((mic) => mic.deviceId === deviceId)?.inputId ?? null;
   // D61 (2026-11-04): a role word the worker protocol does not define names no channel - it is
   // ignored (A-1), never answered as channel 2 through the mapping's else branch.
   if (role !== 'PRIMARY' && role !== 'STANDBY') return null;
@@ -92,11 +110,13 @@ export function captureDurableTransition(state: SimState, durable: boolean): Sim
 
 /**
  * Hands the measured levels to the audio subsystem. Transient: it touches the runtime only, never
- * the store. A role whose channel no mic row holds is ignored; of two entries for one role the later wins.
+ * the store. A level is placed by its microphone ID when it names one (row W4-6, D235: so channels
+ * 3 and 4 get their own level), else by its role. An ID or a role no mic row holds is ignored; of
+ * two entries for one input the later wins.
  */
 export function feedCaptureLevels(runtime: AudioRuntime, state: SimState, now: EpochMs, levels: readonly CaptureTelemetryLevel[]): void {
   for (const level of levels) {
-    const input = micInputOfCaptureRole(state, level.role);
+    const input = micInputOfCaptureLevel(state, level);
     if (input === null) continue;
     const dbfs = level.dbfs === null || !Number.isFinite(level.dbfs) ? null : Math.min(0, level.dbfs);
     runtime.captureLevels[input] = { dbfs, clipped: level.clipped === true, at: now };
@@ -179,14 +199,15 @@ const MIC_ROLES: readonly string[] = ['PRIMARY', 'STANDBY'] satisfies readonly M
 
 /**
  * What a frame names that the Core does not know, so `applyCaptureTelemetry` ignores it: an ingest
- * or fragment ID that is no camera of `captureDevices`, a level role no mic row holds. The IDs on
+ * or fragment ID that is no camera of `captureDevices`, a level mic ID or role no mic row holds. The IDs on
  * the wire are CAPTURE-DEVICE IDs (`CAM-01`), never track IDs (`VIDEO-01`): a worker that sends
  * the wrong vocabulary shows up here. Each entry is `<list>:<value>`; empty for a clean frame.
  */
 export function captureTelemetryIgnored(state: SimState, telemetry: CaptureTelemetryInput): string[] {
   const isCamera = (deviceId: string): boolean => state.captureDevices.devices.some((device) => device.id === deviceId && device.kind === 'CAMERA');
   const ignored: string[] = [];
-  for (const level of telemetry.levels) if (micInputOfCaptureRole(state, level.role) === null) ignored.push(`levels:${String(level.role)}`);
+  // Row W4-6 (D235): a level that names its microphone is said by that ID, else by its role.
+  for (const level of telemetry.levels) if (micInputOfCaptureLevel(state, level) === null) ignored.push(`levels:${hasMicId(level.deviceId) ? level.deviceId : String(level.role)}`);
   for (const entry of telemetry.ingest) if (!isCamera(entry.deviceId)) ignored.push(`ingest:${String(entry.deviceId)}`);
   for (const entry of telemetry.fragments) if (!isCamera(entry.deviceId)) ignored.push(`fragments:${String(entry.deviceId)}`);
   return ignored;

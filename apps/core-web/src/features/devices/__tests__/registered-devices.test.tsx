@@ -26,8 +26,10 @@ import { BUILT_IN_SOURCE_IDS, drawnByOwnTile, rateAtLimitOf, registeredRoster, r
 import { trackReachOf } from '../track-reach'
 import { installDevicesBed, mountDevices } from './search-bed'
 
-const mode = vi.hoisted(() => ({ realCapture: false }))
-vi.mock('../source-class', async (original) => ({ ...(await original<typeof import('../source-class')>()), useRealCapture: () => mode.realCapture }))
+const mode = vi.hoisted(() => ({ realCapture: false, realCaptureCore: false }))
+// Row W4-2 (D226): `useRealCaptureCore` is read through the module too. Default false = what this bed gave before
+// (the original calls the module-internal `useRealCapture`, i.e. `useWebLive() !== null`, which is false here).
+vi.mock('../source-class', async (original) => ({ ...(await original<typeof import('../source-class')>()), useRealCapture: () => mode.realCapture, useRealCaptureCore: () => mode.realCaptureCore }))
 
 const t = i18n.t.bind(i18n)
 const R = en.common.developmentRoster
@@ -369,5 +371,102 @@ describe('row W2c2 (129b, U-09b): a registered card on a line says what the tile
     const drawer = within(await screen.findByTestId('registered-device-drawer'))
     expect(drawer.getByTestId('registered-drawer-state')).toHaveAttribute('data-status', 'FAULT')
     expect(drawer.getByTestId('registered-drawer-state').textContent).toBe(card.textContent)
+  })
+})
+
+// Row W4-2 (L4, D220): the camera search's "View device" of a built-in id that feeds ANOTHER track opens the registered
+// drawer - the roster's own rule (`drawnByOwnTile`) - not the built-in drawer of the track that carries the same name.
+describe('row W4-2 (L4, D220): "View device" of the camera search follows the roster card', () => {
+  installDevicesBed()
+  /** CAM-01 feeds VIDEO-02 and CAM-02 feeds VIDEO-01: both are registered cards, no tile draws them. */
+  const swapped = (sim: Sim): void => {
+    sim.store.setState((state) => ({
+      captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'CAM-02' } : line.trackId === 'VIDEO-02' ? { ...line, deviceId: 'CAM-01' } : line)) },
+    }))
+  }
+  const viewFound = async (): Promise<void> => {
+    fireEvent.click(await screen.findByTestId('search-cameras-button-panel'))
+    const row = await screen.findByTestId('camera-search-row-CND-000000000002')
+    expect(row).toHaveTextContent('CAM-01')
+    fireEvent.click(within(row).getAllByRole('button')[0]!)
+  }
+
+  it('CAM-01 on VIDEO-02: the registered drawer of CAM-01 opens, the built-in drawer does not', async () => {
+    mode.realCapture = false
+    await mountDevices('idle', OPERATOR_IDS.RINA, swapped)
+    expect(screen.getByTestId('registered-device-CAM-01')).toBeInTheDocument()
+    await viewFound()
+    expect(await screen.findByTestId('registered-device-drawer')).toBeInTheDocument()
+    expect(screen.queryByTestId('device-drawer')).toBeNull()
+  })
+
+  it('CONTROL: CAM-01 on its own line (VIDEO-01) keeps the built-in drawer', async () => {
+    mode.realCapture = false
+    await mountDevices('idle', OPERATOR_IDS.RINA)
+    expect(screen.queryByTestId('registered-device-CAM-01')).toBeNull()
+    await viewFound()
+    expect(await screen.findByTestId('device-drawer')).toHaveAttribute('data-device', 'CAM-01')
+    expect(screen.queryByTestId('registered-device-drawer')).toBeNull()
+  })
+})
+
+// Row W4-2 (D226, U-05 family): on the bench /devices said MIC 1-4 "READY" under AUDIO INPUTS and MIC-03..06 "Not checked"
+// under REGISTERED MICROPHONES - the same four microphones. Both lists now read `trackStatus` + `trackReachOf`.
+describe('row W4-2 (D226): AUDIO INPUTS and REGISTERED MICROPHONES say one status of one microphone', () => {
+  installDevicesBed()
+  const BENCH_MICS: Record<string, string> = { 'MIC-01': 'MIC-03', 'MIC-02': 'MIC-04', 'MIC-03': 'MIC-05', 'MIC-04': 'MIC-06' }
+  /** The bench Core: USB microphones MIC-03..06 on channels 1-4, registry `online: true`, no `reach`, no `checkedAt`. */
+  const bench = (sim: Sim): void => {
+    const state = sim.store.getState()
+    const mics = Object.values(BENCH_MICS).map((id) => device(id, 'MIC', { adapter: 'USB_AUDIO', sourceClass: 'PRODUCTION' }))
+    sim.store.setState({
+      captureDevices: { devices: [...state.captureDevices.devices.filter((entry) => !mics.some((mic) => mic.id === entry.id)), ...mics] },
+      captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.map((line) => ({ ...line, inputId: BENCH_MICS[line.channel] ?? line.inputId, deviceId: BENCH_MICS[line.channel] ?? line.deviceId })) },
+    })
+  }
+  const TRACK: Record<string, string> = { 'MIC-01': 'AUDIO-01', 'MIC-02': 'AUDIO-02', 'MIC-03': 'AUDIO-03', 'MIC-04': 'AUDIO-04' }
+
+  it('unchecked: both lists say "Not checked" of MIC-03..06; a stated REACHABLE makes both say ready; a stated NOT_REACHABLE both FAULT', async () => {
+    mode.realCapture = true
+    mode.realCaptureCore = true
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI, bench)
+    for (const [channel, id] of Object.entries(BENCH_MICS)) {
+      const track = TRACK[channel]!
+      await waitFor(() => expect(screen.getByTestId(`audio-input-${track}`)).toHaveAttribute('data-checked', 'false'))
+      expect(screen.getByTestId(`audio-input-${track}`)).toHaveAttribute('data-status', 'READY')
+      expect(screen.getByTestId(`audio-status-${track}`)).toHaveTextContent('Not checked')
+      expect(screen.getByTestId(`registered-device-${id}`)).toHaveAttribute('data-checked', 'false')
+      expect(screen.getByTestId(`registered-device-state-${id}`).textContent).toBe(screen.getByTestId(`audio-status-${track}`).textContent)
+    }
+    const now = sim.store.getState().clock.now
+    act(() =>
+      sim.store.setState((state) => ({
+        captureDevices: {
+          ...state.captureDevices,
+          devices: state.captureDevices.devices.map((entry) => (entry.id === 'MIC-03' ? { ...entry, reach: 'REACHABLE', checkedAt: now } : entry.id === 'MIC-04' ? { ...entry, reach: 'NOT_REACHABLE', checkedAt: now } : entry)),
+        },
+      })),
+    )
+    // MIC-03 on channel 1: checked and reached - neither list says "Not checked"; both say the ready state.
+    await waitFor(() => expect(screen.getByTestId('audio-input-AUDIO-01')).not.toHaveAttribute('data-checked'))
+    expect(screen.getByTestId('audio-status-AUDIO-01')).toHaveTextContent(en.devices.status.READY)
+    expect(screen.getByTestId('registered-device-MIC-03')).not.toHaveAttribute('data-checked')
+    expect(screen.getByTestId('registered-device-state-MIC-03').textContent).toBe(L.state.READY)
+    // MIC-04 on channel 2: stated NOT_REACHABLE - FAULT on both, the same word.
+    await waitFor(() => expect(screen.getByTestId('audio-input-AUDIO-02')).toHaveAttribute('data-status', 'FAULT'))
+    expect(screen.getByTestId('registered-device-MIC-04')).toHaveAttribute('data-status', 'FAULT')
+    expect(screen.getByTestId('registered-device-state-MIC-04').textContent).toBe(screen.getByTestId('audio-status-AUDIO-02').textContent)
+    // The others are unchanged: "Not checked" on both lists.
+    expect(screen.getByTestId('audio-status-AUDIO-03')).toHaveTextContent('Not checked')
+    expect(screen.getByTestId('registered-device-state-MIC-05')).toHaveTextContent('Not checked')
+    mode.realCapture = false
+    mode.realCaptureCore = false
+  })
+
+  it('CONTROL (simulated lane): the audio cards keep READY, nothing says "Not checked"', async () => {
+    mode.realCapture = false
+    await mountDevices('idle', OPERATOR_IDS.ANDI)
+    expect(screen.getByTestId('audio-input-AUDIO-01')).not.toHaveAttribute('data-checked')
+    expect(screen.getByTestId('audio-status-AUDIO-01')).toHaveTextContent(en.devices.status.READY)
   })
 })

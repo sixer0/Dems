@@ -35,6 +35,7 @@ import {
 import { VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain' // D60 (2026-11-04)
 import { micPairLabel } from '@/features/devices/capture-selector' // W3 row 158 cycle 2 (D125): the selector's pair words, "Mic N (Camera N)"
 import { ReachGatedCameraPreview } from '@/features/devices/reach-gated-preview'
+import { useDocumentVisible } from '@/features/devices/idle-meter-lease' // row W4-8 (D239): W4-1's visibility hook
 import { PrecheckSearchActions } from '@/features/devices/precheck-search'
 import { isGeneratedSource } from '@/features/devices/own-core-words'
 import { PrecheckSourceMarks } from '@/features/devices/source-badge'
@@ -484,6 +485,7 @@ function PreviewTile({ cameraId }: { cameraId: VideoTrackId }) {
   // literal `1080p / 25`, so a track with another picture, no rate or no statement read `1080p • 25 fps` here. On a Core
   // in real capture the "No preview" tile states the stored stream statement itself (`camera-preview.tsx`).
   const facts = useTrackFacts(cameraId)
+  const visible = useDocumentVisible()
   // Row 130b (D95): a camera the Core found NOT_REACHABLE asks for no preview here; "Try again" asks once (W3 row 158 inherits this mount).
   return (
     <ReachGatedCameraPreview
@@ -494,7 +496,9 @@ function PreviewTile({ cameraId }: { cameraId: VideoTrackId }) {
       noSignal={noSignal}
       ariaLabel={label}
       // Decisions D51 / D53: the camera previews of the device check show the Core's live picture of a production camera.
-      livePreview
+      // Row W4-8 (D239): as on the Dashboard and the Session Monitor (row W4-1), the stream closes while the tab is hidden
+      // and opens again when it is visible; unmounting the tile closes it too.
+      livePreview={visible}
       className="sn-preview-feed"
     />
   )

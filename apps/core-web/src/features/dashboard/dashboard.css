@@ -553,6 +553,12 @@
   .dems-tile {
     overflow: hidden;
   }
+  /* Row W4-1 (L8, D231): the reach-gated live preview draws "Try again" in its action slot, laid over the frame. A
+     Dashboard tile's four lines fill its frame (fix waves L and Q measured it), so the control would cover the state line;
+     the tile says "Not reachable" and the retry stays on Devices & Inputs and the Session Monitor. */
+  .dems-tile [data-testid^='camera-preview-try-again-'] {
+    display: none;
+  }
   .dems-tile .dev-source-badge {
     display: flex;
     /* Fix wave Q (CW-02): `nowrap` left the kind beside the chip no width in a narrow tile - "Test source" stood one

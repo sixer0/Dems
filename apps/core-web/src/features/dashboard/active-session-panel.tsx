@@ -24,7 +24,8 @@ import { useCoreMode } from '@dems/shared/live'
 import { DATE_PATTERNS, formatDate, formatUtcOffset } from '@dems/shared/realtime'
 import { Permission, selectCan, selectOperatorById, useSim, type SimState } from '@dems/shared/sim'
 import { motion as tokens, palette, toneChipProps } from '@dems/shared/tokens'
-import { CameraPreview } from '@/features/devices/camera-preview'
+import { ReachGatedCameraPreview } from '@/features/devices/reach-gated-preview'
+import { useDocumentVisible } from '@/features/devices/idle-meter-lease'
 import { Ripple } from '@/components/ui/ripple'
 import { sealAttentionLine, useOpenSealAttention } from '@/lib/seal-attention'
 import { ShineBorder } from '@/components/ui/shine-border'
@@ -242,6 +243,8 @@ function RecordingView({ card }: { card: SessionCard }) {
     [card.investigatorId],
   )
   const investigator = useSim(selectInvestigator)
+  // Row W4-1 (L8, D231): the thumbnail is the Core's live picture of Camera 1; a hidden tab closes the stream.
+  const visible = useDocumentVisible()
   const rows: Array<{ key: string; label: string; value: string; wide?: boolean; mono?: boolean }> = [
     { key: 'session', label: t('dashboard.activeSession.recording.sessionId'), value: card.id, wide: true, mono: true },
     { key: 'case', label: t('dashboard.activeSession.recording.caseNumber'), value: card.caseNumber },
@@ -258,10 +261,12 @@ function RecordingView({ card }: { card: SessionCard }) {
           transition={m.transitions.layout}
           className="w-[44%] max-w-[280px] shrink-0"
         >
-          <CameraPreview
+          {/* Row W4-1 (L8, D231): reach-gated as the Session Monitor feed - no token while NOT_REACHABLE, "Try again" in the thumb's action slot. */}
+          <ReachGatedCameraPreview
             cameraId="VIDEO-01"
             variant="thumb"
             live={false}
+            livePreview={visible}
             recordingSince={card.connecting ? null : card.startedAt}
             ariaLabel={card.connecting ? t('common.session.connectingCameras') : t('dashboard.activeSession.recording.thumbnailLabel')}
           />

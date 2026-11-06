@@ -232,8 +232,8 @@ export function rosterStateNotChecked(card: Pick<RosterCard, 'state' | 'device'>
  * |---|---|
  * | its own state is not READY (a named cause, `online: false`) | that state, as before (a negative fact of the device is never hidden) |
  * | on a line (`slot`), and `trackStatus` of that track is not READY | the track's status word (`devices.status.*`), the tile's word |
- * | a camera on a line, READY | "Not checked" exactly when the tile says it (`trackReachOf` === NOT_CHECKED), else "Ready" |
- * | a microphone on a line, READY, or any card on no line | the registry rule as before (`rosterStateNotChecked`) |
+ * | a camera or (row W4-2, D226) a microphone on a line, READY | "Not checked" exactly when the tile / audio card says it (`trackReachOf` === NOT_CHECKED), else "Ready" |
+ * | any card on no line | the registry rule as before (`rosterStateNotChecked`) |
  *
  * Flat result (compared shallowly by `useSim`): `status` null = the card's own state (`LOCAL_STATE_VIEW[card.state]`).
  */
@@ -250,9 +250,11 @@ export function rosterCardStatus(state: SimState, card: Pick<RosterCard, 'kind' 
     if (status !== 'READY') return { status, notChecked: false }
     return { status: null, notChecked: trackReachOf(state, track, realCapture) === 'NOT_CHECKED' }
   }
-  const status = trackStatus(state, audioTrackOfMicChannel(card.slot as MicChannel))
+  // Row W4-2 (D226): the audio card's reach, not the registry rule - the two lists said READY and "Not checked" of one microphone.
+  const track = audioTrackOfMicChannel(card.slot as MicChannel)
+  const status = trackStatus(state, track)
   if (status !== 'READY') return { status, notChecked: false }
-  return { status: null, notChecked: rosterStateNotChecked(card, realCapture) }
+  return { status: null, notChecked: trackReachOf(state, track, realCapture) === 'NOT_CHECKED' }
 }
 
 /** The chip of a card from the replicated state (`rosterCardStatus`); `realCapture` is `useRealCaptureCore()`. */

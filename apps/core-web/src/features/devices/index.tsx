@@ -77,7 +77,7 @@ import { DevicesPanel } from './panel'
 import { PortMap } from './port-map'
 import { RegisteredDeviceDrawer } from './registered-device-drawer'
 import { RegisteredDevices } from './registered-devices'
-import { BUILT_IN_SOURCE_IDS } from './registered-devices-model'
+import { BUILT_IN_SOURCE_IDS, useRegisteredRoster } from './registered-devices-model'
 import { reportDevicesError } from './report'
 import { IDENTIFY_BLINKS, IDENTIFY_PERIOD_MS, type DeviceId } from './sim-adapter'
 import { SummaryCards } from './summary-cards'
@@ -219,15 +219,20 @@ export function DevicesPage() {
   // not hold, so the selector (where a registered camera is an option) is scrolled to as before.
   // Row 129 (controller routing D92): on a Core in real capture a found id names a registry device (the bench's real
   // CAM-03), so it opens the drawer built from the Core's device list - never the built-in track drawer (`viewDeviceTarget`).
+  // Row W4-2 (L4, D220): a device the page draws as a registered card (a built-in id on another line) opens that card's
+  // drawer - the roster's own "View device" rule (`registeredRoster` / `drawnByOwnTile`), never the built-in track drawer.
+  const rosterCameras = useRegisteredRoster('CAMERA')
+  const rosterMics = useRegisteredRoster('MIC')
   const viewDevice = useCallback((deviceId: string) => {
-    const target = viewDeviceTarget(deviceId, realCaptureCore, BUILT_IN_SOURCE_IDS)
+    const hasRosterCard = rosterCameras.some((card) => card.id === deviceId) || rosterMics.some((card) => card.id === deviceId)
+    const target = viewDeviceTarget(deviceId, realCaptureCore, BUILT_IN_SOURCE_IDS, hasRosterCard)
     if (target === 'BUILT_IN_DRAWER') {
       setDrawerId(deviceId as DeviceId)
       return
     }
     if (target === 'REGISTERED_DRAWER') setRegisteredId(deviceId)
     document.getElementById(CAPTURE_SELECTOR_ANCHOR)?.scrollIntoView?.({ block: 'start' })
-  }, [realCaptureCore])
+  }, [realCaptureCore, rosterCameras, rosterMics])
   const camerasStagger = useStaggerVariants(PANEL_BEAT_MS.cameras, ROW_STAGGER_MS)
   const audioStagger = useStaggerVariants(PANEL_BEAT_MS.audio, ROW_STAGGER_MS)
 

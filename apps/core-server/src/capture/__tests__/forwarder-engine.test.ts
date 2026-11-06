@@ -116,7 +116,7 @@ async function joined() {
     const slot = state().captureConfig.cameras.find((candidate) => candidate.deviceId === id);
     return { device: device?.streamState, slot: slot?.streamState, online: device?.online };
   };
-  return { sim, worker, reports, ignored, down, telemetry, pass, warn, state, faults, audits, camera };
+  return { sim, simClock, worker, reports, ignored, down, telemetry, pass, warn, state, faults, audits, camera };
 }
 
 describe('worker frames, through the supervisor and the forwarder, into a real simulator (A-1)', () => {
@@ -137,6 +137,33 @@ describe('worker frames, through the supervisor and the forwarder, into a real s
     expect(h.faults()).toEqual([]);
     expect(h.state().audio.activeInputId).toBe('MIC-01');
     expect(h.ignored).toEqual([]);
+    expect(h.reports).toEqual([]);
+  });
+
+  // Row W4-6 (D235): the worker names channel 1 PRIMARY and channels 2-4 all STANDBY (`audio.c` `role_word`), and
+  // each level carries its microphone's device ID. The forwarder hands the frame on unchanged (`forwarder.ts`,
+  // `host.applyCaptureTelemetry({ levels, ... })`), so the engine places each level by that ID: channels 3 and 4
+  // show their own level while recording, not NO SIGNAL, and channel 2 is not overwritten by channel 4.
+  it('row W4-6: a four-microphone frame while recording reaches four meters, each by its device ID', async () => {
+    const h = await joined();
+    const level = (deviceId: string, role: CaptureMicRole, dbfs: number) => ({ deviceId, role, dbfs, clipped: false, ratePpm: 0, timelineSamples: 480_000, receivedSamples: 480_000, insertedSamples: 0, nonZero: true });
+    h.worker.say({
+      type: WorkerMessageType.TELEMETRY,
+      levels: [level('MIC-01', CaptureMicRole.PRIMARY, -20), level('MIC-02', CaptureMicRole.STANDBY, -30), level('MIC-03', CaptureMicRole.STANDBY, -40), level('MIC-04', CaptureMicRole.STANDBY, -50)],
+      ingest: [],
+      fragments: [],
+      clocks: [],
+      tapActive: false,
+    });
+    await flush();
+    // The simulator's next 20 Hz frame, as the host's tick makes it.
+    h.simClock.advance(50);
+    h.sim.tick();
+    const inputs = h.state().audio.inputs;
+    expect(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'].map((id) => inputs[id]?.dbfs)).toEqual([-20, -30, -40, -50]);
+    expect(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'].map((id) => inputs[id]?.noSignal)).toEqual([false, false, false, false]);
+    expect(h.ignored).toEqual([]);
+    expect(h.down).toEqual([]);
     expect(h.reports).toEqual([]);
   });
 

@@ -90,14 +90,16 @@
  *      directory, helper and guard programs as the production microphone adapter. They stand down
  *      (`stopAndWait`) when a session becomes active and before the session's audio reads a stored
  *      row, and come back (`resume`) when no session is active. Their levels go to the engine as the
- *      supervisor's telemetry does; their notices to the log and the persistent error log;
+ *      supervisor's telemetry does; their notices to the log and the persistent error log. Both are
+ *      also the microphone's REACH (row W4-7, `createMicReach`): a level states REACHABLE, a card
+ *      not read or a helper that ended states NOT_REACHABLE, throttled, through the preview's door;
  *  14. both are handed to the API unit (`provideCameraPreview`), which closes them at the close of
  *      the app.
  *
  * It logs codes and device ids only: never an address, a path or a credential.
  */
 import { CaptureDeviceReach } from '@dems/shared/api';
-import { CaptureUnreachableCause, isSessionActive } from '@dems/shared/sim';
+import { CaptureUnreachableCause, isSessionActive, type CaptureTelemetryLevel } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import { CapturePhase, INTERFACE_FILE_COMMAND, createSystemTimers, type CaptureTimers, type HostCommandRunner } from './capture';
 import {
@@ -141,6 +143,7 @@ import {
   type HostAliasTransport,
   type IdleMeterInput,
   type IdleMeterLevel,
+  type IdleMeterNotice,
   type IdleMeters,
   type OnvifStreamLocator,
   type CameraPreviewCodec,
@@ -195,6 +198,8 @@ export const CaptureCompositionCode = {
   PREVIEW_NOTE: 'CAPTURE_COMPOSITION_PREVIEW_NOTE',
   /** Audit row 127 (DF-12): the engine did not take a reach reading of a preview (the device, the reach and a code word are in the context). */
   PREVIEW_REACH_NOT_WRITTEN: 'CAPTURE_COMPOSITION_PREVIEW_REACH_NOT_WRITTEN',
+  /** Row W4-7 (D238): the engine did not take a reach reading of a microphone from the idle meters (the device, the reach and a code word are in the context). */
+  MIC_REACH_NOT_WRITTEN: 'CAPTURE_COMPOSITION_MIC_REACH_NOT_WRITTEN',
   /** Decisions D51 / D53: a notice of the idle meters (its own code, the device and a detail word are in the context). */
   IDLE_METER_NOTICE: 'CAPTURE_COMPOSITION_IDLE_METER_NOTICE',
   /** The pre-check asked a camera before the capture fence offered its adapters: the camera reads as unreachable. */
@@ -572,6 +577,127 @@ export function createPreviewOutcome(dependencies: PreviewOutcomeDependencies): 
   };
 }
 
+// ── The reach of a microphone (row W4-7, D238) ───────────────────────────────────────────────
+
+/**
+ * A level of a microphone whose `REACHABLE` the Core already states is written again only when the stated `checkedAt`
+ * is at least this old. The idle meter hands one window per card every 50 ms (`IDLE_LEVEL_WINDOW_MS`), i.e. 20 levels
+ * per second per microphone: written at that rate, every window would be an engine unit and a publication of the
+ * `captureDevices` slice to every socket. 30 s is the lease of the idle meters (`IDLE_METER_LEASE_MS`): a console that
+ * shows the meters renews its hold within it, so while anyone looks at a microphone its `checkedAt` is never older than
+ * one lease, and the steady cost is at most one write per microphone per 30 s (4 microphones: 0.13 per second instead
+ * of 80). No client ages `checkedAt` (it is shown as "Checked at {{time}}" only), so a finer bound buys nothing.
+ * A CHANGE of the outcome (REACHABLE <-> NOT_REACHABLE) is written at once, whatever the bound.
+ */
+export const MIC_REACH_REFRESH_MS = 30_000;
+
+/**
+ * The notices of the idle meters that are a FAILED reading of a microphone's card: it is not in the listing or cannot
+ * be read as registered (`CARD_NOT_READ`: absent, ambiguous, its facts unknown, the input beyond the card, a rate the
+ * sessions refuse), or the helper reading it ended by itself (`HELPER_ENDED`: the card went away or refused the open).
+ * Each makes every microphone it names `NOT_REACHABLE`. A helper that never STARTED (`HELPER_ENDED` with
+ * `NOT_STARTED`, `HELPER_NOT_STARTED`) and the Core's own failures (selection, stored row, listing, configuration,
+ * program refused) say nothing about the card: no reading is stated for them.
+ */
+export const MIC_NOT_REACHABLE_NOTICES: ReadonlySet<IdleMeterNotice['code']> = new Set<IdleMeterNotice['code']>(['IDLE_METER_CARD_NOT_READ', 'IDLE_METER_HELPER_ENDED']);
+/** The detail word of a `HELPER_ENDED` whose helper was never running: no reading of the card. */
+const HELPER_NEVER_STARTED = 'NOT_STARTED';
+
+/** What the engine states of a device now: its reading, or null when it holds no such device. */
+export type StatedDeviceReach = { readonly reach: CaptureDeviceReach | null; readonly checkedAt: number | null } | null;
+
+export interface MicReachDependencies {
+  /** The server clock, in milliseconds: `checkedAt` and the bound. */
+  readonly now: () => number;
+  /** Hands one reach reading to the engine: THE SAME DOOR as the preview's (`noteDeviceReach`, row 127). */
+  readonly write: (reading: CaptureDeviceReachReading) => Promise<unknown> | void;
+  /**
+   * What the engine states of the device now (another writer - a re-scan, a re-registration, a pre-check - may have
+   * changed or cleared it). `undefined` (or absent, or a throw): unknown, the last reading written here decides.
+   * `null`: the engine holds no such device, nothing is written.
+   */
+  readonly stated?: (deviceId: string) => StatedDeviceReach | undefined;
+  /** The engine did not take a reading. */
+  readonly notWritten: (context: { readonly deviceId: string; readonly reach: CaptureDeviceReach; readonly reason: string | null }) => void;
+}
+
+export interface MicReach {
+  /** The `publish` of the idle meters: every level is a `REACHABLE` reading of its microphone. */
+  levels(levels: readonly IdleMeterLevel[]): void;
+  /** The `onNotice` of the idle meters: a failed reading of a card is a `NOT_REACHABLE` reading of its microphones. */
+  notice(notice: IdleMeterNotice): void;
+}
+
+/**
+ * THE REACH OF A MICROPHONE (row W4-7; D238 after W4-2 / D226): the clients say "Not checked" of a microphone whose
+ * device entry states no `reach` (contract `CaptureConfigMic.online`, finding JW-23), and until this row only the camera
+ * preview stated one. The idle meters ARE the Core's reading of a microphone at rest, so here:
+ *
+ * - a LEVEL of a microphone (the idle meter's window, carrying its mic ID since row W4-6) states `reach: REACHABLE` with
+ *   `checkedAt` on that microphone's entry of `captureDevices` - that microphone only;
+ * - a notice of `MIC_NOT_REACHABLE_NOTICES` states `NOT_REACHABLE` with `checkedAt` on every microphone it names;
+ * - THROTTLE: a reading is written when the outcome differs from the one stated, or when the stated `checkedAt` is at
+ *   least `MIC_REACH_REFRESH_MS` old; a write in flight is not repeated, and a refused write is not retried within the
+ *   bound (one `notWritten` per microphone per bound, not one per window).
+ *
+ * It mirrors the preview's outcome (`createPreviewOutcome`): the same door, the same `CaptureDeviceReachReading`, held
+ * in memory only (no table row, no audit row, never `online`). Nothing here throws.
+ */
+export function createMicReach(dependencies: MicReachDependencies): MicReach {
+  const { now } = dependencies;
+  /** The last reading handed to the engine per microphone, while in flight and after. */
+  const written = new Map<string, { readonly reach: CaptureDeviceReach; readonly at: number; pending: boolean; failed: boolean }>();
+
+  const statedOf = (deviceId: string): StatedDeviceReach | undefined => {
+    try {
+      return dependencies.stated?.(deviceId);
+    } catch {
+      return undefined;
+    }
+  };
+
+  const read = (deviceId: string, reach: CaptureDeviceReach): void => {
+    const at = now();
+    const last = written.get(deviceId);
+    if (last !== undefined && last.reach === reach && (last.pending || (last.failed && at - last.at < MIC_REACH_REFRESH_MS))) return;
+    const stated = statedOf(deviceId);
+    if (stated === null) return;
+    const held = stated !== undefined ? stated : last !== undefined && !last.failed ? { reach: last.reach, checkedAt: last.at } : undefined;
+    if (held !== undefined && held.reach === reach && held.checkedAt !== null && at - held.checkedAt < MIC_REACH_REFRESH_MS) return;
+    const entry = { reach, at, pending: true, failed: false };
+    written.set(deviceId, entry);
+    const failed = (error: unknown): void => {
+      entry.pending = false;
+      entry.failed = true;
+      const code = (error as { code?: unknown } | null)?.code;
+      try {
+        dependencies.notWritten({ deviceId, reach, reason: typeof code === 'string' ? code : null });
+      } catch {
+        // A sink never stops the meters.
+      }
+    };
+    try {
+      void Promise.resolve(dependencies.write({ deviceId, reach, checkedAt: at })).then(() => {
+        entry.pending = false;
+      }, failed);
+    } catch (error) {
+      failed(error);
+    }
+  };
+
+  return {
+    levels: (levels) => {
+      for (const level of levels) if (typeof level?.deviceId === 'string' && level.deviceId !== '') read(level.deviceId, CaptureDeviceReach.REACHABLE);
+    },
+    notice: (notice) => {
+      if (!MIC_NOT_REACHABLE_NOTICES.has(notice.code)) return;
+      if (notice.code === 'IDLE_METER_HELPER_ENDED' && notice.detail === HELPER_NEVER_STARTED) return;
+      const named = notice.deviceIds ?? (notice.deviceId === null ? [] : [notice.deviceId]);
+      for (const deviceId of new Set(named)) read(deviceId, CaptureDeviceReach.NOT_REACHABLE);
+    },
+  };
+}
+
 // ── The starter of a live preview (decisions D51 / D53) ───────────────────────────────────────
 
 const isPreviewCodec = (codec: string | null): codec is CameraPreviewCodec => codec !== null && (CAMERA_PREVIEW_CODECS as readonly string[]).includes(codec);
@@ -701,6 +827,11 @@ export interface ProductionCapturePorts extends Pick<CaptureCredentialHoldersDep
   provideCameraPreview?(provision: CameraPreviewProvision): void;
   /** Audit row 127 (DF-12): one reach reading of a preview into the engine (`noteCaptureDeviceReachIn` in a unit). Absent: no reading is kept. */
   noteDeviceReach?(reading: CaptureDeviceReachReading): Promise<unknown>;
+  /**
+   * Row W4-7 (D238): what the engine states of a device's reach now (`createMicReach`'s `stated`): null when it holds no
+   * such device, undefined when it cannot be said (no engine running). Absent: the microphone reach keeps its own record.
+   */
+  deviceReach?(deviceId: string): StatedDeviceReach | undefined;
   /** Called before the pre-check reads a camera: the pre-check waits for it. */
   providePrecheckYield?(beforeCamera: (deviceId: string) => Promise<void>): void;
 }
@@ -843,6 +974,13 @@ export function composeProductionCapture(ports: ProductionCapturePorts, input: P
   };
 
   // 13. THE IDLE METERS (decisions D51 / D53): only where the production microphone adapter can open a card.
+  // Row W4-7 (D238): their levels and their card notices are also the microphone's reach, through the preview's door.
+  const micReach = createMicReach({
+    now: ports.now,
+    write: (reading) => ports.noteDeviceReach?.(reading),
+    stated: (deviceId) => ports.deviceReach?.(deviceId),
+    notWritten: (context) => ports.report('warn', CaptureCompositionCode.MIC_REACH_NOT_WRITTEN, context),
+  });
   const runDir = ports.runDir ?? null;
   const idleMeters: IdleMeters | null =
     input.platform === 'linux' && ports.audioHelperProgram !== null && ports.guardProgram !== null && runDir !== null
@@ -857,8 +995,14 @@ export function composeProductionCapture(ports: ProductionCapturePorts, input: P
           timers,
           now: ports.now,
           sessionActive: sessionActiveNow,
-          publish: (levels) => ports.publishLevels?.(levels),
-          onNotice: (notice) => ports.report('warn', CaptureCompositionCode.IDLE_METER_NOTICE, { note: notice.code, deviceId: notice.deviceId, detail: notice.detail }),
+          publish: (levels) => {
+            ports.publishLevels?.(levels);
+            micReach.levels(levels);
+          },
+          onNotice: (notice) => {
+            ports.report('warn', CaptureCompositionCode.IDLE_METER_NOTICE, { note: notice.code, deviceId: notice.deviceId, detail: notice.detail });
+            micReach.notice(notice);
+          },
         })
       : null;
 
@@ -1177,6 +1321,15 @@ function mountHostAliasOf(app: FastifyInstance, input: ProductionCaptureInput, n
 }
 
 /**
+ * The idle meters' levels as the telemetry levels the engine places (row W4-6, D235): each one NAMES ITS MICROPHONE
+ * (`deviceId`), so the four channels of one card reach their own meters. The legacy role is kept beside it (the type
+ * asks for it, and a reader without the ID still has it); the engine reads the ID first.
+ */
+export function idleLevelsAsTelemetry(levels: readonly IdleMeterLevel[]): CaptureTelemetryLevel[] {
+  return levels.map((level) => ({ deviceId: level.deviceId, role: level.role, dbfs: level.dbfs, clipped: level.clipped }));
+}
+
+/**
  * COMPOSES PRODUCTION CAPTURE ON AN APP. Called ONCE, by the entry point, after `app.ready()` and
  * before the boot steps; a second call is refused. In any operation but `REAL_PRODUCTION` it opens
  * no door and builds nothing.
@@ -1242,20 +1395,32 @@ export function composeProductionCaptureOf(app: FastifyInstance, input: Producti
         if (!app.seams.has('engine') || !app.engine.running) return [];
         return app.engine
           .state()
-          // D61 (2026-11-04): every numbered channel of the selector is selected (was the two-role pair); the idle meters report on the worker's two-role lane until its own D61 wave, so each line keeps its legacy role name for that plumbing (`MIC-01`=`PRIMARY`, a later channel=`STANDBY`).
+          // D61 (2026-11-04): every numbered channel of the selector is selected (was the two-role pair). Each line keeps
+          // its legacy role name (`MIC-01`=`PRIMARY`, every later channel=`STANDBY`) only because the idle meter's plan
+          // still carries one; the levels are placed by the microphone's ID (`publishLevels` below, row W4-6 / D235), so
+          // the three `STANDBY` lines no longer collapse onto channel 2.
           .captureConfig.mics.map((mic) => ({ deviceId: mic.deviceId, role: mic.channel === 'MIC-01' ? ('PRIMARY' as const) : ('STANDBY' as const) }));
       },
       sessionActive: () => app.seams.has('engine') && app.engine.running && isSessionActive(app.engine.state().session),
       publishLevels: (levels) => {
         if (!app.seams.has('engine') || !app.engine.running) return;
         // The engine logs and persists a frame it could not apply itself.
-        void app.engine.applyCaptureTelemetry({ levels: levels.map((level) => ({ role: level.role, dbfs: level.dbfs, clipped: level.clipped })), ingest: [], fragments: [] }).catch(() => undefined);
+        // Row W4-6 (D235): each level names its microphone (`deviceId`), so channels 3 and 4 get their own level; the role
+        // stays for the type and for a reader without the ID, and is not read when the ID is there.
+        void app.engine.applyCaptureTelemetry({ levels: idleLevelsAsTelemetry(levels), ingest: [], fragments: [] }).catch(() => undefined);
       },
       provideCameraPreview: (provision) => cameraPreview(app).provide(provision),
       // Audit row 127 (DF-12; D19, D24): the preview's reach reading in a unit of its own; no engine running: nothing is kept.
+      // Row W4-7 (D238): the idle meters' microphone reach takes the same door (and the same unit label).
       noteDeviceReach: async (reading) => {
         if (!app.seams.has('engine') || !app.engine.running) return;
         await app.engine.run(PREVIEW_REACH_UNIT, (scope) => noteCaptureDeviceReachIn(scope, reading));
+      },
+      // Row W4-7 (D238): the reach the engine states of a device now; no engine running: unknown.
+      deviceReach: (deviceId) => {
+        if (!app.seams.has('engine') || !app.engine.running) return undefined;
+        const device = app.engine.state().captureDevices.devices.find((entry) => entry.id === deviceId);
+        return device === undefined ? null : { reach: device.reach ?? null, checkedAt: device.checkedAt ?? null };
       },
       // THE PRE-CHECK YIELD: the probe the pre-check reads is the fence's of this moment (as `registerCaptureNotices` hands it),
       // with the yield of the camera's live preview before each camera read. A fence that offers no adapters yet: unreachable.

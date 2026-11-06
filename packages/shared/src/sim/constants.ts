@@ -105,7 +105,7 @@ export const STOP_REASON_MIN_LENGTH = 5;
 /** Export reasons (S21, §19.2 item 8) use the same minimum. */
 export const EXPORT_REASON_MIN_LENGTH = STOP_REASON_MIN_LENGTH;
 /**
- * Upper bound for the 8 seeded precheck checks together (step 32): each check still takes
+ * Upper bound for the twelve seeded precheck checks (`PRECHECK_ORDER.length`) together (step 32): each check still takes
  * 300-700 ms, but the draw is budgeted so the gate resolves within 5 s (AC-62, MA-29).
  */
 export const PRECHECK_TOTAL_MAX_MS = 4_900;

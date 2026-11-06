@@ -9,8 +9,8 @@
 // |---------|-----------------------------------------------|---------------------------------------|
 // | Devices & Inputs camera tiles | the live preview | "No preview" / the demo picture (`camera-no-preview.test.tsx`) |
 // | Session New camera previews | the live preview; "paused" while the session is being started | the same |
-// | Session Monitor live feed | the live preview; the input thumbs keep "No preview" | the same |
-// | Dashboard | "No preview" (no preview there) | the same |
+// | Session Monitor live feed and input thumbs | the live preview, reach-gated (row W4-1, D231) | the same |
+// | Dashboard camera tiles and session thumbnail | the live preview, reach-gated (row W4-1, D231) | the same |
 //
 // The double is the contract-checked fake transport of the Live test bed; jsdom loads no image, so a test fires the
 // picture's `load` and `error` itself. No browser and no Core were run (the bench check is the controller's).
@@ -381,26 +381,32 @@ describe('the other surfaces', () => {
     expect(noPreviews(step)).toHaveLength(0)
   })
 
-  it('Session Monitor during a recording: the feed is the live preview with its REC badge; the input thumbs keep "No preview"', async () => {
+  it('Session Monitor during a recording: the feed is the live preview with its REC badge; the input thumbs are live previews too (D231)', async () => {
     const recording = createSim({ scenario: 'recording', storage: null, authStorage: createMemoryAuthStorage(), visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined })
     sims.push(recording)
     const { root } = await livePage('/session', 'page-session-monitor', () => production(['CAM-01', 'CAM-02'])(recording.store.getState()))
-    await waitFor(() => expect(previews(root)).toHaveLength(1))
-    const frame = previews(root)[0]!.parentElement!
-    expect(frame).toHaveAttribute('data-variant', 'feed')
+    // D231 (row W4-1; replaces the D53 pin "thumbnails keep the tile"): the feed plus one thumb per production camera.
+    await waitFor(() => expect(previews(root)).toHaveLength(3))
+    const feed = () => previews(root).find((preview) => preview.parentElement!.getAttribute('data-variant') === 'feed')!
+    const frame = feed().parentElement!
     expect(within(frame).getByTestId('rec-indicator')).toBeInTheDocument()
-    await waitFor(() => expect(imageOf(previews(root)[0]!)).not.toBeNull())
-    fireEvent.load(imageOf(previews(root)[0]!)!)
-    await waitFor(() => expect(previews(root)[0]).toHaveAttribute('data-state', 'LIVE'))
-    // The input thumbs are no live preview (D53: thumbnails keep the tile).
+    await waitFor(() => expect(imageOf(feed())).not.toBeNull())
+    fireEvent.load(imageOf(feed())!)
+    await waitFor(() => expect(feed()).toHaveAttribute('data-state', 'LIVE'))
+    const thumbs = previews(within(root).getByTestId('sm-inputs'))
+    expect(thumbs.map((thumb) => thumb.getAttribute('data-camera')).sort()).toEqual(['VIDEO-01', 'VIDEO-02'])
+    // The development sources keep the neutral tile.
     expect(noPreviews(within(root).getByTestId('sm-inputs')).length).toBeGreaterThanOrEqual(2)
   })
 
-  it('Dashboard: the device tiles keep "No preview" and ask for no token', async () => {
+  it('Dashboard: the camera tile of a production camera is its live preview (D231, row W4-1; replaces the D53 pin "keep No preview")', async () => {
     const { root } = await livePage('/', 'page-dashboard', production(['CAM-01', 'CAM-02']))
-    await waitFor(() => expect(noPreviews(within(root).getByTestId('device-tile-VIDEO-01'))).toHaveLength(1))
-    expect(previews(root)).toHaveLength(0)
-    expect(issued()).toHaveLength(0)
+    await waitFor(() => expect(previews(within(root).getByTestId('device-tile-VIDEO-01'))).toHaveLength(1))
+    await waitFor(() => expect(previews(within(root).getByTestId('device-tile-VIDEO-02'))).toHaveLength(1))
+    expect(previews(root)).toHaveLength(2)
+    expect(issued().map((call) => call.params.id).sort()).toEqual(['CAM-01', 'CAM-02'])
+    // A development source keeps the neutral tile and asks for nothing.
+    expect(noPreviews(within(root).getByTestId('device-tile-VIDEO-03'))).toHaveLength(1)
   })
 })
 
@@ -527,29 +533,34 @@ describe('row 130b: the session pages ask for no preview of a NOT_REACHABLE came
     const { root, page } = await livePage('/session', 'page-session-monitor', () =>
       reading(['CAM-01', 'CAM-02'], 'NOT_REACHABLE', CHECKED_AT)(production(['CAM-01', 'CAM-02'])(recording.store.getState())),
     )
-    await waitFor(() => expect(tryAgainOf(root)).not.toBeNull())
+    // D231 (row W4-1): the input thumbs are reach-gated too, so the feed's own "Try again" is the one in the feed frame
+    // (the thumbs' copies are hidden by session-monitor.css, which jsdom does not apply).
+    const feedTryAgain = () => tryAgainOf(root.querySelector<HTMLElement>('.sm-feed-frame')!)
+    await waitFor(() => expect(feedTryAgain()).not.toBeNull())
     await settle()
     expect(previews(root)).toHaveLength(0)
     expect(issued()).toHaveLength(0)
     // The REC badge of the recording stays on the neutral tile: the recording is not the preview's.
-    const frame = tryAgainOf(root)!.closest<HTMLElement>('[data-testid="camera-no-preview-frame"]')!
+    const frame = feedTryAgain()!.closest<HTMLElement>('[data-testid="camera-no-preview-frame"]')!
     expect(frame).toHaveAttribute('data-variant', 'feed')
     expect(within(frame).getByTestId('rec-indicator')).toBeInTheDocument()
-    fireEvent.click(within(tryAgainOf(root)!).getByRole('button', { name: PV.tryAgain }))
-    await waitFor(() => expect(issued()).toHaveLength(1))
+    // One "Try again" of CAM-01 opens its two viewers on the page (the feed and its thumb; the Core's ONE pipeline, D231).
+    fireEvent.click(within(feedTryAgain()!).getByRole('button', { name: PV.tryAgain }))
+    await waitFor(() => expect(issued()).toHaveLength(2))
     await settle()
-    expect(issued()).toHaveLength(1)
-    expect(previews(root)).toHaveLength(1)
-    // The Core's newer reading is unreachable again: the preview goes and nothing more is asked for.
+    expect(issued()).toHaveLength(2)
+    expect(issued().every((call) => call.params.id === 'CAM-01')).toBe(true)
+    expect(previews(root)).toHaveLength(2)
+    // The Core's newer reading is unreachable again: the previews go and nothing more is asked for.
     bed!.core.served = reading(['CAM-01', 'CAM-02'], 'NOT_REACHABLE', CHECKED_AT + 10_000)(bed!.core.served)
     await republishDevices(page)
     await waitFor(() => expect(previews(root)).toHaveLength(0))
     await settle()
-    expect(issued()).toHaveLength(1)
-    // The camera answers (REACHABLE): the feed opens by itself.
+    expect(issued()).toHaveLength(2)
+    // The cameras answer (REACHABLE): the feed and both thumbs open by themselves (CAM-01 twice, CAM-02 once).
     bed!.core.served = reading(['CAM-01', 'CAM-02'], 'REACHABLE', CHECKED_AT + 20_000)(bed!.core.served)
     await republishDevices(page)
-    await waitFor(() => expect(issued()).toHaveLength(2))
-    expect(previews(root)).toHaveLength(1)
+    await waitFor(() => expect(issued()).toHaveLength(5))
+    expect(previews(root)).toHaveLength(3)
   })
 })

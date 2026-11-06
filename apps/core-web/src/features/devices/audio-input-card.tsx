@@ -23,6 +23,7 @@ import { MIC_DEVICE, type RearPortId } from './sim-adapter'
 import { MicSourceMarks } from './source-badge'
 import { useMicInputName } from './source-class'
 import { StatusChip, StatusDot } from './status-chip'
+import { useTrackReach } from './track-reach'
 
 // D61 (2026-11-04): the four-channel microphone plane has a rear port per channel (`sim/initial-state.ts` seeds MIC_IN_3/MIC_IN_4).
 const MIC_PORT: Record<AudioTrackId, RearPortId> = { 'AUDIO-01': 'MIC_IN_1', 'AUDIO-02': 'MIC_IN_2', 'AUDIO-03': 'MIC_IN_3', 'AUDIO-04': 'MIC_IN_4' }
@@ -81,7 +82,11 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
   const fullName = ownCore ? name : labels.fullName(deviceId)
   // (An absent input on a Core in its own capture: the line's own name stands where the input was named.)
   const port = ownCore ? (inputId ?? name) : labels.port(MIC_PORT[channel])
-  const tone = STATUS_TONE[status]
+  // Row W4-2 (D226, U-05 family): "READY" of a microphone the Core never checked reads "Not checked" - the camera tile's
+  // rule (`useTrackReach`), and the word the REGISTERED MICROPHONES card of the same device says (`rosterCardStatus`).
+  const reach = useTrackReach(channel)
+  const notChecked = reach === 'NOT_CHECKED' && status === 'READY'
+  const tone = notChecked ? 'default' : STATUS_TONE[status]
   const latched = mic?.clipLatched ?? false
   const noSignal = status === 'NO_SIGNAL'
   // Decisions D51 / D53: while no session records, the meter shows the level only while this page holds the
@@ -111,6 +116,7 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
       className="dev-audio"
       data-testid={`audio-input-${channel}`}
       data-status={status}
+      data-checked={notChecked ? 'false' : undefined}
       data-tone={tone}
       data-mic-input={inputId ?? undefined}
       data-input-state={inputId === null ? 'NOT_ASSIGNED' : undefined}
@@ -133,7 +139,7 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
               <Chip.Label>{t(`common.enums.trackRecState.${mic.recState}`)}</Chip.Label>
             </Chip>
           ) : null}
-          <StatusChip tone={tone} label={t(`devices.status.${status}`)} severity={STATUS_SEVERITY[status]} testId={`audio-status-${channel}`} />
+          <StatusChip tone={tone} label={notChecked ? t('web.source.notChecked') : t(`devices.status.${status}`)} severity={STATUS_SEVERITY[status]} testId={`audio-status-${channel}`} />
           {/* Task 3 R-10 / R-11 (blueprint row 137): the input's device is the one the selector names for it. */}
           {inputId === null ? null : <MicUnreachableMark inputId={inputId} />}
         </div>

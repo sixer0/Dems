@@ -243,6 +243,34 @@ describe('what is started, through the production door', () => {
     expect(standby).toEqual({ deviceId: 'MIC-04', role: 'STANDBY', dbfs: 0, clipped: true });
   });
 
+  // Row W4-6 (D235): the site's selector (diagnosis F2/F5) - MIC-03..MIC-06 on inputs 1-4 of ONE 4-input card, channel 1
+  // PRIMARY and channels 2-4 all STANDBY. Three levels share the role, so each must carry its mic id: that is what the
+  // engine places it by (`idleLevelsAsTelemetry`, shared `feedCaptureLevels`).
+  it('row W4-6: one 4-input card with four selector lines publishes four levels, each with its own mic id, in input order', async () => {
+    const h = harness({
+      rows: [row('MIC-03', BENCH, 1), row('MIC-04', BENCH, 2), row('MIC-05', BENCH, 3), row('MIC-06', BENCH, 4)],
+      inputs: [
+        { deviceId: 'MIC-03', role: 'PRIMARY' },
+        { deviceId: 'MIC-04', role: 'STANDBY' },
+        { deviceId: 'MIC-05', role: 'STANDBY' },
+        { deviceId: 'MIC-06', role: 'STANDBY' },
+      ],
+    });
+    h.meters.hold('OPR-001');
+    await settle();
+    expect(h.door.calls).toHaveLength(1);
+    h.door.calls[0]!.output(window4([0.5, 0.1, 0.01, 0.001]));
+    expect(h.published).toHaveLength(1);
+    const levels = h.published[0]!;
+    expect(levels.map((level) => [level.deviceId, level.role])).toEqual([
+      ['MIC-03', 'PRIMARY'],
+      ['MIC-04', 'STANDBY'],
+      ['MIC-05', 'STANDBY'],
+      ['MIC-06', 'STANDBY'],
+    ]);
+    expect(levels.map((level) => Math.round(level.dbfs))).toEqual([-6, -20, -40, -60]);
+  });
+
   it('two cards: two helpers, one per card; each publishes its own input; the configuration holds both entries', async () => {
     const h = harness({ cards: [BENCH, OTHER], rows: [row('MIC-03', BENCH, 1), row('MIC-07', OTHER, 2)], inputs: [{ deviceId: 'MIC-07', role: 'STANDBY' }, { deviceId: 'MIC-03', role: 'PRIMARY' }] });
     h.meters.hold('OPR-001');
@@ -335,6 +363,29 @@ describe('a card that is not read: no level, no fault, no retry before the next 
     await settle();
     expect(h.door.calls).toHaveLength(1);
     expect(h.published).toEqual([]);
+  });
+
+  it('row W4-7 (D238): a helper notice names EVERY microphone of its card (the reach of each), and the next hold of a lost card tells each microphone CARD_NOT_READ', async () => {
+    const h = harness();
+    h.meters.hold('OPR-001');
+    await settle();
+    h.door.calls[0]!.end({ exitCode: 1 });
+    await settle();
+    expect(h.notices).toEqual([{ code: IdleMeterNoticeCode.HELPER_ENDED, deviceId: 'MIC-03', detail: 'EXIT_1', deviceIds: ['MIC-03', 'MIC-04'] }]);
+    h.notices.length = 0;
+    h.state.cards = [];
+    h.timers.fire(IDLE_METER_LEASE_MS);
+    await settle();
+    h.meters.hold('OPR-001');
+    await settle();
+    expect(h.notices.map((notice) => [notice.code, notice.deviceId, notice.deviceIds])).toEqual([
+      [IdleMeterNoticeCode.CARD_NOT_READ, 'MIC-03', undefined],
+      [IdleMeterNoticeCode.CARD_NOT_READ, 'MIC-04', undefined],
+    ]);
+    const refused = harness({ door: fakeDoor({ refuseStart: true }) });
+    refused.meters.hold('OPR-001');
+    await settle();
+    expect(refused.notices.find((notice) => notice.code === IdleMeterNoticeCode.HELPER_NOT_STARTED)?.deviceIds).toEqual(['MIC-03', 'MIC-04']);
   });
 
   it('a listing that fails, a selection that fails, a refused program and a door that does not start are told and start nothing; hold never throws', async () => {

@@ -10,7 +10,8 @@ import { captureMicLines, DeviceCommand, meterInputOfChannel, micChannelOfTrack,
 import { motion as tokens, type StatusTone } from '@dems/shared/tokens'
 import { DbfsMeter } from '@/components/composed'
 import { micPairLabel } from '@/features/devices/capture-selector' // Row W3T (R157-1; N-40): the pair label of a meter track, "Mic N (Camera N)"
-import { CameraPreview } from '@/features/devices/camera-preview'
+import { ReachGatedCameraPreview } from '@/features/devices/reach-gated-preview'
+import { useDocumentVisible } from '@/features/devices/idle-meter-lease'
 import { useTrackReach } from '@/features/devices/track-reach'
 import { trackStatus, type DeviceStatusCode } from '@/features/devices/model' // Row 129 (U-05): the one track status of both pages
 import { MicSourceMarks, TrackSourceMarks } from '@/features/devices/source-badge'
@@ -313,6 +314,8 @@ function CameraTile({ cameraId, index, beatMs }: { cameraId: VideoTrackId; index
   const camera = useSim(useMemo(() => selectCamera(cameraId), [cameraId]))
   // Fix wave J (JW-23 (4)): "READY" of a source the Core never checked (a camera on a dead port) reads "Not checked".
   const reach = useTrackReach(cameraId)
+  // Row W4-1 (L8, D231): the tile shows the Core's live picture as Devices & Inputs does; a hidden tab closes the stream.
+  const visible = useDocumentVisible()
   if (!camera) return null
   // Row 129 (DF-11 web, U-05): FAULT and OFFLINE are the Devices tile's words for the same track (`trackStatus`).
   const fault = camera.status === 'FAULT'
@@ -336,9 +339,13 @@ function CameraTile({ cameraId, index, beatMs }: { cameraId: VideoTrackId; index
       {/* Pass D2 (ux §8f.2, WB-02): the one badge of the camera that feeds this track; nothing unless the Core sent the development class. */}
       <TrackSourceMarks trackId={cameraId} place={`dashboard-${cameraId}`} />
       {/* The format chip sits top-left: bottom-left would cover the DEMO OSD line of the loop (N-39-3, P13). */}
-      <CameraPreview
+      {/* Row W4-1 (L8, D231): the reach-gated live preview of Session New and the Session Monitor feed - no token while the
+          Core states NOT_REACHABLE (the tile says "Not reachable"; the in-tile "Try again" is not drawn here, dashboard.css),
+          one stream per tile while the tab is visible, closed on a hidden tab and on unmount. */}
+      <ReachGatedCameraPreview
         cameraId={cameraId}
         variant="tile"
+        livePreview={visible}
         // A stream that states no rate (`fps` null) reads its picture without one (task 4 row 54 / I-3, P12-F08): never nothing, never an empty rate.
         // Row V6 (S-01): a track with no stored stream statement (`resolution` null) reads "Not stated", never a default picture.
         label={camera.resolution === null ? t('common.devices.cameraFormatNotStated') : camera.fps === null ? t('common.devices.cameraFormatNoRate', { resolution: camera.resolution }) : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
@@ -364,10 +371,18 @@ function MicTile({ channel, index, beatMs }: { channel: AudioTrackId; index: num
   const mic = useSim(useMemo(() => selectMic(channel), [channel]))
   // Wave H driver B (G75-04; ux §8e.2 "no meters"): no live level while the cameras connect or for a failed start.
   const noLevels = useSim((s) => noLiveLevelsOf(s.session))
+  // Row W4-1 (D226 domino, routing D238): the one reader of /devices (`trackReachOf`, row W4-2) - "READY" of a microphone
+  // the Core never checked reads "Not checked", as the camera tile beside it does.
+  const reach = useTrackReach(channel)
   if (!mic) return null
+  const notChecked = reach === 'NOT_CHECKED' && mic.status === 'READY'
   // Row 129 (U-05): the Devices card's status of this channel; a meter state keeps the meter's own words.
-  const tone: StatusTone = MIC_TILE_TONE[mic.status] ?? 'warning'
-  const state = mic.status === 'READY' || mic.status === 'NO_SIGNAL' || mic.status === 'CLIP' ? t(`common.enums.micState.${mic.status}`) : t(`devices.status.${mic.status}`)
+  const tone: StatusTone = notChecked ? 'default' : (MIC_TILE_TONE[mic.status] ?? 'warning')
+  const state = notChecked
+    ? t('web.source.notChecked')
+    : mic.status === 'READY' || mic.status === 'NO_SIGNAL' || mic.status === 'CLIP'
+      ? t(`common.enums.micState.${mic.status}`)
+      : t(`devices.status.${mic.status}`)
   const name = t(MIC_NAME_KEY[channel])
   // Row W3T (R157-1; N-40): the pair slot of the tile - fixed by number, so it is named with or without an input (as the
   // Session Monitor halves, row 157). Only Pair 1 is transcribed.

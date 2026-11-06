@@ -16,6 +16,10 @@ import {
   applyCaptureTelemetryTransition,
   captureTelemetryChangesState,
   captureTelemetryIgnored,
+  captureMicLines,
+  channelOfMicLine,
+  micInputOfCaptureLevel,
+  micInputOfCaptureRole,
   createManualClock,
   createSim,
   type CaptureTelemetryInput,
@@ -205,6 +209,88 @@ describe('applyCaptureTelemetry: the levels reach the meters and nothing else (S
     h.run(50);
     expect(h.state().audio.inputs['MIC-01']!.noSignal).toBe(false);
     expect(h.state().audio.inputs['MIC-02']!.noSignal).toBe(false);
+    expect(h.state().mics.every((mic) => !mic.clipLatched)).toBe(true);
+  });
+});
+
+// Row W4-6 (D235, 2026-11-06; diagnosis research/w4_3_mic_meter_diagnosis.md F6-F10): the role lane names channel 1
+// PRIMARY and channels 2-4 all STANDBY, so by role alone channels 3 and 4 never got a level and channel 2 showed the
+// LAST standby (input 4). A level that names its microphone is placed by that ID; the role is read only without one.
+describe('row W4-6: a level that names its microphone lands on that microphone, on all four pairs', () => {
+  // The site's selector (F2): one 4-input card, MIC-03..MIC-06 on inputs 1-4, channels MIC-01..MIC-04 in order;
+  // the Core's lines carry inputId = deviceId (apps/core-server db/mapping/rows.ts, `mic`).
+  const card = [
+    { channel: 'MIC-01' as const, inputId: 'MIC-03', deviceId: 'MIC-03', transport: 'USB_AUDIO', online: true },
+    { channel: 'MIC-02' as const, inputId: 'MIC-04', deviceId: 'MIC-04', transport: 'USB_AUDIO', online: true },
+    { channel: 'MIC-03' as const, inputId: 'MIC-05', deviceId: 'MIC-05', transport: 'USB_AUDIO', online: true },
+    { channel: 'MIC-04' as const, inputId: 'MIC-06', deviceId: 'MIC-06', transport: 'USB_AUDIO', online: true },
+  ];
+  // What the idle meter publishes for one window: every input with its microphone AND its legacy role.
+  const window = [
+    { deviceId: 'MIC-03', role: 'PRIMARY' as const, dbfs: -20, clipped: false },
+    { deviceId: 'MIC-04', role: 'STANDBY' as const, dbfs: -30, clipped: false },
+    { deviceId: 'MIC-05', role: 'STANDBY' as const, dbfs: -40, clipped: true },
+    { deviceId: 'MIC-06', role: 'STANDBY' as const, dbfs: -48, clipped: false }, // the empty input 4: its own (hum) floor. Above -52: the meter starts at AUDIO_NOISE_FLOOR_DBFS and releases at 20 dB/s, so a lower value is not reached in one frame
+  ];
+  function onCard(scenario: ScenarioName) {
+    const h = harness(scenario, 'external');
+    const { captureConfig, session } = h.state();
+    // A recording reads the snapshot of its session (OD-10), so the card is put there as well.
+    const snapshot = session?.captureConfig;
+    h.sim.store.setState({
+      captureConfig: { ...captureConfig, mics: card },
+      ...(session && snapshot ? { session: { ...session, captureConfig: { ...snapshot, mics: card } } } : {}),
+    });
+    return h;
+  }
+
+  it('at rest: MIC-03..MIC-06 on inputs 1-4 read their own level on AUDIO-01..AUDIO-04; the empty input reads its own value', () => {
+    const h = onCard('idle');
+    expect(card.map((line) => channelOfMicLine(captureMicLines(h.state()), line.inputId))).toEqual(['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']);
+    // Control: before any level an input at rest is "not measured", never NO SIGNAL.
+    h.run(50);
+    for (const line of card) expect(h.state().audio.inputs[line.inputId]).toMatchObject({ noSignal: false, notMeasured: true });
+
+    h.sim.actions.applyCaptureTelemetry(frame({ levels: window }));
+    h.run(50);
+    expect(h.state().audio.inputs['MIC-03']).toMatchObject({ dbfs: -20, noSignal: false });
+    expect(h.state().audio.inputs['MIC-04']).toMatchObject({ dbfs: -30, noSignal: false }); // input 2, no longer input 4
+    expect(h.state().audio.inputs['MIC-05']).toMatchObject({ dbfs: -40, noSignal: false, clip: true });
+    expect(h.state().audio.inputs['MIC-06']).toMatchObject({ dbfs: -48, noSignal: false });
+    for (const line of card) expect(h.state().audio.inputs[line.inputId]).not.toHaveProperty('notMeasured');
+    expect(h.state().mics.find((mic) => mic.id === 'AUDIO-03')?.clipLatched).toBe(true);
+    expect(h.state().mics.filter((mic) => mic.id !== 'AUDIO-03').every((mic) => !mic.clipLatched)).toBe(true);
+    expect(captureTelemetryIgnored(h.state(), frame({ levels: window }))).toEqual([]);
+  });
+
+  it('while recording: channels 3 and 4 show their levels, not NO SIGNAL', () => {
+    const h = onCard('recording');
+    h.sim.actions.applyCaptureTelemetry(frame({ levels: window }));
+    h.run(50);
+    expect(card.map((line) => h.state().audio.inputs[line.inputId]?.dbfs)).toEqual([-20, -30, -40, -48]);
+    expect(card.map((line) => h.state().audio.inputs[line.inputId]?.noSignal)).toEqual([false, false, false, false]);
+  });
+
+  it('CONTROL - a level without an ID keeps the role lane (older callers): PRIMARY is channel 1, STANDBY channel 2, the later wins', () => {
+    const h = onCard('idle');
+    h.sim.actions.applyCaptureTelemetry(frame({ levels: window.map(({ deviceId: _id, ...byRole }) => byRole) }));
+    h.run(50);
+    expect(h.state().audio.inputs['MIC-03']).toMatchObject({ dbfs: -20 });
+    expect(h.state().audio.inputs['MIC-04']).toMatchObject({ dbfs: -48 }); // input 4's level on channel 2: the old collapse
+    expect(h.state().audio.inputs['MIC-05']).toMatchObject({ notMeasured: true });
+    expect(h.state().audio.inputs['MIC-06']).toMatchObject({ notMeasured: true });
+    expect(micInputOfCaptureRole(h.state(), 'STANDBY')).toBe('MIC-04');
+  });
+
+  it('an ID no line holds is ignored and named by that ID; its role does not move it onto another channel', () => {
+    const h = onCard('idle');
+    const stray = { deviceId: 'MIC-09', role: 'PRIMARY' as const, dbfs: -3, clipped: true };
+    expect(micInputOfCaptureLevel(h.state(), stray)).toBeNull();
+    expect(micInputOfCaptureRole(h.state(), 'PRIMARY', 'MIC-06')).toBe('MIC-06');
+    expect(captureTelemetryIgnored(h.state(), frame({ levels: [stray, window[0]!] }))).toEqual(['levels:MIC-09']);
+    h.sim.actions.applyCaptureTelemetry(frame({ levels: [stray] }));
+    h.run(50);
+    expect(h.state().audio.inputs['MIC-03']).toMatchObject({ notMeasured: true });
     expect(h.state().mics.every((mic) => !mic.clipLatched)).toBe(true);
   });
 });

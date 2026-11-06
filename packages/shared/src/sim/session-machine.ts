@@ -445,7 +445,7 @@ export function scanCaseNumberTransition(state: SimState, now: EpochMs): { state
 
 // ── PRECHECK (§5.3 gate; policy 01_specs §14.5.11, demo G8) ─────────────────────────────
 
-/** 8 seeded durations of 300-700 ms each, budgeted so the whole gate takes ≤ 4.9 s. */
+/** Twelve (`PRECHECK_ORDER.length`) seeded durations of 300-700 ms each, budgeted so the whole gate takes ≤ 4.9 s. */
 export function drawPrecheckDurations(rng: Rng, count: number = PRECHECK_ORDER.length): number[] {
   let budget = PRECHECK_TOTAL_MAX_MS;
   const durations: number[] = [];
@@ -748,7 +748,7 @@ export function beginPrecheckTransition(state: SimState, now: EpochMs, rng: RngS
   return startPrecheck(state, session, now, rng);
 }
 
-/** PRECHECK with a resolved BLOCK or WARN outcome → a fresh run of all 8 checks. */
+/** PRECHECK with a resolved BLOCK or WARN outcome → a fresh run of all twelve checks. */
 export function retryPrecheckTransition(state: SimState, now: EpochMs, rng: RngStreams): SimState {
   requireSessionOperator(state, 'retryPrecheck');
   const session = requireSession(state, 'retryPrecheck', [SessionState.PRECHECK]);

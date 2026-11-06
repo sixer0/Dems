@@ -12,6 +12,7 @@ import {
   ALWAYS_VISIBLE,
   createMemoryAuthStorage,
   createSim,
+  HOST_CLOCK_TIME,
   OPERATOR_IDS,
   SimPermissionError,
   SimProvider,
@@ -23,7 +24,8 @@ import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { createAppRouter } from '@/router'
 import { createTestSim, withProviders } from '@/components/composed/__tests__/test-utils'
 import { realCore } from '@/test/real-core-bed'
-import { selectBanner, selectStatusMap, selectSummary, trackSourceOf, trackStatus, viewDeviceTarget } from '../model'
+import { SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE } from '@dems/shared/api'
+import { COUNTED_DEVICES, countedDevicesOf, selectBanner, selectStatusMap, selectSummary, trackSourceOf, trackStatus, viewDeviceTarget } from '../model'
 import { OtherDevices, tabletOfflineBodyKey } from '../other-devices'
 import {
   auditRowDevice,
@@ -621,5 +623,47 @@ describe('row 129 (D92): "View device" opens the drawer of the device, never the
   it('simulator: a counted built-in id keeps the built-in drawer, an added device its registry drawer', () => {
     expect(viewDeviceTarget('CAM-03', false, BUILT_IN)).toBe('BUILT_IN_DRAWER')
     expect(viewDeviceTarget('CAM-07', false, BUILT_IN)).toBe('REGISTERED_DRAWER')
+  })
+})
+
+// Row W4-2 (L4, D220; the web twin of tablet row 222): a built-in id the page draws as a REGISTERED card (on another line,
+// or on none) opens its registered drawer from the camera search too, as the roster's own "View device" does.
+describe('row W4-2 (L4, D220): viewDeviceTarget follows the roster card', () => {
+  const BUILT_IN = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']
+  it('simulator: a counted id with a roster card opens the registered drawer; without one the built-in drawer, as before', () => {
+    expect(viewDeviceTarget('CAM-03', false, BUILT_IN, true)).toBe('REGISTERED_DRAWER')
+    expect(viewDeviceTarget('CAM-03', false, BUILT_IN, false)).toBe('BUILT_IN_DRAWER')
+    expect(viewDeviceTarget('CAM-03', false, BUILT_IN)).toBe('BUILT_IN_DRAWER')
+    expect(viewDeviceTarget('CAM-07', false, BUILT_IN, false)).toBe('REGISTERED_DRAWER')
+    expect(viewDeviceTarget('CAM-01', true, BUILT_IN, false)).toBe('REGISTERED_DRAWER')
+  })
+})
+
+// Row W4-2 (L6, D215; the web twin of tablet row 227): on a Core in its own capture the PoE switch and the recording
+// lamp have no producer (their rows read "Not reported"), so the banner neither counts nor names them.
+describe('row W4-2 (L6, D215): the banner counts no PoE switch and no lamp on a self-capture Core', () => {
+  /** Every camera down: the model's PoE CAM 1 link is down too (`poeStatus`: some camera online), so `bookPoe` says FAULT. */
+  const camerasDown = (state: ReturnType<Sim['store']['getState']>) => ({ ...state, cameras: state.cameras.map((camera) => ({ ...camera, online: false })) })
+
+  it('CONTROL (simulated): the model PoE FAULT is counted - 4 cameras + the PoE switch = 5 issues of 13', () => {
+    const state = camerasDown(newSim().store.getState())
+    expect(selectStatusMap(state)['POE-SWITCH']).toBe('FAULT')
+    expect(countedDevicesOf(state)).toBe(COUNTED_DEVICES)
+    expect(selectBanner(state)).toMatchObject({ kind: 'CRITICAL', total: 13, issues: 5 })
+  })
+
+  it('self-capture (host clock + platform not reported): the same PoE FAULT is not counted - 4 issues, PoE and lamp out of the total', () => {
+    const base = newSim().store.getState()
+    const own = { ...base, security: { ...base.security, ...SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE }, time: { ...HOST_CLOCK_TIME } }
+    expect(countedDevicesOf(own)).toEqual(COUNTED_DEVICES.filter((id) => id !== 'GNSS' && id !== 'TPM' && id !== 'POE-SWITCH' && id !== 'REC-INDICATOR'))
+    const state = camerasDown(own)
+    expect(selectStatusMap(state)['POE-SWITCH']).toBe('FAULT') // the model still says it; nobody counts it
+    const banner = selectBanner(state)
+    expect(banner).toMatchObject({ kind: 'CRITICAL', total: 9, issues: 4 })
+    expect(banner.worst).not.toBe('POE-SWITCH')
+    // A self-capture Core with every camera up: no issue at all (before the fix the PoE switch would be 1 of 11 counted).
+    expect(selectBanner(own)).toMatchObject({ kind: 'READY', total: 9, issues: 0, worst: null })
+    // The Other card counts what the banner counts: only the tablet link is left.
+    expect(selectSummary(own)).toMatchObject({ otherOk: 1, otherTotal: 1 })
   })
 })

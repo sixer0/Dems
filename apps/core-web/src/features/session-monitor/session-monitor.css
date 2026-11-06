@@ -1051,6 +1051,12 @@
   flex: none;
 }
 
+/* Row W4-1 (L8, D231): the 108 x 61 px thumb has no room for the reach gate's "Try again" (its action slot); the feed of
+   the selected camera carries it, and opening the monitor re-checks each stale unreachable camera once. */
+.sm-input-thumb [data-testid^='camera-preview-try-again-'] {
+  display: none;
+}
+
 .sm-input-mic {
   width: 36px;
   height: 36px;

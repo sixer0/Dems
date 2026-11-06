@@ -67,9 +67,12 @@ import {
   PREVIEW_REACH_REFRESH_MS,
   PREVIEW_REACH_UNIT,
   composeProductionCapture,
+  MIC_REACH_REFRESH_MS,
+  createMicReach,
   createPreviewOutcome,
   createRelayReportHub,
   hostAliasInterfaceFileOf,
+  idleLevelsAsTelemetry,
   storedProductionFactsOf,
   type ComposedProductionCapture,
   type ProductionCaptureInput,
@@ -77,6 +80,8 @@ import {
 } from '../capture-composition';
 import { captureDeviceReachTransition, type CaptureDeviceReachReading } from '../engine/internal-actions';
 import type { SimState } from '@dems/shared/sim';
+import { captureTelemetryIgnored, createManualClock, createSim } from '@dems/shared/sim';
+import type { IdleMeterLevel, IdleMeterNotice } from '../capture/adapters/audio/idle-meter';
 
 /** Hand-written host facts (the documentation networks of rows 143 and 144): a camera interface on 192.168.50.0/24, an office interface on 10.20.0.0/24. */
 const HOST: DestinationContext = {
@@ -1991,5 +1996,232 @@ describe('audit row 127: the outcome of a live preview - reach of the device, co
     for (const entry of notes) expect(entry).toMatchObject({ level: 'warn', context: { deviceId: 'CAM-01', collapsed: 0 } });
     expect(PREVIEW_REACH_UNIT).toBe('capture.previewReach');
     await composition.preview.close();
+  });
+});
+
+// Row W4-6 (D235, 2026-11-06; research/w4_3_mic_meter_diagnosis.md F7): the idle meters' levels reached the engine by
+// role only (`MIC-01`=PRIMARY, channels 2-4 all STANDBY), so channels 3 and 4 read "Not measured" and channel 2 showed
+// input 4. `publishLevels` now hands each level WITH its microphone, through `idleLevelsAsTelemetry`.
+describe('row W4-6: the idle levels reach the engine with their microphone', () => {
+  // The site's card (F2): MIC-03..MIC-06 on inputs 1-4 of one 4-input card, selector channels MIC-01..MIC-04 in order.
+  const published: IdleMeterLevel[] = [
+    { deviceId: 'MIC-03', role: 'PRIMARY', dbfs: -20, clipped: false },
+    { deviceId: 'MIC-04', role: 'STANDBY', dbfs: -30, clipped: false },
+    { deviceId: 'MIC-05', role: 'STANDBY', dbfs: -40, clipped: false },
+    { deviceId: 'MIC-06', role: 'STANDBY', dbfs: -48, clipped: false }, // above the meter's -52 start (20 dB/s release)
+  ];
+
+  it('every level carries its mic id (and keeps its role, dBFS and clip as they were)', () => {
+    expect(idleLevelsAsTelemetry(published)).toEqual(published.map(({ deviceId, role, dbfs, clipped }) => ({ deviceId, role, dbfs, clipped })));
+    expect(idleLevelsAsTelemetry([])).toEqual([]);
+  });
+
+  it('the composition\'s publisher is that mapping: no level is handed to the engine without its mic id', () => {
+    const text = readFileSync(join(__dirname, '..', 'capture-composition.ts'), 'utf8');
+    expect(text.match(/applyCaptureTelemetry\(\{ levels: [^,]+,/g)).toEqual(['applyCaptureTelemetry({ levels: idleLevelsAsTelemetry(levels),']);
+  });
+
+  it('through the shared engine: at rest the four meters read their own level, on AUDIO-01..AUDIO-04', () => {
+    const clock = createManualClock(Date.UTC(2026, 10, 6, 3, 0, 0));
+    const sim = createSim({ clock, storage: null, authStorage: null, scenario: 'idle', capture: 'external' });
+    const mics = published.map((level, index) => ({ channel: `MIC-0${String(index + 1)}` as 'MIC-01', inputId: level.deviceId, deviceId: level.deviceId, transport: 'USB_AUDIO', online: true }));
+    sim.store.setState({ captureConfig: { ...sim.store.getState().captureConfig, mics } });
+    const telemetry = { levels: idleLevelsAsTelemetry(published), ingest: [], fragments: [] };
+    expect(captureTelemetryIgnored(sim.store.getState(), telemetry)).toEqual([]);
+    sim.actions.applyCaptureTelemetry(telemetry);
+    clock.advance(50);
+    sim.tick();
+    const inputs = sim.store.getState().audio.inputs;
+    expect(published.map((level) => inputs[level.deviceId]?.dbfs)).toEqual([-20, -30, -40, -48]);
+    expect(published.map((level) => inputs[level.deviceId]?.notMeasured)).toEqual([undefined, undefined, undefined, undefined]);
+  });
+});
+
+// Row W4-7 (D238, 2026-11-06; after W4-2 / D226 and W4-6 / D235): the clients say "Not checked" of a microphone whose
+// entry states no `reach` (contract state-slices.ts:262), and nothing in the Core stated one for a microphone - only the
+// camera preview wrote `reach`. The idle meters are the Core's reading of a microphone at rest: a level states
+// REACHABLE, a card that is lost or cannot be opened states NOT_REACHABLE, throttled, through the preview's door.
+describe('row W4-7: the idle meters state the reach of a microphone', () => {
+  const T0 = Date.UTC(2026, 10, 6, 3, 0, 0);
+  const mic = (id: string) => ({ id, kind: 'MIC', online: true, streamState: null, capabilities: [] });
+  const level = (deviceId: string, dbfs = -40): IdleMeterLevel => ({ deviceId, role: 'STANDBY', dbfs, clipped: false });
+
+  /** The production wiring in small: the write is row 127's transition on a held state, and `stated` reads that state back. */
+  function reachRig(options: { write?: (reading: CaptureDeviceReachReading) => Promise<unknown> | void; stated?: boolean } = {}) {
+    let clock = T0;
+    let state = { captureDevices: { devices: ['MIC-03', 'MIC-04', 'MIC-05', 'MIC-06', 'CAM-01'].map((id) => (id.startsWith('CAM') ? { ...mic(id), kind: 'CAMERA' } : mic(id))) } } as unknown as SimState;
+    const readings: CaptureDeviceReachReading[] = [];
+    const notWritten: { deviceId: string; reach: string; reason: string | null }[] = [];
+    const reach = createMicReach({
+      now: () => clock,
+      write: (reading) => {
+        readings.push(reading);
+        if (options.write !== undefined) return options.write(reading);
+        state = captureDeviceReachTransition(state, reading);
+        return Promise.resolve(true);
+      },
+      ...(options.stated === false
+        ? {}
+        : {
+            stated: (deviceId: string) => {
+              const device = state.captureDevices.devices.find((entry) => entry.id === deviceId);
+              return device === undefined ? null : { reach: device.reach ?? null, checkedAt: device.checkedAt ?? null };
+            },
+          }),
+      notWritten: (context) => void notWritten.push({ ...context }),
+    });
+    const entry = (id: string) => state.captureDevices.devices.find((device) => device.id === id);
+    return { reach, readings, notWritten, entry, advance: (ms: number) => void (clock += ms), at: () => clock, set: (next: SimState) => void (state = next), state: () => state };
+  }
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+  it('a level for MIC-05 states reach REACHABLE with checkedAt on MIC-05 only; online and the other entries stay as they were', async () => {
+    const r = reachRig();
+    const before = r.state();
+    r.reach.levels([level('MIC-05')]);
+    await settle();
+    expect(r.readings).toEqual([{ deviceId: 'MIC-05', reach: 'REACHABLE', checkedAt: T0 }]);
+    expect(r.entry('MIC-05')).toEqual({ ...mic('MIC-05'), reach: 'REACHABLE', checkedAt: T0 });
+    for (const id of ['MIC-03', 'MIC-04', 'MIC-06', 'CAM-01']) expect(r.entry(id)).toBe(before.captureDevices.devices.find((device) => device.id === id));
+  });
+
+  it('one window of a 4-input card states each microphone once, by its own ID', async () => {
+    const r = reachRig();
+    r.reach.levels(['MIC-03', 'MIC-04', 'MIC-05', 'MIC-06'].map((id) => level(id)));
+    await settle();
+    expect(r.readings.map((reading) => [reading.deviceId, reading.reach])).toEqual([
+      ['MIC-03', 'REACHABLE'],
+      ['MIC-04', 'REACHABLE'],
+      ['MIC-05', 'REACHABLE'],
+      ['MIC-06', 'REACHABLE'],
+    ]);
+  });
+
+  it('the card is lost: the helper that ended by itself states NOT_REACHABLE on every microphone of its card; a card not read on its own microphone', async () => {
+    const r = reachRig();
+    r.reach.levels(['MIC-03', 'MIC-04', 'MIC-05', 'MIC-06'].map((id) => level(id)));
+    await settle();
+    r.advance(1_000);
+    const ended: IdleMeterNotice = { code: 'IDLE_METER_HELPER_ENDED', deviceId: 'MIC-03', detail: 'EXIT_1', deviceIds: ['MIC-03', 'MIC-04', 'MIC-05', 'MIC-06'] };
+    r.reach.notice(ended);
+    await settle();
+    // A change of the outcome is written at once, inside the bound.
+    expect(['MIC-03', 'MIC-04', 'MIC-05', 'MIC-06'].map((id) => [r.entry(id)?.reach, r.entry(id)?.checkedAt])).toEqual(Array(4).fill(['NOT_REACHABLE', T0 + 1_000]));
+    // The next hold finds the card absent from the listing: CARD_NOT_READ of each microphone, already stated, no write.
+    r.advance(1_000);
+    r.reach.notice({ code: 'IDLE_METER_CARD_NOT_READ', deviceId: 'MIC-05', detail: 'CARD_ABSENT' });
+    expect(r.readings).toHaveLength(8);
+    // A card not read on a fresh entry: NOT_REACHABLE on that microphone only.
+    const fresh = reachRig();
+    fresh.reach.notice({ code: 'IDLE_METER_CARD_NOT_READ', deviceId: 'MIC-06', detail: 'CARD_AMBIGUOUS' });
+    await settle();
+    expect(fresh.readings).toEqual([{ deviceId: 'MIC-06', reach: 'NOT_REACHABLE', checkedAt: T0 }]);
+    expect(fresh.entry('MIC-05')?.reach).toBeUndefined();
+    // The card comes back: its first level states REACHABLE again at once.
+    fresh.advance(500);
+    fresh.reach.levels([level('MIC-06')]);
+    await settle();
+    expect(fresh.entry('MIC-06')).toMatchObject({ reach: 'REACHABLE', checkedAt: T0 + 500 });
+  });
+
+  it('CONTROL: the Core\'s own failures and a helper that never started state nothing about the card', async () => {
+    const r = reachRig();
+    const silent: IdleMeterNotice[] = [
+      { code: 'IDLE_METER_HELPER_ENDED', deviceId: 'MIC-03', detail: 'NOT_STARTED', deviceIds: ['MIC-03', 'MIC-04'] },
+      { code: 'IDLE_METER_HELPER_NOT_STARTED', deviceId: 'MIC-03', detail: 'NONE', deviceIds: ['MIC-03', 'MIC-04'] },
+      { code: 'IDLE_METER_CONFIG_REFUSED', deviceId: 'MIC-03', detail: 'NONE' },
+      { code: 'IDLE_METER_INPUT_NOT_REGISTERED', deviceId: 'MIC-04', detail: 'NONE' },
+      { code: 'IDLE_METER_LISTING_FAILED', deviceId: null, detail: 'EACCES' },
+      { code: 'IDLE_METER_PROGRAM_REFUSED', deviceId: null, detail: 'HELPER_MISSING' },
+      { code: 'IDLE_METER_SELECTION_FAILED', deviceId: null, detail: 'NONE' },
+      { code: 'IDLE_METER_HELPER_SIGNALLED', deviceId: null, detail: 'NONE' },
+    ];
+    for (const notice of silent) r.reach.notice(notice);
+    await settle();
+    expect(r.readings).toEqual([]);
+  });
+
+  it('THROTTLE: at the meter rate (20 windows a second) a REACHABLE is written once per MIC_REACH_REFRESH_MS, not per window', async () => {
+    expect(MIC_REACH_REFRESH_MS).toBe(30_000);
+    const r = reachRig();
+    // 61 s of windows every 50 ms for two microphones: 2 440 levels.
+    for (let at = 0; at <= 61_000; at += 50) {
+      r.reach.levels([level('MIC-03'), level('MIC-04')]);
+      await settle();
+      r.advance(50);
+    }
+    // Writes at 0 s, 30 s and 60 s per microphone: 6, not 2 440.
+    expect(r.readings.map((reading) => [reading.deviceId, (reading.checkedAt ?? 0) - T0])).toEqual([
+      ['MIC-03', 0],
+      ['MIC-04', 0],
+      ['MIC-03', 30_000],
+      ['MIC-04', 30_000],
+      ['MIC-03', 60_000],
+      ['MIC-04', 60_000],
+    ]);
+  });
+
+  it('THROTTLE: a write in flight is not repeated; another writer\'s clear (a re-registration) is stated again at the next level', async () => {
+    let release: () => void = () => {};
+    const held: CaptureDeviceReachReading[] = [];
+    const r = reachRig({
+      write: (reading) => {
+        held.push(reading);
+        return new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      },
+    });
+    r.reach.levels([level('MIC-05')]);
+    r.reach.levels([level('MIC-05')]);
+    r.advance(50);
+    r.reach.levels([level('MIC-05')]);
+    expect(held).toHaveLength(1);
+    release();
+    await settle();
+    // The engine state of the rig was not changed by this write function: what the engine states decides, so the
+    // next level (the state still says nothing) is written again - a clear by another writer is never masked.
+    r.reach.levels([level('MIC-05')]);
+    expect(held).toHaveLength(2);
+  });
+
+  it('a reading the engine refused is reported by code once and not retried before the bound', async () => {
+    const r = reachRig({ write: () => Promise.reject(Object.assign(new Error('engine stopped'), { code: 'ENGINE_NOT_READY' })) });
+    r.reach.levels([level('MIC-04')]);
+    await settle();
+    for (let n = 0; n < 40; n += 1) {
+      r.advance(50);
+      r.reach.levels([level('MIC-04')]);
+      await settle();
+    }
+    expect(r.notWritten).toEqual([{ deviceId: 'MIC-04', reach: 'REACHABLE', reason: 'ENGINE_NOT_READY' }]);
+    r.advance(MIC_REACH_REFRESH_MS);
+    r.reach.levels([level('MIC-04')]);
+    await settle();
+    expect(r.notWritten).toHaveLength(2);
+  });
+
+  it('a microphone the engine does not hold is never written; without the state port the last reading written decides', async () => {
+    const r = reachRig();
+    r.reach.levels([level('MIC-09')]);
+    await settle();
+    expect(r.readings).toEqual([]);
+    const own = reachRig({ stated: false });
+    own.reach.levels([level('MIC-03')]);
+    await settle();
+    own.advance(29_950);
+    own.reach.levels([level('MIC-03')]);
+    own.advance(50);
+    own.reach.levels([level('MIC-03')]);
+    expect(own.readings.map((reading) => (reading.checkedAt ?? 0) - T0)).toEqual([0, 30_000]);
+  });
+
+  it('the composition wires it: the idle meters\' levels and notices reach createMicReach, and its writes take row 127\'s door', () => {
+    const text = readFileSync(join(__dirname, '..', 'capture-composition.ts'), 'utf8');
+    expect(text).toMatch(/publish: \(levels\) => \{\s*ports\.publishLevels\?\.\(levels\);\s*micReach\.levels\(levels\);/);
+    expect(text).toMatch(/micReach\.notice\(notice\);/);
+    expect(text).toMatch(/const micReach = createMicReach\(\{\s*now: ports\.now,\s*write: \(reading\) => ports\.noteDeviceReach\?\.\(reading\),/);
+    // Exactly one writer of a reach reading per source: the preview's outcome and the microphone reach, both on the one port.
+    expect(text.match(/ports\.noteDeviceReach\?\.\(reading\)/g)).toHaveLength(2);
   });
 });

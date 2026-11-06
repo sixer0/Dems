@@ -57,7 +57,7 @@ describe('LCD configuration and truth', () => {
       return state.captureDevices.devices.find((entry) => entry.id === id && entry.kind === 'CAMERA')!;
     };
 
-    it('CONTROL: stored READY, assigned, online, no reach reading or REACHABLE -> connected on every lane', () => {
+    it('CONTROL: stored READY, assigned, online, no reach reading with an open (LIVE) stream, or REACHABLE -> connected on every lane', () => {
       const state = stateOf();
       expect(lcdChannelsOf(state, 4, true).map((c) => c.cameraConnected)).toEqual([true, true, true, true]);
       deviceOf(state, 'VIDEO-01').reach = 'REACHABLE';
@@ -80,6 +80,50 @@ describe('LCD configuration and truth', () => {
       expect(lcdChannelsOf(state, 4, true).map((c) => c.cameraConnected)).toEqual([true, false, true, true]);
       state.captureDevices.devices = state.captureDevices.devices.filter((entry) => entry.kind !== 'CAMERA');
       expect(lcdChannelsOf(state, 4, true).some((c) => c.cameraConnected)).toBe(false);
+    });
+
+    describe('row L3b (D158, O-163-1): the lamp lights only on a stated REACHABLE or an open source', () => {
+      /** After a Core start: no reach reading since boot and no open stream on any track. */
+      const atRestAfterStart = () => {
+        const state = stateOf();
+        for (const line of state.captureConfig.cameras) line.streamState = null;
+        for (const entry of state.captureDevices.devices) delete (entry as { reach?: unknown }).reach;
+        return state;
+      };
+
+      it('REACHABLE lights the lamp (no open stream needed)', () => {
+        const state = atRestAfterStart();
+        deviceOf(state, 'VIDEO-01').reach = 'REACHABLE';
+        expect(lcdChannelsOf(state, 4, true).map((c) => c.cameraConnected)).toEqual([true, false, false, false]);
+      });
+
+      it('NOT_REACHABLE does not light it, with or without an open stream', () => {
+        const state = atRestAfterStart();
+        deviceOf(state, 'VIDEO-01').reach = 'NOT_REACHABLE';
+        expect(lcdChannelsOf(state, 4, true)[0]?.cameraConnected).toBe(false);
+        state.captureConfig.cameras.find((line) => line.trackId === 'VIDEO-01')!.streamState = 'LIVE';
+        expect(lcdChannelsOf(state, 4, true)[0]?.cameraConnected).toBe(false);
+      });
+
+      it('no reach stated (NOT_CHECKED) and no open stream -> unlit, not "connected" (the panel has no third state)', () => {
+        const state = atRestAfterStart();
+        expect(lcdChannelsOf(state, 4, true).map((c) => c.cameraConnected)).toEqual([false, false, false, false]);
+        state.captureConfig.cameras.find((line) => line.trackId === 'VIDEO-02')!.streamState = 'LOST';
+        expect(lcdChannelsOf(state, 4, true)[1]?.cameraConnected).toBe(false);
+        state.captureConfig.cameras.find((line) => line.trackId === 'VIDEO-03')!.streamState = 'LIVE'; // an open source
+        expect(lcdChannelsOf(state, 4, true).map((c) => c.cameraConnected)).toEqual([false, false, true, false]);
+      });
+
+      it('CONTROL simulated lane at rest after a start: unchanged, every lamp lit', () => {
+        expect(lcdChannelsOf(atRestAfterStart(), 4, false).map((c) => c.cameraConnected)).toEqual([true, true, true, true]);
+      });
+
+      it('the REC lamp keeps its own facts (unchanged by L3b)', () => {
+        const state = stateOf();
+        state.session!.captureDurable = true;
+        for (const entry of state.captureDevices.devices) delete (entry as { reach?: unknown }).reach;
+        expect(lcdChannelsOf(state, 4, true).map((c) => c.recording)).toEqual([true, true, true, true]);
+      });
     });
 
     it('CONTROL simulated lane: unchanged, a reach reading is not read', () => {
@@ -153,6 +197,20 @@ describe('LCD bridge HTTP integration', () => {
     expect(r.posts.map((p) => p.body['cam'])).toEqual([false, true, true, true]);
     expect(Object.keys(r.posts[0]!.body).sort()).toEqual(['cam', 'clear_file', 'dev', 'lease', 'rec']);
     expect(r.posts[0]?.body['dev']).toBe(id);
+    await bridge.close();
+  });
+
+  it('row L3b: after a Core start (no reach, no open stream) a real bridge posts cam false; a REACHABLE camera posts true', async () => {
+    const r = await rig();
+    const state = stateOf();
+    for (const line of state.captureConfig.cameras) line.streamState = null;
+    for (const entry of state.captureDevices.devices) delete (entry as { reach?: unknown }).reach;
+    const id = state.captureConfig.cameras.find((line) => line.trackId === 'VIDEO-02')!.deviceId;
+    state.captureDevices.devices.find((entry) => entry.id === id && entry.kind === 'CAMERA')!.reach = 'REACHABLE';
+    const bridge = createLcdBridge({ url: r.url, real: true, readState: () => state });
+    await bridge.tick();
+    expect(r.posts.map((p) => p.body['cam'])).toEqual([false, true, false, false]);
+    expect(Object.keys(r.posts[1]!.body).sort()).toEqual(['cam', 'clear_file', 'dev', 'lease', 'rec']);
     await bridge.close();
   });
 
