@@ -1,0 +1,24 @@
+[Unit]
+Description=DEMS Core
+After=network-online.target time-sync.target dems-loopback-rule.service postgresql@18-main.service
+Wants=network-online.target postgresql@18-main.service
+Requires=dems-loopback-rule.service
+
+[Service]
+Type=simple
+User=dems-core
+Group=dems-core
+SupplementaryGroups=audio dems-netalias
+WorkingDirectory=/opt/dems/core/apps/core-server
+EnvironmentFile=/etc/dems/core.env
+ExecStart=/opt/dems/node-26.12.1/bin/node /opt/dems/core/node_modules/tsx/dist/cli.mjs src/index.ts
+KillMode=mixed
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

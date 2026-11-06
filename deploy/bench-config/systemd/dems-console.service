@@ -1,0 +1,20 @@
+[Unit]
+Description=DEMS web console (Vite development server, 127.0.0.1:5173)
+After=network-online.target dems-core.service
+
+[Service]
+Type=simple
+User=dems-console
+Group=dems-console
+WorkingDirectory=/opt/dems/core/apps/core-web
+Environment=DEMS_CORE_PROXY_PORT=4420 VITE_DEMS_CORE_MODE=live HOME=/nonexistent
+ExecStart=/opt/dems/node-26.12.1/bin/node /opt/dems/core/node_modules/vite/bin/vite.js --configLoader runner
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target
