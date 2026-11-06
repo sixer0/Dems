@@ -1,0 +1,46 @@
+## 2026-10-06 01:03:36 WIB   1:03  2 users, load averages: 6.41 5.59 5.00
+## $ npm run lint -w @dems/mobile
+
+> @dems/mobile@0.1.0 lint
+> eslint .
+
+lint exit=0
+lint exit=0
+## 01:04:08 $ npm run typecheck -w @dems/mobile
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+typecheck exit=0
+## 01:04:23 load averages: 5.94 5.54 5.01
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+test exit=0
+Test Suites: 128 passed, 128 total
+Tests:       1580 passed, 1580 total
+Time:        197.729 s
+01:07:41
+PASS src/features/audit/audit-screen.test.tsx (7.129 s)
+PASS src/features/audit/live-audit-chain.test.tsx (5.38 s)
+PASS src/features/audit/live-audit-screen.test.tsx
+PASS src/features/audit/audit-live-static.test.ts
+PASS src/features/audit/audit-model.test.ts
+## 01:08:23 CLG (a): $ git diff --stat acaff20 -- apps/mobile/src/features/audit
+ .../src/features/audit/audit-entry-detail.tsx      |  2 +-
+ apps/mobile/src/features/audit/audit-model.ts      | 39 ++++++++++
+ apps/mobile/src/features/audit/audit-screen.tsx    |  8 ++
+ apps/mobile/src/features/audit/chain-strip.tsx     | 87 +++++++++++++++++-----
+ apps/mobile/src/features/audit/i18n.ts             | 14 ++++
+ apps/mobile/src/features/audit/use-audit-data.ts   | 24 ++++--
+ 6 files changed, 149 insertions(+), 25 deletions(-)
+## CLG (a): existing test files vs acaff20
+same  1f872838d169  audit-model.test.ts
+same  96de04ee1673  audit-screen.test.tsx
+same  536e359e85e4  testing/audit-harness.tsx
+same  33739412ce61  testing/audit-test-setup.ts
+same  545c940bab00  testing/kit-helpers.ts
+## CLG (c): useSimActions in production files
+grep exit 1 (1 = none)
+## CLG (c): .actions reads outside quotes in production files
+matches: 0
+## KI-07
+SIM-GAP IDs 13 / markers 65

@@ -1,0 +1,13 @@
+"""rows.py <png> ...: Evidence-list row check on the 2560x1600 tablet capture. The list column is x 500..1235; rows are
+cut into 228 px bands from the first band edge; each band: max brightness and sd of its card area. A drawn row has
+text (max > 200, sd > 25); an empty card (RF-T-1) measured mean 18, max 51 in RF-T."""
+import sys
+from PIL import Image
+for p in sys.argv[1:]:
+    im = Image.open(p).convert('L'); px = im.load(); W, H = im.size
+    out = []
+    for top in range(370, 1560, 228):
+        v = [px[x, y] for y in range(top + 12, min(top + 216, H), 4) for x in range(510, 1225, 4)]
+        m = sum(v) / len(v); sd = (sum(a * a for a in v) / len(v) - m * m) ** 0.5
+        out.append(f"y{top}:max{max(v)}/sd{sd:.0f}{'' if max(v) > 200 and sd > 25 else ' EMPTY?'}")
+    print(p.split('/')[-1], ' '.join(out))

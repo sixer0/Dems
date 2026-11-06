@@ -1,0 +1,101 @@
+// The INVESTIGATOR's session through the UI: Start New Session form → create + pre-check → (if the
+// Core's pre-check passes) start → Session Monitor → Session Note → End Session (hold) → sealed.
+// If the pre-check is blocked (no paired tablet connected: known limit), the setup session is cancelled.
+export default async (c, lib) => {
+  const { sleep, ORIGIN } = lib
+  const roleSlug = process.env.W2_ROLE_SLUG
+  let k = Number(process.env.W2_SHOT_START)
+  const out = { shots: [], steps: [] }
+  const snap = async (slug, caption) => {
+    const name = `${String(k++).padStart(2, '0')}_${roleSlug}_${slug}.png`
+    await c.screenshot(name)
+    out.shots.push({ file: name, caption })
+  }
+  const step = (name, extra = {}) => out.steps.push({ name, at: lib.nowIso(), ...extra, net: c.takeNet() })
+  const txt = (tid) => c.evaluate(`document.querySelector('[data-testid="${tid}"]')?.textContent?.replace(/\\s+/g,' ').trim().slice(0,260) ?? null`)
+  const cur0 = await c.pageFetch('GET', '/api/v1/session/current')
+  if (cur0.body?.session) return { skipped: 'a session already exists on the Core', session: { id: cur0.body.session.id, state: cur0.body.session.state } }
+  await c.navigate(ORIGIN + '/session/new', 3500)
+  await c.waitFor('page-session-new', true, 8000)
+  c.takeNet()
+  await c.click('sn-scan')
+  await sleep(1800)
+  const caseNumber = await c.evaluate(`(document.querySelector('[data-testid="sn-case-number"] input') ?? document.querySelector('input[data-testid="sn-case-number"]'))?.value ?? null`)
+  step('scan case number (op 32)', { caseNumber })
+  await c.clickSel('[data-testid="sn-subject-SAKSI"]', 'subject SAKSI')
+  await sleep(300)
+  await c.typeInto('[data-testid="sn-subject-name"] input, input[data-testid="sn-subject-name"]', 'Saksi E2E W2', 'subject name')
+  await sleep(500)
+  const investigator = await c.evaluate(`(document.querySelector('[data-testid="sn-investigator-input"] input') ?? document.querySelector('input[data-testid="sn-investigator-input"]'))?.value ?? null`)
+  await snap('session_new_filled', 'INVESTIGATOR: Start New Session, step 1 filled (case number from the Core, subject, investigator = self)')
+  step('form filled', { investigator, nextEnabled: await c.evaluate(`!document.querySelector('[data-testid="sn-next"]')?.disabled`) })
+  const nextAt = await c.click('sn-next')
+  const settled = await c.waitUntil(`(() => { const e = document.querySelector('[data-testid="sn-gate-outcome"]'); return !!e && ['block','warn','pass'].includes(e.getAttribute('data-phase')) })()`, 'gate', 45000)
+  await sleep(1200)
+  const phase = await c.evaluate(`document.querySelector('[data-testid="sn-gate-outcome"]')?.getAttribute('data-phase') ?? null`)
+  const blockedText = await txt('sn-gate-blocked')
+  await snap('session_new_precheck', `INVESTIGATOR: Start New Session, step 2, the Core's pre-check verdict: ${phase}`)
+  const cur1 = await c.pageFetch('GET', '/api/v1/session/current')
+  out.sessionId = cur1.body?.session?.id ?? null
+  step('Next: create (op 24) + pre-check (op 28)', { nextAt: nextAt ? new Date(nextAt).toISOString() : null, settled, phase, blockedText, session: cur1.body?.session ? { id: cur1.body.session.id, state: cur1.body.session.state } : null })
+  if (phase === 'block' || !settled) {
+    await c.click('sn-cancel')
+    await c.waitFor('sn-cancel-dialog', true, 5000)
+    await sleep(600)
+    await snap('session_new_cancel_dialog', 'INVESTIGATOR: Cancel the setup session dialog')
+    await c.click('sn-cancel-confirm')
+    await sleep(3500)
+    const cur2 = await c.pageFetch('GET', '/api/v1/session/current')
+    await snap('session_new_cancelled', 'INVESTIGATOR: setup session cancelled (op 31)')
+    step('cancel (op 31)', { after: cur2.body?.session ? { id: cur2.body.session.id, state: cur2.body.session.state } : null, path: await c.evaluate('location.pathname') })
+    out.outcome = 'BLOCKED_AND_CANCELLED'
+    return out
+  }
+  if (phase === 'warn') {
+    await c.clickSel('[data-testid="sn-ack"]', 'ack')
+    await sleep(600)
+  }
+  await c.click('sn-next')
+  await c.waitFor('sn-start', true, 10000)
+  await sleep(800)
+  await snap('session_new_ready', 'INVESTIGATOR: Start New Session, step 3 ready')
+  step('to ready step', {})
+  const startAt = await c.click('sn-start')
+  const rec = await c.waitUntil(`(async () => { const r = await fetch('/api/v1/session/current', { credentials: 'same-origin' }); const j = await r.json(); return j.session?.state === 'RECORDING' })()`, 'recording', 30000)
+  step('Start (op 25)', { startAt: startAt ? new Date(startAt).toISOString() : null, recording: rec })
+  await sleep(2500)
+  if (!(await c.evaluate('location.pathname')).startsWith('/session')) await c.navigate(ORIGIN + '/session', 3000)
+  if ((await c.evaluate('location.pathname')) !== '/session') await c.navigate(ORIGIN + '/session', 3000)
+  await sleep(2000)
+  await snap('session_monitor_recording', 'INVESTIGATOR: Session Monitor while recording')
+  step('monitor', { banner: await txt('sm-status-banner'), noteEnabled: await c.evaluate(`!document.querySelector('[data-testid="sm-action-note"]')?.disabled`) })
+  // Session Note (op 35)
+  await c.click('sm-action-note')
+  await c.waitFor('sm-note-drawer', true, 6000)
+  await sleep(700)
+  await c.typeInto('[data-testid="sm-note-input"] textarea, textarea[data-testid="sm-note-input"]', 'E2E-W2 note by the investigator: subject confirms the timeline.', 'note')
+  await sleep(300)
+  const noteAt = await c.click('sm-note-submit')
+  await sleep(3000)
+  await snap('session_note_added', 'INVESTIGATOR: Session Note submitted (op 35)')
+  step('note (op 35)', { noteAt: noteAt ? new Date(noteAt).toISOString() : null, toasts: await lib.toastFacts(c) })
+  await sleep(4000)
+  // End Session: hold 1.5 s, reason, confirm (op 26)
+  const box = await c.evaluate(`(() => { const el = document.querySelector('[data-testid="sm-action-end"]'); el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })()`)
+  await c.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y })
+  await c.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+  await sleep(1900)
+  await c.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+  await c.waitFor('sm-end-dialog', true, 5000)
+  await sleep(600)
+  await c.typeInto('[data-testid="sm-end-reason"] textarea, textarea[data-testid="sm-end-reason"]', 'E2E-W2 interview completed', 'end reason')
+  await snap('session_end_dialog', 'INVESTIGATOR: End Session dialog after the 1.5 s hold')
+  const endAt = await c.click('sm-end-confirm')
+  const sealed = await c.waitUntil(`(async () => { const r = await fetch('/api/v1/session/current', { credentials: 'same-origin' }); const j = await r.json(); return !j.session || ['SEALED','COMPLETE','FINALIZED','IDLE'].includes(j.session.state) || !!document.querySelector('[data-testid="sm-final-sealed"]') })()`, 'sealed', 60000)
+  await sleep(2500)
+  const cur3 = await c.pageFetch('GET', '/api/v1/session/current')
+  await snap('session_sealed', 'INVESTIGATOR: session ended and sealed (op 26), finalization')
+  step('stop (op 26)', { endAt: endAt ? new Date(endAt).toISOString() : null, sealed, after: cur3.body?.session ? { id: cur3.body.session.id, state: cur3.body.session.state, evidenceId: cur3.body.session.evidenceId } : null })
+  out.outcome = 'RECORDED_NOTED_STOPPED'
+  return out
+}

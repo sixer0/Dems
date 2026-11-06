@@ -1,0 +1,42 @@
+# M2 item 1 and item 2 affected runs
+
+## item 1, 02:24:27  npm run test -w @dems/mobile -- --maxWorkers=2 src/runtime/use-core-link-read-only.test.tsx src/runtime/use-core-link-notice src/runtime/link-notice src/features/session-live src/features/session-recovery
+PASS src/runtime/use-core-link-read-only.test.tsx
+PASS src/features/session-recovery/live-recovery-sites.test.tsx
+PASS src/features/session-live/live-session-live-link.test.tsx (6.84 s)
+PASS src/features/session-live/session-live-screen.test.tsx
+PASS src/features/session-live/live-session-live-sites.test.tsx
+PASS src/features/session-live/back-guard.test.tsx
+PASS src/features/session-recovery/session-recovery-screen.test.tsx
+PASS src/runtime/use-core-link-notice.test.tsx
+PASS src/runtime/link-notice.test.ts
+PASS src/runtime/link-notice-static.test.ts
+PASS src/features/session-live/session-live.math.test.ts
+PASS src/features/session-recovery/live-recovery-restart.test.tsx
+PASS src/features/session-recovery/recovery.model.test.ts
+PASS src/features/session-recovery/recovery-live-static.test.ts
+Test Suites: 14 passed, 14 total
+Tests:       195 passed, 195 total
+Time:        13.028 s, estimated 16 s
+exit=0
+
+## item 2, 02:25:45  npm run typecheck -w @dems/mobile -> exit=0
+## item 2  npm run test -w @dems/mobile -- --maxWorkers=2 src/features/more src/features/dashboard src/runtime/use-core-link-notice src/runtime/use-core-link-read-only src/runtime/link-notice
+PASS src/features/dashboard/dashboard-screen.test.tsx
+PASS src/features/dashboard/home-live.test.tsx
+PASS src/features/more/more-live.test.tsx
+PASS src/features/dashboard/dashboard-route.test.tsx
+PASS src/runtime/use-core-link-read-only.test.tsx
+PASS src/features/more/more-screen.test.tsx
+PASS src/runtime/use-core-link-notice.test.tsx
+PASS src/features/dashboard/panel-boundary.test.tsx
+PASS src/features/more/use-core-link-chip.test.tsx
+PASS src/features/dashboard/home-model.test.ts
+PASS src/features/dashboard/use-held-value.test.tsx
+PASS src/runtime/link-notice.test.ts
+PASS src/runtime/link-notice-static.test.ts
+PASS src/features/dashboard/home-more-live-static.test.ts
+Test Suites: 14 passed, 14 total
+Tests:       136 passed, 136 total
+Time:        6.095 s
+exit=0

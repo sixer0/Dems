@@ -1,0 +1,856 @@
+// R-P re-test (after E-fix, D201-D208): the E2E-P queue driver (test/assets/e2e/p_phone/e2e_q.mts.txt)
+// with these changes: phone captures are on-device PNG written to /sdcard and pulled (no raw frames);
+// headless Chromium gets an OS-assigned DevTools port (--remote-debugging-port=0, read from the
+// profile's DevToolsActivePort, listener checked to belong to the spawned pid with lsof); `username`
+// takes the operator; uiautomator dumps need a screen declared IN THE SAME BATCH (PD-1 of round 1);
+// `warnlog` lists W/E-level ReactNativeJS lines (F80); server-log extracts keep method, route, status.
+//
+//   node --import tsx rt_q.mts <queueDir> <assetsDir> <framesDir>
+//
+// Credential rules (W67/W73, unchanged): the demo password is read from the shared dataset constant and
+// is never printed, logged or written. On the phone it is typed ONLY when the IME reports a password
+// editor as focused; after it, no screencap is taken until the app's sign-in was answered 200 in the
+// same batch, else the app is force-stopped (fields cleared). In a browser it is inserted only into the
+// login form's password input. Every output line is redacted (password, dvc_/ses_/bio_ token shapes).
+// Device security: no PIN, no lock, no fingerprint, no settings, no reverse-rule change; nothing typed or
+// tapped unless the DEMS app has the focus and no keyguard shows.
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import WsClient from '/Users/gsp-budi/Documents/DEMS/node_modules/ws/index.js';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset';
+
+const [Q, ASSETS, FRAMES] = process.argv.slice(2);
+if (!Q || !ASSETS || !FRAMES) {
+  console.error('usage: rt_q.mts <queueDir> <assetsDir> <framesDir>');
+  process.exit(64);
+}
+mkdirSync(Q, { recursive: true });
+const LANE = process.env.CF_LANE ?? 'phone';
+const SERIAL = LANE === 'phone2' ? 'emulator-5558' : 'emulator-5554';
+if (SERIAL !== 'emulator-5554' && SERIAL !== 'emulator-5558') throw new Error('device refused');
+const APP = 'com.dems.demo.tablet';
+const ORIGIN = LANE === 'phone2' ? 'http://127.0.0.1:5173' : 'http://127.0.0.1:5176';
+const SERVER_LOG = LANE === 'phone2' ? '/Users/gsp-budi/Documents/DEMS/.cache/manual/main-server.log' : '/Users/gsp-budi/Documents/DEMS/.cache/manual/lane1-server.log';
+const CHROME = `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell`;
+const TMP = process.env.TMPDIR ?? '/tmp';
+const BIG = { encoding: 'utf8' as const, maxBuffer: 256 * 1024 * 1024 };
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const hms = (d = new Date()) => `${d.toTimeString().slice(0, 8)}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+const redact = (text: string) =>
+  text.split(DEMO_OPERATOR_PASSWORD).join('***').replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***');
+const event = (line: string) => {
+  const l = redact(line);
+  appendFileSync(`${Q}/events.log`, `${l}\n`);
+  console.log(`-- ${hms()} ${l.slice(0, 600)}`);
+};
+
+// ───────────────────────────── phone ─────────────────────────────
+const adb = (...args: string[]): string => execFileSync('adb', ['-s', SERIAL, ...args], BIG);
+function focused(): boolean {
+  const w = adb('shell', 'dumpsys', 'window');
+  return /isKeyguardShowing=false/.test(w) && /mCurrentFocus=.*com\.dems\.demo\.tablet/.test(w);
+}
+function keyguard(): boolean {
+  return /isKeyguardShowing=true/.test(adb('shell', 'dumpsys', 'window'));
+}
+function editorInputType(): number | null {
+  const dump = adb('shell', 'dumpsys', 'input_method');
+  const types = [...dump.matchAll(/inputType=0x([0-9a-f]+)/g)].map((m) => Number.parseInt(m[1]!, 16));
+  return types.length > 0 ? types[types.length - 1]! : null;
+}
+const isPasswordType = (t: number | null) => t !== null && (t & 0xf) === 0x1 && [0x80, 0x90, 0xe0].includes(t & 0xff0);
+let passwordPending = false;
+let codePending = false;
+let batchT0 = '';
+let driverT0 = '';
+const deviceTime = () => adb('shell', "date '+%m-%d %H:%M:%S.000'").trim();
+const jsLog = (): string => adb('logcat', '-d', '-T', batchT0, '-s', 'ReactNativeJS:V');
+const PATTERNS: Record<string, RegExp> = {
+  signin: /DEMS-LIVE\] POST \/api\/v1\/auth\/sign-in (\d{3})/,
+  signout: /DEMS-LIVE\] POST \/api\/v1\/auth\/sign-out (\d{3})/,
+  create: /DEMS-LIVE\] POST \/api\/v1\/session (\d{3})/,
+  precheck: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/precheck (\d{3})/,
+  ack: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/precheck\/acknowledge (\d{3})/,
+  start: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/start (\d{3})/,
+  stop: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/stop (\d{3})/,
+  note: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/notes (\d{3})/,
+  sumack: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/summary\/acknowledge (\d{3})/,
+  redeem: /DEMS-LIVE\] POST \/api\/v1\/pairing\/redeem (\d{3})/,
+  any: /DEMS-LIVE\] (\S+ \S+ \d{3})/,
+};
+const seen = new Set<string>();
+async function waitLog(name: string, seconds: number): Promise<string> {
+  const pattern = PATTERNS[name];
+  if (!pattern) return `unknown pattern ${name}`;
+  for (let w = 0; w < seconds * 2; w += 1) {
+    const line = jsLog().split('\n').find((l) => pattern.test(l) && !seen.has(l));
+    if (line !== undefined) {
+      seen.add(line);
+      const status = pattern.exec(line)?.[1] ?? '?';
+      if (name === 'signin') {
+        if (status === '200') passwordPending = false;
+        else return `signin ${status}`;
+      }
+      return `${name} ${status} at device ${line.slice(0, 18)} (${line.replace(/^.*DEMS-LIVE\] /, '').replace(/ [0-9a-f]{8}-[0-9a-f-]{27}\s*$/, '')})`;
+    }
+    await sleep(500);
+  }
+  return `${name} NOT SEEN in ${seconds} s`;
+}
+// On-device PNG: screencap -p to /sdcard, pull, delete (the brief's method; no raw 10 MB frames).
+function rawFrame(name: string): [string, string] {
+  const t1 = new Date();
+  adb('shell', 'screencap', '-p', '/sdcard/cf_m1.png');
+  const t2 = new Date();
+  execFileSync('adb', ['-s', SERIAL, 'pull', '/sdcard/cf_m1.png', `${ASSETS}/${name}.png`], BIG);
+  adb('shell', 'rm', '-f', '/sdcard/cf_m1.png');
+  return ['', `${name}.png ${hms(t1)}..${hms(t2)}`];
+}
+function convert(_pairs: [string, string][]): void {}
+function pshot(name: string): string {
+  if (codePending) return 'screencap refused: a pairing code was typed and not redeemed in this batch';
+  if (passwordPending) return 'screencap refused: a password was typed and the sign-in is not answered 200';
+  const [file, label] = rawFrame(name);
+  convert([[file, name]]);
+  return `screencap ${label}`;
+}
+interface Found { id: string; x: number; y: number; text: string; cls: string }
+function dumpNodes(): Found[] | null {
+  try {
+    execFileSync('adb', ['-s', SERIAL, 'shell', 'uiautomator', 'dump', '/sdcard/cf_m1.xml'], { ...BIG, timeout: 15_000 });
+  } catch {
+    return null;
+  }
+  const xml = adb('shell', 'cat', '/sdcard/cf_m1.xml');
+  adb('shell', 'rm', '-f', '/sdcard/cf_m1.xml');
+  return [...xml.matchAll(/<node\b[^>]*>/g)]
+    .map((m) => m[0])
+    .map((n) => {
+      const id = (/ resource-id="([^"]*)"/.exec(n)?.[1] ?? '').replace(/^.*:id\//, '');
+      const b = / bounds="\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]"/.exec(n);
+      const text = (/ text="([^"]*)"/.exec(n)?.[1] ?? '') || (/ content-desc="([^"]*)"/.exec(n)?.[1] ?? '');
+      const cls = (/ class="([^"]*)"/.exec(n)?.[1] ?? '').replace(/^.*\./, '');
+      return b ? { id, x: Math.round((+b[1] + +b[3]) / 2), y: Math.round((+b[2] + +b[4]) / 2), text, cls } : null;
+    })
+    .filter((n): n is Found => n !== null);
+}
+const NO_DUMP = new Set(['login', 'summary', 'home']);
+const recs: Record<string, ChildProcess> = {};
+const recLimits: Record<string, number> = {};
+const recStarted: Record<string, number> = {};
+let screen = 'login';
+let screenDeclaredInBatch = false;
+
+async function phone(verb: string, rest: string[]): Promise<string> {
+  switch (verb) {
+    case 'screen':
+      screen = rest[0] ?? '';
+      screenDeclaredInBatch = true;
+      return `declared screen ${screen}`;
+    case 'tap':
+      if (!focused()) return 'NOT FOCUSED: tap skipped';
+      adb('shell', 'input', 'tap', rest[0]!, rest[1]!);
+      return `tap ${rest[0]},${rest[1]}`;
+    case 'swipe':
+      if (!focused()) return 'NOT FOCUSED: swipe skipped';
+      adb('shell', 'input', 'swipe', rest[0]!, rest[1]!, rest[2]!, rest[3]!, rest[4] ?? '400');
+      return `swipe ${rest.slice(0, 4).join(',')} ${rest[4] ?? '400'} ms`;
+    case 'long':
+      if (!focused()) return 'NOT FOCUSED: long skipped';
+      adb('shell', 'input', 'swipe', rest[0]!, rest[1]!, rest[0]!, rest[1]!, rest[2] ?? '2300');
+      return `long ${rest[0]},${rest[1]} ${rest[2] ?? '2300'} ms`;
+    case 'ids':
+    case 'tapid':
+    case 'tapt': {
+      if (!screenDeclaredInBatch) return 'REFUSED: no screen declared in this batch (no uiautomator dump)';
+      if (NO_DUMP.has(screen)) return `REFUSED: no uiautomator dump on the ${screen} screen`;
+      if (verb !== 'ids' && !focused()) return 'NOT FOCUSED: skipped';
+      for (let a = 0; a < 3; a += 1) {
+        const nodes = dumpNodes();
+        if (nodes === null) { await sleep(600); continue; }
+        if (verb === 'ids') {
+          const re = new RegExp(rest[0] ?? '.');
+          const list = nodes.filter((n) => (n.id && re.test(n.id)) || (rest[1] === 'text' && n.text && re.test(n.text)));
+          // A pairing-code slot's text is a digit of a code: never printed.
+          return `ids(${list.length}): ${list.map((n) => `${n.id || n.cls}@${n.x},${n.y}${n.text && !/pairing-code/.test(n.id) ? ` "${n.text.slice(0, 70)}"` : n.text ? ' "<digit>"' : ''}`).join(' ; ')}`;
+        }
+        const want = rest.join(' ');
+        const node = verb === 'tapid' ? nodes.find((n) => n.id === want && n.y > 0) : nodes.find((n) => n.text === want && n.y > 0);
+        if (node) {
+          if (!focused()) return 'NOT FOCUSED: skipped';
+          adb('shell', 'input', 'tap', String(node.x), String(node.y));
+          return `${verb} ${want} at ${node.x},${node.y}${node.text && !/pairing-code/.test(node.id) ? ` "${node.text.slice(0, 60)}"` : ''}`;
+        }
+        await sleep(600);
+      }
+      return `${verb} ${rest.join(' ')}: not found (or no dump)`;
+    }
+    case 'text': {
+      if (!focused()) return 'NOT FOCUSED: text skipped';
+      const t = editorInputType();
+      if (isPasswordType(t)) return 'REFUSED: the focused editor is a password field';
+      adb('shell', 'input', 'text', rest.join('%s'));
+      return `text typed (${rest.join(' ')}); inputType 0x${(t ?? 0).toString(16)}`;
+    }
+    case 'username': {
+      if (!focused()) return 'NOT FOCUSED: username skipped';
+      const op = OPERATORS.find((o) => o.username === rest[0]);
+      if (!op) return `no operator ${rest[0]}`;
+      const t = editorInputType();
+      if (isPasswordType(t)) return 'REFUSED: the focused editor is a password field';
+      // Empty the field first (a remembered or half-typed name would be appended to).
+      adb('shell', 'input', 'keyevent', 'KEYCODE_MOVE_END');
+      for (let k = 0; k < 4; k += 1) adb('shell', 'input', 'keyevent', ...Array(10).fill('67'));
+      adb('shell', 'input', 'text', op.username);
+      return `username typed (${op.username}, ${op.role}); inputType 0x${(t ?? 0).toString(16)}`;
+    }
+    case 'password': {
+      if (!focused()) return 'NOT FOCUSED: password skipped';
+      const t = editorInputType();
+      if (!isPasswordType(t)) return `REFUSED: the focused editor is not a password field (0x${(t ?? 0).toString(16)}); nothing typed`;
+      passwordPending = true;
+      adb('shell', 'input', 'text', DEMO_OPERATOR_PASSWORD); // never printed
+      return `password typed (not shown); inputType 0x${(t ?? 0).toString(16)}`;
+    }
+    case 'key':
+      if (!focused()) return 'NOT FOCUSED: key skipped';
+      adb('shell', 'input', 'keyevent', rest[0]!);
+      return `key ${rest[0]}`;
+    case 'link':
+      adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `'${rest[0]!}'`, APP);
+      return `deep link ${rest[0]}`;
+    case 'forcestop':
+      adb('shell', 'am', 'force-stop', APP);
+      return 'force-stopped the app';
+    case 'waitlog': {
+      const r = await waitLog(rest[0]!, Number(rest[1] ?? '20'));
+      if (rest[0] === 'signin' && passwordPending) {
+        adb('shell', 'am', 'force-stop', APP);
+        passwordPending = false;
+        return `${r}; the app was force-stopped (fields cleared) before any screencap`;
+      }
+      return r;
+    }
+    case 'shot':
+      return pshot(rest[0]!);
+    case 'poll': {
+      // poll <prefix> <count> <gapMs>: timestamped screencaps in a row (for timing a reaction)
+      if (passwordPending || codePending) return 'screencap refused: a password or a pairing code was typed and not answered';
+      const n = Number(rest[1] ?? '6');
+      const gap = Number(rest[2] ?? '0');
+      const lines: string[] = [];
+      const pairs: [string, string][] = [];
+      for (let i = 0; i < n; i += 1) {
+        const name = `${rest[0]}_${String(i).padStart(2, '0')}`;
+        const [file, label] = rawFrame(name);
+        pairs.push([file, name]);
+        lines.push(label);
+        if (gap) await sleep(gap);
+      }
+      convert(pairs);
+      return `poll: ${lines.join(' ; ')}`;
+    }
+    case 'focus':
+      return `focused ${focused()}; keyguard ${keyguard()}; inputType 0x${(editorInputType() ?? 0).toString(16)}`;
+    case 'corelog': {
+      const lines = jsLog().split('\n').map((l) => { const m = /^(\S+ \S+).*DEMS-LIVE\] (.*)$/.exec(l); return m ? `${m[1]!.slice(6)} ${m[2]!.replace(/ [0-9a-f]{8}-[0-9a-f-]{27}\s*$/, '')}` : ''; }).filter(Boolean);
+      return `corelog (${lines.length}): ${lines.slice(-Number(rest[0] ?? '30')).join(' | ')}`;
+    }
+    case 'jslog': {
+      const re = new RegExp(rest.join(' ') || 'source:');
+      const lines = jsLog().split('\n').filter((l) => re.test(l)).map((l) => l.replace(/^\S+ (\S+)\s+\d+\s+\d+ \w ReactNativeJS: /, '$1 '));
+      return `jslog (${lines.length}): ${lines.slice(-40).join(' | ')}`;
+    }
+    case 'warnlog': {
+      // W/E-level ReactNativeJS lines (console.warn / console.error reach LogBox in a debug build).
+      const since = rest[0] === 'all' ? driverT0 : batchT0;
+      const lines = adb('logcat', '-d', '-T', since, '-s', 'ReactNativeJS:W').split('\n').filter((l) => / [WE] ReactNativeJS/.test(l));
+      return `warnlog since ${since} (${lines.length}): ${lines.map((l) => l.slice(0, 260)).join(' | ')}`;
+    }
+    case 'top':
+      return adb('shell', 'dumpsys', 'window').split('\n').filter((l) => /mCurrentFocus|isKeyguardShowing/.test(l)).map((l) => l.trim()).join(' ; ');
+    case 'clock': {
+      // Device clock minus host clock, from 5 bracketed reads (ms); the midpoint of each round trip.
+      const offs: number[] = [];
+      for (let i = 0; i < 5; i += 1) {
+        const a = Date.now();
+        const d = Number(adb('shell', 'date', '+%s%N').trim()) / 1e6;
+        const b = Date.now();
+        offs.push(Math.round(d - (a + b) / 2));
+      }
+      return `device-host clock offset ms: ${offs.join(', ')}`;
+    }
+    case 'rec': {
+      // rec start <name> <seconds>: screenrecord with the device-time overlay (--bugreport), async.
+      // rec pull <name> <fps>: pull, delete on the device, extract frames to <name>_frames/.
+      const name = rest[1]!;
+      if (rest[0] === 'start' && codePending) return 'screenrecord refused: a pairing code was typed and not redeemed in this batch';
+      if (rest[0] === 'start') {
+        const child = spawn('adb', ['-s', SERIAL, 'shell', 'screenrecord', '--bugreport', '--time-limit', rest[2] ?? '12', `/sdcard/${name}.mp4`], { stdio: 'ignore' });
+        recs[name] = child;
+        recLimits[name] = Number(rest[2] ?? '12');
+        recStarted[name] = Date.now();
+        await sleep(600);
+        return `screenrecord ${name} started (pid ${child.pid}) at ${hms()}`;
+      }
+      const child = recs[name];
+      // Watchdog: on the emulator a screenrecord sometimes never honours --time-limit (stuck in a futex);
+      // after limit + 10 s the device process is killed so nothing waits on it (the file up to then is kept).
+      const limitMs = (recLimits[name] ?? 30) * 1000 + 10_000;
+      let hung = false;
+      if (child && child.exitCode === null) {
+        const started = recStarted[name] ?? Date.now();
+        await Promise.race([new Promise((r) => child.once('exit', r)), (async () => { while (Date.now() - started < limitMs && child.exitCode === null) await sleep(500); })()]);
+        if (child.exitCode === null) { hung = true; try { adb('shell', 'pkill', '-KILL', 'screenrecord'); } catch { /* */ } try { child.kill(); } catch { /* */ } }
+      }
+      await sleep(800);
+      const mp4 = `${ASSETS}/${name}.mp4`;
+      execFileSync('adb', ['-s', SERIAL, 'pull', `/sdcard/${name}.mp4`, mp4], BIG);
+      adb('shell', 'rm', '-f', `/sdcard/${name}.mp4`);
+      mkdirSync(`${FRAMES}/${name}`, { recursive: true });
+      execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', mp4, '-fps_mode', 'passthrough', '-vf', 'scale=540:-1', `${FRAMES}/${name}/f_%03d.png`], BIG);
+      return `screenrecord ${name} pulled${hung ? ' (HUNG: killed by the watchdog)' : ''}; every frame extracted (passthrough)`;
+    }
+    case 'hermes': {
+      // hermes stall <ms> | hermes eval <expr>: one Runtime.evaluate on THIS lane's app through Metro's inspector
+      // proxy. The target id is bound once per lane (file hermes_<lane>.id, found by the force-stop/relaunch
+      // disappearance check); a target that is not listed is refused. Nothing else is sent; no Debugger domain.
+      const idFile = `${Q}/../hermes_${LANE}.id`;
+      if (!existsSync(idFile)) return 'REFUSED: no bound inspector target for this lane';
+      const want = readFileSync(idFile, 'utf8').trim();
+      const list: any[] = await (await fetch('http://127.0.0.1:8081/json/list')).json();
+      const target = list.find((t) => t.id === want);
+      if (!target) return `REFUSED: target ${want} is not listed (app relaunched? rebind)`;
+      // starve <totalMs> <busyMs> <periodMs>: a model of a starved JS thread (host load): for totalMs the app's
+      // own JS thread is kept busy busyMs out of every periodMs. Installed by one evaluate; it removes itself.
+      if (rest[0] === 'profile') {
+        // profile <ms> <file>: Hermes sampling profiler (Profiler domain) over ms; the profile is written to the assets.
+        const ws = new WsClient(target.webSocketDebuggerUrl, { origin: 'http://127.0.0.1:8081' });
+        await new Promise((r, j) => { ws.once('open', r); ws.once('error', (e: Error) => j(new Error(`inspector socket: ${e.message}`))); });
+        let id = 0;
+        const pending = new Map<number, (v: any) => void>();
+        ws.on('message', (data: Buffer) => { const msg = JSON.parse(String(data)); const f = pending.get(msg.id); if (f) { pending.delete(msg.id); f(msg); } });
+        const call = (method: string, params: any = {}) => new Promise<any>((resolve) => { const n = ++id; pending.set(n, resolve); ws.send(JSON.stringify({ id: n, method, params })); setTimeout(() => resolve({ error: 'timeout' }), 60_000); });
+        await call('Profiler.enable');
+        const t1 = new Date();
+        await call('Profiler.start');
+        await sleep(Number(rest[1] ?? '4000'));
+        const res = await call('Profiler.stop');
+        ws.close();
+        const profile = res?.result?.profile;
+        if (!profile) return `hermes profile: no profile (${JSON.stringify(res).slice(0, 200)})`;
+        writeFileSync(`${ASSETS}/${rest[2] ?? 'profile.cpuprofile'}`, JSON.stringify(profile));
+        return `hermes profile ${rest[1]} ms from ${hms(t1)}: ${profile.nodes?.length ?? 0} nodes, ${profile.samples?.length ?? 0} samples -> ${rest[2]}`;
+      }
+      const expr = rest[0] === 'stall'
+        ? `(() => { const t = Date.now(); while (Date.now() - t < ${Number(rest[1] ?? '3000')}) {} return Date.now() - t })()`
+        : rest[0] === 'starve'
+          ? `(() => { const busy = ${Number(rest[2] ?? '200')}; const h = setInterval(() => { const t = Date.now(); while (Date.now() - t < busy) {} }, ${Number(rest[3] ?? '250')}); setTimeout(() => clearInterval(h), ${Number(rest[1] ?? '8000')}); return 'starving' })()`
+          : rest.slice(1).join(' ');
+      // Metro's dev middleware wants a local Origin on the debugger socket; the `ws` package can send one.
+      const ws = new WsClient(target.webSocketDebuggerUrl, { origin: 'http://127.0.0.1:8081' });
+      await new Promise((r, j) => { ws.once('open', r); ws.once('error', (e: Error) => j(new Error(`inspector socket: ${e.message}`))); });
+      const t1 = new Date();
+      const value = await new Promise<any>((resolve) => {
+        const timer = setTimeout(() => resolve('(no answer in 30 s)'), 30_000);
+        ws.on('message', (data: Buffer) => {
+          const msg = JSON.parse(String(data));
+          if (msg.id === 1) { clearTimeout(timer); resolve(msg.result?.result?.value ?? msg.result?.exceptionDetails?.text ?? msg.error?.message ?? null); }
+        });
+        ws.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression: expr, returnByValue: true } }));
+      });
+      ws.close();
+      return `hermes ${rest[0]} sent ${hms(t1)} answered ${hms()} => ${redact(JSON.stringify(value)).slice(0, 3000)}`;
+    }
+    case 'jsall': {
+      // jsall <regex>: ReactNativeJS lines of this batch with device time
+      const re = new RegExp(rest.join(' ') || '.');
+      const lines = jsLog().split('\n').filter((l) => re.test(l)).map((l) => l.replace(/^\S+ (\S+)\s+\d+\s+\d+ \w ReactNativeJS: /, '$1 '));
+      return `jsall (${lines.length}): ${lines.slice(-80).join(' | ')}`;
+    }
+    case 'appjs': {
+      // appjs <file> [since]: every ReactNativeJS line since the batch start (or 'all' = driver start) to a text asset
+      const since = rest[1] === 'all' ? driverT0 : batchT0;
+      const text = redact(adb('logcat', '-d', '-v', 'threadtime', '-T', since, '-s', 'ReactNativeJS:V'));
+      writeFileSync(`${ASSETS}/${rest[0]}`, text);
+      return `appjs ${rest[0]}: ${text.split('\n').length} lines since ${since}`;
+    }
+    case 'native': {
+      // native <file>: W/E/F lines of the app process since the batch start (crash forensics)
+      const pid = adb('shell', 'pidof', APP).trim();
+      const text = pid ? redact(adb('logcat', '-d', '-v', 'threadtime', '-T', batchT0, `--pid=${pid}`, '*:W')) : '(no pid)';
+      writeFileSync(`${ASSETS}/${rest[0]}`, text);
+      const bad = text.split('\n').filter((l) => /addViewAt|Tried to remove view|IllegalStateException|handleHostException|reactInstance is null|FATAL|RetryableMountingLayerException/.test(l));
+      return `native ${rest[0]} pid ${pid}: ${text.split('\n').length} lines; crash-class lines ${bad.length}${bad.length ? `: ${bad.slice(0, 6).map((l) => l.slice(0, 200)).join(' | ')}` : ''}`;
+    }
+    default:
+      return `unknown phone command ${verb}`;
+  }
+}
+
+// ───────────────────────────── web ─────────────────────────────
+interface Ctx {
+  name: string;
+  port: number;
+  proc: ChildProcess;
+  profile: string;
+  ws: WebSocket;
+  id: number;
+  pending: Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>;
+  requests: Map<string, { t: string; method: string; url: string; status: number | string | null }>;
+  netLog: string;
+  console: string[];
+  loadFired: boolean;
+}
+const ctxs: Record<string, Ctx> = {};
+const cleanUrl = (url: string) => String(url).replace(/\?.*$/, (q) => (q.length > 1 ? '?…' : ''));
+
+async function openCtx(name: string, _unused: number): Promise<string> {
+  const profile = `${TMP.replace(/\/$/, '')}/cf-m1-${LANE}-${name}-profile-${process.pid}`;
+  if (existsSync(profile)) rmSync(profile, { recursive: true, force: true });
+  mkdirSync(profile, { recursive: true });
+  const proc = spawn(CHROME, [
+    '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', `--user-data-dir=${profile}`,
+    '--no-first-run', '--disable-background-networking', '--disable-component-update', '--disable-sync',
+    '--disable-default-apps', '--disable-domain-reliability',
+    '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',
+    '--window-size=1440,900', 'about:blank',
+  ], { stdio: 'ignore' });
+  let port = 0;
+  for (let i = 0; i < 80 && !port; i += 1) {
+    try { port = Number(readFileSync(`${profile}/DevToolsActivePort`, 'utf8').split('\n')[0]); } catch { /* not yet */ }
+    if (!port) await sleep(150);
+  }
+  if (!port) { try { proc.kill(); } catch { /* */ } return `${name}: no DevToolsActivePort`; }
+  // Ownership: the listener on that port must be the process this driver spawned.
+  let owner = '';
+  try { owner = execFileSync('lsof', ['-nP', '-a', '-p', String(proc.pid), `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], { encoding: 'utf8' }).trim(); } catch { owner = ''; }
+  if (owner !== String(proc.pid)) { try { proc.kill(); } catch { /* */ } return `${name}: port ${port} not owned by pid ${proc.pid} (lsof "${owner}"); browser killed`; }
+  let list: any[] = [];
+  for (let i = 0; i < 60; i += 1) {
+    try { list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); if (list.some((t) => t.type === 'page')) break; } catch { /* not yet */ }
+    await sleep(250);
+  }
+  const target = list.find((t) => t.type === 'page');
+  if (!target) return `${name}: no page target on ${port}`;
+  const ws = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((r) => ws.addEventListener('open', r, { once: true }));
+  const c: Ctx = { name, port, proc, profile, ws, id: 0, pending: new Map(), requests: new Map(), netLog: `${ASSETS}/${name}_network.log`, console: [], loadFired: false };
+  ws.addEventListener('message', (ev: MessageEvent) => {
+    const msg = JSON.parse(String(ev.data));
+    if (msg.id && c.pending.has(msg.id)) {
+      const p = c.pending.get(msg.id)!;
+      c.pending.delete(msg.id);
+      msg.error ? p.reject(new Error(`CDP error ${msg.error.code}`)) : p.resolve(msg.result);
+      return;
+    }
+    const p = msg.params ?? {};
+    switch (msg.method) {
+      case 'Page.loadEventFired': c.loadFired = true; break;
+      case 'Network.requestWillBeSent':
+        // Browser-side wall time of the request (CDP wallTime), and the monotonic base for the answer:
+        // correct even when this process handles the event late (an adb call blocks the loop).
+        c.requests.set(p.requestId, { t: hms(new Date(p.wallTime * 1000)), method: p.request.method, url: cleanUrl(p.request.url), status: null, wall: p.wallTime, mono: p.timestamp } as any);
+        break;
+      case 'Network.responseReceived': {
+        const e: any = c.requests.get(p.requestId);
+        if (e) { e.status = p.response.status; appendFileSync(c.netLog, `${e.t} ${hms(new Date((e.wall + (p.timestamp - e.mono)) * 1000))} ${e.method} ${e.url} ${e.status}\n`); }
+        break;
+      }
+      case 'Network.loadingFailed': {
+        const e = c.requests.get(p.requestId);
+        if (e && e.status === null) { e.status = `failed:${p.errorText}`; appendFileSync(c.netLog, `${e.t} ${hms()} ${e.method} ${e.url} ${e.status}\n`); }
+        break;
+      }
+      case 'Network.webSocketCreated': appendFileSync(c.netLog, `${hms()} WS-CREATED ${cleanUrl(p.url)}\n`); break;
+      case 'Network.webSocketHandshakeResponseReceived': appendFileSync(c.netLog, `${hms()} WS-HANDSHAKE ${p.response.status}\n`); break;
+      case 'Network.webSocketClosed': appendFileSync(c.netLog, `${hms()} WS-CLOSED\n`); break;
+      case 'Runtime.exceptionThrown': c.console.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 200)}`); break;
+      case 'Runtime.consoleAPICalled':
+        if (p.type === 'error' || p.type === 'warning') c.console.push(`${p.type}: ${(p.args ?? []).map((a: any) => String(a.value ?? a.description ?? a.type)).join(' ').slice(0, 300)}`);
+        break;
+    }
+  });
+  ctxs[name] = c;
+  await send(c, 'Network.enable');
+  await send(c, 'Page.enable');
+  await send(c, 'Runtime.enable');
+  await send(c, 'Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  const v = await send(c, 'Browser.getVersion');
+  return `${name}: ${v.product} headless=${/Headless/i.test(v.userAgent)} pid ${proc.pid} devtools 127.0.0.1:${port} (OS-assigned, listener owned by pid ${owner}), fresh profile in TMPDIR`;
+}
+const send = (c: Ctx, method: string, params: any = {}): Promise<any> =>
+  new Promise((resolve, reject) => {
+    const n = ++c.id;
+    c.pending.set(n, { resolve, reject });
+    c.ws.send(JSON.stringify({ id: n, method, params }));
+  });
+async function evaluate(c: Ctx, expression: string): Promise<any> {
+  const r = await send(c, 'Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+  if (r.exceptionDetails) throw new Error('page script failed');
+  return r.result.value;
+}
+const exists = (c: Ctx, sel: string) => evaluate(c, `document.querySelector(${JSON.stringify(sel)}) !== null`);
+const tid = (id: string) => `[data-testid="${id}"]`;
+async function waitSel(c: Ctx, sel: string, present: boolean, ms: number): Promise<number | null> {
+  const t = Date.now();
+  while (Date.now() - t < ms) {
+    if ((await exists(c, sel)) === present) return Date.now() - t;
+    await sleep(50);
+  }
+  return null;
+}
+async function wshot(c: Ctx, name: string): Promise<string> {
+  const t1 = new Date();
+  const { data } = await send(c, 'Page.captureScreenshot', { format: 'png' });
+  writeFileSync(`${ASSETS}/${name}.png`, Buffer.from(data, 'base64'));
+  return `screenshot ${name}.png ${hms(t1)}..${hms()}`;
+}
+async function insertInto(c: Ctx, sel: string, text: string): Promise<boolean> {
+  const ok = await evaluate(c, `(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return false; el.focus(); if (el.select) el.select(); return document.activeElement === el })()`);
+  if (ok) await send(c, 'Input.insertText', { text });
+  return ok;
+}
+async function api(c: Ctx, method: string, path: string, body?: string): Promise<string> {
+  const r = await evaluate(c, `(async () => { const a = await fetch(${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, credentials: 'same-origin', headers: { 'content-type': 'application/json' }${body ? `, body: ${JSON.stringify(body)}` : ''} }); let d = null; try { d = await a.json() } catch {} return { status: a.status, body: d } })()`);
+  return JSON.stringify(r);
+}
+
+const pdFacts = (c: Ctx): Promise<any> => evaluate(c, `(() => {
+  const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+  const text = (el) => el?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+  const code = q('pd-code')
+  const rows = [...document.querySelectorAll('[data-testid^="pd-device-"]')].map((row) => {
+    const id = row.getAttribute('data-testid').slice('pd-device-'.length)
+    return { id, state: text(q('pd-state-' + id)), operator: text(q('pd-operator-' + id)), revokeShown: q('pd-revoke-' + id) !== null }
+  })
+  return { href: location.pathname, onPage: q('page-paired-devices') !== null, issueState: q('pd-issue-panel')?.getAttribute('data-state') ?? null, codeShown: code !== null, activeElsewhere: q('pd-code-active-elsewhere') !== null, redeemed: text(q('pd-code-redeemed')), rows }
+})()`);
+const MASK_CSS = [
+  '[data-testid="pd-code"] .pd-code-group { color: transparent !important; text-shadow: none !important; -webkit-text-stroke: 0 !important; background: linear-gradient(90deg, rgb(255 210 120 / 0.55), rgb(255 255 255 / 0.35), rgb(255 210 120 / 0.55)) !important; filter: blur(7px) !important; border-radius: 10px !important; }',
+  '[data-testid="pd-code"] .pd-code-group * { color: transparent !important; text-shadow: none !important; }',
+  '[data-testid="pd-qr"] { visibility: hidden !important; }',
+  '.pd-qr-tile { position: relative !important; background: radial-gradient(circle, #9a9a9a, #4a4a4a) !important; filter: blur(5px) !important; }',
+].join('\n');
+const MASK_CHECK = `(() => {
+  const groups = [...document.querySelectorAll('[data-testid="pd-code"] .pd-code-group')]
+  const all = groups.flatMap((g) => [g, ...g.querySelectorAll('*')])
+  const transparent = all.length > 0 && all.every((el) => { const c = getComputedStyle(el).color; return c === 'rgba(0, 0, 0, 0)' || c === 'transparent' })
+  const noShadow = all.every((el) => getComputedStyle(el).textShadow === 'none')
+  const blurred = groups.length > 0 && groups.every((g) => getComputedStyle(g).filter.includes('blur'))
+  const svg = document.querySelector('[data-testid="pd-qr"]')
+  return { maskPresent: document.getElementById('cf-mask') !== null, digitGroups: groups.length, transparent, noShadow, blurred, qrHidden: svg === null || getComputedStyle(svg).visibility === 'hidden' }
+})()`;
+
+async function web(c: Ctx, verb: string, rest: string[], raw: string): Promise<string> {
+  switch (verb) {
+    case 'nav': {
+      c.loadFired = false;
+      await send(c, 'Page.navigate', { url: `${ORIGIN}${rest[0] ?? '/'}` });
+      for (let i = 0; i < 150 && !c.loadFired; i += 1) await sleep(100);
+      await sleep(Number(rest[1] ?? '2500'));
+      return `nav ${rest[0]} load=${c.loadFired}`;
+    }
+    case 'signin': {
+      const op = OPERATORS.find((o) => o.username === rest[0]);
+      if (!op) return `no operator ${rest[0]}`;
+      if ((await waitSel(c, tid('page-login'), true, 15000)) === null) return 'no login page';
+      const u = await insertInto(c, `${tid('login-username-field')} input`, op.username);
+      const p = await insertInto(c, `${tid('login-password-field')} input`, DEMO_OPERATOR_PASSWORD);
+      if (!u || !p) return `fields not found u=${u} p=${p}`;
+      await evaluate(c, `document.querySelector('${tid('login-submit')}')?.click()`);
+      const t = await waitSel(c, tid('page-dashboard'), true, 25000);
+      await sleep(2000);
+      return `signin ${op.username} (${op.role}) dashboard ${t === null ? 'NOT shown' : `after ${t} ms`}`;
+    }
+    case 'shot':
+      return wshot(c, rest[0]!);
+    case 'signout': {
+      const r = await evaluate(c, `(async () => { const a = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return a.status })()`);
+      return `signout status ${r}`;
+    }
+    case 'touch': {
+      const r = await evaluate(c, `(async () => { const a = await fetch('/api/v1/auth/touch', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: '{}' }); return a.status })()`);
+      return `touch status ${r}`;
+    }
+    case 'press': {
+      const r = await evaluate(c, `(() => { const el = document.querySelector('${tid(rest[0]!)}'); if (!el) return false; el.click(); return true })()`);
+      return `press ${rest[0]} ${r ? 'ok' : 'NOT FOUND'} at ${hms()}`;
+    }
+    case 'click': {
+      const sel = raw.replace(/^\S+\s+click\s+/, '');
+      const r = await evaluate(c, `(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return false; el.click(); return true })()`);
+      return `click ${sel} ${r ? 'ok' : 'NOT FOUND'} at ${hms()}`;
+    }
+    case 'clicktext': {
+      const txt = raw.replace(/^\S+\s+clicktext\s+/, '');
+      const r = await evaluate(c, `(() => { const els = [...document.querySelectorAll('button, [role="button"], a, [role="menuitem"], [role="option"], [role="radio"], label, [role="tab"]')]; const el = els.find((e) => (e.textContent ?? '').replace(/\\s+/g, ' ').trim() === ${JSON.stringify(txt)}); if (!el) return false; el.click(); return true })()`);
+      return `clicktext "${txt}" ${r ? 'ok' : 'NOT FOUND'} at ${hms()}`;
+    }
+    case 'type': {
+      const sel = rest[0]!;
+      const text = rest.slice(1).join(' ');
+      const ok = await insertInto(c, sel, text);
+      return `type into ${sel}: ${ok ? `"${text}"` : 'NOT FOCUSED'}`;
+    }
+    case 'key': {
+      const key = rest[0]!;
+      const codes: Record<string, [string, number]> = { Enter: ['Enter', 13], Escape: ['Escape', 27], Tab: ['Tab', 9] };
+      const [code, vk] = codes[key] ?? [key, 0];
+      await send(c, 'Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode: vk });
+      await send(c, 'Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: vk });
+      return `key ${key}`;
+    }
+    case 'wait': {
+      const t = await waitSel(c, tid(rest[0]!), rest[1] !== 'absent', Number(rest[2] ?? '15000'));
+      return `wait ${rest[0]} ${rest[1] === 'absent' ? 'absent' : 'present'}: ${t === null ? 'TIMEOUT' : `${t} ms (at ${hms()})`}`;
+    }
+    case 'waitsel': {
+      const sel = raw.replace(/^\S+\s+waitsel\s+\d+\s+/, '');
+      const t = await waitSel(c, sel, true, Number(rest[0]));
+      return `waitsel ${sel}: ${t === null ? 'TIMEOUT' : `${t} ms (at ${hms()})`}`;
+    }
+    case 'until': {
+      // until <ms> <expr>: polls a page expression every 50 ms until it is truthy; the host time it first was.
+      const expr = raw.replace(/^\S+\s+until\s+\d+\s+/, '');
+      const t0 = Date.now();
+      while (Date.now() - t0 < Number(rest[0])) {
+        const v = await evaluate(c, expr);
+        if (v) return `until true at ${hms()} after ${Date.now() - t0} ms => ${JSON.stringify(v).slice(0, 300)}`;
+        await sleep(50);
+      }
+      return `until TIMEOUT after ${rest[0]} ms`;
+    }
+    case 'js': {
+      const expr = raw.replace(/^\S+\s+js\s+/, '');
+      const v = await evaluate(c, expr);
+      return `js => ${JSON.stringify(v).slice(0, 6000)}`;
+    }
+    case 'api':
+      return `api ${rest[0]} ${rest[1]} => ${(await api(c, rest[0]!, rest[1]!, rest.slice(2).join(' ') || undefined)).slice(0, 8000)}`;
+    case 'ids': {
+      const re = rest[0] ?? '.';
+      const v = await evaluate(c, `[...document.querySelectorAll('[data-testid]')].map((e) => e.getAttribute('data-testid')).filter((t) => new RegExp(${JSON.stringify(re)}).test(t))`);
+      return `ids => ${JSON.stringify([...new Set(v)]).slice(0, 4000)}`;
+    }
+    case 'console': {
+      const l = c.console.splice(0);
+      return `console (${l.length}): ${l.join(' | ').slice(0, 3000)}`;
+    }
+    case 'origins': {
+      const log = existsSync(c.netLog) ? readFileSync(c.netLog, 'utf8') : '';
+      const urls = log.split('\n').map((l) => /(https?|wss?):\/\/[^/\s]+/.exec(l)?.[0]).filter(Boolean);
+      const counts: Record<string, number> = {};
+      for (const u of urls) counts[u!] = (counts[u!] ?? 0) + 1;
+      return `origins in ${c.name}_network.log: ${JSON.stringify(counts)}`;
+    }
+    case 'pdfacts':
+      return `pdfacts => ${JSON.stringify(await pdFacts(c)).slice(0, 3000)}`;
+    case 'revoke': {
+      // revoke <DEV-NNNN> <reason…>: ONLY the device id of this lane's own phone (checked against the file
+      // own_device_<lane>.id written from the phone's own Login line). Times: confirm click, the answer (CDP wall time).
+      const dev = rest[0] ?? '';
+      const ownFile = `${Q}/../own_device_${LANE}.id`;
+      const own = existsSync(ownFile) ? readFileSync(ownFile, 'utf8').trim() : '';
+      if (!/^DEV-\d{4}$/.test(dev) || dev !== own) return `REFUSED: ${dev} is not this lane's own device (${own || 'unknown'})`;
+      const reason = rest.slice(1).join(' ') || 'CF-M1 revoke timing';
+      const facts = await pdFacts(c);
+      const row = facts.rows.find((r: any) => r.id === dev);
+      if (!row || !row.revokeShown) return `REFUSED: row ${dev} or its Revoke button missing (${JSON.stringify(facts.rows)})`;
+      await evaluate(c, `document.querySelector('${tid(`pd-revoke-${dev}`)}')?.click()`);
+      if ((await waitSel(c, tid('pd-revoke-dialog'), true, 8000)) === null) return 'revoke dialog not shown';
+      await sleep(500);
+      const ok = await insertInto(c, tid('pd-revoke-reason'), reason);
+      if (!ok) return 'reason field not focused';
+      await sleep(300);
+      const before = new Set(c.requests.keys());
+      const confirmAt = Date.now();
+      await evaluate(c, `document.querySelector('${tid('pd-revoke-confirm')}')?.click()`);
+      let answer: any = null;
+      for (let i = 0; i < 200 && !answer; i += 1) {
+        await sleep(25);
+        for (const [id, e] of c.requests) if (!before.has(id) && /\/api\/v1\/pairing\/devices\/[^/]+\/revoke/.test((e as any).url) && (e as any).status !== null) answer = e;
+      }
+      return `revoke ${dev}: confirm clicked ${hms(new Date(confirmAt))} (epoch ${confirmAt}); answer ${answer ? `${answer.status} (request ${answer.t})` : 'NOT SEEN in 5 s'}`;
+    }
+    case 'issueredeem': {
+      // issueredeem <shotName>: ONE code issued by a real click with the blur mask injected first; the digits are read
+      // into one variable (never printed/written), handed to exactly ONE adb input text call on this lane's phone if the
+      // app is focused and no keyguard shows; then the keypad's go key. The value is forgotten at the end.
+      const st = adb('shell', 'dumpsys', 'window');
+      if (!/isKeyguardShowing=false/.test(st) || !/mCurrentFocus=.*com\.dems\.demo\.tablet/.test(st)) return 'REFUSED: app not focused or keyguard';
+      const facts0 = await pdFacts(c);
+      if (!facts0.onPage || facts0.activeElsewhere) return `REFUSED: web not ready ${JSON.stringify({ onPage: facts0.onPage, active: facts0.activeElsewhere })}`;
+      await evaluate(c, `(() => { if (document.getElementById('cf-mask')) return true; const s = document.createElement('style'); s.id = 'cf-mask'; s.textContent = ${JSON.stringify(MASK_CSS)}; document.head.appendChild(s); return true })()`);
+      const btn = (await exists(c, tid('pd-issue'))) ? 'pd-issue' : 'pd-issue-new';
+      const issueAt = Date.now();
+      await evaluate(c, `document.querySelector('${tid(btn)}')?.click()`);
+      if ((await waitSel(c, tid('pd-code'), true, 15000)) === null) return 'code not shown';
+      await sleep(1600);
+      let secret = '';
+      for (let i = 0; i < 12 && secret === ''; i += 1) {
+        const a = String(await evaluate(c, `document.querySelector('${tid('pd-code')}')?.textContent?.replace(/\\s+/g, '') ?? ''`));
+        await sleep(350);
+        const b = String(await evaluate(c, `document.querySelector('${tid('pd-code')}')?.textContent?.replace(/\\s+/g, '') ?? ''`));
+        if (/^\d{6}$/.test(a) && a === b) secret = a;
+      }
+      const mask = await evaluate(c, MASK_CHECK);
+      const maskOk = mask.maskPresent && mask.transparent && mask.noShadow && mask.blurred && mask.qrHidden;
+      let shot = 'NOT TAKEN: mask did not hold';
+      if (maskOk && rest[0]) shot = await wshot(c, rest[0]);
+      if (secret === '' || !maskOk) { const read = secret !== ''; secret = ''; return `stop: code read ${read} mask ${JSON.stringify(mask)}; nothing typed`; }
+      const st2 = adb('shell', 'dumpsys', 'window');
+      if (!/isKeyguardShowing=false/.test(st2) || !/mCurrentFocus=.*com\.dems\.demo\.tablet/.test(st2)) { secret = ''; return 'focus changed: nothing typed'; }
+      const it = editorInputType();
+      if (it === null || (it & 0xf) !== 0x2) { secret = ''; return `REFUSED: the focused editor is not the numeric code field (0x${(it ?? 0).toString(16)}); nothing typed`; }
+      const typedAt = Date.now();
+      // One digit at a time: typed all at once, the slot field sometimes kept only the first digit (B2).
+      for (const ch of secret) { adb('shell', 'input', 'text', ch); await sleep(180); }
+      await sleep(700);
+      adb('shell', 'input', 'keyevent', '66');
+      const redeem = await waitLog('redeem', 40);
+      // Count-only scan for the code (digit-bounded, and spaced), then it is forgotten.
+      const count = (t: string): number => { let n = 0; let i = 0; while ((i = t.indexOf(secret, i)) !== -1) { if (!/\d/.test(t[i - 1] ?? '') && !/\d/.test(t[i + secret.length] ?? '')) n += 1; i += 1; } return n + (t.split(secret.split('').join(' ')).length - 1); };
+      const places: Record<string, number> = { deviceJs: count(adb('logcat', '-d', '-T', batchT0, '-s', 'ReactNativeJS:V')), serverLog: count(readFileSync(SERVER_LOG, 'utf8')), events: existsSync(`${Q}/events.log`) ? count(readFileSync(`${Q}/events.log`, 'utf8')) : 0 };
+      secret = '';
+      // The hand-off recording starts only after a 201: Live mode clears a redeemed code from the slots.
+      let rec = 'no recording';
+      if (/^redeem 201/.test(redeem) && rest[1]) rec = await phone('rec', ['start', rest[1], rest[2] ?? '14']);
+      if (!/^redeem 201/.test(redeem)) {
+        // Not redeemed: digits may sit in the slots. Clear them; no capture for the rest of this batch.
+        codePending = true;
+        for (let k = 0; k < 8; k += 1) adb('shell', 'input', 'keyevent', '67');
+        rec = 'not redeemed: slots cleared with 8 x DEL; captures refused for the rest of this batch';
+      }
+      return `issued at ${hms(new Date(issueAt))}; mask ok; ${shot}; code typed into the phone at ${hms(new Date(typedAt))} (not shown) + go key; ${redeem}; code scan (count only) ${JSON.stringify(places)}; ${rec}`;
+    }
+    default:
+      return `unknown web command ${verb}`;
+  }
+}
+
+// ───────────────────────────── server log ─────────────────────────────
+const marks: Record<string, number> = {};
+function serverLines(since: number, filter?: RegExp): string[] {
+  const text = readFileSync(SERVER_LOG, 'utf8');
+  const out: string[] = [];
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('{')) continue;
+    try {
+      const j = JSON.parse(line);
+      if (j.time < since) continue;
+      let s: string;
+      if (j.method) s = `${hms(new Date(j.time))} ${j.method} ${j.route} ${j.status}${j.code ? ` ${j.code}` : ''}`;
+      else s = `${hms(new Date(j.time))} [${j.msg}]`;
+      if (!filter || filter.test(s)) out.push(s);
+    } catch { /* partial line */ }
+  }
+  return out;
+}
+
+// ───────────────────────────── loop ─────────────────────────────
+async function runLine(line: string): Promise<string> {
+  const [first, verb, ...rest] = line.trim().split(/\s+/);
+  if (first === 'p') return phone(verb!, rest);
+  if (first === 'w1' || first === 'w2') {
+    if (verb === 'open') return openCtx(first, Number(rest[0]));
+    const c = ctxs[first];
+    if (!c) return `${first} not open`;
+    return web(c, verb!, rest, line.trim());
+  }
+  switch (first) {
+    case 'sleep': await sleep(Number(verb ?? '1000')); return `slept ${verb} ms`;
+    case 'mark': marks[verb!] = Date.now(); return `mark ${verb} at ${hms()}`;
+    case 'serverlog': {
+      const since = marks[verb!] ?? Date.now() - 60_000;
+      const re = rest.length ? new RegExp(rest.join(' ')) : undefined;
+      const lines = serverLines(since, re);
+      return `serverlog since ${verb} (${lines.length}):\n    ${lines.join('\n    ')}`;
+    }
+    case 'par': {
+      const parts = line.trim().replace(/^par\s+/, '').split('||').map((s) => s.trim());
+      const res = await Promise.all(parts.map((p) => runLine(p).catch((e) => `ERROR ${e?.message}`)));
+      return res.map((r, i) => `[${i}] ${r}`).join(' ;; ');
+    }
+    case 'xstop': {
+      // xstop <tries> <stallMs> <delayMs>: stall the phone's JS thread, read the app's banner (debug handle); when it
+      // reads 'resynced' (or 'offline'), wait delayMs and press the web End Session confirm (dialog opened before).
+      const tries = Number(verb ?? '4'); const stallMs = rest[0] ?? '3500'; const delay = Number(rest[1] ?? '300');
+      const c = ctxs.w1;
+      if (!c) return 'w1 not open';
+      const log: string[] = [];
+      for (let i = 0; i < tries; i += 1) {
+        log.push(await phone('hermes', ['stall', stallMs]));
+        let banner = '';
+        const wantRe = rest[3] === 'offline' ? /offline/ : /resynced|offline/;
+        for (let k = 0; k < 6 && !wantRe.test(banner); k += 1) {
+          banner = await phone('hermes', ['eval', 'globalThis.__DEMS_DEBUG__?.runtime?.()?.banner']);
+          if (!wantRe.test(banner)) await sleep(100);
+        }
+        log.push(`try ${i + 1}: ${banner.replace(/^.*=> /, '')}`);
+        if (wantRe.test(banner)) {
+          await sleep(delay);
+          log.push(await web(c, 'press', ['sm-end-confirm'], 'w1 press sm-end-confirm'));
+          if (Number(rest[2] ?? '0') > 0) log.push(await phone('hermes', ['stall', rest[2]!]));
+          return `xstop: ${log.join(' ; ')}`;
+        }
+        await sleep(3500);
+      }
+      return `xstop: no banner after ${tries} stalls; ${log.join(' ; ')}`;
+    }
+    case 'keyguard':
+      return `keyguard ${keyguard()}`;
+    default: return `unknown command: ${line}`;
+  }
+}
+
+async function quit(): Promise<void> {
+  for (const c of Object.values(ctxs)) {
+    try { c.ws.close(); } catch { /* */ }
+    try { c.proc.kill(); } catch { /* */ }
+    await sleep(500);
+    try { rmSync(c.profile, { recursive: true, force: true }); } catch { /* */ }
+  }
+}
+
+async function main(): Promise<number> {
+  let next = Number(process.env.RT_START ?? '1');
+  for (;;) {
+    const id = String(next).padStart(3, '0');
+    const file = `${Q}/${id}.cmd`;
+    let waited = 0;
+    while (!existsSync(file) && waited < 900_000) { await sleep(200); waited += 200; }
+    if (!existsSync(file)) { event(`EXIT 6 no command ${id} within 15 min`); await quit(); return 6; }
+    await sleep(120);
+    const lines = readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('#'));
+    batchT0 = deviceTime();
+    if (!driverT0) driverT0 = batchT0;
+    screenDeclaredInBatch = false;
+    codePending = false;
+    const results: string[] = [];
+    let code: number | null = null;
+    for (const line of lines) {
+      if (/^done\s+\d+/.test(line)) { code = Number(line.split(/\s+/)[1]); break; }
+      if (keyguard()) { results.push(`${hms()} KEYGUARD SHOWING on ${SERIAL}: batch stopped`); break; }
+      try {
+        results.push(`${hms()} ${await runLine(line)}`);
+      } catch (e) {
+        results.push(`${hms()} ERROR in "${line.slice(0, 40)}": ${e instanceof Error ? e.message.split('\n')[0] : 'unknown'}`);
+      }
+    }
+    if (passwordPending) {
+      adb('shell', 'am', 'force-stop', APP);
+      passwordPending = false;
+      results.push('a password was typed without an answered sign-in in this batch: the app was force-stopped');
+    }
+    const text = redact(results.join('\n'));
+    writeFileSync(`${Q}/${id}.out`, `${text}\n`);
+    event(`ACK ${id} | ${text.replace(/\n/g, ' | ')}`);
+    if (code !== null) { await quit(); return code; }
+    next += 1;
+  }
+}
+main().then((s) => process.exit(s), async (e: unknown) => { event(`EXIT 1 ${e instanceof Error ? e.message : 'unknown'}`); await quit(); process.exit(1); });
+for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(sig, () => { void quit().then(() => process.exit(130)); });
+}

@@ -1,0 +1,640 @@
+// Blueprint row 82 (M7-W1): the seal the Core's pipeline drives, in the shared session machine.
+// Register SH-06, SH-18, CS-04, E-13; evidence package spec §E.1, §E.2, §E.4; decisions D107 (1), D121.
+//
+// What is proven here is the machine only: pure transitions on the simulator's state. The pipeline
+// that calls them is `apps/core-server/src/sealing`.
+import { describe, expect, it } from 'vitest';
+import {
+  applySealingProgressTransition,
+  audioSourceAtStart,
+  completeSealTransition,
+  createManualClock,
+  createSim,
+  FaultKind,
+  FINALIZATION_ORDER,
+  isCoreDrivenSeal,
+  recordEvidenceVerificationTransition,
+  EVIDENCE_VERDICT_COMPROMISED_KEY_CUSTODY,
+  EVIDENCE_VERDICT_COMPROMISED_KEY_NOTICE,
+  type CompleteSealInput,
+  type SealingStepReport,
+  type SessionCreateInput,
+  type SimState,
+  INTERRUPTED_SEAL_SENTENCES,
+  interruptedSealCauseSentence,
+  interruptedSealOfItem,
+  interruptedSealOfSession,
+  selectElapsedMs,
+  toApiSession,
+  SESSION_FORM_NOTE_ID,
+  itemNotesOf,
+} from '../src/sim';
+import { EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE } from '../src/api';
+import { EvidenceItemSchema, SessionNoteSchema } from '../src/api/state-slices';
+import { VERIFY_NOTICE } from '../src/evidence-verify';
+import { en } from '../src/i18n';
+import * as sessionFaultBed from './support/session-fault-bed';
+
+const START = Date.UTC(2026, 9, 1, 3, 0, 0);
+const INPUT: SessionCreateInput = { caseNumber: 'LP/2026/1001-0008', subjectType: 'SAKSI', subjectName: 'Test Saksi', investigatorId: 'OPR-001', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' };
+const hex = (seed: string, length = 64): string => seed.repeat(length).slice(0, length);
+
+function harness() {
+  const clock = createManualClock(START);
+  const sim = createSim({ clock, storage: null, authStorage: null });
+  sim.actions.signIn('budi.santoso', 'demo-2026');
+  const state = (): SimState => sim.store.getState();
+  const run = (ms: number, step = 50): void => {
+    for (let elapsed = 0; elapsed < ms; elapsed += step) {
+      clock.advance(step);
+      sim.tick();
+    }
+  };
+  const apply = (next: SimState): void => {
+    sim.store.setState(next, true);
+  };
+  const toRecording = (): string => {
+    sim.actions.createSession(INPUT);
+    sim.actions.beginPrecheck();
+    run(5_000);
+    sim.actions.startRecording();
+    run(4_000);
+    return state().session?.id ?? '';
+  };
+  return { sim, clock, state, run, apply, toRecording };
+}
+
+const report = (running: number, progress: number, attempt = 1, etaMs: number | null = 900): SealingStepReport[] =>
+  FINALIZATION_ORDER.map((id, index) => ({ id, status: index < running ? 'DONE' : index === running ? 'RUNNING' : 'PENDING', progress: index < running ? 100 : index === running ? progress : 0, etaMs: index === running ? etaMs : null, attempt }));
+
+const sealInput = (sessionId: string, at: number, overrides: Partial<CompleteSealInput> = {}): CompleteSealInput => ({
+  sessionId,
+  sealedAt: at,
+  manifestSha256: hex('ab'),
+  signature: { value: hex('cd', 128), keyId: 'CORE-KEY-EVSIGN-01', algorithm: 'Ed25519' },
+  tracks: [
+    { trackId: 'VIDEO-01', sizeBytes: 4_000, sha256: hex('01') },
+    { trackId: 'VIDEO-02', sizeBytes: 5_000, sha256: hex('02') },
+  ],
+  interrupted: false,
+  durableEndAt: at - 2_000,
+  transcriptSha256: null,
+  labelsStatus: null,
+  developmentSources: true,
+  ...overrides,
+});
+
+describe('D121: a step ETA is the remaining time of that step (simulator seal)', () => {
+  it('the running step carries its own remaining time, never more than its duration; a waiting step carries none; a finished step 0', () => {
+    const h = harness();
+    h.toRecording();
+    h.sim.actions.stopRecording('Interview complete');
+    h.run(1_600);
+    const steps = h.state().session?.finalization.steps ?? [];
+    const active = steps.find((step) => step.status === 'active');
+    expect(active?.etaMs).toBeGreaterThan(0);
+    // The defect of D121: the run's remaining time (up to 6 x 1.2 s) stood here.
+    expect(active?.etaMs).toBeLessThanOrEqual(active?.durationMs ?? 0);
+    expect(steps.filter((step) => step.status === 'pending').every((step) => step.etaMs === null)).toBe(true);
+    h.run(1_300);
+    expect((h.state().session?.finalization.steps ?? []).filter((step) => step.status === 'done').every((step) => step.etaMs === 0)).toBe(true);
+    h.run(10_000);
+    expect(h.state().session?.state).toBe('SEALED');
+  });
+});
+
+describe('applySealingProgress: the pipeline drives the finalization', () => {
+  it('moves STOPPING to FINALIZING, and from then on no time seals the session', () => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    h.sim.actions.stopRecording('Interview complete');
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(0, 10) }));
+    expect(h.state().session?.state).toBe('FINALIZING');
+    expect(isCoreDrivenSeal(h.state().session)).toBe(true);
+    const evidenceBefore = h.state().evidence.length;
+    h.run(60_000);
+    // CONTROL of the claim: the simulator's own seal would have sealed within about 9 s.
+    expect(h.state().session?.state).toBe('FINALIZING');
+    expect(h.state().evidence.length).toBe(evidenceBefore);
+    expect(h.state().session?.finalization.steps[0]).toMatchObject({ id: 'CLOSE_TRACKS', status: 'active', progress: 10, etaMs: 900, durationMs: null, attempt: 1 });
+  });
+
+  it('CONTROL: without the pipeline the same session seals by time (the guard is what holds it)', () => {
+    const h = harness();
+    h.toRecording();
+    h.sim.actions.stopRecording('Interview complete');
+    h.run(20_000);
+    expect(h.state().session?.state).toBe('SEALED');
+    expect(h.state().evidence.at(-1)?.integritySource).toBe('SIMULATED');
+  });
+
+  it('is forward-only inside one attempt, keeps a DONE step DONE, and lets a resumed attempt start lower', () => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    h.sim.actions.stopRecording('Interview complete');
+    const step = (index: number) => h.state().session?.finalization.steps[index];
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(1, 60) }));
+    h.clock.advance(100);
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(1, 20) }));
+    expect(step(1)).toMatchObject({ status: 'active', progress: 60 });
+    const doneAt = step(0)?.completedAt;
+    // A resumed run (attempt 2) reports step 1 as running again and step 0 as pending: step 0 stays DONE.
+    h.clock.advance(100);
+    const resumed = report(1, 5, 2).map((entry, index) => (index === 0 ? { ...entry, status: 'PENDING' as const, progress: 0 } : entry));
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: resumed }));
+    expect(step(0)).toMatchObject({ status: 'done', progress: 100, completedAt: doneAt });
+    expect(step(1)).toMatchObject({ status: 'active', progress: 5, attempt: 2 });
+    // The same report again changes nothing: no new state object, so nothing is written or published.
+    const before = h.state();
+    expect(applySealingProgressTransition(before, h.clock.now() + 50, { sessionId, steps: resumed })).toBe(before);
+  });
+
+  it('refuses another session, and a session that is not stopping, finalizing, faulted or recovering', () => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    expect(() => applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(0, 1) })).toThrow();
+    h.sim.actions.stopRecording('Interview complete');
+    expect(() => applySealingProgressTransition(h.state(), h.clock.now(), { sessionId: 'SES-20990101-0001', steps: report(0, 1) })).toThrow();
+  });
+
+  it('the interrupted path: FAULT becomes FINALIZING with RECOVERY_STARTED, and a dropped tail is written once into the session record', () => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    h.sim.actions.inject(FaultKind.POWER_FAIL);
+    expect(h.state().session?.state).toBe('FAULT');
+    const tails = [{ trackId: 'VIDEO-02', droppedBytes: 37 }];
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(0, 0), truncatedTails: tails }));
+    expect(h.state().session?.state).toBe('FINALIZING');
+    expect(h.state().audit.rows.filter((row) => row.type === 'RECOVERY_STARTED' && row.sessionId === sessionId)).toHaveLength(1);
+    h.clock.advance(100);
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(0, 50), truncatedTails: tails }));
+    const marks = (h.state().session?.timeline ?? []).filter((item) => item.kind === 'CHECK' && item.params?.source === 'TAIL_VALIDATION');
+    expect(marks).toHaveLength(1);
+    expect(marks[0]?.params).toMatchObject({ trackId: 'VIDEO-02', droppedBytes: 37, truncated: true });
+    h.run(30_000);
+    // A recovering session the pipeline holds is never closed as INCOMPLETE by the time.
+    expect(h.state().session?.state).toBe('FINALIZING');
+  });
+});
+
+describe('completeSeal: the item of the real package', () => {
+  it('seals with the hashes and the signature it was handed; the item passes the slice schema and names nothing simulated', () => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    h.sim.actions.stopRecording('Interview complete');
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(5, 90) }));
+    h.clock.advance(500);
+    const at = h.clock.now();
+    h.apply(completeSealTransition(h.state(), at, sealInput(sessionId, at, { transcriptSha256: hex('7a'), labelsStatus: 'LABELLED' })));
+    const session = h.state().session;
+    const item = h.state().evidence.at(-1);
+    expect(session).toMatchObject({ state: 'SEALED', sealedAt: at });
+    expect(session?.finalization.steps.every((step) => step.status === 'done' && step.progress === 100 && step.etaMs === 0)).toBe(true);
+    expect(item).toMatchObject({
+      id: session?.evidenceId,
+      integritySource: 'REAL',
+      status: 'SEALED',
+      manifestHash: hex('ab'),
+      manifestVersion: 2,
+      transcriptSha256: hex('7a'),
+      labelsStatus: 'LABELLED',
+      developmentSources: true,
+      sizeBytes: 9_000,
+      signature: { algorithm: 'Ed25519', simulated: false, value: hex('cd', 128) },
+    });
+    expect(item?.tracks.map((track) => [track.trackId, track.sha256])).toEqual([['VIDEO-01', hex('01')], ['VIDEO-02', hex('02')]]);
+    expect(EvidenceItemSchema.safeParse(item).success).toBe(true);
+    expect(h.state().sessionHistory[0]).toMatchObject({ id: sessionId, outcome: 'SEALED', evidenceId: item?.id });
+    const sealedRows = h.state().audit.rows.filter((row) => row.type === 'EVIDENCE_SEALED' && row.sessionId === sessionId);
+    expect(sealedRows).toHaveLength(1);
+    expect(Object.keys(sealedRows[0]?.details ?? {}).sort()).toEqual(['manifestHash', 'sizeBytes', 'tracks']);
+  });
+
+  it('fix wave J round two (JW-13): what the operator added is ON the sealed item - every marker, every note, and the session form\'s note; a snapshot is a timeline mark only', () => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    const formNote = h.state().session?.input.notes ?? '';
+    h.sim.actions.addMarker('Key statement');
+    h.clock.advance(1_000);
+    h.sim.actions.addNote('Subject asked for a break.');
+    h.sim.actions.snapshot();
+    h.sim.actions.addMarker();
+    const recording = h.state().session;
+    h.sim.actions.stopRecording('Interview complete');
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(5, 90) }));
+    const at = h.clock.now();
+    h.apply(completeSealTransition(h.state(), at, sealInput(sessionId, at, { transcriptSha256: hex('7a'), labelsStatus: 'LABELLED' })));
+    const item = h.state().evidence.at(-1);
+    expect(item?.integritySource).toBe('REAL');
+    // The markers are the session's own timeline items: same ids, instants and labels (never rebuilt from the audit trail).
+    const timeline = recording?.timeline.filter((entry) => entry.kind === 'MARKER') ?? [];
+    expect(item?.markers).toEqual(timeline.map((entry, index) => ({ id: entry.id, at: entry.at, index: index + 1, label: entry.label })));
+    expect(item?.markers?.map((marker) => marker.label)).toEqual(['Key statement', 'Marker 2']);
+    // The notes written during the recording are the session's notes, whole.
+    const during = item?.notes?.filter((note) => note.origin === undefined);
+    expect(during).toEqual(recording?.notes);
+    expect(during?.map((note) => note.text)).toEqual(['Subject asked for a break.']);
+    // The form's note: on the item exactly when the form held one, as the first note, marked by its origin.
+    expect(item?.notes).toEqual(itemNotesOf(recording as NonNullable<typeof recording>));
+    if (formNote.trim() === '') expect(item?.notes?.some((note) => note.origin !== undefined)).toBe(false);
+    else expect(item?.notes?.[0]).toEqual({ id: SESSION_FORM_NOTE_ID, at: recording?.createdAt, authorId: recording?.createdBy, text: formNote.trim(), origin: 'SESSION_FORM' });
+    // A snapshot leaves a count and an audit row; the item has no member for it.
+    expect(recording?.snapshotCount).toBe(1);
+    expect(Object.keys(item ?? {}).filter((key) => /snapshot/i.test(key))).toEqual([]);
+    expect(EvidenceItemSchema.safeParse(item).success).toBe(true);
+    expect(EvidenceItemSchema.safeParse({ ...item, ...EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE }).success).toBe(true);
+  });
+
+  it('JW-13: the form\'s note - a session created WITH "Notes" seals an item whose first note is that text; CONTROL: an empty field adds no note; an unknown origin is refused by the contract', () => {
+    const base = { id: 'SES-20261001-0030', createdAt: 1_790_819_040_000, createdBy: 'OPR-001', notes: [{ id: 'NOTE-000413', at: 1_790_819_220_000, authorId: 'OPR-001', text: 'During.' }] };
+    const withForm = itemNotesOf({ ...base, input: { notes: '  Second interview; counsel present.  ' } } as unknown as Parameters<typeof itemNotesOf>[0]);
+    expect(withForm).toEqual([{ id: 'NOTE-FORM', at: base.createdAt, authorId: 'OPR-001', text: 'Second interview; counsel present.', origin: 'SESSION_FORM' }, ...base.notes]);
+    for (const empty of ['', '   ']) expect(itemNotesOf({ ...base, input: { notes: empty } } as unknown as Parameters<typeof itemNotesOf>[0])).toBe(base.notes);
+    expect(SessionNoteSchema.safeParse(withForm[0]).success).toBe(true);
+    expect(SessionNoteSchema.safeParse({ ...withForm[0], origin: 'OTHER' }).success).toBe(false);
+  });
+
+  it('an interrupted seal ends where the durable media ends, says so in the custody, and closes the recovery', () => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    h.sim.actions.inject(FaultKind.POWER_FAIL);
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(5, 90) }));
+    const at = h.clock.now() + 300;
+    h.apply(completeSealTransition(h.state(), at, sealInput(sessionId, at, { interrupted: true, durableEndAt: at - 5_000 })));
+    const item = h.state().evidence.at(-1);
+    expect(item?.endedAt).toBe(at - 5_000);
+    expect(item?.custody.map((entry) => entry.action)).toEqual(['RECORDING_STARTED', 'RECORDING_INTERRUPTED', 'SEALED']);
+    expect(item?.custody.at(-1)?.detail).toBe('Durable prefix sealed (interrupted)');
+    // A SEALED history entry names no fault (the database CHECK `session_history_outcome_check`); the custody does.
+    expect(h.state().sessionHistory[0]).toMatchObject({ outcome: 'SEALED', faultKind: null });
+    expect(item?.custody[1]).toMatchObject({ action: 'RECORDING_INTERRUPTED', detail: 'POWER_FAIL' });
+    expect(h.state().audit.rows.filter((row) => row.type === 'RECOVERY_COMPLETED' && row.sessionId === sessionId)).toHaveLength(1);
+  });
+
+  it.each([['VIDEO-01' as const], ['VIDEO-02' as const]])('F-M7 R88-01: a session that recorded with ONE camera file (%s) is sealed with that file: the item lists it alone', (trackId) => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    h.sim.actions.stopRecording('Interview complete');
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(5, 90) }));
+    const at = h.clock.now() + 200;
+    h.apply(completeSealTransition(h.state(), at, sealInput(sessionId, at, { tracks: [{ trackId, sizeBytes: 4_000, sha256: hex('01') }] })));
+    const item = h.state().evidence.at(-1);
+    expect(h.state().session).toMatchObject({ state: 'SEALED', sealedAt: at });
+    expect(item?.tracks.map((track) => [track.trackId, track.label, track.sizeBytes])).toEqual([[trackId, trackId === 'VIDEO-01' ? 'Camera 1' : 'Camera 2', 4_000]]);
+    expect(item?.sizeBytes).toBe(4_000);
+    expect(EvidenceItemSchema.safeParse(item).success).toBe(true);
+    expect(h.state().audit.rows.filter((row) => row.type === 'EVIDENCE_SEALED' && row.sessionId === sessionId)[0]?.details).toMatchObject({ tracks: 1 });
+    // The Core is free again: a sealed session blocks no new one.
+    expect(() => h.sim.actions.createSession({ ...INPUT, caseNumber: 'LP/2026/1001-0009' })).not.toThrow();
+  });
+
+  it.each([
+    ['a manifest digest that is no SHA-256', { manifestSha256: 'abc' }],
+    ['a simulated-length signature', { signature: { value: hex('cd'), keyId: 'CORE-KEY-EVSIGN-01', algorithm: 'Ed25519' as const } }],
+    // Fix pass F-M7 (R88-01, D178): ONE camera file is a sealed package (the case below proves it); these are not.
+    ['no camera file', { tracks: [] }],
+    ['the two camera files in the wrong order', { tracks: [{ trackId: 'VIDEO-02' as const, sizeBytes: 1, sha256: hex('02') }, { trackId: 'VIDEO-01' as const, sizeBytes: 1, sha256: hex('01') }] }],
+    ['one camera file twice', { tracks: [{ trackId: 'VIDEO-01' as const, sizeBytes: 1, sha256: hex('01') }, { trackId: 'VIDEO-01' as const, sizeBytes: 1, sha256: hex('01') }] }],
+    ['a camera file without a hash', { tracks: [{ trackId: 'VIDEO-01' as const, sizeBytes: 1, sha256: '' }, { trackId: 'VIDEO-02' as const, sizeBytes: 1, sha256: hex('02') }] }],
+    ['another session', { sessionId: 'SES-20990101-0001' }],
+  ])('refuses %s and seals nothing', (_name, overrides) => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    h.sim.actions.stopRecording('Interview complete');
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(5, 90) }));
+    const items = h.state().evidence.length;
+    expect(() => completeSealTransition(h.state(), h.clock.now(), sealInput(sessionId, h.clock.now(), overrides as Partial<CompleteSealInput>))).toThrow();
+    expect(h.state().evidence.length).toBe(items);
+    expect(h.state().session?.state).toBe('FINALIZING');
+  });
+
+  it('refuses a session whose pipeline reported a failed step, and one that is not finalizing', () => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    expect(() => completeSealTransition(h.state(), h.clock.now(), sealInput(sessionId, h.clock.now()))).toThrow();
+    h.sim.actions.stopRecording('Interview complete');
+    const failed = report(3, 40).map((entry, index) => (index === 3 ? { ...entry, status: 'FAILED' as const } : entry));
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: failed }));
+    expect(h.state().session?.finalization.steps[3]?.status).toBe('error');
+    expect(() => completeSealTransition(h.state(), h.clock.now(), sealInput(sessionId, h.clock.now()))).toThrow();
+  });
+});
+
+describe('recordEvidenceVerification: a verdict the Core computed (D107 (1))', () => {
+  function sealed() {
+    const h = harness();
+    const sessionId = h.toRecording();
+    h.sim.actions.stopRecording('Interview complete');
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(5, 90) }));
+    h.apply(completeSealTransition(h.state(), h.clock.now(), sealInput(sessionId, h.clock.now())));
+    return { h, evidenceId: h.state().evidence.at(-1)?.id ?? '' };
+  }
+
+  it('a pass and a failure write the keys of the hosted verify; the failure names the file and is a TAMPER row', () => {
+    const { h, evidenceId } = sealed();
+    const at = h.clock.now() + 1_000;
+    h.apply(recordEvidenceVerificationTransition(h.state(), at, { evidenceId, ok: true, at, manifestOk: true, signatureOk: true, failedTracks: [], detail: null, actorId: 'OPR-001' }));
+    let item = h.state().evidence.find((entry) => entry.id === evidenceId);
+    expect(item?.verification).toEqual({ status: 'PASS', at });
+    expect(item?.custody.at(-1)).toEqual({ at, action: 'VERIFIED', actorId: 'OPR-001', detail: null });
+    expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'EVIDENCE_VERIFIED', evidenceId, actorId: 'OPR-001', details: { manifestOk: true, signatureOk: true, failedTracks: '' } });
+
+    h.apply(recordEvidenceVerificationTransition(h.state(), at + 5, { evidenceId, ok: false, at: at + 5, manifestOk: true, signatureOk: true, failedTracks: ['VIDEO-02'], detail: 'Mismatch: VIDEO-02 fragment 3', actorId: 'OPR-001' }));
+    item = h.state().evidence.find((entry) => entry.id === evidenceId);
+    expect(item?.verification).toEqual({ status: 'FAIL', at: at + 5 });
+    expect(item?.custody.at(-1)).toMatchObject({ action: 'VERIFY_FAILED', detail: 'Mismatch: VIDEO-02 fragment 3' });
+    expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'EVIDENCE_VERIFY_FAILED', details: { failedTracks: 'VIDEO-02', eventKind: 'TAMPER' } });
+  });
+
+  it('task 4 row V5 (C84 R-1; SX-09 (d)): a verdict formed under a signing key MARKED COMPROMISED is recorded AS SUCH - the pass is a WARNING row with the notice and a custody text, never a plain pass; the failure names the mark too; any other value of `notice` records nothing', () => {
+    const { h, evidenceId } = sealed();
+    const at = h.clock.now() + 1_000;
+    expect(EVIDENCE_VERDICT_COMPROMISED_KEY_NOTICE).toBe(VERIFY_NOTICE.SIGNED_BY_COMPROMISED_KEY);
+    const pass = { evidenceId, ok: true, at, manifestOk: true, signatureOk: true, failedTracks: [], detail: null, actorId: 'OPR-001', operationId: 'verifyEvidence' };
+    h.apply(recordEvidenceVerificationTransition(h.state(), at, { ...pass, notice: 'SIGNED_BY_COMPROMISED_KEY' }));
+    let item = h.state().evidence.find((entry) => entry.id === evidenceId);
+    expect(item?.verification).toEqual({ status: 'PASS', at });
+    expect(item?.custody.at(-1)).toEqual({ at, action: 'VERIFIED', actorId: 'OPR-001', detail: EVIDENCE_VERDICT_COMPROMISED_KEY_CUSTODY });
+    const row = h.state().audit.rows.at(-1);
+    expect(row).toMatchObject({ type: 'EVIDENCE_VERIFIED', severity: 'WARNING', evidenceId, details: { manifestOk: true, signatureOk: true, failedTracks: '', operationId: 'verifyEvidence', notice: 'SIGNED_BY_COMPROMISED_KEY' } });
+    expect(row?.message).toBe(`Evidence ${evidenceId} verified as the digest recorded at the seal: its signing key is marked compromised`);
+    expect(row?.message).not.toContain('every hash matches');
+    expect(h.state().events.at(-1)).toMatchObject({ type: 'EVIDENCE_VERIFIED', severity: 'WARNING', params: { evidenceId, notice: 'SIGNED_BY_COMPROMISED_KEY' } });
+
+    // The failure under the mark: a failure as every other, and the row names the mark.
+    h.apply(recordEvidenceVerificationTransition(h.state(), at + 5, { ...pass, ok: false, at: at + 5, manifestOk: false, detail: 'Mismatch: V-03', notice: 'SIGNED_BY_COMPROMISED_KEY' }));
+    item = h.state().evidence.find((entry) => entry.id === evidenceId);
+    expect(item?.custody.at(-1)).toEqual({ at: at + 5, action: 'VERIFY_FAILED', actorId: 'OPR-001', detail: 'Mismatch: V-03' });
+    expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'EVIDENCE_VERIFY_FAILED', severity: 'CRITICAL', details: { eventKind: 'TAMPER', notice: 'SIGNED_BY_COMPROMISED_KEY' } });
+
+    // CONTROLS: without the member, and with a value that is not the one code, the row is the plain one of before - byte for byte the same members.
+    for (const notice of [undefined, 'AUDIT_EXTRACT_NOT_SIGNED', '', 'signed_by_compromised_key']) {
+      h.apply(recordEvidenceVerificationTransition(h.state(), at + 10, { ...pass, at: at + 10, ...(notice === undefined ? {} : { notice }) }));
+      const plain = h.state().audit.rows.at(-1);
+      expect(plain?.details, String(notice)).toEqual({ manifestOk: true, signatureOk: true, failedTracks: '', operationId: 'verifyEvidence' });
+      expect([plain?.severity, plain?.message], String(notice)).toEqual(['INFO', `Evidence ${evidenceId} verified: every hash matches`]);
+      expect(h.state().evidence.find((entry) => entry.id === evidenceId)?.custody.at(-1)?.detail, String(notice)).toBeNull();
+      expect(h.state().events.at(-1), String(notice)).toMatchObject({ severity: 'SUCCESS', params: { evidenceId, failedTracks: '' } });
+    }
+  });
+
+  it('refuses an item that is not REAL (its verdict is the hosted action\'s) and an unknown item', () => {
+    const { h } = sealed();
+    const dataset = h.state().evidence.find((entry) => entry.integritySource !== 'REAL');
+    expect(dataset).toBeDefined();
+    const verdict = { ok: true, at: h.clock.now(), manifestOk: true, signatureOk: true, failedTracks: [], detail: null, actorId: null };
+    expect(() => recordEvidenceVerificationTransition(h.state(), h.clock.now(), { ...verdict, evidenceId: dataset?.id ?? '' })).toThrow();
+    expect(() => recordEvidenceVerificationTransition(h.state(), h.clock.now(), { ...verdict, evidenceId: 'EV-20990101-0001' })).toThrow();
+  });
+
+  it('PASS E3: a SEED-SEALED demo item (DEMO_PACKAGE, version 2, development sources, really signed) takes the verdict; each member missing refuses it', () => {
+    const { h } = sealed();
+    const demo = h.state().evidence.find((entry) => entry.integritySource === 'DEMO_PACKAGE');
+    if (demo === undefined) throw new Error('the dataset holds no demo item');
+    const verdict = { evidenceId: demo.id, ok: false, at: h.clock.now(), manifestOk: true, signatureOk: true, failedTracks: ['VIDEO-02'], detail: 'Mismatch: VIDEO-02 fragment 3', actorId: null };
+    const signed = { value: 'cd'.repeat(64), keyId: 'CORE-KEY-EVSIGN-01', algorithm: 'Ed25519', simulated: false } as unknown as typeof demo.signature;
+    const withItem = (item: typeof demo) => ({ ...h.state(), evidence: h.state().evidence.map((entry) => (entry.id === demo.id ? item : entry)) });
+    const seedSealed = { ...demo, manifestVersion: 2 as const, developmentSources: true, signature: signed };
+    const next = recordEvidenceVerificationTransition(withItem(seedSealed), h.clock.now(), verdict);
+    expect(next.evidence.find((entry) => entry.id === demo.id)?.verification).toEqual({ status: 'FAIL', at: verdict.at });
+    expect(next.audit.rows.at(-1)).toMatchObject({ type: 'EVIDENCE_VERIFY_FAILED', evidenceId: demo.id });
+    // CONTROLS: the frozen demo item itself, and each of the three facts taken away.
+    expect(() => recordEvidenceVerificationTransition(h.state(), h.clock.now(), verdict)).toThrow();
+    expect(() => recordEvidenceVerificationTransition(withItem({ ...seedSealed, signature: demo.signature }), h.clock.now(), verdict)).toThrow();
+    expect(() => recordEvidenceVerificationTransition(withItem({ ...seedSealed, developmentSources: false }), h.clock.now(), verdict)).toThrow();
+    expect(() => recordEvidenceVerificationTransition(withItem({ ...demo, developmentSources: true, signature: signed }), h.clock.now(), verdict)).toThrow();
+  });
+});
+
+describe('the session audio source is the selector\'s pair, whatever its inputs are named (D133 (1), D137; request of pass D1b)', () => {
+  it('a pair MIC-03 / MIC-01 starts with MIC-03 active; CONTROL: the built-in pair starts as before', () => {
+    const h = harness();
+    const state = h.state();
+    expect(audioSourceAtStart(state, 'SES-20261001-0001')).toMatchObject({ activeInputId: 'MIC-01', standbyInputId: 'MIC-02' });
+    const [first, second] = state.captureConfig.mics;
+    // D61 (2026-11-04): the pair is keyed by channel — MIC-03 on channel 1, MIC-01 on channel 2.
+    const moved: SimState = { ...state, captureConfig: { ...state.captureConfig, mics: [{ ...first!, channel: 'MIC-02', inputId: 'MIC-01', deviceId: 'MIC-01' }, { ...second!, channel: 'MIC-01', inputId: 'MIC-03', deviceId: 'MIC-03' }] } };
+    expect(audioSourceAtStart(moved, 'SES-20261001-0001')).toMatchObject({ activeInputId: 'MIC-03', standbyInputId: 'MIC-01' });
+  });
+});
+
+// Blueprint row 82b: who seals a stopped session. In Simulated mode the simulator's timed seal; a
+// session the Core's capture recorded (it carries `captureDurable`) waits for the Core's pipeline.
+describe('a stopped session: the timed seal of Simulated mode, and a session the Core recorded', () => {
+  it('SIMULATED (no `captureDurable`): the timed seal runs as before - FINALIZING after the stop, SEALED with a simulated item', () => {
+    const h = harness();
+    h.toRecording();
+    expect(h.state().session?.captureDurable).toBeUndefined();
+    h.sim.actions.stopRecording('Interview complete');
+    h.run(1_600);
+    expect(h.state().session?.state).toBe('FINALIZING');
+    expect(h.state().session?.finalization.steps.every((step) => step.durationMs !== null)).toBe(true);
+    const items = h.state().evidence.length;
+    h.run(10_000);
+    expect(h.state().session?.state).toBe('SEALED');
+    expect(h.state().evidence).toHaveLength(items + 1);
+    expect(h.state().evidence.at(-1)?.integritySource).not.toBe('REAL');
+  });
+
+  it.each([true, false])('RECORDED BY THE CORE (`captureDurable: %s`): no time seals it - it stays STOPPING, no item appears, until the pipeline reports', (durable) => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    // Pass D10: the stop comes first - a stop of a session that says `false` is refused now
+    // (CAPTURE_NOT_DURABLE), and this case is about what seals a STOPPED session.
+    h.sim.actions.stopRecording('Interview complete');
+    const session = h.state().session;
+    if (session === null) throw new Error('no session');
+    h.apply({ ...h.state(), session: { ...session, captureDurable: durable } });
+    const items = h.state().evidence.length;
+    h.run(60_000);
+    expect(h.state().session?.state).toBe('STOPPING');
+    expect(h.state().evidence).toHaveLength(items);
+    // The pipeline's first report is what moves it on, and from there no tick seals it either.
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(0, 10) }));
+    expect(isCoreDrivenSeal(h.state().session)).toBe(true);
+    h.run(60_000);
+    expect(h.state().session?.state).toBe('FINALIZING');
+    expect(h.state().evidence).toHaveLength(items);
+  });
+});
+
+// Fix wave H, driver A, finding G89-08 (explains G81-08; gates 81 and 89): operation 83 answered
+// `STORE_SEALED_PACKAGE` with `completedAt` EARLIER than `startedAt` and `durationMs 0`.
+//
+// WHY. `sealedAt` of a real package is the instant the manifest's content was frozen at
+// BUILD_MANIFEST - it is under the signature, so it cannot be a later instant - and the seal is
+// committed with that instant AFTER SIGN_MANIFEST and STORE_SEALED_PACKAGE ran. The step that was
+// still running at the commit was closed "at `sealedAt`", before its own start.
+//
+// RULED: the step timestamps are monotonic. `sealedAt` keeps its definition (the session's and the
+// item's `sealedAt` are the manifest's); a step never completes before it started.
+describe('the step times of a seal the Core drives', () => {
+  function recorded() {
+    const clock = createManualClock(START);
+    const sim = createSim({ clock, storage: null, authStorage: null });
+    sim.actions.signIn('budi.santoso', 'demo-2026');
+    const state = (): SimState => sim.store.getState();
+    const run = (ms: number): void => {
+      for (let elapsed = 0; elapsed < ms; elapsed += 50) {
+        clock.advance(50);
+        sim.tick();
+      }
+    };
+    sim.actions.createSession(INPUT);
+    sim.actions.beginPrecheck();
+    run(5_000);
+    sim.actions.startRecording();
+    run(4_000);
+    const sessionId = state().session?.id ?? '';
+    sim.actions.stopRecording('Interview complete');
+    const apply = (next: SimState): void => void sim.store.setState(next, true);
+    return { clock, state, apply, sessionId };
+  }
+  const report = (running: number): SealingStepReport[] =>
+    FINALIZATION_ORDER.map((id, index) => ({ id, status: index < running ? 'DONE' : index === running ? 'RUNNING' : 'PENDING', progress: index < running ? 100 : index === running ? 10 : 0, etaMs: index === running ? 100 : null, attempt: 1 }) as SealingStepReport);
+  const sealInput = (sessionId: string, sealedAt: number): CompleteSealInput => ({
+    sessionId,
+    sealedAt,
+    manifestSha256: hex('ab'),
+    signature: { value: hex('cd', 128), keyId: 'CORE-KEY-EVSIGN-01', algorithm: 'Ed25519' },
+    tracks: [{ trackId: 'VIDEO-01', sizeBytes: 4_000, sha256: hex('01') }, { trackId: 'VIDEO-02', sizeBytes: 5_000, sha256: hex('02') }],
+    interrupted: false,
+    durableEndAt: sealedAt - 2_000,
+    transcriptSha256: null,
+    labelsStatus: null,
+    developmentSources: true,
+  });
+
+  describe('G89-08: the steps of a seal the Core drives', () => {
+    it('a seal committed with the BUILD_MANIFEST instant: no step completes before it started, every duration is >= 0, the steps and the seal end in order - and `sealedAt` is still the manifest\'s instant', () => {
+      const h = recorded();
+      // The pipeline as the gate saw it: one report per step, each some milliseconds after the other.
+      let sealedAt = 0;
+      for (let running = 0; running < FINALIZATION_ORDER.length; running += 1) {
+        h.clock.advance(20);
+        // BUILD_MANIFEST (index 3) freezes `sealedAt`; SIGN_MANIFEST and STORE_SEALED_PACKAGE start after it.
+        if (running === 3) sealedAt = h.clock.now();
+        h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId: h.sessionId, steps: report(running) }));
+      }
+      const storeStartedAt = h.state().session?.finalization.steps.at(-1)?.startedAt ?? 0;
+      // The condition of the finding: the last step began AFTER the instant the seal is committed with.
+      expect(storeStartedAt).toBeGreaterThan(sealedAt);
+      h.clock.advance(35);
+      h.apply(completeSealTransition(h.state(), h.clock.now(), sealInput(h.sessionId, sealedAt)));
+
+      const session = h.state().session;
+      const steps = session?.finalization.steps ?? [];
+      expect(session).toMatchObject({ state: 'SEALED', sealedAt });
+      expect(h.state().evidence.at(-1)).toMatchObject({ sealedAt });
+      expect(steps.map((step) => step.status)).toEqual(FINALIZATION_ORDER.map(() => 'done'));
+      for (const step of steps) {
+        expect(step.completedAt, step.id).toBeGreaterThanOrEqual(step.startedAt ?? Number.NaN);
+        expect(step.durationMs, step.id).toBeGreaterThanOrEqual(0);
+        expect(step.durationMs, step.id).toBe((step.completedAt ?? 0) - (step.startedAt ?? 0));
+      }
+      // In order: each step starts no earlier than the one before it, and completes no earlier than it.
+      for (let index = 1; index < steps.length; index += 1) {
+        expect(steps[index]?.startedAt, steps[index]?.id).toBeGreaterThanOrEqual(steps[index - 1]?.startedAt ?? Number.NaN);
+        expect(steps[index]?.completedAt, steps[index]?.id).toBeGreaterThanOrEqual(steps[index - 1]?.completedAt ?? Number.NaN);
+      }
+      expect(steps.at(-1)).toMatchObject({ startedAt: storeStartedAt, completedAt: storeStartedAt });
+      // The seal as a whole ended when its last step did, never before `sealedAt`.
+      expect(session?.finalization.completedAt).toBe(storeStartedAt);
+      expect(session?.finalization.completedAt).toBeGreaterThanOrEqual(sealedAt);
+    });
+
+    it('CONTROL - a seal committed at an instant AFTER every step began keeps that instant as the completion of the running step', () => {
+      const h = recorded();
+      for (let running = 0; running < FINALIZATION_ORDER.length; running += 1) {
+        h.clock.advance(20);
+        h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId: h.sessionId, steps: report(running) }));
+      }
+      h.clock.advance(500);
+      const at = h.clock.now();
+      h.apply(completeSealTransition(h.state(), at, sealInput(h.sessionId, at)));
+      const last = h.state().session?.finalization.steps.at(-1);
+      expect(last).toMatchObject({ completedAt: at, durationMs: 500 });
+      expect(h.state().session?.finalization.completedAt).toBe(at);
+    });
+  });
+});
+
+// Wave H, driver B (decision D200; gates 75 and 89): the session state of an interrupted recording.
+// G75-03 / G75-08: `stoppedAt` is the end of the durable media, the recording time stops there, and
+// the session / its history entry / its item say "interrupted". Written RED against f293221.
+describe('an interrupted seal', () => {
+  const { harness, report, interrupt } = sessionFaultBed;
+
+  describe('G75-03 / G75-08: an interrupted seal names itself and stops its clock', () => {
+    it('from the fault on, the recording time stands at the instant the recording ended', () => {
+      const h = harness();
+      const sessionId = h.toRecording();
+      const startedAt = h.state().session?.startedAt ?? 0;
+      const faultAt = interrupt(h, sessionId);
+      h.run(30_000);
+      expect(h.state().clock.now).toBeGreaterThan(faultAt + 20_000);
+      expect(selectElapsedMs(h.state())).toBe(faultAt - startedAt);
+      h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(2, 40) }));
+      h.run(30_000);
+      expect(selectElapsedMs(h.state())).toBe(faultAt - startedAt);
+      // Not sealed yet: the session says it already (the Finalizing views name it).
+      expect(interruptedSealOfSession(h.state(), sessionId)).toEqual({ faultKind: 'CAPTURE_FAULT', endedAt: faultAt });
+    });
+
+    it('SEALED: `stoppedAt` is the end of the durable media, `elapsedMs` stops there, and the session, the history entry and the item say interrupted', () => {
+      const h = harness();
+      const sessionId = h.toRecording();
+      const startedAt = h.state().session?.startedAt ?? 0;
+      const faultAt = interrupt(h, sessionId);
+      h.run(1_000);
+      h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(5, 90) }));
+      const sealedAt = h.clock.now() + 300;
+      const durableEndAt = faultAt - 400;
+      h.apply(completeSealTransition(h.state(), sealedAt, sealInput(sessionId, sealedAt, { interrupted: true, durableEndAt })));
+      const session = h.state().session;
+      expect(session).toMatchObject({ state: 'SEALED', stoppedAt: durableEndAt });
+      h.run(90_000);
+      expect(selectElapsedMs(h.state())).toBe(durableEndAt - startedAt);
+      const payload = toApiSession(h.state(), h.state().session!);
+      expect(payload.stoppedAt).not.toBeNull();
+      expect(payload.elapsedMs).toBe(durableEndAt - startedAt);
+      expect(payload.fault).toMatchObject({ kind: 'CAPTURE_FAULT', fromState: 'RECORDING' });
+
+      const item = h.state().evidence.at(-1);
+      expect(interruptedSealOfItem(item)).toEqual({ faultKind: 'CAPTURE_FAULT', endedAt: durableEndAt });
+      expect(interruptedSealOfSession(h.state(), sessionId)).toEqual({ faultKind: 'CAPTURE_FAULT', endedAt: durableEndAt });
+      // The history entry: SEALED with no fault kind (the database CHECK) - the fact is read through its item.
+      const entry = h.state().sessionHistory[0];
+      expect(entry).toMatchObject({ id: sessionId, outcome: 'SEALED', faultKind: null, durationMs: durableEndAt - startedAt });
+      const closed: SimState = { ...h.state(), session: null };
+      expect(interruptedSealOfSession(closed, entry?.id)).toEqual({ faultKind: 'CAPTURE_FAULT', endedAt: durableEndAt });
+    });
+
+    it('the words: one title that is never the plain sealed state, and the sentence of the cause', () => {
+      expect(INTERRUPTED_SEAL_SENTENCES.title).toBe('Sealed — recording was interrupted');
+      expect(en.common.interruptedSeal).toBe(INTERRUPTED_SEAL_SENTENCES);
+      expect(interruptedSealCauseSentence('CAPTURE_FAULT')).toBe(en.common.captureFault.noReason.capture);
+      expect(interruptedSealCauseSentence('CAPTURE_FAULT', 'WORKER_KILLED')).toBe(en.common.captureFault.reason.WORKER_KILLED);
+      expect(interruptedSealCauseSentence('POWER_FAIL')).toContain('POWER_FAIL');
+      expect(interruptedSealCauseSentence(null)).not.toMatch(/\{\{|null/);
+      // Free text of another process is never shown as a code.
+      expect(interruptedSealCauseSentence('<b>x</b>')).toBe(INTERRUPTED_SEAL_SENTENCES.noCause);
+    });
+
+    it('CONTROL - a recording ended by its stop: the operator stop instant stays, nothing says interrupted', () => {
+      const h = harness();
+      const sessionId = h.toRecording();
+      h.sim.actions.stopRecording('Interview finished');
+      const stoppedAt = h.state().session?.stoppedAt ?? null;
+      expect(stoppedAt).not.toBeNull();
+      h.apply({ ...h.state(), session: { ...h.state().session!, captureDurable: true } });
+      h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(5, 90) }));
+      const at = h.clock.now() + 300;
+      h.apply(completeSealTransition(h.state(), at, sealInput(sessionId, at)));
+      expect(h.state().session).toMatchObject({ state: 'SEALED', stoppedAt });
+      expect(interruptedSealOfSession(h.state(), sessionId)).toBeNull();
+      expect(interruptedSealOfItem(h.state().evidence.at(-1))).toBeNull();
+      expect(interruptedSealOfSession(h.state(), null)).toBeNull();
+    });
+  });
+});

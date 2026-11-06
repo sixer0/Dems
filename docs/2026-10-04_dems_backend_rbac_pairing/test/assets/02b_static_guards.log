@@ -1,0 +1,15 @@
+$ npm run test -w @dems/core-server -- test/static --maxWorkers=2   # started 19:52:29
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit test/static --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+
+ Test Files  9 passed (9)
+      Tests  112 passed (112)
+   Start at  19:52:29
+   Duration  750ms (import 72%, tests 18%, transform 8%, worker 2%)
+
+exit 0 at 19:52:30

@@ -1,0 +1,69 @@
+## 2026-10-06 01:38:57 WIB W81 in-memory proof of the proposed harness change (M15: no file of the tree modified)
+## config: assets/81_harness_proof_config.mts.txt
+## before: 13ad3c0f5fc849094a51f385d246bade0d0ef12794840efea31c579874491b39  apps/core-web/src/runtime/testing/live-harness.ts
+## $ W81_PROOF='' vitest run --config .cache/w81/proof/vitest.proof.config.mts --maxWorkers=2 src/test/live-shell-admin.test.tsx src/test/live-devices-drawer.test.tsx   (01:38:57)
+   2 FakeTransportUnscriptedError: Fake transport: no answer is scripted for GET /api/v1/rbac/matrix (getRoleMatrix) [NO_ANSWER_SCRIPTED]
+   2 FakeTransportUnscriptedError: Fake transport: no answer is scripted for GET /api/v1/pairing/code (getPairingCodeStatus) [NO_ANSWER_SCRIPTED]
+   1 ⎯⎯⎯⎯⎯⎯ Failed Tests 18 ⎯⎯⎯⎯⎯⎯⎯
+   1  ❯ src/test/live-shell-admin.test.tsx (40 tests | 17 failed) 7690ms
+   1  ❯ src/test/live-devices-drawer.test.tsx (13 tests | 1 failed) 4615ms
+   1  Test Files  2 failed (2)
+   1      × the two call sites take them from `useCoreActions()` and consume the result through `settle` 1ms
+   1      × the link opens the Paired Devices page 477ms
+   1      × reads the shell's production files 0ms
+   1      × no file takes the actions from `useSimActions` or reads `.actions` from a `Sim` 1ms
+   1      × every other route stays: /security-audit 1172ms
+   1      × each permission opens its own page only: /admin/users without USER_ADMIN 157ms
+   1      × each permission opens its own page only: /admin/devices without PAIRING_MANAGE 170ms
+   1      × another operator takes the session of this browser (a sign-in in another tab): the guards run for them, without a role notice 237ms
+   1      × a permission that goes without a role change (a permission refresh) leaves the page too, without a role notice 172ms
+   1      × Simulated mode: /admin/users is not redirected and shows its "Live mode only" state 54ms
+   1      × Simulated mode: /admin/devices is not redirected and shows its "Live mode only" state 41ms
+   1      × Simulated mode, where the build offers the choice: "Switch to Live mode" asks first, then hands over to the runtime 48ms
+   1      × Live mode with the permission: /admin/users renders page-users-roles inside the shell, and its entry is the active one 248ms
+   1      × Live mode with the permission: /admin/devices renders page-paired-devices inside the shell, and its entry is the active one 107ms
+   1      × CA-03: the leave is the guard's, run again by `router.invalidate()`; the shell names no destination 186ms
+   1      × /admin/users: `session.updated` without the permission leaves for /dashboard, and the notice says why 159ms
+   1      × /admin/users stays when the permission that was lost is the other page's 119ms
+   1      × /admin/devices: `session.updated` without the permission leaves for /dashboard, and the notice says why 274ms
+   1       Tests  18 failed | 35 passed (53)
+exit=1
+## $ W81_PROOF='pairing' vitest run --config .cache/w81/proof/vitest.proof.config.mts --maxWorkers=2 src/test/live-shell-admin.test.tsx src/test/live-devices-drawer.test.tsx   (01:39:08)
+   2 FakeTransportUnscriptedError: Fake transport: no answer is scripted for GET /api/v1/rbac/matrix (getRoleMatrix) [NO_ANSWER_SCRIPTED]
+   1 ⎯⎯⎯⎯⎯⎯ Failed Tests 11 ⎯⎯⎯⎯⎯⎯⎯
+   1  ❯ src/test/live-shell-admin.test.tsx (40 tests | 11 failed) 9203ms
+   1  Test Files  1 failed | 1 passed (2)
+   1      × the two call sites take them from `useCoreActions()` and consume the result through `settle` 1ms
+   1      × reads the shell's production files 0ms
+   1      × no file takes the actions from `useSimActions` or reads `.actions` from a `Sim` 2ms
+   1      × every other route stays: /security-audit 1396ms
+   1      × each permission opens its own page only: /admin/devices without PAIRING_MANAGE 203ms
+   1      × another operator takes the session of this browser (a sign-in in another tab): the guards run for them, without a role notice 201ms
+   1      × a permission that goes without a role change (a permission refresh) leaves the page too, without a role notice 218ms
+   1      × Live mode with the permission: /admin/users renders page-users-roles inside the shell, and its entry is the active one 315ms
+   1      × CA-03: the leave is the guard's, run again by `router.invalidate()`; the shell names no destination 157ms
+   1      × /admin/users: `session.updated` without the permission leaves for /dashboard, and the notice says why 191ms
+   1      × /admin/users stays when the permission that was lost is the other page's 159ms
+   1       Tests  11 failed | 42 passed (53)
+exit=1
+## $ W81_PROOF='both' vitest run --config .cache/w81/proof/vitest.proof.config.mts --maxWorkers=2 src/test/live-shell-admin.test.tsx src/test/live-devices-drawer.test.tsx   (01:39:21)
+   1  Test Files  2 passed (2)
+   1       Tests  53 passed (53)
+exit=0
+## markers written by the plugin: both pairing 
+## after:  13ad3c0f5fc849094a51f385d246bade0d0ef12794840efea31c579874491b39  apps/core-web/src/runtime/testing/live-harness.ts
+
+## 2026-10-06 01:56:14 WIB controller note D172 (2): the cause of the red drawer test
+## before: 37f79b0a959f1c744440054dd8e2ab7d217ba2d6283ddddff44f0629365ccf93  apps/core-web/src/test/live-devices-drawer.test.tsx
+## before: a7d4b9828f878075bf8783522eb9a1d8d546c2ac62f64e47c4f934769663a0a8  apps/core-web/src/runtime/testing/live-harness.ts
+## $ W81_PROOF='' vitest run --config .cache/w81/proof/vitest.proof.config.mts --maxWorkers=2 src/test/live-devices-drawer.test.tsx   (01:56:14)
+   1       Tests  13 passed (13)
+   1  Test Files  1 passed (1)
+exit=0
+## $ W81_PROOF='status' vitest run --config .cache/w81/proof/vitest.proof.config.mts --maxWorkers=2 src/test/live-devices-drawer.test.tsx   (01:56:19)
+   1       Tests  13 passed (13)
+   1  Test Files  1 passed (1)
+exit=0
+## markers written by the plugin: status 
+## after:  37f79b0a959f1c744440054dd8e2ab7d217ba2d6283ddddff44f0629365ccf93  apps/core-web/src/test/live-devices-drawer.test.tsx
+## after:  a7d4b9828f878075bf8783522eb9a1d8d546c2ac62f64e47c4f934769663a0a8  apps/core-web/src/runtime/testing/live-harness.ts

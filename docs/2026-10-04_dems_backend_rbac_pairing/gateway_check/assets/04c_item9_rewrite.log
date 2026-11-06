@@ -1,0 +1,20 @@
+OK  test/acceptance/restart.test.ts: '../../src/plugins/config/__tests__/test-config'  ->  '../support/config'
+OK  test/acceptance/restart.test.ts: '../../src/db/seed/__tests__/support'  ->  '../support/seed'
+OK  test/acceptance/restart.test.ts: '../../src/modules/identity/__tests__/support'  ->  '../support/identity'
+OK  test/acceptance/restart.test.ts: '../../src/modules/pairing/__tests__/support'  ->  '../support/pairing'
+OK  src/db/fixtures/__tests__/target.test.ts: '../../../plugins/config/__tests__/test-config'  ->  '../../../../test/support/config'
+OK  src/db/fixtures/__tests__/audit-reference.ts: '../../seed/__tests__/support'  ->  '../../../../test/support/seed'
+OK  src/modules/sessions/__tests__/memory-engine.ts: '../../../db/seed/__tests__/support'  ->  '../../../../test/support/seed'
+OK  src/modules/sessions/__tests__/memory-engine.ts: '../../../plugins/config/__tests__/test-config'  ->  '../../../../test/support/config'
+OK  src/modules/sessions/__tests__/memory-engine.ts: '../../identity/__tests__/support'  ->  '../../../../test/support/identity'
+OK  src/modules/sessions/__tests__/routes.test.ts: '../../../db/seed/__tests__/support'  ->  '../../../../test/support/seed'
+OK  src/modules/sessions/__tests__/routes.test.ts: '../../../plugins/config/__tests__/test-config'  ->  '../../../../test/support/config'
+OK  src/modules/sessions/__tests__/operations.db.test.ts: '../../../db/seed/__tests__/support'  ->  '../../../../test/support/seed'
+OK  src/modules/sessions/__tests__/concurrency.db.test.ts: '../../../db/seed/__tests__/support'  ->  '../../../../test/support/seed'
+OK  src/modules/sessions/__tests__/journey.db.test.ts: '../../../db/seed/__tests__/support'  ->  '../../../../test/support/seed'
+OK  src/modules/sessions/__tests__/pure.test.ts: '../../../db/seed/__tests__/support'  ->  '../../../../test/support/seed'
+OK  src/modules/sessions/__tests__/support.ts: '../../identity/__tests__/support'  ->  '../../../../test/support/identity'
+OK  src/db/fixtures/__tests__/bulk-fixture.db.test.ts: from '../../seed';  ->  from '../../store';
+OK  src/db/fixtures/__tests__/support.ts: from '../../seed';  ->  from '../../store';
+
+18 specifier rewrites applied across 12 files.

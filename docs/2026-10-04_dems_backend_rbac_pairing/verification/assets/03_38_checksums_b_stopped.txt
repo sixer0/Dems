@@ -1,0 +1,46 @@
+== B 05:32:45 server stopped (at rest)
+connected as dems_owner to 127.0.0.1/32:4432 (PostgreSQL 18.4)
+active_session              0  d41d8cd98f00b204e9800998ecf8427e
+alerts                      0  d41d8cd98f00b204e9800998ecf8427e
+audit_chain_head            1  89a1fcd6769120828fae869c688fa053
+audit_chain_history         0  d41d8cd98f00b204e9800998ecf8427e
+audit_log                  85  5b4524f6c5fc6a574351c7f2420c5ec7
+auth_sessions               1  b1269d38571f6b0d5f8473da73aaefd1
+biometric_tokens            0  d41d8cd98f00b204e9800998ecf8427e
+console_settings            1  9fcf5e2eff4c084549d662323f63913a
+core_device                 1  e5534f12f323aa290ba110754b0005be
+core_state                  1  0dbaeef223a43c1c002e9118b9d6a448
+device_credentials          0  d41d8cd98f00b204e9800998ecf8427e
+engine_counters             5  88f94b1d40a8d41664c53a2b374ff5f6
+events                     63  d9862dd65df54f4f499347c4d73e3dbd
+evidence_custody           28  fe7196279cec4d13d085ac7e701087c8
+evidence_items             13  7b73aa0ceb7e9b46307da6013cf9ec44
+evidence_tracks            52  481cc8b2969557620bf740c30748ec70
+exports                     1  528d2c98bdc7e02ffe986f5246e317f0
+hardware_snapshot           1  fed554d9e0a825256a8e7103dfbf9bf9
+health_snapshots            1  23ff9ec4ed7e723c83ada9333031bee4
+operator_credentials        3  033269258fcbdd1c55ff5a7e2d4edd70
+operators                   3  f5dba102391776c9b9afc03d392e97c9
+paired_devices              0  d41d8cd98f00b204e9800998ecf8427e
+pairing_codes               0  d41d8cd98f00b204e9800998ecf8427e
+permissions                12  aa0e5474ec05c78aa2bf635397ea0676
+registry_counters           2  cad05c9a39dbf023490c9e69bbc9188e
+role_permissions           18  fbf20c640c4b4e039ef64e3be274c4d3
+roles                       3  ae0d751197b14ce00fb4b90bbc159618
+schema_meta                 1  eb888f88187742c42ea325a3ccc64914
+session_history            13  2613502b559fd849e9a2ad6240a8f529
+storage_policy              1  f4b703b717901cb7d293bd14f4a2ebd8
+tables 30; rows 310
+exit=0
+connected as dems_owner to 127.0.0.1/32:4432 (PostgreSQL 18.4)
+audit_log seq 83 TABLET_LINK_CHANGED actor -
+audit_log seq 84 AUTH_SUCCESS actor OPR-002
+audit_log seq 85 AUTH_SIGNED_OUT actor OPR-002
+events columns: seq, id, at, type, category, severity, message, params, session_id, device_id
+events seq 63 type HEALTH_CHECK_OK
+events seq 62 type AUTH_LOGOUT
+events seq 61 type AUTH_LOGIN
+events seq 60 type TABLET_DISCONNECTED
+core_state: 1 row(s)
+engine_counters: 5 row(s)
+auth_sessions: 1 row(s)

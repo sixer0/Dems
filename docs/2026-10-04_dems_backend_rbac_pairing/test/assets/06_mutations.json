@@ -1,0 +1,68 @@
+[
+  {
+    "id": "M1",
+    "note": "a row is changed in the stopped database as the owner role, between the stop and the start (storage_policy.retention_days - 1)",
+    "from": "  const next = await startServer(target, startedAt);\n",
+    "to": "  await owner.query('UPDATE public.storage_policy SET retention_days = retention_days - 1');\n  const next = await startServer(target, startedAt);\n"
+  },
+  {
+    "id": "M2a",
+    "note": "RECORDING at the stop: the recoverSession call is left out",
+    "from": "    // The recovery, by the SUPERVISOR, in the third process.\n    await recover(flight, second.server, supervisor);\n",
+    "to": "    // The recovery, by the SUPERVISOR, in the third process.\n"
+  },
+  {
+    "id": "M2b",
+    "note": "ARMED at the stop: the recoverSession call is left out, and so are the three assertions between it and the history entry, so that the INCOMPLETE assertion is the first to speak",
+    "from": "    await recover(flight, first.server, supervisor);\n    const closed = await writtenBy(owner, () => first.server.drive(RECOVERY_MS));\n    expect(actors(closed)).toEqual(COMPLETION_ROWS);\n    expect(await currentSession(first.server, supervisor.cookie)).toBeNull();\n\n    const entry = await newestHistory(first.server, supervisor);\n",
+    "to": "    const closed = await writtenBy(owner, () => first.server.drive(RECOVERY_MS));\n\n    const entry = await newestHistory(first.server, supervisor);\n"
+  },
+  {
+    "id": "M3",
+    "note": "the stored epoch is changed in the stopped database as the owner role (core_state.epoch + 5)",
+    "from": "  const next = await startServer(target, startedAt);\n",
+    "to": "  await owner.query('UPDATE public.core_state SET epoch = epoch + 5');\n  const next = await startServer(target, startedAt);\n"
+  },
+  {
+    "id": "M4",
+    "note": "RECORDING at the stop: the recording is stopped and sealed before the server stops, so nothing is in flight",
+    "from": "    const first = await restart('RECORDING at the stop', target, flight.server, 'FAULT');\n",
+    "to": "    await webPost(flight.server.app, on(sessionId, 'stop'), flight.investigator.cookie, { reason: 'Interview completed' });\n    await flight.server.drive(FINALIZE_MS);\n    const first = await restart('RECORDING at the stop', target, flight.server, 'FAULT');\n"
+  },
+  {
+    "id": "M5",
+    "note": "SR-17: the cookie presented after the restart is the one of the session that was signed out before the stop",
+    "from": "    const info = await sessionInfo(server, supervisor.cookie);\n    expect(info).toMatchObject({ method: 'PASSWORD', deviceId: null, issuedAt: FIXED_NOW, absoluteExpiresAt: FIXED_NOW + ABSOLUTE_LIMIT_MS });\n",
+    "to": "    const info = await sessionInfo(server, signedOut.cookie);\n    expect(info).toMatchObject({ method: 'PASSWORD', deviceId: null, issuedAt: FIXED_NOW, absoluteExpiresAt: FIXED_NOW + ABSOLUTE_LIMIT_MS });\n"
+  },
+  {
+    "id": "M6",
+    "note": "the server is down for 16 minutes instead of 90 seconds: past the idle limit of every session",
+    "from": "const STOP_MS = 90 * SECOND;\n",
+    "to": "const STOP_MS = 16 * MINUTE;\n"
+  },
+  {
+    "id": "M7",
+    "note": "the last-seen instant of every session is changed in the stopped database as the owner role (auth_sessions.last_seen_at + 1)",
+    "from": "  const next = await startServer(target, startedAt);\n",
+    "to": "  await owner.query('UPDATE public.auth_sessions SET last_seen_at = last_seen_at + 1');\n  const next = await startServer(target, startedAt);\n"
+  },
+  {
+    "id": "M8",
+    "note": "FINALIZING at the stop: the tablet reconnects during the recovery, so the link is CONNECTED at the second stop (the start then writes a row)",
+    "from": "    const second = await restart('RECOVERY at the stop', target, first.server, 'EPOCH');\n",
+    "to": "    await first.server.app.engine.setTabletLink('CONNECTED');\n    const second = await restart('RECOVERY at the stop', target, first.server, 'EPOCH');\n"
+  },
+  {
+    "id": "M9",
+    "note": "the journey: the SUPERVISOR changes the policy again after the answers of the read operations were taken (a write between the reads and the first stop)",
+    "from": "    servedBefore[0] = await served(processOf(0), supervisor);\n",
+    "to": "    servedBefore[0] = await served(processOf(0), supervisor);\n    await webPost(processOf(0).app, STORAGE_POLICY, supervisor.cookie, { retentionDays: 77 });\n"
+  },
+  {
+    "id": "M10",
+    "note": "the journey: the role of OPR-003 is changed back in the stopped database as the owner role, between the first stop and the first start",
+    "from": "  const next = await startServer(target, startedAt);\n",
+    "to": "  await owner.query(\"UPDATE public.operators SET role_id = 'TECHNICIAN' WHERE id = 'OPR-003' AND role_id = 'INVESTIGATOR'\");\n  const next = await startServer(target, startedAt);\n"
+  }
+]

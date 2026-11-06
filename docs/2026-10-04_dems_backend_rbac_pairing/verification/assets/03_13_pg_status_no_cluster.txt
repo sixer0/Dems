@@ -1,0 +1,8 @@
+$ npm run pg:status
+# 2026-10-07 05:30:17
+
+> dems-demo@0.1.0 pg:status
+> node scripts/pg/status.mjs
+
+pg:status: no cluster at .data/postgres. Run "npm run pg:init".
+exit=4

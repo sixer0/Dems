@@ -1,0 +1,53 @@
+#!/bin/sh
+# W86 device commands, run by device-session.sh on the phone (lane 1 via device tcp:4420 -> host tcp:4421).
+# The README "Live mode" step 5 lines, literally, with the session's serial (asserted to be emulator-5554):
+#   adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+#   adb -s emulator-5554 shell 'am start -W -a android.intent.action.VIEW -d "demsdemo:///login?core=LIVE&motion=off" com.dems.demo.tablet'
+#   adb -s emulator-5554 shell 'am start -W -a android.intent.action.VIEW -d "demsdemo:///login?core=SIMULATED&motion=off" com.dems.demo.tablet'
+# Screencaps only (no uiautomator dump on Login), no sign-in, no tap, nothing on a keyguard. Ends in SIMULATED.
+set -u
+OUT=$1
+ASSETS="$ROOT/docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets"
+[ "$SERIAL" = "emulator-5554" ] || { echo "-- ABORT: the session serial is $SERIAL, not emulator-5554"; exit 70; }
+[ "$AVD_NAME" = "dems2_phone" ] || { echo "-- ABORT: the AVD is $AVD_NAME, not dems2_phone"; exit 70; }
+echo "-- serial $SERIAL ($AVD_NAME), Metro $METRO_PORT"
+unlocked() {
+  KG=$(adb -s emulator-5554 shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1)
+  ST=$(adb -s emulator-5554 shell dumpsys user 2>/dev/null | grep -m 1 "State:" | tr -d '\r' | sed 's/^ *//')
+  case "$KG/$ST" in isKeyguardShowing=false/*RUNNING_UNLOCKED*) return 0 ;; *) echo "-- LOCKED ($KG; $ST) at: $1 - stop, report."; return 1 ;; esac
+}
+waitlog() { # waitlog <tag> <since> <seconds>
+  i=0; until adb -s emulator-5554 logcat -d -T "$2" -s ReactNativeJS:V 2>/dev/null | grep -q "$1" || [ "$i" -ge "$3" ]; do i=$((i + 1)); sleep 1; done
+  echo "-- waited $i s for $1"
+}
+prefs() { adb -s emulator-5554 shell "run-as com.dems.demo.tablet sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" 2>/dev/null | tr -d '\r'; }
+unlocked "the start" || exit 77
+echo "-- reverse rules of this session (device -> host):"
+adb -s emulator-5554 reverse --list | tr -d '\r' | sed 's/^/   /'
+echo "-- prefs before: $(prefs)"
+
+T0=$(adb -s emulator-5554 shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+echo "-- \$ adb -s emulator-5554 shell am force-stop com.dems.demo.tablet"
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet; echo "   exit $?"
+echo "-- \$ adb -s emulator-5554 shell 'am start -W -a android.intent.action.VIEW -d \"demsdemo:///login?core=LIVE&motion=off\" com.dems.demo.tablet'"
+adb -s emulator-5554 shell 'am start -W -a android.intent.action.VIEW -d "demsdemo:///login?core=LIVE&motion=off" com.dems.demo.tablet' 2>&1 | tr -d '\r' | grep -E "Status|LaunchState|Error|TotalTime" | sed 's/^/   /'
+waitlog 'runtime.live.ready' "$T0" 90
+sleep 6
+unlocked "the LIVE login" || exit 77
+adb -s emulator-5554 exec-out screencap -p > "$ASSETS/86_m1_live_login_lane1.png"; echo "-- screencap 86_m1_live_login_lane1.png ($(wc -c < "$ASSETS/86_m1_live_login_lane1.png" | tr -d ' ') B)"
+echo "-- prefs in LIVE: $(prefs)"
+echo "-- Core request lines of the app (method, path template, status):"
+adb -s emulator-5554 logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -o 'DEMS-LIVE\] .*' | sed -E 's/ [0-9a-f]{8}-[0-9a-f-]{27}$//' | sort | uniq -c | sort -rn | head -n 12 | sed 's/^/   /'
+echo "-- runtime lines: $(adb -s emulator-5554 logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -o 'runtime\.[a-z.]*' | sort -u | tr '\n' ' ')"
+
+T1=$(adb -s emulator-5554 shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+echo "-- \$ adb -s emulator-5554 shell 'am start -W -a android.intent.action.VIEW -d \"demsdemo:///login?core=SIMULATED&motion=off\" com.dems.demo.tablet'"
+adb -s emulator-5554 shell 'am start -W -a android.intent.action.VIEW -d "demsdemo:///login?core=SIMULATED&motion=off" com.dems.demo.tablet' 2>&1 | tr -d '\r' | grep -E "Status|LaunchState|Error|TotalTime" | sed 's/^/   /'
+waitlog 'runtime.sim.hydrated' "$T1" 60
+sleep 5
+unlocked "the SIMULATED login" || exit 77
+adb -s emulator-5554 exec-out screencap -p > "$ASSETS/86_m2_simulated_login_lane1.png"; echo "-- screencap 86_m2_simulated_login_lane1.png ($(wc -c < "$ASSETS/86_m2_simulated_login_lane1.png" | tr -d ' ') B)"
+echo "-- prefs after: $(prefs)"
+echo "-- credential/token lines in the JS log since the start (must be 0): $(adb -s emulator-5554 logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -c -E 'dvc_[A-Za-z0-9]|ses_[A-Za-z0-9]|bio_[A-Za-z0-9]|[Bb]earer [A-Za-z0-9]')"
+echo "-- lock at end: $(adb -s emulator-5554 shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1)"
+exit 0

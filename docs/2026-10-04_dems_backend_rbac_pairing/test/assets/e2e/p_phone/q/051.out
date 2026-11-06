@@ -1,0 +1,11 @@
+10:20:11.408 js => {"status":200,"id":"EV-20261006-0018","status2":"SEALED","recordedAt":"10:07:59","endedAt":"10:19:21","sealedAt":"10:19:29","durationMs":682444,"sizeBytes":1554455778,"markers":[{"id":"TL-000022","at":1791256247223,"index":1,"label":"E2E-P phone note"}]}
+10:20:11.472 js => [[252,"SESSION_CREATED","OPR-001","10:07:18","Session SES-20261006-0030 created"],[253,"PRECHECK_PASSED","OPR-001","10:07:23","Pre-recording checks passed"],[254,"RECORDING_STARTED","OPR-001","10:07:59","Recording started (SES-20261006-0030)"],[277,"MARKER_ADDED","OPR-001","10:10:47","Marker added: E2E-P phone note"]]
+10:20:11.537 mark a32 at 10:20:11.537
+10:20:11.591 tap 650,2254
+10:20:11.772 slept 3000 ms
+10:20:14.810 declared screen home
+10:20:14.870 screencap 49_after_summary_done.png 10:20:14.870..10:20:15.144
+10:20:15.168 corelog (2): 10:20:11.530 POST /api/v1/session/{id}/summary/acknowledge 204 | 10:20:12.286 GET /api/v1/evidence/{id} 200
+10:20:15.216 serverlog since a32 (2):
+    10:20:11.790 POST /api/v1/session/:id/summary/acknowledge 204 operator:OPR-001
+    10:20:12.488 GET /api/v1/evidence/:id 200 operator:OPR-001

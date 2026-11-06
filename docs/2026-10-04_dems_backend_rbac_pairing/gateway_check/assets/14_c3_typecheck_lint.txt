@@ -1,0 +1,10 @@
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+typecheck_exit=0
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+lint_exit=0

@@ -1,0 +1,43 @@
+## W71 gate log (2026-10-05 23:15:07 WIB)
+$ npm run typecheck -w @dems/core-web
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+$ npm run lint -w @dems/core-web
+
+> @dems/core-web@0.1.0 lint
+> oxlint
+
+exit=0
+$ npm run typecheck -w @dems/shared
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+$ npm run lint -w @dems/shared
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+$ npm run test -w @dems/core-web -- --maxWorkers=2   (23:12:33, tail)
+      Tests  956 passed (956)
+   Start at  23:12:34
+   Duration  120.85s (tests 66%, import 16%, environment 11%, setup 4%, transform 2%)
+
+    Isolate  71 workers spawned · ~456ms startup each (spawn + environment, per file)
+             at least ~15.74s faster with isolate: false — reuses workers across files instead of one per file
+
+JSON report written to /Users/gsp-budi/Documents/DEMS/.cache/w71/suite_1.json
+core-web suite exit=0
+$ npm run test -w @dems/shared -- --maxWorkers=2   (23:14:42, tail)
+   Start at  23:14:43
+   Duration  13.72s (tests 59%, import 30%, transform 10%, worker 1%)
+
+    Isolate  68 workers spawned · ~83ms startup each (spawn + environment, per file)
+             at least ~2.73s faster with isolate: false — reuses workers across files instead of one per file
+
+shared suite exit=0

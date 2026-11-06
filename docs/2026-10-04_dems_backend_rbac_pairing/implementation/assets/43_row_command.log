@@ -1,0 +1,19 @@
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db src/modules/demo
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_65_tmdmqmjm_
+[test:db] stale sweep: dropped 0; kept 26 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_65_tmdmqmjm_tpl_schema: built in 831 ms (create 42 ms, hook 160 ms)
+[test:db] template dems_test_step_65_tmdmqmjm_tpl_seed: built in 426 ms (create 98 ms, hook 259 ms)
+
+ Test Files  4 passed (4)
+      Tests  40 passed (40)
+   Start at  16:37:34
+   Duration  16.19s (tests 75%, import 13%, transform 13%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 399 ms; 0 remain with the run prefix dems_test_step_65_tmdmqmjm_

@@ -1,0 +1,206 @@
+
+> @dems/core-server@0.2.0 coverage
+> vitest run --coverage --maxWorkers=2 --coverage.reportsDirectory=/Users/gsp-budi/Documents/DEMS/.cache/w87/coverage
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+      Coverage enabled with v8
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_109_tmgj1ds6_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_109_tmgj1ds6_tpl_schema: built in 129 ms (create 67 ms, hook 60 ms)
+[test:db] template dems_test_step_109_tmgj1ds6_tpl_seed: built in 143 ms (create 60 ms, hook 82 ms)
+[test:db] bulk fixture: dems_test_step_109_tmgj1ds6_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 26e251887c667e1e...; digest e58f1ae233811851...; build 380 ms, write 1507 ms, total 1891 ms
+(node:33320) [FST_LIGHTMYREQUEST_DEP01] DeprecationWarning: You are accessing "request.connection", use "request.socket" instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  276 passed (276)
+      Tests  5656 passed (5656)
+   Start at  06:10:25
+   Duration  162.64s (tests 74%, import 24%, transform 1%, worker 1%)
+
+[34m % [39m[2mCoverage report from [22m[33mv8[39m
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+-------------------|---------|----------|---------|---------|-------------------
+All files          |   95.78 |    90.12 |   97.81 |   96.93 |                   
+ src               |   72.86 |    80.82 |   84.61 |   71.92 |                   
+  app.ts           |     100 |    95.45 |     100 |     100 | 215               
+  index.ts         |       0 |        0 |       0 |       0 | 25-110            
+ src/core          |   94.94 |    92.27 |   98.85 |   96.92 |                   
+  audit-writer.ts  |   95.03 |    90.36 |     100 |   99.14 | 284               
+  boot-checks.ts   |   95.34 |     90.9 |     100 |     100 | 52,153            
+  errors.ts        |   96.77 |    94.44 |     100 |   96.29 | 165               
+  event-writer.ts  |   92.23 |    84.31 |     100 |   97.64 | 84,191            
+  payload-rules.ts |   96.49 |    96.92 |     100 |      98 | 146               
+  pipeline.ts      |   92.67 |    90.81 |   96.77 |   92.57 | ...29,327-334,384 
+  unit-of-work.ts  |    92.3 |    87.14 |   97.14 |   95.51 | ...33,386-387,439 
+  ...-statement.ts |     100 |    98.41 |     100 |     100 | 72                
+ src/db/commands   |   90.48 |    81.01 |   92.85 |   91.23 |                   
+  cli.ts           |   88.67 |    85.29 |   72.72 |      88 | ...07,135,189-190 
+  create.ts        |   88.46 |    76.92 |     100 |   95.83 | 45                
+  migrate.ts       |   85.71 |    76.92 |     100 |      90 | 45,53             
+  migrations.ts    |   93.97 |       80 |     100 |   92.95 | 71,78,82,210,264  
+  ...connection.ts |   85.71 |    76.66 |    87.5 |   85.54 | 205-231,279       
+  status.ts        |   93.82 |    81.81 |     100 |   95.77 | 93,101,139        
+ src/db/fixtures   |   96.74 |    86.71 |   98.57 |   97.43 |                   
+  build.ts         |     100 |    77.08 |     100 |     100 | ...15-117,137-194 
+  identity.ts      |   98.98 |    90.35 |   98.79 |    99.4 | 145,595           
+  load.ts          |   75.21 |    45.28 |   83.33 |   77.66 | ...92,209,217,239 
+  minimums.ts      |     100 |       75 |     100 |     100 | 111               
+  operations.ts    |   95.08 |    77.34 |     100 |   97.19 | 506,584-589       
+  recordings.ts    |   99.62 |    92.46 |     100 |     100 | ...77,516,526-567 
+  report.ts        |    92.3 |     62.5 |      80 |     100 | 45-56             
+  rng.ts           |     100 |    66.66 |     100 |     100 | 54-55             
+  validate.ts      |     100 |    97.24 |     100 |     100 | ...97,358-373,387 
+  world.ts         |   96.22 |    88.46 |     100 |   95.83 | 130,168           
+ src/db/mapping    |   98.11 |    93.31 |     100 |   98.98 |                   
+  changes.ts       |   98.75 |    94.61 |     100 |     100 | ...16,285-286,346 
+  exports.ts       |   95.65 |    95.65 |     100 |      95 | 47                
+  from-rows.ts     |   97.61 |    83.33 |     100 |   97.36 | 91                
+  guards.ts        |   97.14 |    96.66 |     100 |     100 | 102               
+  ...h-snapshot.ts |      75 |       75 |     100 |   83.33 | 31                
+  rbac.ts          |     100 |       50 |     100 |     100 | 43                
+  rows.ts          |   98.68 |    98.11 |     100 |   98.38 | 313               
+ src/db/reset      |   94.57 |    85.77 |   95.55 |   95.92 |                   
+  cli.ts           |    93.1 |    76.36 |   81.25 |   94.44 | 59-60,171,208     
+  kept-tables.ts   |   94.36 |    86.04 |     100 |   95.08 | 224-225,230       
+  names.ts         |   94.44 |    94.87 |     100 |      96 | 142-143           
+  plan.ts          |   97.95 |    94.82 |     100 |   97.87 | 171               
+  routine.ts       |   94.05 |    81.86 |   97.22 |   95.75 | ...1041,1064-1065 
+ src/db/schema     |    98.8 |    92.79 |     100 |   99.12 |                   
+  boot-checks.ts   |   97.54 |    92.79 |     100 |   98.16 | 121,245           
+ src/db/seed       |   94.07 |    85.86 |     100 |   95.76 |                   
+  cli.ts           |      90 |     64.7 |     100 |   93.54 | 68,74             
+  seed.ts          |   94.73 |    87.27 |     100 |   95.83 | 146,230,291       
+ src/db/store      |   91.72 |       86 |   94.11 |   94.26 |                   
+  store.ts         |   91.72 |       86 |   94.11 |   94.26 | ...89,277,290,407 
+ src/engine        |   92.34 |    85.94 |   94.38 |   93.81 |                   
+  delta.ts         |     100 |       96 |     100 |     100 | 57                
+  headless-sim.ts  |   78.57 |      100 |   66.66 |   76.92 | 55,61-62          
+  host.ts          |   87.61 |    79.26 |   90.66 |   90.38 | ...32-833,845-846 
+  rehydrate.ts     |   96.29 |    88.63 |     100 |   97.18 | 141,145           
+  scheduler.ts     |     100 |     87.5 |     100 |     100 | 79,106            
+ src/modules/admin |   95.59 |    81.66 |   98.03 |    99.2 |                   
+  changes.ts       |   92.64 |    85.71 |   93.75 |   98.07 | 104               
+  index.ts         |      96 |       70 |     100 |     100 | 82-88,126,147     
+  statements.ts    |     100 |    83.33 |     100 |     100 | 100               
+ ...modules/alerts |   93.54 |    83.33 |     100 |     100 |                   
+  index.ts         |   91.66 |    66.66 |     100 |     100 | 64-73             
+ src/modules/demo  |   99.06 |    96.15 |     100 |     100 |                   
+  host.ts          |     100 |       50 |     100 |     100 | 51                
+  index.ts         |   97.82 |    88.88 |     100 |     100 | 117               
+  operations.ts    |   83.33 |       50 |     100 |     100 | 40                
+ ...odules/devices |   96.49 |    84.61 |     100 |     100 |                   
+  index.ts         |   96.15 |       50 |     100 |     100 | 86                
+  operations.ts    |   85.71 |       50 |     100 |     100 | 56                
+ ...dules/evidence |   98.61 |    91.46 |     100 |     100 |                   
+  index.ts         |   97.36 |     87.5 |     100 |     100 | 109-127,141       
+  reads.ts         |     100 |       90 |     100 |     100 | 89                
+ ...modules/health |    92.3 |    81.81 |     100 |     100 |                   
+  index.ts         |    92.3 |    81.81 |     100 |     100 | 55-61             
+ ...dules/identity |   96.82 |    90.44 |   98.42 |   98.24 |                   
+  console.ts       |   77.77 |       75 |     100 |     100 | 46-53             
+  index.ts         |   80.76 |    57.14 |      80 |      80 | 120,134-140       
+  lockout.ts       |   96.66 |    88.23 |     100 |   97.95 | 124               
+  operations.ts    |      80 |       50 |     100 |     100 | 20                
+  session-store.ts |   98.55 |    95.45 |     100 |     100 | 172               
+  sessions.ts      |   97.91 |    89.13 |     100 |     100 | ...78,200,222,231 
+  sign-in.ts       |     100 |    96.42 |     100 |     100 | 278               
+ ...tity/biometric |   98.45 |    95.19 |     100 |     100 |                   
+  routes.ts        |   88.23 |       50 |     100 |     100 | 63-83             
+  sign-in.ts       |     100 |       98 |     100 |     100 | 250               
+  store.ts         |   97.43 |     87.5 |     100 |     100 | 92,274            
+ .../password-hash |   98.24 |    97.56 |     100 |     100 |                   
+  password-hash.ts |   98.24 |    97.56 |     100 |     100 | 150               
+ ...s/network-time |   91.66 |       50 |     100 |     100 |                   
+  index.ts         |   91.66 |       50 |     100 |     100 | 48                
+ ...odules/pairing |    96.2 |    91.42 |   98.65 |   98.21 |                   
+  codes.ts         |     100 |    93.75 |     100 |     100 | 103               
+  devices.ts       |   96.55 |     90.9 |     100 |     100 | 136,162           
+  index.ts         |   81.81 |    83.33 |      75 |   81.81 | 106,120-125       
+  redeem-lock.ts   |   94.73 |    81.25 |     100 |   97.87 | 121               
+  redeem.ts        |   98.18 |    97.36 |     100 |     100 | 139               
+  resolver.ts      |   91.83 |     90.9 |     100 |   93.93 | 89-90             
+  routes.ts        |   94.91 |     87.5 |     100 |     100 | 86-105            
+  store.ts         |   98.64 |    93.33 |     100 |     100 | 57,426            
+ src/modules/rbac  |   93.33 |       50 |     100 |     100 |                   
+  index.ts         |   93.33 |       50 |     100 |     100 | 46                
+ ...security-audit |   98.23 |    96.17 |     100 |   99.16 |                   
+  index.ts         |   98.73 |    97.56 |     100 |     100 | 130               
+  reads.ts         |   98.11 |    93.18 |     100 |     100 | 108,147,176       
+  stored-chain.ts  |   97.47 |    95.45 |     100 |   98.11 | 206-207           
+ ...dules/sessions |   99.49 |    97.97 |     100 |     100 |                   
+  routes.ts        |   99.15 |    94.11 |     100 |     100 | 106,161           
+ ...odules/storage |   96.42 |     87.5 |     100 |     100 |                   
+  index.ts         |   93.75 |       50 |     100 |     100 | 70                
+ ...modules/system |   97.87 |    92.85 |     100 |     100 |                   
+  operations.ts    |   85.71 |       50 |     100 |     100 | 37                
+ ...s/authenticate |   99.18 |    98.79 |     100 |     100 |                   
+  index.ts         |    98.8 |    98.11 |     100 |     100 | 232               
+ ...plugins/config |   97.72 |    92.85 |     100 |   97.67 |                   
+  ...ction-file.ts |   96.87 |    95.45 |     100 |   96.77 | 58                
+  load-config.ts   |     100 |    83.33 |     100 |     100 | 59                
+ src/plugins/db    |   99.09 |    97.05 |   96.15 |     100 |                   
+  index.ts         |   99.09 |    97.05 |   96.15 |     100 | 190               
+ ...error-envelope |   99.01 |    95.38 |     100 |     100 |                   
+  index.ts         |   97.43 |    91.89 |     100 |     100 | 127-129           
+ ...plugins/logger |      96 |    89.79 |   88.23 |   96.21 |                   
+  error-log.ts     |    97.5 |    91.89 |     100 |   97.05 | 150               
+  ...controller.ts |      50 |       50 |      40 |      50 | 18,26-33          
+  ...er-options.ts |   97.36 |     87.5 |   92.85 |   98.55 | 55                
+  request-log.ts   |     100 |    96.42 |     100 |     100 | 18                
+ ...rmission-guard |   98.65 |    94.86 |     100 |   98.75 |                   
+  access-rules.ts  |   99.04 |    94.11 |     100 |   98.92 | 288               
+  index.ts         |   97.41 |    94.44 |     100 |   97.08 | 342-344           
+  matrix.ts        |   98.18 |    95.23 |     100 |     100 | 68-70             
+  router-table.ts  |     100 |       80 |     100 |     100 | 61-62,67,70       
+ ...ugins/throttle |   98.16 |     93.1 |     100 |   98.96 |                   
+  denial-budget.ts |   95.65 |    83.33 |     100 |   95.23 | 84                
+  index.ts         |   98.43 |     93.1 |     100 |     100 | 143,182           
+ src/realtime      |      98 |    95.08 |   98.55 |   98.75 |                   
+  handshake.ts     |     100 |    91.66 |     100 |     100 | 101               
+  hub.ts           |   97.92 |    96.71 |     100 |   98.49 | ...44,592-593,758 
+  index.ts         |   95.49 |    73.07 |   95.91 |   97.89 | 195,278           
+-------------------|---------|----------|---------|---------|-------------------
+
+=============================== Coverage summary ===============================
+Statements   : 95.78% ( 9131/9533 )
+Branches     : 90.12% ( 4720/5237 )
+Functions    : 97.81% ( 2060/2106 )
+Lines        : 96.93% ( 7958/8210 )
+================================================================================
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 361 ms; 0 remain with the run prefix dems_test_step_109_tmgj1ds6_

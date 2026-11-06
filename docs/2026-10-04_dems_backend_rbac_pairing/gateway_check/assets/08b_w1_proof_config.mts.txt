@@ -1,0 +1,9 @@
+// W1: the mutation configuration (`vitest.mutation.config.mts`, W1_MUT as there) plus the proof test
+// OUTSIDE the tree (`.cache/w1/proof/*.proof.test.ts`). Nothing of the tree is written (rule M15).
+import mutationConfig from './vitest.mutation.config.mts'
+
+const base = mutationConfig as { test?: Record<string, unknown> }
+export default {
+  ...mutationConfig,
+  test: { ...base.test, include: ['../../.cache/w1/proof/*.proof.test.ts'] },
+}

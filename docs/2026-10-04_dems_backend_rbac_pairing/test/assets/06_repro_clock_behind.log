@@ -1,0 +1,59 @@
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_75_tmdp937t_
+[test:db] stale sweep: dropped 0; kept 6 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_75_tmdp937t_tpl_schema: built in 75 ms (create 25 ms, hook 49 ms)
+[test:db] template dems_test_step_75_tmdp937t_tpl_seed: built in 125 ms (create 42 ms, hook 82 ms)
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the journey before the first stop: the policy, a paired tablet, a code left active, the role, a recording sealed and verified
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 1 (the tablet was connected): every table is equal before the stop and after the start, except what the start itself writes; the epoch is the previous plus 1
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > what the restarted server serves through the routes is what was stored: the policy, the tablet, the active code, the role, the sealed evidence, the history
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the SUPERVISOR session of before the stop works without a new sign-in; a session that was signed out stays ended, with its reason
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands of the restarted process: the sealed evidence verifies; the audit chain goes on from the row the start wrote; the code of before the stop pairs a second tablet
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restarts 2 and 3, one straight after the other: only the epoch moves, twice; every read operation answers what it answered before; the epoch is the second process's plus 2
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands after three restarts: the chain goes on from the last row before the second stop; the changed role decides; the tablets resolve; one is revoked
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 4, after commands of a rehydrated process and with a session in CREATE: stable again; a session in CREATE is not faulted; a revoked tablet stays revoked
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > no activity is invented for the time the server was down: no stored row is stamped inside a stop, and the engine goes on from the start instant
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the idle and the absolute limit still apply on the server clock to sessions that came through four restarts
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > at the end: the chain verifies over the rows of all five processes, the tables hold what the engine serves, and no process logged an error
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-06: FINALIZING at the stop. FAULT at the last committed instant, the recording time and size as stopped; recoverSession, then a stop DURING the recovery: the next process completes it as INCOMPLETE, evidence RECORDED, never sealed
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > spec §8.6: ARMED at the stop (no recording had started). FAULT, recoverSession, an INCOMPLETE entry and NO evidence item
+ ↓ |db| test/acceptance/restart.test.ts > the comparison is not blind, and the server serves what PostgreSQL holds > a row changed in the stopped database, as the owner role: its table is reported as moved, and the started server serves the changed row
+ ↓ |db| test/acceptance/restart.test.ts > AC-B-04 on a Core with a long history (the bulk fixture): more audit rows than the engine holds in its ring > two restarts with a command between them: every table stable twice, every read answers the same, the view and the stored chain verify, the next row links
+stdout | test/acceptance/restart.test.ts > repro W53-F1, W53-F2: a start with the server clock behind the stored state > the clock of the new process is two minutes before the stop; the sessions were issued ten seconds before the stop
+[repro] sessions issued at +600.00 s, stop at +610.00 s, start at +490.00 s; warning of the engine: 1 x ENGINE_CLOCK_BEHIND
+
+stdout | test/acceptance/restart.test.ts > repro W53-F1, W53-F2: a start with the server clock behind the stored state > the clock of the new process is two minutes before the stop; the sessions were issued ten seconds before the stop
+[repro] F1 signOut: 500 INTERNAL_ERROR; log: "unexpected error while handling a request", SQLSTATE 23514, at endSession (src/modules/identity/session-store.ts:205); the session afterwards: getAuthSession 200
+
+stdout | test/acceptance/restart.test.ts > repro W53-F1, W53-F2: a start with the server clock behind the stored state > the clock of the new process is two minutes before the stop; the sessions were issued ten seconds before the stop
+[repro] F1 disableUser: 500 INTERNAL_ERROR; log: "unexpected error while handling a request", SQLSTATE 23514, at endSessionsOfOperator (src/modules/identity/session-store.ts:219); the operator afterwards: enabled true, getAuthSession 200
+
+stdout | test/acceptance/restart.test.ts > repro W53-F1, W53-F2: a start with the server clock behind the stored state > the clock of the new process is two minutes before the stop; the sessions were issued ten seconds before the stop
+[repro] F1 revokeDevice: 500 INTERNAL_ERROR; log: "unexpected error while handling a request", SQLSTATE 23514, at endSessionsOfDevice (src/modules/identity/session-store.ts:223); the device afterwards: PAIRED, its operator session: getCurrentSession 200
+
+stdout | test/acceptance/restart.test.ts > repro W53-F1, W53-F2: a start with the server clock behind the stored state > the clock of the new process is two minutes before the stop; the sessions were issued ten seconds before the stop
+[repro] F1 signIn that presents the open session (rotation, ID-6): 500; log: "unexpected error while handling a request", SQLSTATE 23514, at endSession (src/modules/identity/session-store.ts:205)
+
+stdout | test/acceptance/restart.test.ts > repro W53-F1, W53-F2: a start with the server clock behind the stored state > the clock of the new process is two minutes before the stop; the sessions were issued ten seconds before the stop
+[repro] F1 rows stored by the four requests: none
+
+stdout | test/acceptance/restart.test.ts > repro W53-F1, W53-F2: a start with the server clock behind the stored state > the clock of the new process is two minutes before the stop; the sessions were issued ten seconds before the stop
+[repro] F2 a new sign-in 200, then setStoragePolicy 200: 89 AUTH_SUCCESS (OPR-001, +600.00 s), 90 AUTH_SUCCESS (OPR-003, +490.00 s), 91 STORAGE_POLICY_CHANGED (OPR-002, +610.00 s)
+
+stdout | test/acceptance/restart.test.ts > repro W53-F1, W53-F2: a start with the server clock behind the stored state > the clock of the new process is two minutes before the stop; the sessions were issued ten seconds before the stop
+[repro] F2 rows stamped before their predecessor: 90 AUTH_SUCCESS (OPR-003, +490.00 s); the chain: {"ok":true,"checked":91,"head":"ac6b8227e9ef99a6565d279349b7f829f656b790e4c702a3e0398bab30224b60"}
+
+stdout | test/acceptance/restart.test.ts > repro W53-F1, W53-F2: a start with the server clock behind the stored state > the clock of the new process is two minutes before the stop; the sessions were issued ten seconds before the stop
+[repro] F1 signOut once the clock is past the stop instant: 204
+
+ ✓ |db| test/acceptance/restart.test.ts > repro W53-F1, W53-F2: a start with the server clock behind the stored state > the clock of the new process is two minutes before the stop; the sessions were issued ten seconds before the stop 1148ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 16 skipped (17)
+   Start at  17:31:51
+   Duration  2.93s (tests 66%, transform 22%, import 12%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 62 ms; 0 remain with the run prefix dems_test_step_75_tmdp937t_

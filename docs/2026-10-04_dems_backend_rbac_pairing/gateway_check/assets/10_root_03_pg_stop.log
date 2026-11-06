@@ -1,0 +1,8 @@
+
+> dems-demo@0.1.0 pg:stop
+> node scripts/pg/stop.mjs
+
+waiting for server to shut down.... done
+server stopped
+pg:stop: stopped PID 19121; 127.0.0.1:4432 is free
+exit=0

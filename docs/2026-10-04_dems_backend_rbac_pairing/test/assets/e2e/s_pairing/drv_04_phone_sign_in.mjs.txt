@@ -1,0 +1,52 @@
+// E2E-S step 4 (and 6): sign in on phone2 (emulator-5558) in LIVE mode as budi.santoso (INVESTIGATOR), typing into
+// the app's own fields. The Username field is already focused (the caller tapped it and checked the screencap:
+// keyboard up, no handwriting coach). The demo password comes from the shared seed constant and is only ever
+// the argument of ONE `adb shell input text`; it is never printed or written. Nothing is typed unless the app
+// is the focused window and no keyguard shows. No uiautomator dump (Login/Home show).
+//   node --import tsx 04_phone_sign_in.mjs <prefix> <label> "<password x y>" "<sign-in x y>"
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset.ts'
+import { adb, clockOffset, deviceNow, deviceState, liveLines, log, screencap, sleep, stamp, tap, writeJson } from './lib.mjs'
+
+const [prefix, label, passAt, submitAt] = process.argv.slice(2)
+const xy = (s) => s.trim().split(/\s+/)
+const budi = OPERATORS.find((o) => o.username === 'budi.santoso')
+if (!budi || budi.role !== 'INVESTIGATOR') throw new Error('seed: budi.santoso is not the INVESTIGATOR')
+const T0 = deviceNow()
+const result = { label, operator: { username: budi.username, id: budi.id, role: budi.role }, deviceT0: T0, clock: clockOffset() }
+const guard = (when) => { const s = deviceState(); log(`${when}: keyguard ${s.keyguard}, app focused ${s.appFocused}`); return s.appFocused }
+
+if (!guard('before the username')) process.exit(77)
+adb('shell', 'input', 'text', budi.username)
+log(`typed the username (${budi.username})`)
+await sleep(500)
+tap(...xy(passAt)); await sleep(900)
+if (!guard('before the password')) process.exit(77)
+adb('shell', 'input', 'text', DEMO_OPERATOR_PASSWORD)
+log('typed the demo password (not shown)')
+await sleep(500)
+result.prefill = screencap(`${prefix}_phone_login_prefilled.png`) // the password field shows dots only
+if (!guard('before submit')) process.exit(77)
+const submitAtMs = Date.now()
+adb('shell', 'input', 'keyevent', '66')
+log("pressed the keypad's go key (KEYCODE_ENTER)")
+let line
+for (let waited = 0; waited < 40 && !line; waited++) {
+  await sleep(1000)
+  line = liveLines(T0).find((l) => l.method === 'POST' && l.path === '/api/v1/auth/sign-in')
+  if (!line && waited === 10) { tap(...xy(submitAt)); log('no sign-in request after 10 s: tapped Sign In') }
+}
+result.submitAt = stamp(submitAtMs)
+result.signIn = line ? { ...line, deviceTime: stamp(Math.round(line.deviceEpoch * 1000)) } : 'NOT SEEN in 40 s'
+log(`the app's sign-in request (device log): ${line ? `POST /api/v1/auth/sign-in ${line.status} at device ${stamp(Math.round(line.deviceEpoch * 1000))}` : 'NOT SEEN'}`)
+await sleep(6000)
+const s = deviceState()
+result.after = s
+result.afterShot = s.keyguard === 'false' ? screencap(`${prefix}_phone_signed_in.png`) : 'NOT TAKEN: keyguard'
+result.appRequests = liveLines(T0).map((l) => `${stamp(Math.round(l.deviceEpoch * 1000))} ${l.method} ${l.path} ${l.status}`)
+log(`after: ${JSON.stringify(result.afterShot)}; app requests since T0:\n   ${result.appRequests.join('\n   ')}`)
+const js = adb('logcat', '-d', '-T', T0, '-s', 'ReactNativeJS:V')
+result.credentialLinesDeviceJs = js.split('\n').filter((l) => /dvc_|ses_|bio_/.test(l)).length
+result.passwordInDeviceJs = js.split(DEMO_OPERATOR_PASSWORD).length - 1
+log(`credential/token lines in the device JS log: ${result.credentialLinesDeviceJs}; password occurrences in the device JS log: ${result.passwordInDeviceJs}`)
+writeJson(`${prefix}_phone_sign_in_${label}.json`, result)
+process.exit(line && line.status === '200' ? 0 : 2)

@@ -1,0 +1,9 @@
+capture e2e series row62_c2p   ports [8559, 8561]   libav 63.1.102 63.1.102 12.1.102 7.1.102 61.1.102   heavy-host lock held (.locks/heavy-host.lock)
+
+proposed_srcam_step_r1                   expect PASS got PASS      rc 0       ok         load  5.35   90.0 s
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+
+1 checks (1 expected PASS, 0 negative controls expected FAIL): 1 as expected, 0 unexpected
+ports still listening after the series: none
+load at the start of the timing-sensitive checks: 5.35 .. 5.35
+AGGREGATE EXIT CODE 0

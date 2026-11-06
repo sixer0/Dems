@@ -1,0 +1,14 @@
+## 2026-10-04 19:14:10 WIB $ npm run typecheck -w @dems/core-server
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+src/modules/identity/biometric/__tests__/sign-in.db.test.ts(440,81): error TS2304: Cannot find name 'rateLimited'.
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 2
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c tsc --noEmit
+exit=2

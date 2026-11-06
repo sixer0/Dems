@@ -1,0 +1,161 @@
+// W54 lane check, second pass: the layout of the shell after two corrections of this row (the date
+// yields to the mode indicator; the brand footer keeps its height beside the ADMINISTRATION group).
+// Usage: node --import tsx .cache/w54/lane/layout-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+// Never stored or printed: a request body, a cookie value, the seeded password, an operator's name.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+let id = 0
+const pending = new Map()
+let loadFired = false
+let consoleLines = []
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  if (msg.method === 'Page.loadEventFired') loadFired = true
+  if (msg.method === 'Runtime.exceptionThrown') consoleLines.push('exception')
+  if (msg.method === 'Runtime.consoleAPICalled' && (msg.params.type === 'error' || msg.params.type === 'warning')) consoleLines.push(msg.params.type)
+})
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs)
+}
+const viewport = async (width, height) => {
+  await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+  await sleep(900)
+}
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  writeFileSync(join(assetsDir, name), Buffer.from(data, 'base64'))
+  return name
+}
+
+/** The geometry of the top bar and of the sidebar. A positive `collision` or `footerOver…` is an overlap, in px. */
+const measure = (label) =>
+  evaluate(
+    `(() => {
+      const q = (selector) => document.querySelector(selector)
+      const shown = (el) => el && getComputedStyle(el).display !== 'none'
+      const naturalRight = (el) => (shown(el) ? Math.round(el.getBoundingClientRect().left + el.scrollWidth) : 0)
+      const cluster = q('.dems-topbar-cluster').getBoundingClientRect()
+      const chip = q('[data-testid="shell-mode"]')
+      const reach = Math.max(naturalRight(q('.dems-wordmark')), naturalRight(q('.dems-tagline')))
+      const sidebar = q('.dems-sidebar')
+      const foot = q('.dems-brand-footer')?.getBoundingClientRect()
+      const toggle = q('.dems-rail-toggle')?.getBoundingClientRect()
+      const lastItem = [...document.querySelectorAll('.dems-sidebar .dems-nav-item')].at(-1)?.getBoundingClientRect()
+      const date = q('.dems-topbar-date')
+      return {
+        viewport: innerWidth + 'x' + innerHeight,
+        tier: q('[data-testid="app-shell"]').getAttribute('data-shell-tier'),
+        coreMode: q('[data-testid="app-shell"]').getAttribute('data-core-mode'),
+        chip: chip ? chip.textContent.trim() + ' ' + Math.round(chip.getBoundingClientRect().width) + 'px' : null,
+        chipInsideViewport: chip ? chip.getBoundingClientRect().left >= 0 && chip.getBoundingClientRect().right <= innerWidth : null,
+        dateShown: shown(date),
+        dateSeparatorShown: date ? shown(date.nextElementSibling) : null,
+        taglineShown: shown(q('.dems-tagline')),
+        collision: Math.round(reach - cluster.left),
+        navItems: document.querySelectorAll('.dems-sidebar .dems-nav-item').length,
+        adminGroup: q('.dems-sidebar [data-testid="nav-admin-group"]') !== null,
+        footerOverToggle: foot && toggle ? Math.round(toggle.bottom - foot.top) : null,
+        footerOverLastItem: foot && lastItem ? Math.round(lastItem.bottom - foot.top) : null,
+        sidebarScrolls: sidebar ? sidebar.scrollHeight > sidebar.clientHeight + 1 : null,
+        topoHeight: Math.round(q('.dems-topo')?.getBoundingClientRect().height ?? 0),
+      }
+    })()`,
+    label,
+  )
+
+/** The chip's label replaced for one measurement (the longest Live label); restored right after. Measurement only. */
+const withChipText = async (text, run) => {
+  await evaluate(`(() => { const chip = document.querySelector('[data-testid="shell-mode"]'); const label = chip.querySelector('span span') ?? chip.querySelector('span'); label.dataset.w54 = label.textContent; label.textContent = ${JSON.stringify(text)}; })()`, 'chip text')
+  await sleep(150)
+  const out = await run()
+  await evaluate(`(() => { const chip = document.querySelector('[data-testid="shell-mode"]'); const label = chip.querySelector('[data-w54]'); label.textContent = label.dataset.w54; delete label.dataset.w54; })()`, 'chip text back')
+  return out
+}
+
+const SIZES = [[1280, 800], [1366, 768], [1440, 900], [1519, 900], [1520, 900], [1536, 864], [1600, 900], [1663, 900], [1664, 900], [1680, 1050], [1920, 1080]]
+await send('Page.enable')
+await send('Runtime.enable')
+const result = { at: new Date().toISOString(), live: {}, simulated: {}, screenshots: [] }
+
+// ── Live, the SUPERVISOR (the ADMINISTRATION group is in the sidebar) ──
+await viewport(1440, 900)
+await navigate(`${ORIGIN}/`)
+result.signIn = await evaluate(
+  `(async () => {
+    const answer = await fetch('/api/v1/auth/sign-in', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: ${JSON.stringify(JSON.stringify({ username: supervisor.username, password: DEMO_OPERATOR_PASSWORD }))} })
+    return { status: answer.status }
+  })()`,
+  'sign-in',
+)
+await navigate(`${ORIGIN}/dashboard`, 5000)
+for (const [width, height] of SIZES) {
+  await viewport(width, height)
+  result.live[`${width}x${height}`] = { asBuilt: await measure('live'), longestLabel: await withChipText('LIVE · RECONNECTING', () => measure('live longest')) }
+  if ((width === 1440 && height === 900) || (width === 1366 && height === 768)) result.screenshots.push(await screenshot(`54_layout_live_supervisor_${width}x${height}.png`))
+}
+// The sidebar scrolled to its end at the shortest window: the brand footer is reachable and covers nothing.
+await viewport(1366, 768)
+await evaluate(`document.querySelector('.dems-sidebar').scrollTo(0, 9999)`, 'scroll sidebar')
+await sleep(400)
+result.live.scrolledEnd = await measure('live scrolled')
+result.screenshots.push(await screenshot('54_layout_live_supervisor_1366x768_scrolled.png'))
+await evaluate(`(async () => { await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }) })()`, 'sign-out')
+await sleep(1500)
+
+// ── Simulated, the same widths ──
+await evaluate(`localStorage.setItem('dems.core.mode.v1', 'SIMULATED'); sessionStorage.setItem('dems.auth', JSON.stringify({ operatorId: ${JSON.stringify(supervisor.id)}, issuedAt: Date.now() }))`, 'store')
+await viewport(1440, 900)
+await navigate(`${ORIGIN}/dashboard`, 5000)
+for (const [width, height] of SIZES) {
+  await viewport(width, height)
+  result.simulated[`${width}x${height}`] = await measure('simulated')
+  if ((width === 1440 && height === 900) || (width === 1600 && height === 900)) result.screenshots.push(await screenshot(`54_layout_simulated_${width}x${height}.png`))
+}
+await evaluate(`localStorage.removeItem('dems.core.mode.v1'); sessionStorage.clear()`, 'remove what this check stored')
+result.consoleErrorsOrWarnings = consoleLines.length
+
+let text = JSON.stringify(result, null, 1)
+const held = text.includes(DEMO_OPERATOR_PASSWORD)
+if (held) text = text.split(DEMO_OPERATOR_PASSWORD).join('***')
+writeFileSync(outJson, `${text}\n`)
+const row = (name, m) => `${name} ${m.tier} ${m.coreMode} | chip ${m.chip} inside ${m.chipInsideViewport} | date ${m.dateShown}/${m.dateSeparatorShown} | collision ${m.collision} | items ${m.navItems} admin ${m.adminGroup} | footer over toggle ${m.footerOverToggle}, over last item ${m.footerOverLastItem}, scrolls ${m.sidebarScrolls}, texture ${m.topoHeight}px`
+for (const [name, entry] of Object.entries(result.live)) {
+  if (entry.asBuilt) {
+    console.log(row(`live ${name}`, entry.asBuilt))
+    console.log(row(`live ${name} longest label`, entry.longestLabel))
+  } else console.log(row(`live ${name}`, entry))
+}
+for (const [name, entry] of Object.entries(result.simulated)) console.log(row(`simulated ${name}`, entry))
+console.log(`layout-driver: sign-in ${result.signIn.status}; console errors or warnings ${result.consoleErrorsOrWarnings}; the output held the seeded password before redaction: ${held}`)
+ws.close()

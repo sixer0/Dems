@@ -1,0 +1,17 @@
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+src/realtime/__tests__/support.ts(105,18): error TS2430: Interface 'RealtimeApp' incorrectly extends interface 'IdentityApp'.
+  Types of property 'control' are incompatible.
+    Type 'RealtimeControl' is missing the following properties from type 'IdentityControl': lockout, hasher, sweeper, resolve, and 5 more.
+src/realtime/__tests__/support.ts(439,37): error TS2345: Argument of type 'RealtimeApp' is not assignable to parameter of type 'IdentityApp'.
+  Types of property 'control' are incompatible.
+    Type 'RealtimeControl' is missing the following properties from type 'IdentityControl': lockout, hasher, sweeper, resolve, and 5 more.
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 2
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c tsc --noEmit

@@ -1,0 +1,5 @@
+10:20:52.341 js => [[252,"SESSION_CREATED","OPR-001","10:07:18","Session SES-20261006-0030 created","{\"caseNumber\":\"LP/2026/1006-0014\",\"subjectType\":\"TERSANGKA\"}"],[253,"PRECHECK_PASSED","OPR-001","10:07:23","Pre-recording checks passed","{\"by\":\"system\",\"warnings\":0,\"acknowledged\":false}"],[254,"RECORDING_STARTED","OPR-001","10:07:59","Recording started (SES-20261006-0030)","{\"timeSource\":\"GNSS\"}"],[277,"MARKER_ADDED","OPR-001","10:10:47","Marker added: E2E-P phone note","{\"index\":1,\"label\":\"E2E-P phone note\"}"],[356,"RECORDING_STOPPED","OPR-001","10:19:21","Recording stopped (SES-20261006-0030)","{\"reason\":\"E2E-P phone stop\",\"durationMs\":682444}"],[357,"EVIDENCE_SEALED",null,"10:19:29","Evidence EV-20261006-0018 sealed","{\"tracks\":4,\"sizeBytes\":1554455778,\"manifestHash\":\"069e7aaf5de03cfbecdb65726e3a2252c9a6980bcf997313139a3dee9e2f6e7a\"}"],[358,"SUMMARY_ACKNOWLEDGED","OPR-001","10:20:11","Session summary acknowledged (SES-20261006-0030)","{}"]]
+10:20:52.436 tap 108,2283
+10:20:52.640 slept 2500 ms
+10:20:55.193 declared screen home
+10:20:55.219 screencap 50_home_after_part_a.png 10:20:55.219..10:20:55.422

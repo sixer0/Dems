@@ -1,0 +1,21 @@
+# Step 66 (W44), follow-up after the fix round (decision D84): red before, green after, 2026-10-04 14:34:12 WIB
+$ python3 docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/44_followup_red_green.py
+BEFORE (the code before the follow-up, today's tests): exit 1 | 9 failed | 295 passed (304)
+AFTER  (the tree):                                     exit 0 | 304 passed (304)
+
+## Red before, green after: 9
+RED   -> green | test/live-source-platform-neutral.test.ts > static scan of the Live source (src/live/source) > the clock and the timers are injected: the local clock is named once, as the default of createLiveSim, and NO file of the folder calls a timer function of the platform (CPC1-16, F66-12)
+RED   -> green | test/live-source-platform-neutral.test.ts > fix round after CP-C1: the contract's codes, and the markers of the local adapters > CPC1-6: each local adapter carries its ID as a text a search finds
+RED   -> green | test/live-source-local-end.test.ts > F66-18 (follow-up, decision D84): a socket that is not the session's tells nothing, so the expiry is checked here too > the link returns ANONYMOUS without a reason while signed in: one new socket, one report, no loop; an unattended console ends at its idle instant, not later
+RED   -> green | test/live-source-local-end.test.ts > D84: an answered POST of the operator through `live.client` is activity, as an action's is (F66-14) > a POST at minute 14 moves the idle instant from minute 15 to minute 29
+RED   -> green | test/live-source-local-end.test.ts > D84: an answered POST of the operator through `live.client` is activity, as an action's is (F66-14) > a POST the Core refuses (403) counts too: the operator was at the console, and the instant must not come early
+RED   -> green | test/live-source-local-end.test.ts > D84: an answered POST of the operator through `live.client` is activity, as an action's is (F66-14) > an ACTION the Core refuses with a state conflict (409) counts by the same rule
+RED   -> green | test/live-source-local-end.test.ts > D84: an answered POST of the operator through `live.client` is activity, as an action's is (F66-14) > the touch period: a 2xx POST through `live.client` restarts it (the Core counted it), a refused one does not (a touch is still owed)
+RED   -> green | test/live-source-local-end.test.ts > D84: an answered POST of the operator through `live.client` is activity, as an action's is (F66-14) > the view is transparent: the very promise of the typed client, its arguments, its other members; no request of its own
+RED   -> green | test/live-source-local-end.test.ts > D84: an answered POST of the operator through `live.client` is activity, as an action's is (F66-14) > a promise the typed client rejects still rejects for the caller, and is reported as live.client
+
+## Not green after: 0
+
+## Green before and after (tests that existed, and tests that only guard the new code): 295
+## In the AFTER run only (no result BEFORE): 0
+exit=0

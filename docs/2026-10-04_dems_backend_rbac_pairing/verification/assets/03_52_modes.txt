@@ -1,0 +1,15 @@
+# 2026-10-07 05:34:33
+$ stat -f '%Sp %OLp %Su %N' (modes only; contents never read)
+drwx------ 700 gsp-budi .data
+drwx------ 700 gsp-budi .data/postgres
+drwx------ 700 gsp-budi .data/postgres/log
+-rw------- 600 gsp-budi .data/pg.pwfile
+-rw------- 600 gsp-budi .data/pg.owner.env
+-rw------- 600 gsp-budi .data/pg.env
+-rw------- 600 gsp-budi .data/postgres.log
+-rw------- 600 gsp-budi .data/pg-scripts.log
+-rw------- 600 gsp-budi .data/postgres/log/postgresql-05.log
+exit=0
+== collector: count of ERROR and DETAIL lines (counts only, no line printed)
+.data/postgres/log/postgresql-05.log ERROR=13 DETAIL=0 HINT=0 STATEMENT=13
+== .data/postgres.log (pg_ctl -l): size 94 bytes, lines        1

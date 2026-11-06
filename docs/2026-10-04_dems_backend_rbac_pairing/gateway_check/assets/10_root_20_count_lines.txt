@@ -1,0 +1,139 @@
+# W89 root gate - verbatim count/exit lines extracted from the git-ignored 10_root_*.log files (grep -nE)
+
+== 10_root_03_pg_stop.log
+6:server stopped
+7:pg:stop: stopped PID 19121; 127.0.0.1:4432 is free
+8:exit=0
+
+== 10_root_04_pg_status_stopped.log
+7:server     NOT RUNNING. Start it with "npm run pg:start".
+8:host authentication (HA-1 to HA-4)
+19:  HA-4 not run (the server is stopped)
+31:pg:status: stopped (file checks passed)
+32:exit=3
+
+== 10_root_05_typecheck.log
+7:> @dems/shared@0.1.0 typecheck
+11:> @dems/core-server@0.2.0 typecheck
+15:> @dems/core-web@0.1.0 typecheck
+19:> @dems/mobile@0.1.0 typecheck
+23:> @dems/mock-core@0.1.0 typecheck
+26:npm run typecheck  38.80s user 1.74s system 162% cpu 25.012 total
+27:exit=0
+
+== 10_root_06_lint.log
+7:> @dems/shared@0.1.0 lint
+11:> @dems/core-server@0.2.0 lint
+15:> @dems/core-web@0.1.0 lint
+19:> @dems/mobile@0.1.0 lint
+23:> @dems/mock-core@0.1.0 lint
+26:npm run lint  19.14s user 1.11s system 156% cpu 12.956 total
+27:exit=0
+
+== 10_root_07_npm_test_root.log
+7:> @dems/shared@0.1.0 test
+14: Test Files  70 passed (70)
+15:      Tests  1848 passed (1848)
+23:> @dems/core-server@0.2.0 test
+30: Test Files  155 passed (155)
+31:      Tests  3926 passed (3926)
+36:> @dems/core-web@0.1.0 test
+344: Test Files  111 passed (111)
+345:      Tests  1436 passed (1436)
+353:> @dems/mobile@0.1.0 test
+229788:FAIL src/features/session-new/live-session-new-followups.test.tsx (26.835 s)
+242829:FAIL src/features/more/more-live.test.tsx (36.054 s)
+259864:FAIL src/features/session-new/live-session-new-followups.test.tsx (26.835 s)
+259882:FAIL src/features/more/more-live.test.tsx (36.054 s)
+259900:Test Suites: 2 failed, 179 passed, 181 total
+259901:Tests:       2 failed, 1930 passed, 1932 total
+259902:Snapshots:   0 total
+259908:npm error workspace @dems/mobile@0.1.0
+259914:> @dems/mock-core@0.1.0 test
+259921: Test Files  4 passed (4)
+259922:      Tests  19 passed (19)
+259926:npm test  945.99s user 298.29s system 462% cpu 4:28.77 total
+259927:exit=1
+
+== 10_root_08_rerun_mobile_live-session-new-followups.log
+ 5:16  1 user, load averages: 12.50 11.79 6.73
+5554:Test Suites: 1 passed, 1 total
+5555:Tests:       9 passed, 9 total
+5556:Snapshots:   0 total
+5559:exit=0
+
+== 10_root_08_rerun_mobile_more-live.log
+ 5:16  1 user, load averages: 11.66 11.62 6.71
+364:Test Suites: 1 passed, 1 total
+365:Tests:       5 passed, 5 total
+366:Snapshots:   0 total
+369:exit=0
+
+== 10_root_09_shared.log
+ 5:16  1 user, load averages: 10.73 11.43 6.67
+4:> @dems/shared@0.1.0 test
+41: Test Files  70 passed (70)
+42:      Tests  1848 passed (1848)
+49:exit=0
+
+== 10_root_10_mock_core.log
+ 5:17  up 5 days, 12:30, 1 user, load averages: 9.36 11.10 6.63
+4:> @dems/mock-core@0.1.0 test
+11: Test Files  4 passed (4)
+12:      Tests  19 passed (19)
+16:exit=0
+
+== 10_root_11_core_web.log
+ 5:17  1 user, load averages: 8.23 10.80 6.58
+4:> @dems/core-web@0.1.0 test
+999: Test Files  111 passed (111)
+1000:      Tests  1436 passed (1436)
+1007:exit=0
+
+== 10_root_12_mobile.log
+ 5:19  1 user, load averages: 4.73 8.49 6.22
+4:> @dems/mobile@0.1.0 test
+259134:Test Suites: 181 passed, 181 total
+259135:Tests:       1932 passed, 1932 total
+259136:Snapshots:   0 total
+259139:exit=0
+
+== 10_root_13_core_server_unit.log
+ 5:21  1 user, load averages: 4.89 7.16 5.98
+4:> @dems/core-server@0.2.0 test
+473: Test Files  155 passed (155)
+474:      Tests  3926 passed (3926)
+478:exit=0
+
+== 10_root_14_pg_scripts.log
+ 5:22  1 user, load averages: 5.92 7.19 6.04
+64:ℹ tests 57
+66:ℹ pass 57
+67:ℹ fail 0
+72:exit=0
+
+== 10_root_15_pg_start.log
+6:server started
+7:pg:start: started, PID 48897, listening on 127.0.0.1:4432 (TCP only, no Unix socket)
+10:exit=0
+
+== 10_root_16_pg_status_started.log
+7:server     RUNNING, PID 48897 (postmaster.pid: 127.0.0.1:4432, status "ready", connect probe: open)
+10:host authentication (HA-1 to HA-4)
+21:  HA-4 PASS | a connection as dems_app with a wrong password: SQLSTATE 28P01
+33:pg:status: OK, running
+34:exit=0
+
+== 10_root_17_test_db.log
+ 5:22  up 5 days, 12:35, 1 user, load averages: 5.30 6.98 5.98
+8:> @dems/core-server@0.2.0 test:db
+54: Test Files  124 passed (124)
+55:      Tests  1751 passed (1751)
+61:exit=0
+
+== 10_root_18_pg_status_final.log
+7:server     RUNNING, PID 48897 (postmaster.pid: 127.0.0.1:4432, status "ready", connect probe: open)
+10:host authentication (HA-1 to HA-4)
+21:  HA-4 PASS | a connection as dems_app with a wrong password: SQLSTATE 28P01
+33:pg:status: OK, running
+34:exit=0

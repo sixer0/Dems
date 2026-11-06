@@ -1,0 +1,129 @@
+{
+  "phase": "up",
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "at": "2026-10-04T14:25:41.403Z",
+  "steps": {
+    "linkBack": {
+      "waitedMs": 1000,
+      "facts": {
+        "path": "/dashboard",
+        "viewport": "1440x900",
+        "tier": "lg",
+        "sidebar": "full",
+        "mode": {
+          "text": "LIVE",
+          "state": "LIVE",
+          "ariaLabel": "Data mode: LIVE",
+          "tag": "BUTTON",
+          "box": [
+            792,
+            22,
+            46,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "api-reference"
+        ],
+        "adminGroup": null,
+        "pages": [
+          "page-dashboard"
+        ],
+        "stubs": [],
+        "heading": "Dashboard",
+        "toasts": [
+          {
+            "title": "Reconnected to the Core",
+            "description": null,
+            "buttons": []
+          },
+          {
+            "title": "Core server unreachable",
+            "description": "The screen shows the last state received. Reconnecting…Switch to Simulated mode",
+            "buttons": [
+              "Switch to Simulated mode",
+              "Retry now"
+            ]
+          }
+        ],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "screenshot": "54_link_back_live.png",
+      "after": {
+        "path": "/dashboard",
+        "viewport": "1440x900",
+        "tier": "lg",
+        "sidebar": "full",
+        "mode": {
+          "text": "LIVE",
+          "state": "LIVE",
+          "ariaLabel": "Data mode: LIVE",
+          "tag": "BUTTON",
+          "box": [
+            792,
+            22,
+            46,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "api-reference"
+        ],
+        "adminGroup": null,
+        "pages": [
+          "page-dashboard"
+        ],
+        "stubs": [],
+        "heading": "Dashboard",
+        "toasts": [
+          {
+            "title": "Reconnected to the Core",
+            "description": null,
+            "buttons": []
+          }
+        ],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "network": {
+        "api": [
+          "GET /api/v1/auth/session 200"
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          "ws://127.0.0.1:5178/ws 101"
+        ],
+        "console": []
+      }
+    }
+  }
+}

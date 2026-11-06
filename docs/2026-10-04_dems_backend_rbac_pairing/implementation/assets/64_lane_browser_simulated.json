@@ -1,0 +1,15 @@
+{
+  "shown": true,
+  "facts": {
+    "href": "http://127.0.0.1:5176/session/new",
+    "step": "1",
+    "sessionState": "IDLE",
+    "shellCoreMode": "SIMULATED",
+    "scanBusy": null,
+    "liveLinkHint": false
+  },
+  "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/64_session_new_simulated.png",
+  "apiRequestsOfThePage": [],
+  "otherOrigins": [],
+  "console": []
+}

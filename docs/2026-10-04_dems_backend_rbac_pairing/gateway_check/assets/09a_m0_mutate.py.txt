@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""M0 mutation check of the one link rule (`runtime/link-notice.ts`) and of the Pair screen's wording
+of the link that now reads it (`liveLinkViewFor` in `features/pairing/pairing-live-model.ts`).
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file)
+and runs the test files below. A mutation is DETECTED when jest exits non-zero. Nothing in the tree is
+written (rule M15): the hashes of the mutated files are compared before and after the whole run.
+
+  python3 mutate.py [id ...]      (no id: all; 'control' runs the unmutated tests once)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+TESTS = [
+    'src/runtime/link-notice.test.ts', 'src/runtime/link-notice-static.test.ts',
+    'src/features/pairing/pairing-live-model.test.ts', 'src/features/login/login-live-model.test.ts',
+    'src/features/pairing/pairing-live.test.tsx', 'src/features/login/live-login.test.tsx',
+]
+LN = 'src/runtime/link-notice.ts'
+PM = 'src/features/pairing/pairing-live-model.ts'
+
+DOWN_RETURN = "    case 'down':\n      return true;"
+SETTLING_RETURN = "    case 'settling':\n      return shown;"
+UP_NONE_RETURN = "    case 'up':\n    case 'none':\n      return false;"
+RULE_HEAD = "export function offlineNoticeAfter(shown: boolean, link: CoreLinkInput): boolean {"
+DEFAULT_RETURN = "// of a limit): it keeps what is shown (LB-10).\n      return 'settling';"
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+M = [
+  # ── W: a window (a hold time) before the notice shows ──
+  ('W1', LN, 'window 0 -> 1 ms on the wall clock: the notice waits until a down state has held 1 ms', [
+      e(RULE_HEAD, "let downSince: number | null = null;\n" + RULE_HEAD),
+      e(DOWN_RETURN, "    case 'down': {\n      const t = Date.now();\n      downSince ??= t;\n      return shown || t - downSince >= 1;\n    }"),
+      e(UP_NONE_RETURN, "    case 'up':\n    case 'none':\n      downSince = null;\n      return false;")]),
+  ('W2', LN, 'window 0 -> 2,500 ms on the wall clock (the STALE threshold again)', [
+      e(RULE_HEAD, "let downSince: number | null = null;\n" + RULE_HEAD),
+      e(DOWN_RETURN, "    case 'down': {\n      const t = Date.now();\n      downSince ??= t;\n      return shown || t - downSince >= 2500;\n    }"),
+      e(UP_NONE_RETURN, "    case 'up':\n    case 'none':\n      downSince = null;\n      return false;")]),
+  ('W3', LN, 'window of one observation, no clock: the notice shows at the SECOND down state in a row', [
+      e(RULE_HEAD, "let downSeen = 0;\n" + RULE_HEAD),
+      e(DOWN_RETURN, "    case 'down':\n      downSeen += 1;\n      return shown || downSeen >= 2;"),
+      e(UP_NONE_RETURN, "    case 'up':\n    case 'none':\n      downSeen = 0;\n      return false;")]),
+  ('W4', LN, 'the notice never shows from hidden (an infinite window)', [e(DOWN_RETURN, "    case 'down':\n      return shown;")]),
+  # ── D: a down state left out ──
+  ('D1', LN, 'STALE left out of the down states (a transient instead)', [
+      e("    case 'STALE':\n    case 'OFFLINE':\n    case 'down':", "    case 'OFFLINE':\n    case 'down':"),
+      e("    case 'RESYNCING':\n    case 'settling':", "    case 'RESYNCING':\n    case 'STALE':\n    case 'settling':")]),
+  ('D2', LN, 'OFFLINE left out of the down states (a transient instead)', [
+      e("    case 'STALE':\n    case 'OFFLINE':\n    case 'down':", "    case 'STALE':\n    case 'down':"),
+      e("    case 'RESYNCING':\n    case 'settling':", "    case 'RESYNCING':\n    case 'OFFLINE':\n    case 'settling':")]),
+  ('D3', LN, 'STALE read as up', [
+      e("    case 'STALE':\n    case 'OFFLINE':\n    case 'down':", "    case 'OFFLINE':\n    case 'down':"),
+      e("    case 'LIVE':\n    case 'up':", "    case 'LIVE':\n    case 'STALE':\n    case 'up':")]),
+  ('D4', LN, 'a LIVE link without a heartbeat and state OFFLINE is not down', [e("return link.state === 'ONLINE' ? 'up' : 'down';", "return link.state === 'ONLINE' ? 'up' : 'settling';")]),
+  ('D5', LN, "the view 'down' handed back in is not down", [e("    case 'OFFLINE':\n    case 'down':", "    case 'OFFLINE':")]),
+  # ── L: a 429 (any value that is no link state) treated as down, or as a hide ──
+  ('L1', LN, 'a value that is no link state (a refusal kind, a 429) is down', [e(DEFAULT_RETURN, "// of a limit): it keeps what is shown (LB-10).\n      return 'down';")]),
+  ('L2', LN, 'a value that is no link state hides the notice', [e(DEFAULT_RETURN, "// of a limit): it keeps what is shown (LB-10).\n      return 'none';")]),
+  # ── C: the clock source (the rule must read none) ──
+  ('C1', LN, 'the down branch reads the wall clock (behaviour otherwise equal)', [e(DOWN_RETURN, "    case 'down':\n      return Date.now() >= 0;")]),
+  ('C2', LN, 'the settling branch reads performance.now (behaviour otherwise equal)', [e(SETTLING_RETURN, "    case 'settling':\n      return shown && performance.now() >= 0;")]),
+  ('C3', LN, 'the rule schedules a timer (behaviour otherwise equal)', [e(DOWN_RETURN, "    case 'down':\n      setTimeout(() => undefined, 0);\n      return true;")]),
+  # ── T: the transients ──
+  ('T1', LN, 'CONNECTING is down (the notice flashes at every cold start)', [
+      e("    case 'CONNECTING':\n    case 'RESYNCING':", "    case 'RESYNCING':"),
+      e("    case 'STALE':\n    case 'OFFLINE':", "    case 'CONNECTING':\n    case 'STALE':\n    case 'OFFLINE':")]),
+  ('T2', LN, 'RESYNCING is up (a resync hides the notice)', [
+      e("    case 'CONNECTING':\n    case 'RESYNCING':", "    case 'CONNECTING':"),
+      e("    case 'LIVE':\n    case 'up':", "    case 'LIVE':\n    case 'RESYNCING':\n    case 'up':")]),
+  ('T3', LN, 'CONNECTING is up (a reconnect attempt hides the notice: flicker)', [
+      e("    case 'CONNECTING':\n    case 'RESYNCING':", "    case 'RESYNCING':"),
+      e("    case 'LIVE':\n    case 'up':", "    case 'LIVE':\n    case 'CONNECTING':\n    case 'up':")]),
+  ('T4', LN, 'settling hides the notice (no hysteresis: flicker)', [e(SETTLING_RETURN, "    case 'settling':\n      return false;")]),
+  ('T5', LN, 'settling shows the notice (a flash at every start)', [e(SETTLING_RETURN, "    case 'settling':\n      return true;")]),
+  # ── N: no link, and the sources ──
+  ('N1', LN, 'null and undefined keep what is shown (Simulated mode keeps a notice)', [e("if (link === null || link === undefined) return 'none';", "if (link === null || link === undefined) return 'settling';")]),
+  ('N2', LN, "undefined keeps what is shown (the Login copy's old default)", [e("if (link === null || link === undefined) return 'none';", "if (link === null) return 'none';\n  if (link === undefined) return 'settling';")]),
+  ('N3', LN, "HEARTBEAT mode's mock-core heartbeat drives the Core server notice", [e("if (link.source !== 'LIVE') return 'none';", "if (link.source === 'SIMULATED') return 'none';")]),
+  ('N4', LN, 'the source is not asked at all', [e("  if (link.source !== 'LIVE') return 'none';\n", "")]),
+  ('N5', LN, 'a LIVE link reads its two-valued state although it has a heartbeat', [e("  if (link.heartbeat !== undefined) return coreLinkViewOf(link.heartbeat);\n", "")]),
+  # ── U / V: up ──
+  ('U1', LN, 'up keeps what is shown (the notice never hides when the link is back)', [e(UP_NONE_RETURN, "    case 'up':\n      return shown;\n    case 'none':\n      return false;")]),
+  ('V1', LN, 'ONLINE is no longer up (a value the rule does not know)', [e("    case 'ONLINE':\n    case 'LIVE':", "    case 'LIVE':")]),
+  ('V2', LN, 'the heartbeat LIVE is no longer up', [e("    case 'ONLINE':\n    case 'LIVE':", "    case 'ONLINE':")]),
+  # ── P: the Pair screen's wording that reads the view ──
+  ('P1', PM, "the Pair screen says 'online' for every view that is not down", [e("return coreLinkViewOf(link) === 'up' ? 'online' : 'connecting';", "return coreLinkViewOf(link) !== 'down' ? 'online' : 'connecting';")]),
+  ('P2', PM, "the Pair screen says 'online' for any Live link", [e("return coreLinkViewOf(link) === 'up' ? 'online' : 'connecting';", "return link !== null ? 'online' : 'connecting';")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *TESTS],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = set(sys.argv[1:])
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# M0 mutation check, %s; %d test files per run; the tree is not edited' % (time.strftime('%Y-%m-%d %H:%M:%S'), len(TESTS)), flush=True)
+    if not wanted or 'control' in wanted:
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'))
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation): exit=%d %s (%.0f s)' % (run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print('## the control run is not green: stop', flush=True)
+            return 2
+    todo = [m for m in M if not wanted or m[0] in wanted]
+    detected, survived, broken = [], [], []
+    for (mid, file, what, edits) in todo:
+        text = open(APP + '/' + file).read()
+        ok = True
+        for edit in edits:
+            if text.count(edit['from']) != 1:
+                ok = False
+                break
+            text = text.replace(edit['from'], edit['to'], 1)
+        if not ok:
+            broken.append(mid)
+            print('%s  NOT APPLIED: a text does not occur exactly once in %s   (%s)' % (mid, file, what), flush=True)
+            continue
+        json.dump({'id': mid, 'file': file, 'edits': edits}, open(SPEC, 'w'))
+        started = time.time()
+        run = jest(dict(os.environ, M0_MUT_SPEC=SPEC, CI='1'))
+        tail, failed, first = summary(run.stdout)
+        verdict = 'detected' if run.returncode != 0 else 'NOT DETECTED'
+        (detected if run.returncode != 0 else survived).append(mid)
+        print('%s  %-12s %3.0fs  %s  | %s  | %s' % (mid, verdict, time.time() - started, what, tail, ', '.join(failed)), flush=True)
+        for name in first: print('      e.g. %s' % name, flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## %d detected, %d not detected, %d not applied, of %d' % (len(detected), len(survived), len(broken), len(todo)), flush=True)
+    if survived: print('## not detected: ' + ' '.join(survived), flush=True)
+    if broken: print('## not applied: ' + ' '.join(broken), flush=True)
+    print('## the mutated files in the tree, before and after: ' + ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files: print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+    return 0 if not survived and not broken and before == after else 1
+
+if __name__ == '__main__':
+    sys.exit(main())

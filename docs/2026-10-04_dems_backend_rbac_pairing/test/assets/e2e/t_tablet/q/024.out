@@ -1,0 +1,6 @@
+tap 1700,110 at 09:59:19.570
+slept 1500 ms
+mark devices at 09:59:21.075
+tap 227,528 at 09:59:21.483
+slept 4500 ms
+screencap 12_devices_list.png (179693 bytes) at 09:59:29.131

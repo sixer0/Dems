@@ -1,0 +1,37 @@
+// R-S: the web console in Live mode, SUPERVISOR andi.pratama signs in THROUGH THE FORM (password from the
+// project's seed constant, the same value the README Quick start publishes; never printed), then opens Paired
+// Devices from the sidebar. Adapted from round 1's drv_02a_web_signin.mjs.txt.
+//   node --import tsx web_signin.mjs <screenshot.png> <json name>
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset.ts'
+import { ORIGIN, connect, log, pdFacts, registry, sleep, stamp, writeJson } from './lib.mjs'
+
+const [shotName = '01_web_paired_devices_before.png', jsonName = '01a_web_signin.json'] = process.argv.slice(2)
+const andi = OPERATORS.find((o) => o.username === 'andi.pratama')
+if (!andi || andi.role !== 'SUPERVISOR' || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('seed: andi.pratama is not the SUPERVISOR')
+const page = await connect()
+const version = await page.send('Browser.getVersion')
+log(`browser ${version.product}; headless ${/Headless/i.test(version.userAgent)}; operator ${andi.username} (${andi.id}, ${andi.role})`)
+await page.navigate(`${ORIGIN}/login`)
+const coreMode = await page.evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'core mode')
+log(`login page at ${await page.href()}; data-core-mode=${coreMode}`)
+await page.typeInto('[data-testid="login-username-field"] input', andi.username, 'username')
+await page.typeInto('[data-testid="login-password-field"] input', DEMO_OPERATOR_PASSWORD, 'password')
+const submitAt = Date.now()
+await page.press('login-submit')
+const dash = await page.waitFor('page-dashboard', true, 25000)
+await sleep(2500)
+log(`submit ${stamp(submitAt)}; dashboard shown: ${dash}; shell mode: ${await page.text('shell-mode')}`)
+const linked = await page.evaluate(`(() => { const a = document.querySelector('a[href="/admin/devices"]'); if (!a) return false; a.click(); return true })()`, 'sidebar')
+const shown = await page.waitFor('pd-issue-panel', true, 20000)
+await page.waitAny(['pd-empty', 'pd-devices-table', 'pd-error'], 15000)
+await sleep(2500)
+const facts = await pdFacts(page)
+const shot = await page.screenshot(shotName)
+const reg = await registry(page)
+const net = page.takeNetwork()
+log(`sidebar link: ${linked}; page shown: ${shown}; ${JSON.stringify(facts)}`)
+log(`registry (GET /api/v1/pairing/devices ${reg.status}): ${JSON.stringify(reg.devices)}`)
+log(`api calls: ${net.api.map((a) => `${a.method} ${a.path} ${a.status}`).join(' | ')}`)
+log(`origins: ${net.origins.join(', ')}; sockets: ${JSON.stringify(net.sockets)}; console: ${JSON.stringify(net.console)}`)
+writeJson(jsonName, { at: stamp(), browser: version.product, coreMode, submitAt: stamp(submitAt), dashboard: dash, sidebarLink: linked, pageShown: shown, facts, registry: reg, screenshot: shot, network: net })
+page.close()

@@ -1,0 +1,16 @@
+# Override of compose.yaml (task 4 row DK): the four services in ONE private network namespace instead of the
+# host's. Nothing listens outside it and nothing is published, so the Core and the console are reached only from
+# inside (docker compose exec ...). Used by smoke-test.sh; also usable on Docker Desktop / colima, where
+# network_mode: host does not mean the machine you sit at.
+#   docker compose -f compose.yaml -f compose.isolated.yaml up -d
+services:
+  db:
+    network_mode: bridge
+  core:
+    network_mode: "service:db"
+  console:
+    network_mode: "service:db"
+  tools:
+    network_mode: "service:db"
+  lcd:
+    network_mode: "service:db"

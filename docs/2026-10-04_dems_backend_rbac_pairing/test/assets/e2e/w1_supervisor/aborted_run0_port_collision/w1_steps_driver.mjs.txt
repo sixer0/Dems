@@ -1,0 +1,29 @@
+
+// ──── step: 00 open login (2026-10-06T02:42:07.476Z) ────
+mark('00 login open')
+await viewport(1440, 900)
+const v = await send('Browser.getVersion')
+await navigate(`${ORIGIN}/login`, 3000)
+await waitFor('page-login', true, 15000)
+await sleep(1500)
+const facts = await pageFacts()
+const mode = await attr('page-login', 'data-core-mode')
+const selector = await text('login-mode-selector')
+const selected = await evaluate(`[...document.querySelectorAll('[data-testid^="login-mode-"]')].map(e => ({ id: e.getAttribute('data-testid'), checked: e.getAttribute('aria-checked') ?? e.getAttribute('data-selected') ?? e.querySelector('input')?.checked ?? null }))`)
+const strip = await text('login-device-strip')
+const trust = await text('login-trust-line')
+const name = await shot('01_login_live_idle.png')
+record('01 login', { product: v.product, mode, selector, selected, strip, trust, facts })
+return { product: v.product, ua: v.userAgent, mode, selector, selected, strip, trust, facts, name }
+
+
+// ──── step: 00x cleanup stray OPR-001 session (2026-10-06T02:43:25.020Z) ────
+mark('00x cleanup: sign out the OPR-001 session another agent created in this browser')
+const who = await pageFacts()
+const menu = await evaluate(`document.querySelector('[data-testid="user-menu"]')?.getAttribute('aria-label') ?? null`)
+const out = await pageFetch('/api/v1/auth/sign-out', { method: 'POST', body: { reason: 'USER' } })
+await sleep(2500)
+const after = await pageFacts()
+record('00x stray session cleanup', { who, menu, out, after })
+return { who, menu, out, after }
+

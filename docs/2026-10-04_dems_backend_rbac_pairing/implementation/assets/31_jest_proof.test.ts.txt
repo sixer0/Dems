@@ -1,0 +1,158 @@
+// Scratch proof for plan row W31 (rule 4): `@dems/shared/live/testing` loads and works under the
+// mobile jest transform (jest 29, the preset and the transform allowlist of apps/mobile/jest.config.js).
+// Not part of any suite: it lives under the git-ignored .cache/ folder.
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { CORE_API_OPERATIONS } from '@dems/shared/api';
+import { CoreErrorKind, createCoreClient } from '@dems/shared/client';
+import { createHeartbeatClient } from '@dems/shared/realtime';
+import * as testing from '@dems/shared/live/testing';
+
+const {
+  FAKE_CREDENTIALS,
+  FakeSocketMessageError,
+  FakeTransportError,
+  FakeTransportRequestError,
+  FakeTransportResponseError,
+  clockFromTimers,
+  createFakeTransport,
+  installFakeTransport,
+  rateLimited,
+  withFakeTransport,
+} = testing;
+
+const BASE = 'http://127.0.0.1:4420';
+const SOCKET_URL = 'ws://127.0.0.1:4420/ws';
+const clientOn = (fake: { fetch: testing.FakeFetch }) =>
+  createCoreClient({ baseUrl: BASE, credentials: () => FAKE_CREDENTIALS.sessionToken, fetch: fake.fetch, operations: CORE_API_OPERATIONS });
+
+afterEach(() => {
+  jest.useRealTimers();
+});
+
+describe('@dems/shared/live/testing under the mobile jest transform', () => {
+  it('loads through the export subpath, with its whole surface', () => {
+    expect(Object.keys(testing).sort()).toEqual([
+      'ABNORMAL_CLOSURE', 'FAKE_CLOCK_START_MS', 'FAKE_CREDENTIALS', 'FakeConnection', 'FakeMessageViolation', 'FakeRequestViolation',
+      'FakeResponseViolation', 'FakeSocket', 'FakeSocketMessageError', 'FakeSocketUpgradeError', 'FakeTransportError',
+      'FakeTransportRequestError', 'FakeTransportResponseError', 'FakeTransportUnscriptedError', 'FakeTransportUsageError',
+      'FakeUpgradeViolation', 'NO_ANSWER', 'OUTAGE', 'clockFromTimers', 'createFakeClock', 'createFakeContract', 'createFakeTransport',
+      'describeLogEntry', 'exampleAnswer', 'exampleInput', 'holdsCredential', 'installFakeTransport', 'maskCredentials',
+      'maskHeaderValue', 'notReady', 'rateLimited', 'refusal', 'withFakeTransport',
+    ]);
+    expect(typeof jest.fn).toBe('function');
+  });
+
+  it('the real typed client on the fake fetch: every registry operation, answered from the contract examples', async () => {
+    const fake = createFakeTransport();
+    const client = clientOn(fake);
+    let exchanges = 0;
+    for (const operation of CORE_API_OPERATIONS) {
+      for (const status of Object.keys(operation.responses).map(Number)) {
+        fake.answerOnceFromExample(operation.operationId, status);
+        const result = await client.call(operation.operationId, fake.exampleInput(operation.operationId));
+        expect(result.status).toBe(status);
+        exchanges += 1;
+      }
+    }
+    fake.answerOnce('getDeviceHealth', rateLimited(9));
+    expect(await client.call('getDeviceHealth')).toMatchObject({ ok: false, kind: CoreErrorKind.RATE_LIMITED, retryAfterSeconds: 9 });
+    fake.assertDone();
+    expect(exchanges).toBeGreaterThanOrEqual(CORE_API_OPERATIONS.length);
+    expect(fake.calls[0]?.headers.authorization?.startsWith('Bearer ses_')).toBe(true);
+    expect(String(fake.log)).toContain('authorization: Bearer ses_***');
+    expect(String(fake.log)).not.toContain('FAKE-TRANSPORT');
+  });
+
+  it('the named errors keep their class and their name under the class transform', async () => {
+    const fake = createFakeTransport();
+    let scripted: unknown;
+    try {
+      fake.answer('getDeviceHealth', { status: 200, body: { systemState: 'ON_FIRE' } });
+    } catch (error) {
+      scripted = error;
+    }
+    expect(scripted).toBeInstanceOf(FakeTransportResponseError);
+    expect(scripted).toBeInstanceOf(FakeTransportError);
+    expect(scripted).toBeInstanceOf(Error);
+    expect(scripted).toMatchObject({ name: 'FakeTransportResponseError', reason: 'INVALID_BODY', operationId: 'getDeviceHealth', stage: 'scripting' });
+
+    fake.answerFromExample('stopSession');
+    const result = await clientOn(fake).call('stopSession', { params: { id: 'SES-20261001-0024' }, body: { reason: 'x' } });
+    expect(result).toMatchObject({ ok: false, kind: CoreErrorKind.NETWORK });
+    expect(fake.violations[0]).toBeInstanceOf(FakeTransportRequestError);
+    expect(fake.violations[0]).toMatchObject({ name: 'FakeTransportRequestError', reason: 'INVALID_BODY', operationId: 'stopSession', issues: ['reason: too_small'] });
+    expect(() => fake.assertNoViolations()).toThrow(FakeTransportRequestError);
+    await expect(withFakeTransport((inner) => clientOn(inner).call('getDeviceHealth'))).rejects.toMatchObject({ name: 'FakeTransportUnscriptedError' });
+  });
+
+  it('the real heartbeat client on the fake socket, under the jest fake timers', async () => {
+    jest.useFakeTimers();
+    const fake = createFakeTransport({
+      clock: clockFromTimers({ now: () => Date.now(), setTimeout: (task, ms) => setTimeout(task, ms), clearTimeout: (handle) => clearTimeout(handle) }),
+    });
+    const heartbeat = createHeartbeatClient({ url: SOCKET_URL, socketFactory: fake.socketFactory, now: fake.clock.now, random: () => 0, onInvalidMessage: () => undefined });
+    heartbeat.start();
+    const connection = fake.connection().startAnonymous();
+    connection.beatEvery();
+    jest.advanceTimersByTime(3000);
+    expect(heartbeat.getSnapshot()).toMatchObject({ state: 'LIVE', seq: 2 });
+    expect(() => connection.send({ type: 'heartbeat', v: 1, seq: -1 })).toThrow(FakeSocketMessageError);
+    connection.close(1001);
+    expect(heartbeat.getSnapshot()).toMatchObject({ state: 'OFFLINE', reconnectAttempt: 1 });
+    jest.advanceTimersByTime(500);
+    expect(fake.connections).toHaveLength(2);
+
+    // The close event after a client close arrives on a promise job, which the fake timers do not hold back.
+    const socket = fake.connection().socket;
+    fake.connection().startAnonymous();
+    let closeCode: number | undefined;
+    socket.onclose = (event) => {
+      closeCode = event.code;
+    };
+    socket.close(1000);
+    expect(socket.readyState).toBe(2);
+    await Promise.resolve();
+    expect(closeCode).toBe(1000);
+    expect(socket.readyState).toBe(3);
+    heartbeat.stop();
+    fake.assertNoViolations();
+  });
+
+  it('a held answer and the manual clock, with no runner timer', async () => {
+    const fake = createFakeTransport();
+    const held = fake.hold('getDeviceHealth');
+    fake.answer('getAudioStatus', { ...fake.example('getAudioStatus'), delayMs: 250 });
+    const first = clientOn(fake).call('getDeviceHealth');
+    const second = clientOn(fake).call('getAudioStatus');
+    await fake.arrived(2);
+    expect(held.call).toMatchObject({ operationId: 'getDeviceHealth', outcome: 'pending' });
+    held.release();
+    fake.clock.advance(250);
+    expect(await first).toMatchObject({ ok: true });
+    expect(await second).toMatchObject({ ok: true });
+    fake.assertDone();
+  });
+
+  it('the opt-in install replaces the global fetch and socket constructor and puts them back', async () => {
+    const globals = globalThis as { fetch?: unknown; WebSocket?: unknown };
+    const before = { fetch: globals.fetch, WebSocket: globals.WebSocket };
+    const fake = createFakeTransport();
+    fake.answerFromExample('getServiceHealth');
+    const restore = installFakeTransport(fake);
+    try {
+      expect(globals.fetch).toBe(fake.fetch);
+      const client = createCoreClient({ baseUrl: BASE, credentials: 'browser-cookie' });
+      expect(await client.call('getServiceHealth')).toMatchObject({ ok: true, status: 200 });
+      const heartbeat = createHeartbeatClient({ url: SOCKET_URL, onInvalidMessage: () => undefined });
+      heartbeat.start();
+      fake.connection().startAnonymous().heartbeat();
+      expect(heartbeat.getSnapshot().state).toBe('LIVE');
+      heartbeat.stop();
+    } finally {
+      restore();
+    }
+    expect(globals.fetch).toBe(before.fetch);
+    expect(globals.WebSocket).toBe(before.WebSocket);
+    fake.assertNoViolations();
+  });
+});

@@ -1,0 +1,10 @@
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+
+ Test Files  160 passed (160)
+      Tests  3954 passed (3954)
+   Start at  06:04:06
+   Duration  37.30s (import 62%, tests 34%, transform 3%, worker 1%)
+
+npx vitest run --project unit --maxWorkers=2  87.35s user 10.90s system 261% cpu 37.604 total

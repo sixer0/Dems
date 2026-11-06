@@ -1,0 +1,31 @@
+13:13:23
+core-client.ts after the fix: git hash-object 37a7782be460bd4cbcac3dfdec33268b420ca83d
+$ vitest run --root packages/shared test/client-credentials.test.ts --maxWorkers=2 --reporter=verbose
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > a provider that never resolves: the call settles at the time-out as CREDENTIALS / CREDENTIALS_TIMEOUT and nothing is sent 2ms
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > a provider that fails with a rejected promise: the call resolves with CREDENTIALS / CREDENTIALS_UNAVAILABLE, without the provider's text 53ms
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > a provider that fails by throwing: the call resolves with CREDENTIALS / CREDENTIALS_UNAVAILABLE, without the provider's text 52ms
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > a provider that fails with something that is not an Error: the call resolves with CREDENTIALS / CREDENTIALS_UNAVAILABLE, without the provider's text 53ms
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > a provider that answers after the time-out has fired: no request is made, late or otherwise 1ms
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > a provider that answers late with a value that is no bearer token, or rejects late: nothing is sent and nothing is thrown 1ms
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > one budget, not two: 3 s in the provider leave 5 s for the answer; the call ends 8 s after it began 1ms
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > an invalid call is refused before the provider is asked: no credential is read for a request that cannot be sent 1ms
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > the normal path is unchanged > a slow provider inside the budget: the request goes out with its value and the answer is returned 3ms
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > the normal path is unchanged > a synchronous provider, an asynchronous one, and one without a value 1ms
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > the normal path is unchanged > the web client asks no provider and is bounded by the same time-out 0ms
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > the normal path is unchanged > a value the provider returns that cannot be a bearer token is still a programming error 0ms
+ ✓ test/client-credentials.test.ts > CPC1-3: the credential provider is inside the call's one time-out (CL-6) and cannot make the call reject (CL-1) > the normal path is unchanged > the bearer value in a URL is still a programming error, found after the provider answered 0ms
+ ✓ test/client-credentials.test.ts > CPC1-12: the URL guard knows every bearer secret of the contract (CL-6a) > the contract has exactly the three secrets the guard was written for, each with a literal prefix 0ms
+ ✓ test/client-credentials.test.ts > CPC1-12: the URL guard knows every bearer secret of the contract (CL-6a) > a value of the form of SESSION_TOKEN_PATTERN is refused in a query value and as a path parameter, before any request 0ms
+ ✓ test/client-credentials.test.ts > CPC1-12: the URL guard knows every bearer secret of the contract (CL-6a) > a value of the form of DEVICE_CREDENTIAL_PATTERN is refused in a query value and as a path parameter, before any request 0ms
+ ✓ test/client-credentials.test.ts > CPC1-12: the URL guard knows every bearer secret of the contract (CL-6a) > a value of the form of BIOMETRIC_TOKEN_PATTERN is refused in a query value and as a path parameter, before any request 0ms
+ ✓ test/client-credentials.test.ts > CPC1-12: the URL guard knows every bearer secret of the contract (CL-6a) > a value that only resembles a prefix is not refused 0ms
+
+ Test Files  1 passed (1)
+      Tests  18 passed (18)
+   Start at  13:13:23
+   Duration  366ms (tests 53%, transform 33%, import 14%)
+
+exit=0

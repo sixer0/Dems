@@ -1,0 +1,184 @@
+## 2026-10-04 17:22:21 WIB $ npm run test -w @dems/core-server -- --maxWorkers=2
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+ Test Files  140 passed (140)
+      Tests  3600 passed (3600)
+   Start at  17:22:22
+   Duration  36.32s (import 63%, tests 33%, transform 3%, worker 1%)
+exit=0
+
+## 2026-10-04 17:23:04 WIB $ DEMS_TEST_STEP=64 npm run test:db -w @dems/core-server -- --maxWorkers=2
++ Received
+@@ -3,11 +3,11 @@
+    "unit  opens (BEGIN READ COMMITTED, the chain lock, the core's settings)",
+    "unit  admin LOCK_OPERATORS",
+    "unit  admin READ_ROLES_HOLDING",
+    "unit  admin DISABLE_OPERATOR",
+    "unit  identity END_SESSIONS_OF_OPERATOR",
+-   "unit  biometric REVOKE_TOKENS.OPERATOR",
++   "unit  admin REVOKE_BIOMETRIC_TOKENS",
+    "unit  INSERT audit_log USER_DISABLED",
+    "unit  admin READ_USER",
+    "unit  COMMIT",
+    "publish state (native)",
+    "publish session.ended",
+ ❯ src/modules/admin/__tests__/sequence.db.test.ts:213:19
+    211|     const { status, steps } = await recorded('disableUser, a change', …
+    212|     expect(status).toBe(200);
+    213|     expect(steps).toEqual([
+       |                   ^
+    214|       STAGE_4,
+    215|       ...UNIT_OPENS,
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+ FAIL  |db| src/modules/pairing/__tests__/sequence.db.test.ts > the registry and a device's own operations > revoke: one unit: the compare-and-set, the device's sessions, its biometric tokens, the row, the event, the answer. Unpair: the same without the read
+AssertionError: expected [ …(10) ] to deeply equal [ …(10) ]
+- Expected
++ Received
+@@ -1,11 +1,11 @@
+  [
+    "pool  FIND_SESSION_BY_TRANSPORT.COOKIE",
+    "unit  BEGIN",
+    "unit  REVOKE_DEVICE",
+    "unit  END_SESSIONS_OF_DEVICE",
+-   "unit  REVOKE_TOKENS.DEVICE",
++   "unit  REVOKE_BIOMETRIC_TOKENS_OF_DEVICE",
+    "unit  INSERT audit_log DEVICE_REVOKED",
+    "unit  event number",
+    "unit  INSERT events UNPAIRED",
+    "unit  READ_REGISTRY_DEVICE",
+    "unit  COMMIT",
+ ❯ src/modules/pairing/__tests__/sequence.db.test.ts:385:26
+    383|     const other = await pairDevice(pairing, cookie, 'Tablet to unpair'…
+    384|     const revoke = await recorded(() => portalPost(pairing.app, revoke…
+    385|     expect(revoke.steps).toEqual([
+       |                          ^
+    386|       'pool  FIND_SESSION_BY_TRANSPORT.COOKIE',
+    387|       'unit  BEGIN',
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+ Test Files  2 failed | 106 passed (108)
+      Tests  2 failed | 1538 passed | 1 skipped (1541)
+   Start at  17:23:04
+   Duration  130.21s (tests 82%, import 17%, transform 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 247 ms; 0 remain with the run prefix dems_test_step_64_tmdoug5u_
+npm error Lifecycle script `test:db` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c vitest run --project db --maxWorkers=2
+exit=1
+
+## 17:25:25 $ npm run typecheck -w @dems/core-server
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+exit=0
+
+## 17:25:36 $ npm run lint -w @dems/core-server
+> @dems/core-server@0.2.0 lint
+> oxlint
+exit=0
+
+## ---- final runs ----
+## 2026-10-04 17:47:39 WIB $ npm run test -w @dems/core-server -- --maxWorkers=2
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+ Test Files  141 passed (141)
+      Tests  3609 passed (3609)
+   Start at  17:47:39
+   Duration  25.77s (import 62%, tests 33%, transform 4%, worker 1%)
+exit=0
+
+## 2026-10-04 17:48:10 WIB $ DEMS_TEST_STEP=64 npm run test:db -w @dems/core-server -- --maxWorkers=2
+> vitest run --project db --maxWorkers=2
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_64_tmdq0a47_
+[test:db] stale sweep: dropped 0; kept 3 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_64_tmdq0a47_tpl_schema: built in 88 ms (create 30 ms, hook 55 ms)
+[test:db] template dems_test_step_64_tmdq0a47_tpl_seed: built in 143 ms (create 48 ms, hook 94 ms)
+[test:db] bulk fixture: dems_test_step_64_tmdq0a47_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 26e251887c667e1e...; digest e58f1ae233811851...; build 183 ms, write 1473 ms, total 1665 ms
+ Test Files  108 passed (108)
+      Tests  1540 passed | 1 skipped (1541)
+   Start at  17:48:10
+   Duration  89.11s (tests 82%, import 17%, transform 1%)
+[test:db] forced drops that needed a retry: 1 (1 refusal(s) with SQLSTATE 42501 while a backend that the owner role may not end, such as an autovacuum worker, was on the database; each drop then went through)
+[test:db] teardown: dropped 8 database(s) in 700 ms; 0 remain with the run prefix dems_test_step_64_tmdq0a47_
+exit=0
+
+## 17:49:51 $ npm run typecheck -w @dems/core-server
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+exit=0
+
+## 17:49:56 $ npm run lint -w @dems/core-server
+> @dems/core-server@0.2.0 lint
+> oxlint
+exit=0
+
+## 17:49:56 $ DEMS_TEST_STEP=64 npm run test:db -w @dems/core-server -- src/realtime
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db src/realtime
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_64_tmdq38mp_
+[test:db] stale sweep: dropped 0; kept 3 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_64_tmdq38mp_tpl_schema: built in 78 ms (create 27 ms, hook 49 ms)
+[test:db] template dems_test_step_64_tmdq38mp_tpl_seed: built in 119 ms (create 39 ms, hook 78 ms)
+ Test Files  6 passed (6)
+      Tests  90 passed (90)
+   Start at  17:49:56
+   Duration  3.46s (tests 51%, import 33%, transform 16%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 60 ms; 0 remain with the run prefix dems_test_step_64_tmdq38mp_
+exit=0
+
+## 17:49:59 $ npm run test -w @dems/core-server -- --maxWorkers=2 src/realtime
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 src/realtime
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+ Test Files  7 passed (7)
+      Tests  163 passed (163)
+   Start at  17:50:00
+   Duration  2.36s (tests 49%, import 32%, transform 18%)
+exit=0
+
+## 17:50:02 end state
+databases with the prefix dems_test_step_64: 3: dems_test_step_64m_tmdoqjg5_f01_backpressure, dems_test_step_64m_tmdoqjg5_tpl_schema, dems_test_step_64m_tmdoqjg5_tpl_seed
+test databases of all rows at this moment: 3
+.locks/postgres.pid: 19121
+listeners of node on loopback:
+COMMAND PID NAME

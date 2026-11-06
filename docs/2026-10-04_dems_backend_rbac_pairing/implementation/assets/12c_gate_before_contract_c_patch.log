@@ -1,0 +1,44 @@
+11:03:35
+$ npm run typecheck -w @dems/shared
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+test/api-registry.test.ts(841,29): error TS2590: Expression produces a union type that is too complex to represent.
+test/api-registry.test.ts(857,7): error TS2578: Unused '@ts-expect-error' directive.
+test/api-registry.test.ts(859,7): error TS2578: Unused '@ts-expect-error' directive.
+test/api-registry.test.ts(861,7): error TS2578: Unused '@ts-expect-error' directive.
+test/api-registry.test.ts(863,7): error TS2578: Unused '@ts-expect-error' directive.
+test/api-registry.test.ts(865,7): error TS2578: Unused '@ts-expect-error' directive.
+test/client-types.test.ts(211,5): error TS2578: Unused '@ts-expect-error' directive.
+test/client-types.test.ts(213,5): error TS2578: Unused '@ts-expect-error' directive.
+test/client-types.test.ts(215,5): error TS2578: Unused '@ts-expect-error' directive.
+test/client-types.test.ts(217,5): error TS2578: Unused '@ts-expect-error' directive.
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 2
+npm error path /Users/gsp-budi/Documents/DEMS/packages/shared
+npm error workspace @dems/shared@0.1.0
+npm error location /Users/gsp-budi/Documents/DEMS/packages/shared
+npm error command failed
+npm error command sh -c tsc --noEmit
+exit=2
+$ npm run typecheck -w @dems/mobile
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+src/runtime/dev-probes.ts(239,24): error TS2590: Expression produces a union type that is too complex to represent.
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 2
+npm error path /Users/gsp-budi/Documents/DEMS/apps/mobile
+npm error workspace @dems/mobile@0.1.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/mobile
+npm error command failed
+npm error command sh -c tsc --noEmit
+exit=2
+$ npm run lint -w @dems/mobile
+
+> @dems/mobile@0.1.0 lint
+> eslint .
+
+exit=0

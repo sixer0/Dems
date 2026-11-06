@@ -1,0 +1,21 @@
+
+== 22:42:45 0. the ports must be free before anything is started
+free: 4421 5176 9396
+2026-10-05 22:42:45 WIB
+22:42  up 4 days,  5:55, 2 users, load averages: 5.35 5.44 4.52
+
+== 22:42:45 1. start Vite for lane 1 (no backend: Simulated mode sends nothing to the Core)
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    72963 gsp-budi   14u  IPv4 0x90c06d3ebfac3ced      0t0  TCP 127.0.0.1:5176 (LISTEN)
+
+== 22:42:45 2. the page in Simulated mode (headless Chromium over CDP)
+cdp-driver-sim exit 0
+-- 4421 was never started by this run: free
+
+== 22:42:54 stop what this check started
+chrome stopped
+vite: npm exit status 143
+
+== 22:42:54 listeners left on 4421, 5176, 9396 (expect none):
+lsof exit 1 (1 with no output: no listener)
+-- the check took 9 s

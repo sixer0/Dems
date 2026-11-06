@@ -1,0 +1,15 @@
+clicktext "Open Session Monitor": BUTTON at 17:11:13.000
+wait page-session-monitor: true at 17:11:13.209
+slept 1500
+press sm-action-end: true at 17:11:14.751
+wait sm-end-dialog: true at 17:11:14.752
+slept 500
+typed into sm-end-reason: Interview completed (RF-T run 2 web stop)
+slept 6000
+mark E run 2 web confirm End Session at 17:11:21.265
+press sm-end-confirm: true at 17:11:21.272
+waitgone sm-end-dialog: true at 17:11:21.607
+wait finalization-modal: true at 17:11:21.607
+watch: truthy at 17:11:28.131 (started 17:11:21.607, 6524 ms): "Evidence sealed Session SES-20261006-0029 100% complete Finalize tracks 0.8 s 1/6: Done Calculate hashes 1.1 s 2/6: Done Build manifest 1.1 s 3/6: Done Encrypt "
+slept 800
+shot W11_web_run2_sealed.png at 17:11:29.248

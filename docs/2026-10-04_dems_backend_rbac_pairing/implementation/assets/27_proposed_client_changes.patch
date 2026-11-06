@@ -1,0 +1,43 @@
+--- packages/shared/src/client/core-client.ts	2026-10-04 08:50:30
++++ packages/shared/src/client/core-client.ts	2026-10-04 10:15:59
+@@ -239,12 +239,18 @@
+ type QueryOf<Op> = Op extends { readonly query: { readonly schema: infer Name } }
+   ? { readonly query?: SchemaInput<Name> }
+   : { readonly query?: CoreQuery };
++
++/**
++ * The three parts of one operation's input. Distributive on purpose: for a union of operations it
++ * gives one intersection per operation. Written as `ParamsOf<U> & BodyOf<U> & QueryOf<U>` over a
++ * union `U`, the compiler would build the cross product of three unions, which for a table of n
++ * operations has n * n * n members and is refused above 100,000 (TS2590): that is n = 47.
++ */
++type InputOfOperation<Op> = Op extends unknown ? ParamsOf<Op> & BodyOf<Op> & QueryOf<Op> : never;
+ 
+ /** The typed input of operation `Id`. Loose when the table is not `as const`. */
+ export type CoreCallInput<Ops extends CoreOperationTable, Id extends string> =
+-  IsLiteralTable<Ops> extends true
+-    ? ParamsOf<OperationOf<Ops, Id>> & BodyOf<OperationOf<Ops, Id>> & QueryOf<OperationOf<Ops, Id>>
+-    : CoreLooseCallInput;
++  IsLiteralTable<Ops> extends true ? InputOfOperation<OperationOf<Ops, Id>> : CoreLooseCallInput;
+ 
+ /** The typed success of operation `Id`: one member per documented 2xx status. `unknown` data when the table is not `as const`. */
+ export type CoreCallSuccessOf<Ops extends CoreOperationTable, Id extends string> =
+--- packages/shared/test/client-core.test.ts	2026-10-04 08:51:33
++++ packages/shared/test/client-core.test.ts	2026-10-04 10:32:33
+@@ -480,9 +480,14 @@
+ 
+   it('each of them resolves as a success with undefined data', async () => {
+     for (const operation of BODILESS) {
+-      const requestExample = Object.values(CORE_API_EXAMPLES[operation.operationId]?.request ?? {})[0]?.value;
++      const examples = CORE_API_EXAMPLES[operation.operationId];
++      const requestExample = Object.values(examples?.request ?? {})[0]?.value;
+       const { client } = mobileClient(() => ({ status: 204 }));
+-      const result = await client.call(operation.operationId, requestExample !== undefined ? { body: requestExample } : {});
++      // Contract C: ten of the 204 operations have a path parameter (`cancelSession`, `archiveEvidence`, ...).
++      const result = await client.call(operation.operationId, {
++        ...(examples?.pathParams ? { params: examples.pathParams } : {}),
++        ...(requestExample !== undefined ? { body: requestExample } : {}),
++      });
+       expect(result, operation.operationId).toMatchObject({ ok: true, status: 204, data: undefined });
+     }
+   });

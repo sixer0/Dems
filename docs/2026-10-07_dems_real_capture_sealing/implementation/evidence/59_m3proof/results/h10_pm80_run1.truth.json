@@ -1,0 +1,60 @@
+{
+ "case": "pm80",
+ "epoch_us": 1791513809690000,
+ "frames": 650,
+ "cams": [
+  {
+   "cam": 1,
+   "port": 8555,
+   "inject_ms": 80,
+   "drift_ppm": 0.0,
+   "flash_first": 100,
+   "flash_every": 200,
+   "claimed_epoch_us": 1791513809610000,
+   "events": [
+    {
+     "frame": 100,
+     "beep_at_us": 1791513811690000,
+     "truth_offset_us": 80000
+    },
+    {
+     "frame": 300,
+     "beep_at_us": 1791513815690000,
+     "truth_offset_us": 80000
+    },
+    {
+     "frame": 500,
+     "beep_at_us": 1791513819690000,
+     "truth_offset_us": 80000
+    }
+   ]
+  },
+  {
+   "cam": 2,
+   "port": 8557,
+   "inject_ms": -80,
+   "drift_ppm": 0.0,
+   "flash_first": 200,
+   "flash_every": 200,
+   "claimed_epoch_us": 1791513809770000,
+   "events": [
+    {
+     "frame": 200,
+     "beep_at_us": 1791513813690000,
+     "truth_offset_us": -80000
+    },
+    {
+     "frame": 400,
+     "beep_at_us": 1791513817690000,
+     "truth_offset_us": -80000
+    },
+    {
+     "frame": 600,
+     "beep_at_us": 1791513821690000,
+     "truth_offset_us": -80000
+    }
+   ]
+  }
+ ],
+ "two_encoders": null
+}

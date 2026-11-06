@@ -1,0 +1,7 @@
+mark J2 tablet Start Recording pressed at 12:46:31.118
+tap 1178,1455 at 12:46:31.210
+slept 1200 ms
+screencap J07_countdown.png (381946 bytes) at 12:46:32.869
+start 200 (10-06 12:46:34.166 POST /api/v1/session/{id}/start 200)
+slept 3000 ms
+screencap J08_tablet_live_monitor.png (786402 bytes) at 12:46:39.021

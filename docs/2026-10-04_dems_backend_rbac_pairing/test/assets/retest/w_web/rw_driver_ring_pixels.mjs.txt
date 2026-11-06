@@ -1,0 +1,62 @@
+// Pixel check of a ring crop (ring box + 12 px on every side, so the ring centre is the crop centre).
+// Histogram of warm (orange) pixels by distance from the centre: the word's ink and the inner ring's stroke are
+// separated when a band of empty distances lies between them. Also the dark gap, row by row, between the word's
+// outermost ink and the ring inside the word's rows.
+// Usage: node ring_pixels.mjs <png> <ringSizePx>
+import { readFileSync } from 'node:fs'
+import { inflateSync } from 'node:zlib'
+
+function decodePng(buf) {
+  let pos = 8
+  let width = 0, height = 0, colorType = 0, bitDepth = 0
+  const idat = []
+  while (pos < buf.length) {
+    const len = buf.readUInt32BE(pos)
+    const type = buf.toString('ascii', pos + 4, pos + 8)
+    const data = buf.subarray(pos + 8, pos + 8 + len)
+    if (type === 'IHDR') { width = data.readUInt32BE(0); height = data.readUInt32BE(4); bitDepth = data[8]; colorType = data[9] }
+    if (type === 'IDAT') idat.push(data)
+    pos += 12 + len
+  }
+  if (bitDepth !== 8 || (colorType !== 6 && colorType !== 2)) throw new Error(`unsupported PNG ${bitDepth}/${colorType}`)
+  const bpp = colorType === 6 ? 4 : 3
+  const raw = inflateSync(Buffer.concat(idat))
+  const stride = width * bpp
+  const out = Buffer.alloc(height * stride)
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[y * (stride + 1)]
+    const line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1))
+    for (let x = 0; x < stride; x += 1) {
+      const a = x >= bpp ? out[y * stride + x - bpp] : 0
+      const b = y > 0 ? out[(y - 1) * stride + x] : 0
+      const c = x >= bpp && y > 0 ? out[(y - 1) * stride + x - bpp] : 0
+      let v = line[x]
+      if (filter === 1) v += a
+      else if (filter === 2) v += b
+      else if (filter === 3) v += (a + b) >> 1
+      else if (filter === 4) { const p = a + b - c; const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c); v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c }
+      out[y * stride + x] = v & 255
+    }
+  }
+  return { width, height, bpp, px: (x, y) => { const i = y * stride + x * bpp; return [out[i], out[i + 1], out[i + 2]] } }
+}
+
+const [file, sizeArg] = process.argv.slice(2)
+const size = Number(sizeArg)
+const img = decodePng(readFileSync(file))
+const cx = img.width / 2, cy = img.height / 2
+const ringStrokeMid = (74 / 200) * size
+const strokeHalf = (2.5 / 200) * size / 2
+const warm = ([r, g, b]) => r > 140 && g > 70 && b < 90 && r > b + 80
+const hist = new Map()
+for (let y = 0; y < img.height; y += 1) for (let x = 0; x < img.width; x += 1) {
+  if (!warm(img.px(x, y))) continue
+  const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy)
+  if (d < ringStrokeMid - 30 || d > ringStrokeMid + 6) continue
+  const k = Math.floor(d)
+  hist.set(k, (hist.get(k) ?? 0) + 1)
+}
+const keys = [...hist.keys()].sort((a, b) => a - b)
+console.log(JSON.stringify({ file: file.split('/').pop(), img: `${img.width}x${img.height}`, ringSize: size, innerStrokeMidRadius: +ringStrokeMid.toFixed(2), innerStrokeInnerEdge: +(ringStrokeMid - strokeHalf).toFixed(2) }))
+console.log('warm-pixel count by distance from centre (px):')
+for (let k = keys[0]; k <= keys[keys.length - 1]; k += 1) console.log(`  d=${String(k).padStart(3)}  ${String(hist.get(k) ?? 0).padStart(5)}`)

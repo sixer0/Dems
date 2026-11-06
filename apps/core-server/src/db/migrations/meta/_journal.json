@@ -1,0 +1,321 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791079049782,
+      "tag": "0000_prelude",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791079050043,
+      "tag": "0001_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791079059138,
+      "tag": "0002_audit_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791079059404,
+      "tag": "0003_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791429871996,
+      "tag": "0004_capture",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791429934834,
+      "tag": "0005_capture_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791442123404,
+      "tag": "0006_stt_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791442132005,
+      "tag": "0007_stt_config_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791537249032,
+      "tag": "0008_capture_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791537252567,
+      "tag": "0009_capture_sources_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791539087480,
+      "tag": "0010_credential_replace_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791541232573,
+      "tag": "0011_session_stt_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791541242662,
+      "tag": "0012_session_stt_config_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791595399197,
+      "tag": "0013_key_id_fault_reason_media_root",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791595402815,
+      "tag": "0014_key_id_fault_reason_media_root_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791823665220,
+      "tag": "0015_capture_streams_audio_inputs",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791823666563,
+      "tag": "0016_capture_streams_audio_inputs_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791856101325,
+      "tag": "0017_network_commissioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791856105393,
+      "tag": "0018_network_commissioning_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791862946379,
+      "tag": "0019_credential_replaced_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791862950474,
+      "tag": "0020_credential_replaced_reason_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791864430633,
+      "tag": "0021_profile_codes_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791864446806,
+      "tag": "0022_profile_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791864447537,
+      "tag": "0023_profile_codes_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791865868561,
+      "tag": "0024_installation_acceptance",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791865868897,
+      "tag": "0025_installation_acceptance_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791876838638,
+      "tag": "0026_alias_removal_reasons",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791876839036,
+      "tag": "0027_alias_removal_reasons_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791883046882,
+      "tag": "0028_alias_removal_reason_unconfirmed",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791883047288,
+      "tag": "0029_alias_removal_reason_unconfirmed_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791944690296,
+      "tag": "0030_network_config_onvif_ports",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791944690680,
+      "tag": "0031_network_config_onvif_ports_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791957611215,
+      "tag": "0032_capture_device_retirement",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791957616783,
+      "tag": "0033_capture_device_retirement_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793275434046,
+      "tag": "0034_capture_config_supervisor_revocation",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793603749855,
+      "tag": "0035_operator_administration_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793686800000,
+      "tag": "0036_operator_purge",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793687400000,
+      "tag": "0037_operator_credential_creation",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793688000000,
+      "tag": "0038_operator_purge_reseal_correction",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793779200000,
+      "tag": "0039_four_video_tracks",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793800800000,
+      "tag": "0040_four_audio_channels",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793887200000,
+      "tag": "0041_capture_widening_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793890800000,
+      "tag": "0042_capture_config_constraint_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1793894400000,
+      "tag": "0043_operator_purge_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793898000000,
+      "tag": "0044_recording_fragments_audio_tracks",
+      "breakpoints": true
+    }
+  ]
+}

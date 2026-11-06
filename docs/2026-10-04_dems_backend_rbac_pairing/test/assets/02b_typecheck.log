@@ -1,0 +1,5 @@
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+exit 0 at 19:52:01

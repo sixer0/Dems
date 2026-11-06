@@ -1,0 +1,11 @@
+frames -> wq/frames_dashboard_recording.txt: 570 non-heartbeat/meter frames
+net -> wq/net_dashboard_recording.txt: 444 requests, api ["GET /api/v1/health 200","GET /api/v1/auth/session 401","GET /api/v1/auth/status 200","GET /api/v1/health 200","POST /api/v1/auth/sign-in 200"]; origins {"http://127.0.0.1:5177":444,"ws://127.0.0.1:5177":3}; console 0
+clicktext "Open Session Monitor": BUTTON at 10:38:48.375
+wait page-session-monitor: true at 10:38:48.654
+slept 2500
+eval: {"at":"03:38:51.154","phase":"RECORDING","state":"RECORDING","duration":"00:01:51","meters":[{"ch":"AUDIO-01","now":"-52","text":"−52 dBFS"},{"ch":"AUDIO-02","now":"-18","text":"−18 dBFS"}]}
+shot B09_web_session_monitor_1.png at 10:38:51.347
+slept 4000
+eval: {"at":"03:38:55.350","phase":"RECORDING","state":"RECORDING","duration":"00:01:55","meters":[{"ch":"AUDIO-01","now":"-51","text":"−51 dBFS"},{"ch":"AUDIO-02","now":"-18","text":"−18 dBFS"}]}
+shot B10_web_session_monitor_2.png at 10:38:55.599
+testids sm- (26): sm-status-banner sm-banner-detail sm-grid sm-camera-VIDEO-01 sm-camera-VIDEO-02 sm-feed-fullscreen sm-details sm-duration sm-integrity-checks sm-reverify sm-track-label-AUDIO-01 sm-track-label-AUDIO-02 sm-action-pause sm-action-marker sm-action-note sm-action-snapshot sm-action-queue sm-action-end sm-hold-fill sm-timeline-scroll sm-inputs sm-storage-ring sm-storage-free sm-write-sparkline sm-session-size sm-audit-list

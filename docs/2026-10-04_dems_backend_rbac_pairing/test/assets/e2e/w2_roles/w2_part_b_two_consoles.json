@@ -1,0 +1,1435 @@
+{
+  "startedAt": "2026-10-06T03:12:48.967Z",
+  "consoles": {
+    "supervisor": {
+      "pid": 89028,
+      "devtools": "http://127.0.0.1:57234",
+      "profile": "/tmp/claude-501/w2_b_supervisor_xrKhto",
+      "signIn": {
+        "username": "andi.pratama",
+        "at": 1791256372245,
+        "dashboard": true,
+        "shell": {
+          "href": "http://127.0.0.1:5173/dashboard",
+          "coreMode": "LIVE",
+          "userMenu": "Account menu: AKP Andi Pratama",
+          "scriptCookies": 0
+        }
+      },
+      "role": "SUPERVISOR",
+      "permissions": [
+        "SESSION_START",
+        "SESSION_NOTE",
+        "EVIDENCE_VIEW",
+        "EVIDENCE_REVIEW",
+        "EVIDENCE_EXPORT",
+        "AUDIT_EXPORT",
+        "DIAGNOSTICS_RUN",
+        "PAIRING_MANAGE",
+        "USER_ADMIN",
+        "DEMO_CONTROL"
+      ],
+      "nav": {
+        "entries": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "users-roles",
+          "paired-devices",
+          "api-reference"
+        ],
+        "adminGroup": true,
+        "current": [
+          "dashboard"
+        ]
+      },
+      "inlineDataUrls": 2,
+      "origins": [
+        "http://127.0.0.1:5173",
+        "ws://127.0.0.1:5173"
+      ],
+      "requests": [
+        "03:12:49.432 GET /login 200",
+        "03:12:49.517 WS ws://127.0.0.1:5173/?… created",
+        "03:12:49.589 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 200",
+        "03:12:49.624 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 200",
+        "03:12:49.629 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 200",
+        "03:12:49.629 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 200",
+        "03:12:49.629 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 200",
+        "03:12:49.629 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 200",
+        "03:12:49.629 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 200",
+        "03:12:49.629 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 200",
+        "03:12:49.629 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 200",
+        "03:12:49.630 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 200",
+        "03:12:49.636 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 200",
+        "03:12:49.638 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 200",
+        "03:12:49.638 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 200",
+        "03:12:49.638 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 200",
+        "03:12:49.886 WS ws://127.0.0.1:5173/ws created",
+        "03:12:49.886 GET /api/v1/auth/session 401",
+        "03:12:49.890 GET /api/v1/auth/status 200",
+        "03:12:50.101 GET /api/v1/health 200",
+        "03:12:52.274 POST /api/v1/auth/sign-in 200",
+        "03:12:52.324 WS ws://127.0.0.1:5173/ws created",
+        "03:13:02.342 GET /api/v1/auth/session 200",
+        "03:13:03.105 GET /api/v1/audit?… 200",
+        "03:13:03.111 GET /api/v1/audit?… 200",
+        "03:13:03.123 GET /security-audit 200",
+        "03:13:03.165 WS ws://127.0.0.1:5173/?… created",
+        "03:13:03.208 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 200",
+        "03:13:03.265 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 200",
+        "03:13:03.313 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 200",
+        "03:13:03.313 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 200",
+        "03:13:03.313 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 200",
+        "03:13:03.313 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 200",
+        "03:13:03.313 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 200",
+        "03:13:03.314 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 200",
+        "03:13:03.314 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 200",
+        "03:13:03.314 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 200",
+        "03:13:03.314 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 200",
+        "03:13:03.314 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 200",
+        "03:13:03.314 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 200",
+        "03:13:03.314 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 200",
+        "03:13:03.314 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 200",
+        "03:13:03.314 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 200",
+        "03:13:03.314 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 200",
+        "03:13:03.314 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 200",
+        "03:13:03.314 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 200",
+        "03:13:03.315 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 200",
+        "03:13:03.315 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 200",
+        "03:13:03.315 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 200",
+        "03:13:03.315 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 200",
+        "03:13:03.315 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 200",
+        "03:13:03.316 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 200",
+        "03:13:03.317 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 200",
+        "03:13:03.317 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 200",
+        "03:13:03.369 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 200",
+        "03:13:03.369 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 200",
+        "03:13:03.371 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 200",
+        "03:13:03.371 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 200",
+        "03:13:03.484 WS ws://127.0.0.1:5173/ws created",
+        "03:13:03.484 GET /api/v1/auth/session 200",
+        "03:13:04.174 GET /api/v1/rbac/matrix 200",
+        "03:13:12.084 GET /api/v1/network/status 200",
+        "03:13:12.110 GET /api/v1/session/current 200",
+        "03:13:12.127 GET /dashboard 200",
+        "03:13:12.440 WS ws://127.0.0.1:5173/?… created",
+        "03:13:12.474 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 200",
+        "03:13:12.511 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 200",
+        "03:13:12.541 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 200",
+        "03:13:12.541 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 200",
+        "03:13:12.541 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 200",
+        "03:13:12.541 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 200",
+        "03:13:12.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 200",
+        "03:13:12.543 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 200",
+        "03:13:12.543 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 200",
+        "03:13:12.543 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 200",
+        "03:13:12.543 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 200",
+        "03:13:12.547 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 200",
+        "03:13:12.548 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 200",
+        "03:13:12.548 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 200",
+        "03:13:12.560 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 200",
+        "03:13:12.710 WS ws://127.0.0.1:5173/ws created",
+        "03:13:12.710 GET /api/v1/auth/session 200",
+        "03:13:36.266 GET /api/v1/audit?… 200",
+        "03:13:37.813 GET /session 200",
+        "03:13:37.855 WS ws://127.0.0.1:5173/?… created",
+        "03:13:37.911 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 304",
+        "03:13:37.914 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 304",
+        "03:13:37.915 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 304",
+        "03:13:37.915 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 304",
+        "03:13:37.915 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 304",
+        "03:13:37.915 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 304",
+        "03:13:37.915 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 304",
+        "03:13:37.915 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 304",
+        "03:13:37.915 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 304",
+        "03:13:37.915 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 304",
+        "03:13:37.915 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 304",
+        "03:13:37.915 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 304",
+        "03:13:37.915 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 304",
+        "03:13:37.915 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 304",
+        "03:13:37.994 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 304",
+        "03:13:37.997 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 304",
+        "03:13:37.997 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 304",
+        "03:13:37.999 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 304",
+        "03:13:38.198 WS ws://127.0.0.1:5173/ws created",
+        "03:13:38.198 GET /api/v1/auth/session 200",
+        "03:13:47.128 GET /api/v1/audit?… 200",
+        "03:13:47.145 GET /dashboard 200",
+        "03:13:47.195 WS ws://127.0.0.1:5173/?… created",
+        "03:13:47.230 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 304",
+        "03:13:47.273 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 304",
+        "03:13:47.307 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 304",
+        "03:13:47.307 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 304",
+        "03:13:47.308 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 304",
+        "03:13:47.308 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 304",
+        "03:13:47.308 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 304",
+        "03:13:47.308 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 304",
+        "03:13:47.310 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 304",
+        "03:13:47.311 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 304",
+        "03:13:47.311 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 304",
+        "03:13:47.312 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 304",
+        "03:13:47.313 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 304",
+        "03:13:47.313 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 304",
+        "03:13:47.313 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 304",
+        "03:13:47.316 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 304",
+        "03:13:47.333 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 304",
+        "03:13:47.333 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 304",
+        "03:13:47.333 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 304",
+        "03:13:47.766 WS ws://127.0.0.1:5173/ws created",
+        "03:13:47.766 GET /api/v1/auth/session 200",
+        "03:14:00.977 GET /api/v1/audit?… 200",
+        "03:14:08.741 GET /api/v1/audit?… 200",
+        "03:14:12.981 GET /evidence/EV-20261006-0015 200",
+        "03:14:13.010 WS ws://127.0.0.1:5173/?… created",
+        "03:14:13.042 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 200",
+        "03:14:13.137 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 200",
+        "03:14:13.154 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 200",
+        "03:14:13.154 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 200",
+        "03:14:13.154 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 200",
+        "03:14:13.154 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 200",
+        "03:14:13.154 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 200",
+        "03:14:13.154 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 200",
+        "03:14:13.154 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 200",
+        "03:14:13.154 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 200",
+        "03:14:13.154 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 200",
+        "03:14:13.155 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 200",
+        "03:14:13.155 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 200",
+        "03:14:13.155 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 200",
+        "03:14:13.155 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 200",
+        "03:14:13.155 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 200",
+        "03:14:13.155 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 200",
+        "03:14:13.155 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 200",
+        "03:14:13.155 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 200",
+        "03:14:13.156 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 200",
+        "03:14:13.156 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 200",
+        "03:14:13.156 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 200",
+        "03:14:13.156 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 200",
+        "03:14:13.156 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 200",
+        "03:14:13.156 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 200",
+        "03:14:13.156 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 200",
+        "03:14:13.157 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 200",
+        "03:14:13.166 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 200",
+        "03:14:13.175 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 200",
+        "03:14:13.176 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 200",
+        "03:14:13.176 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 200",
+        "03:14:13.296 WS ws://127.0.0.1:5173/ws created",
+        "03:14:13.296 GET /api/v1/auth/session 200",
+        "03:14:13.642 GET /api/v1/evidence/EV-20261006-0015 200",
+        "03:14:18.474 POST /api/v1/evidence/EV-20261006-0015/archive 204",
+        "03:14:20.469 GET /api/v1/audit?… 200",
+        "03:14:24.602 GET /storage 200",
+        "03:14:24.623 WS ws://127.0.0.1:5173/?… created",
+        "03:14:24.642 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 200",
+        "03:14:24.714 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 200",
+        "03:14:24.714 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 200",
+        "03:14:24.714 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 200",
+        "03:14:24.714 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 200",
+        "03:14:24.714 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 200",
+        "03:14:24.714 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 200",
+        "03:14:24.714 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 200",
+        "03:14:24.715 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 200",
+        "03:14:24.724 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 200",
+        "03:14:24.726 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 200",
+        "03:14:24.726 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 200",
+        "03:14:24.726 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 200",
+        "03:14:24.858 WS ws://127.0.0.1:5173/ws created",
+        "03:14:24.858 GET /api/v1/auth/session 200",
+        "03:14:31.050 POST /api/v1/storage/policy 200",
+        "03:14:32.582 GET /api/v1/audit?… 200",
+        "03:14:36.701 GET /storage 200",
+        "03:14:36.719 WS ws://127.0.0.1:5173/?… created",
+        "03:14:36.739 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 200",
+        "03:14:36.773 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 200",
+        "03:14:36.777 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 200",
+        "03:14:36.777 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 200",
+        "03:14:36.777 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 200",
+        "03:14:36.777 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 200",
+        "03:14:36.777 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 200",
+        "03:14:36.777 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 200",
+        "03:14:36.777 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 200",
+        "03:14:36.777 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 200",
+        "03:14:36.777 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 200",
+        "03:14:36.777 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 200",
+        "03:14:36.778 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 200",
+        "03:14:36.778 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 200",
+        "03:14:36.778 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 200",
+        "03:14:36.779 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 200",
+        "03:14:36.779 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 200",
+        "03:14:36.779 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 200",
+        "03:14:36.779 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 200",
+        "03:14:36.779 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 200",
+        "03:14:36.779 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 200",
+        "03:14:36.779 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 200",
+        "03:14:36.779 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 200",
+        "03:14:36.779 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 200",
+        "03:14:36.780 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 200",
+        "03:14:36.780 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 200",
+        "03:14:36.780 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 200",
+        "03:14:36.783 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 200",
+        "03:14:36.783 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 200",
+        "03:14:36.785 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 200",
+        "03:14:36.785 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 200",
+        "03:14:36.841 WS ws://127.0.0.1:5173/ws created",
+        "03:14:36.841 GET /api/v1/auth/session 200",
+        "03:14:43.237 POST /api/v1/storage/policy 200",
+        "03:14:44.808 GET /api/v1/audit?… 200",
+        "03:14:44.819 GET /dashboard 200",
+        "03:14:44.837 WS ws://127.0.0.1:5173/?… created",
+        "03:14:44.878 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 200",
+        "03:14:44.911 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 200",
+        "03:14:44.931 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 200",
+        "03:14:44.932 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 200",
+        "03:14:44.939 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 200",
+        "03:14:44.941 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 200",
+        "03:14:44.941 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 200",
+        "03:14:44.941 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 200",
+        "03:14:44.941 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 200",
+        "03:14:44.942 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 200",
+        "03:14:44.942 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 200",
+        "03:14:44.942 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 200",
+        "03:14:44.942 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 200",
+        "03:14:44.942 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 200",
+        "03:14:44.942 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 200",
+        "03:14:44.942 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 200",
+        "03:14:44.945 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 200",
+        "03:14:44.945 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 200",
+        "03:14:44.945 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 200",
+        "03:14:44.945 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 200",
+        "03:14:44.945 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 200",
+        "03:14:44.945 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 200",
+        "03:14:44.945 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 200",
+        "03:14:44.945 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 200",
+        "03:14:44.945 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 200",
+        "03:14:44.945 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 200",
+        "03:14:44.946 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 200",
+        "03:14:44.956 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 200",
+        "03:14:44.956 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 200",
+        "03:14:44.957 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 200",
+        "03:14:44.957 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 200",
+        "03:14:45.180 WS ws://127.0.0.1:5173/ws created",
+        "03:14:45.180 GET /api/v1/auth/session 200",
+        "03:14:48.936 POST /api/v1/auth/sign-out 204",
+        "03:14:49.057 WS ws://127.0.0.1:5173/ws created",
+        "03:14:49.092 GET /api/v1/auth/status 200",
+        "03:14:49.474 GET /api/v1/health 200",
+        "03:14:50.807 GET /api/v1/auth/session 401"
+      ],
+      "sockets": [
+        {
+          "at": "2026-10-06T03:12:49.517Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:12:49.886Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:12:52.324Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:13:03.165Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:13:03.483Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:13:12.440Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:13:12.710Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:13:37.855Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:13:38.198Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:13:47.195Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:13:47.766Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:14:13.010Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:14:13.296Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:14:24.623Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:14:24.858Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:14:36.719Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:14:36.841Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:14:44.837Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:14:45.180Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:14:49.057Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        }
+      ],
+      "console": [
+        {
+          "at": "2026-10-06T03:12:49.891Z",
+          "line": "log-error (network): Failed to load resource: the server responded with a status of 401 (Unauthorized) http://127.0.0.1:5173/api/v1/auth/session"
+        },
+        {
+          "at": "2026-10-06T03:14:50.809Z",
+          "line": "log-error (network): Failed to load resource: the server responded with a status of 401 (Unauthorized) http://127.0.0.1:5173/api/v1/auth/session"
+        }
+      ]
+    },
+    "investigator": {
+      "pid": 89034,
+      "devtools": "http://127.0.0.1:57236",
+      "profile": "/tmp/claude-501/w2_b_investigator_gZ469m",
+      "signIn": {
+        "username": "budi.santoso",
+        "at": 1791256378606,
+        "dashboard": true,
+        "shell": {
+          "href": "http://127.0.0.1:5173/dashboard",
+          "coreMode": "LIVE",
+          "userMenu": "Account menu: AKP Budi Santoso",
+          "scriptCookies": 0
+        }
+      },
+      "role": "INVESTIGATOR",
+      "inlineDataUrls": 3,
+      "origins": [
+        "http://127.0.0.1:5173",
+        "ws://127.0.0.1:5173"
+      ],
+      "requests": [
+        "03:12:55.902 GET /login 200",
+        "03:12:55.946 WS ws://127.0.0.1:5173/?… created",
+        "03:12:56.035 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 200",
+        "03:12:56.082 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 200",
+        "03:12:56.089 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 200",
+        "03:12:56.089 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 200",
+        "03:12:56.089 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 200",
+        "03:12:56.089 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 200",
+        "03:12:56.090 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 200",
+        "03:12:56.091 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 200",
+        "03:12:56.091 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 200",
+        "03:12:56.091 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 200",
+        "03:12:56.091 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 200",
+        "03:12:56.091 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 200",
+        "03:12:56.105 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 200",
+        "03:12:56.106 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 200",
+        "03:12:56.106 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 200",
+        "03:12:56.106 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 200",
+        "03:12:56.344 WS ws://127.0.0.1:5173/ws created",
+        "03:12:56.344 GET /api/v1/auth/session 401",
+        "03:12:56.347 GET /api/v1/auth/status 200",
+        "03:12:56.566 GET /api/v1/health 200",
+        "03:12:58.631 POST /api/v1/auth/sign-in 200",
+        "03:12:58.681 WS ws://127.0.0.1:5173/ws created",
+        "03:13:02.361 GET /api/v1/auth/session 200",
+        "03:13:16.566 GET /session/new 200",
+        "03:13:16.886 WS ws://127.0.0.1:5173/?… created",
+        "03:13:16.948 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 200",
+        "03:13:16.983 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 200",
+        "03:13:16.983 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 200",
+        "03:13:16.983 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 200",
+        "03:13:16.983 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 200",
+        "03:13:16.984 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 200",
+        "03:13:16.984 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 200",
+        "03:13:16.985 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 200",
+        "03:13:16.985 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 200",
+        "03:13:16.987 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 200",
+        "03:13:16.988 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 200",
+        "03:13:16.989 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 200",
+        "03:13:16.989 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 200",
+        "03:13:16.989 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 200",
+        "03:13:16.990 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 200",
+        "03:13:16.990 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 200",
+        "03:13:16.991 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 200",
+        "03:13:16.991 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 200",
+        "03:13:16.992 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 200",
+        "03:13:16.992 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 200",
+        "03:13:16.992 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 200",
+        "03:13:16.992 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 200",
+        "03:13:16.992 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 200",
+        "03:13:16.992 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 200",
+        "03:13:16.992 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 200",
+        "03:13:16.992 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 200",
+        "03:13:16.992 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 200",
+        "03:13:17.309 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 200",
+        "03:13:17.310 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 200",
+        "03:13:17.310 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 200",
+        "03:13:17.311 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 200",
+        "03:13:17.678 WS ws://127.0.0.1:5173/ws created",
+        "03:13:17.678 GET /api/v1/auth/session 200",
+        "03:13:21.317 POST /api/v1/session/case-number 200",
+        "03:13:24.332 POST /api/v1/session 201",
+        "03:13:24.391 POST /api/v1/session/SES-20261006-0025/precheck 202",
+        "03:13:34.178 POST /api/v1/session/SES-20261006-0025/start 200",
+        "03:13:36.284 GET /api/v1/session/current 200",
+        "03:13:45.316 POST /api/v1/session/SES-20261006-0025/notes 204",
+        "03:13:58.860 POST /api/v1/session/SES-20261006-0025/stop 202",
+        "03:14:08.765 GET /api/v1/session/current 200",
+        "03:14:08.858 GET /evidence 200",
+        "03:14:08.898 WS ws://127.0.0.1:5173/?… created",
+        "03:14:08.959 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 200",
+        "03:14:08.989 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 200",
+        "03:14:09.024 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 200",
+        "03:14:09.024 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 200",
+        "03:14:09.024 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 200",
+        "03:14:09.024 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 200",
+        "03:14:09.024 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 200",
+        "03:14:09.024 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 200",
+        "03:14:09.025 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 200",
+        "03:14:09.028 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 200",
+        "03:14:09.028 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 200",
+        "03:14:09.028 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 200",
+        "03:14:09.028 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 200",
+        "03:14:09.142 WS ws://127.0.0.1:5173/ws created",
+        "03:14:09.142 GET /api/v1/auth/session 200",
+        "03:14:20.480 GET /storage 200",
+        "03:14:20.505 WS ws://127.0.0.1:5173/?… created",
+        "03:14:20.538 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 200",
+        "03:14:20.573 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 200",
+        "03:14:20.575 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 200",
+        "03:14:20.575 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 200",
+        "03:14:20.575 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 200",
+        "03:14:20.575 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 200",
+        "03:14:20.575 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 200",
+        "03:14:20.575 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 200",
+        "03:14:20.576 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 200",
+        "03:14:20.576 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 200",
+        "03:14:20.576 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 200",
+        "03:14:20.576 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 200",
+        "03:14:20.576 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 200",
+        "03:14:20.576 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 200",
+        "03:14:20.576 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 200",
+        "03:14:20.576 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 200",
+        "03:14:20.576 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 200",
+        "03:14:20.576 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 200",
+        "03:14:20.576 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 200",
+        "03:14:20.577 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 200",
+        "03:14:20.577 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 200",
+        "03:14:20.577 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 200",
+        "03:14:20.577 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 200",
+        "03:14:20.577 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 200",
+        "03:14:20.578 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 200",
+        "03:14:20.579 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 200",
+        "03:14:20.579 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 200",
+        "03:14:20.590 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 200",
+        "03:14:20.591 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 200",
+        "03:14:20.592 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 200",
+        "03:14:20.592 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 200",
+        "03:14:20.683 WS ws://127.0.0.1:5173/ws created",
+        "03:14:20.689 GET /api/v1/auth/session 200",
+        "03:14:32.590 GET /storage 200",
+        "03:14:32.612 WS ws://127.0.0.1:5173/?… created",
+        "03:14:32.627 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 304",
+        "03:14:32.655 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 304",
+        "03:14:32.657 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 304",
+        "03:14:32.658 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 304",
+        "03:14:32.658 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 304",
+        "03:14:32.658 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 304",
+        "03:14:32.658 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 304",
+        "03:14:32.658 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 304",
+        "03:14:32.658 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 304",
+        "03:14:32.658 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 304",
+        "03:14:32.658 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 304",
+        "03:14:32.659 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 304",
+        "03:14:32.660 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 304",
+        "03:14:32.660 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 304",
+        "03:14:32.660 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 304",
+        "03:14:32.726 WS ws://127.0.0.1:5173/ws created",
+        "03:14:32.726 GET /api/v1/auth/session 200",
+        "03:14:51.224 POST /api/v1/auth/touch null",
+        "03:14:51.256 GET /dashboard 200",
+        "03:14:51.455 WS ws://127.0.0.1:5173/?… created",
+        "03:14:51.461 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts 200",
+        "03:14:51.470 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts 200",
+        "03:14:51.509 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts 200",
+        "03:14:51.509 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts 200",
+        "03:14:51.509 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts 200",
+        "03:14:51.509 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts 200",
+        "03:14:51.514 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts 200",
+        "03:14:51.532 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts 200",
+        "03:14:51.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts 200",
+        "03:14:51.542 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts 200",
+        "03:14:51.543 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts 200",
+        "03:14:51.553 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts 200",
+        "03:14:51.554 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts 200",
+        "03:14:51.554 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts 200",
+        "03:14:51.554 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts 200",
+        "03:14:51.554 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts 200",
+        "03:14:51.554 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts 200",
+        "03:14:51.555 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts 200",
+        "03:14:51.555 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts 200",
+        "03:14:51.555 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts 200",
+        "03:14:51.555 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts 200",
+        "03:14:51.555 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts 200",
+        "03:14:51.557 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts 200",
+        "03:14:51.561 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts 200",
+        "03:14:51.563 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts 200",
+        "03:14:51.572 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts 200",
+        "03:14:51.572 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts 200",
+        "03:14:51.673 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts 200",
+        "03:14:51.673 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts 200",
+        "03:14:51.675 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts 200",
+        "03:14:51.675 GET /@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts 200",
+        "03:14:52.623 WS ws://127.0.0.1:5173/ws created",
+        "03:14:52.623 GET /api/v1/auth/session 200",
+        "03:14:55.573 POST /api/v1/auth/sign-out 204",
+        "03:14:55.737 WS ws://127.0.0.1:5173/ws created",
+        "03:14:55.756 GET /api/v1/auth/status 200",
+        "03:14:56.224 GET /api/v1/health 200",
+        "03:14:57.458 GET /api/v1/auth/session 401"
+      ],
+      "sockets": [
+        {
+          "at": "2026-10-06T03:12:55.946Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:12:56.344Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:12:58.681Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:13:16.886Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:13:17.678Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:14:08.898Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:14:09.142Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:14:20.505Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:14:20.683Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:14:32.612Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:14:32.726Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:14:51.455Z",
+          "url": "ws://127.0.0.1:5173/?…"
+        },
+        {
+          "at": "2026-10-06T03:14:52.623Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        },
+        {
+          "at": "2026-10-06T03:14:55.737Z",
+          "url": "ws://127.0.0.1:5173/ws"
+        }
+      ],
+      "console": [
+        {
+          "at": "2026-10-06T03:12:56.348Z",
+          "line": "log-error (network): Failed to load resource: the server responded with a status of 401 (Unauthorized) http://127.0.0.1:5173/api/v1/auth/session"
+        },
+        {
+          "at": "2026-10-06T03:14:57.462Z",
+          "line": "log-error (network): Failed to load resource: the server responded with a status of 401 (Unauthorized) http://127.0.0.1:5173/api/v1/auth/session"
+        }
+      ]
+    },
+    "separateProcesses": true
+  },
+  "auditRead": {
+    "reader": "SUPERVISOR andi.pratama (console 1)",
+    "accessDeniedStatus": 200,
+    "exportDeniedStatus": 200,
+    "rowKeys": [
+      "seq",
+      "id",
+      "at",
+      "type",
+      "category",
+      "severity",
+      "actorId",
+      "message",
+      "sessionId",
+      "evidenceId",
+      "deviceId",
+      "details",
+      "prevHash",
+      "hash"
+    ],
+    "matches": [
+      {
+        "operation": "listUsers",
+        "role": "INVESTIGATOR",
+        "status": 403,
+        "code": "NOT_PERMITTED",
+        "row": {
+          "seq": 109,
+          "type": "ACCESS_DENIED",
+          "category": "SECURITY",
+          "at": "2026-10-06T02:58:42.723Z",
+          "actorId": "OPR-001",
+          "deviceId": null,
+          "details": {
+            "role": "INVESTIGATOR",
+            "permission": "USER_ADMIN",
+            "operationId": "listUsers"
+          }
+        }
+      },
+      {
+        "operation": "listPairedDevices",
+        "role": "INVESTIGATOR",
+        "status": 403,
+        "code": "NOT_PERMITTED",
+        "row": {
+          "seq": 110,
+          "type": "ACCESS_DENIED",
+          "category": "SECURITY",
+          "at": "2026-10-06T02:58:43.161Z",
+          "actorId": "OPR-001",
+          "deviceId": null,
+          "details": {
+            "role": "INVESTIGATOR",
+            "permission": "PAIRING_MANAGE",
+            "operationId": "listPairedDevices"
+          }
+        }
+      },
+      {
+        "operation": "restartDevice",
+        "role": "INVESTIGATOR",
+        "status": 403,
+        "code": "NOT_PERMITTED",
+        "row": {
+          "seq": 111,
+          "type": "ACCESS_DENIED",
+          "category": "SECURITY",
+          "at": "2026-10-06T02:58:43.592Z",
+          "actorId": "OPR-001",
+          "deviceId": null,
+          "details": {
+            "role": "INVESTIGATOR",
+            "permission": "DEVICE_MANAGE",
+            "operationId": "restartDevice"
+          }
+        }
+      },
+      {
+        "operation": "getDemoStatus",
+        "role": "INVESTIGATOR",
+        "status": 403,
+        "code": "NOT_PERMITTED",
+        "row": {
+          "seq": 112,
+          "type": "ACCESS_DENIED",
+          "category": "SECURITY",
+          "at": "2026-10-06T02:58:44.044Z",
+          "actorId": "OPR-001",
+          "deviceId": null,
+          "details": {
+            "role": "INVESTIGATOR",
+            "permission": "DEMO_CONTROL",
+            "operationId": "getDemoStatus"
+          }
+        }
+      },
+      {
+        "operation": "listUsers",
+        "role": "TECHNICIAN",
+        "status": 403,
+        "code": "NOT_PERMITTED",
+        "row": {
+          "seq": 135,
+          "type": "ACCESS_DENIED",
+          "category": "SECURITY",
+          "at": "2026-10-06T03:06:37.800Z",
+          "actorId": "OPR-003",
+          "deviceId": null,
+          "details": {
+            "role": "TECHNICIAN",
+            "permission": "USER_ADMIN",
+            "operationId": "listUsers"
+          }
+        }
+      },
+      {
+        "operation": "listPairedDevices",
+        "role": "TECHNICIAN",
+        "status": 403,
+        "code": "NOT_PERMITTED",
+        "row": {
+          "seq": 136,
+          "type": "ACCESS_DENIED",
+          "category": "SECURITY",
+          "at": "2026-10-06T03:06:38.234Z",
+          "actorId": "OPR-003",
+          "deviceId": null,
+          "details": {
+            "role": "TECHNICIAN",
+            "permission": "PAIRING_MANAGE",
+            "operationId": "listPairedDevices"
+          }
+        }
+      },
+      {
+        "operation": "scanCaseNumber",
+        "role": "TECHNICIAN",
+        "status": 403,
+        "code": "NOT_PERMITTED",
+        "row": {
+          "seq": 137,
+          "type": "ACCESS_DENIED",
+          "category": "SECURITY",
+          "at": "2026-10-06T03:06:38.694Z",
+          "actorId": "OPR-003",
+          "deviceId": null,
+          "details": {
+            "role": "TECHNICIAN",
+            "permission": "SESSION_START",
+            "operationId": "scanCaseNumber"
+          }
+        }
+      },
+      {
+        "operation": "addSessionNote",
+        "role": "TECHNICIAN",
+        "status": 403,
+        "code": "NOT_PERMITTED",
+        "row": {
+          "seq": 138,
+          "type": "ACCESS_DENIED",
+          "category": "SECURITY",
+          "at": "2026-10-06T03:06:39.150Z",
+          "actorId": "OPR-003",
+          "deviceId": null,
+          "details": {
+            "role": "TECHNICIAN",
+            "permission": "SESSION_NOTE",
+            "operationId": "addSessionNote"
+          }
+        }
+      },
+      {
+        "operation": "getDemoStatus",
+        "role": "TECHNICIAN",
+        "status": 403,
+        "code": "NOT_PERMITTED",
+        "row": {
+          "seq": 139,
+          "type": "ACCESS_DENIED",
+          "category": "SECURITY",
+          "at": "2026-10-06T03:06:39.581Z",
+          "actorId": "OPR-003",
+          "deviceId": null,
+          "details": {
+            "role": "TECHNICIAN",
+            "permission": "DEMO_CONTROL",
+            "operationId": "getDemoStatus"
+          }
+        }
+      }
+    ],
+    "exportDeniedRows": [
+      {
+        "seq": 128,
+        "type": "EXPORT_DENIED",
+        "category": "SECURITY",
+        "at": "2026-10-06T03:04:52.123Z",
+        "actorId": "OPR-003",
+        "details": {
+          "role": "TECHNICIAN",
+          "eventKind": "UNAUTHORIZED_EXPORT",
+          "permission": "EVIDENCE_EXPORT",
+          "operationId": "exportEvidence"
+        }
+      },
+      {
+        "seq": 105,
+        "type": "EXPORT_DENIED",
+        "category": "SECURITY",
+        "at": "2026-10-06T02:57:18.380Z",
+        "actorId": "OPR-001",
+        "details": {
+          "role": "INVESTIGATOR",
+          "eventKind": "UNAUTHORIZED_EXPORT",
+          "permission": "EVIDENCE_EXPORT",
+          "operationId": "exportEvidence"
+        }
+      },
+      {
+        "seq": 98,
+        "type": "EXPORT_DENIED",
+        "category": "SECURITY",
+        "at": "2026-10-06T02:52:31.323Z",
+        "actorId": "OPR-001",
+        "details": {
+          "role": "INVESTIGATOR",
+          "eventKind": "UNAUTHORIZED_EXPORT",
+          "permission": "EVIDENCE_EXPORT",
+          "operationId": "exportEvidence"
+        }
+      }
+    ],
+    "uiRowsShown": [
+      "EntryTimeEventActorCategorySeverityChain link",
+      "#13910:06:396 Oct 2026Access deniedAUD-000139Rina WijayaSecurityWarningLinked2ffc86",
+      "#13810:06:396 Oct 2026Access deniedAUD-000138Rina WijayaSecurityWarningLinkedf17967",
+      "#13710:06:386 Oct 2026Access deniedAUD-000137Rina WijayaSecurityWarningLinked26c2a1",
+      "#13610:06:386 Oct 2026Access deniedAUD-000136Rina WijayaSecurityWarningLinkedf50ff9",
+      "#13510:06:376 Oct 2026Access deniedAUD-000135Rina WijayaSecurityWarningLinked62aa2d",
+      "#11209:58:446 Oct 2026Access deniedAUD-000112AKP Budi SantosoSecurityWarningLinkedb00577",
+      "#11109:58:436 Oct 2026Access deniedAUD-000111AKP Budi SantosoSecurityWarningLinkedc731d2",
+      "#11009:58:436 Oct 2026Access deniedAUD-000110AKP Budi SantosoSecurityWarningLinked2245e6",
+      "#10909:58:426 Oct 2026Access deniedAUD-000109AKP Budi SantosoSecurityWarningLinkedf056bc"
+    ],
+    "uiExportRowsShown": [
+      "EntryTimeEventActorCategorySeverityChain link",
+      "#12810:04:526 Oct 2026Export deniedEV-20261006-0014Rina WijayaSecurityWarningLinkedee11ce",
+      "#10509:57:186 Oct 2026Export deniedEV-20261006-0013AKP Budi SantosoSecurityWarningLinkedb28b97",
+      "#9809:52:316 Oct 2026Export deniedEV-20261006-0013AKP Budi SantosoSecurityWarningLinked26940a"
+    ]
+  },
+  "changes": [
+    {
+      "change": "Session started",
+      "madeIn": "console 2 INVESTIGATOR (Start New Session → Start)",
+      "seenIn": "console 1 SUPERVISOR (Dashboard, active session panel)",
+      "clickAt": "2026-10-06T03:13:31.052Z",
+      "response": {
+        "status": 200,
+        "sentAt": "2026-10-06T03:13:34.178Z",
+        "respAt": "2026-10-06T03:13:34.198Z"
+      },
+      "core": {
+        "seq": 152,
+        "type": "RECORDING_STARTED",
+        "at": "2026-10-06T03:13:34.182Z",
+        "actorId": "OPR-001"
+      },
+      "seenAt": "2026-10-06T03:13:34.283Z",
+      "delayMsFromResponse": 85,
+      "delayMsFromCoreRow": 101,
+      "delayMsFromClick": 3231,
+      "observerReloadsDuringChange": 0,
+      "result": "PASS",
+      "screenshots": [
+        "05_live_session_start_supervisor_before.png",
+        "06_live_session_start_investigator_before.png",
+        "07_live_session_start_supervisor_after.png",
+        "08_live_session_start_investigator_after.png"
+      ],
+      "note": "hero before: DIGITAL EVIDENCE RECORDING CONTROLLERSECURE BY DESIGN.TRUSTE"
+    },
+    {
+      "change": "Session note",
+      "madeIn": "console 2 INVESTIGATOR (Session Monitor → Session Note)",
+      "seenIn": "console 1 SUPERVISOR (Session Monitor, timeline)",
+      "clickAt": "2026-10-06T03:13:45.252Z",
+      "response": {
+        "status": 204,
+        "sentAt": "2026-10-06T03:13:45.316Z",
+        "respAt": "2026-10-06T03:13:45.335Z"
+      },
+      "core": {
+        "seq": 155,
+        "type": "NOTE_ADDED",
+        "at": "2026-10-06T03:13:45.327Z",
+        "actorId": "OPR-001"
+      },
+      "seenAt": "2026-10-06T03:13:45.351Z",
+      "delayMsFromResponse": 16,
+      "delayMsFromCoreRow": 24,
+      "delayMsFromClick": 99,
+      "observerReloadsDuringChange": 0,
+      "result": "PASS",
+      "screenshots": [
+        "09_live_session_note_supervisor_before.png",
+        "10_live_session_note_investigator_before.png",
+        "11_live_session_note_supervisor_after.png",
+        "12_live_session_note_investigator_after.png"
+      ],
+      "note": ""
+    },
+    {
+      "change": "Session stopped",
+      "madeIn": "console 2 INVESTIGATOR (End Session, hold + confirm)",
+      "seenIn": "console 1 SUPERVISOR (Dashboard, active session panel)",
+      "clickAt": "2026-10-06T03:13:58.800Z",
+      "response": {
+        "status": 202,
+        "sentAt": "2026-10-06T03:13:58.860Z",
+        "respAt": "2026-10-06T03:13:58.877Z"
+      },
+      "core": {
+        "seq": 157,
+        "type": "RECORDING_STOPPED",
+        "at": "2026-10-06T03:13:58.869Z",
+        "actorId": "OPR-001"
+      },
+      "seenAt": "2026-10-06T03:13:59.220Z",
+      "delayMsFromResponse": 343,
+      "delayMsFromCoreRow": 351,
+      "delayMsFromClick": 420,
+      "observerReloadsDuringChange": 0,
+      "result": "PASS",
+      "screenshots": [
+        "13_live_session_stop_supervisor_before.png",
+        "14_live_session_stop_investigator_before.png",
+        "15_live_session_stop_supervisor_after.png",
+        "16_live_session_stop_investigator_after.png"
+      ],
+      "note": ""
+    },
+    {
+      "change": "Dashboard counter \"Sealed evidence today\"",
+      "madeIn": "console 2 INVESTIGATOR (the session it ended was sealed by the Core)",
+      "seenIn": "console 1 SUPERVISOR (Dashboard counter)",
+      "clickAt": "2026-10-06T03:13:58.800Z",
+      "response": null,
+      "core": {
+        "seq": 158,
+        "type": "EVIDENCE_SEALED",
+        "at": "2026-10-06T03:14:06.341Z",
+        "actorId": null
+      },
+      "seenAt": "2026-10-06T03:14:06.607Z",
+      "delayMsFromResponse": null,
+      "delayMsFromCoreRow": 266,
+      "delayMsFromClick": 7807,
+      "observerReloadsDuringChange": 0,
+      "result": "PASS",
+      "screenshots": [
+        "13_live_session_stop_supervisor_before.png",
+        "14_live_session_stop_investigator_before.png",
+        "17_live_dashboard_counter_supervisor_after.png",
+        "18_live_dashboard_counter_investigator_after.png"
+      ],
+      "note": "count 8 → 9; the acting console showed \"Evidence sealed\" at 2026-10-06T03:14:06.528Z; the counter follows the Core's seal (finalization takes about 7 s after the stop by design), so the delay is measured from the EVIDENCE_SEALED row"
+    },
+    {
+      "change": "Evidence review (archive)",
+      "madeIn": "console 1 SUPERVISOR (Evidence detail → More → Archive)",
+      "seenIn": "console 2 INVESTIGATOR (Evidence list row)",
+      "clickAt": "2026-10-06T03:14:18.391Z",
+      "response": {
+        "status": 204,
+        "sentAt": "2026-10-06T03:14:18.474Z",
+        "respAt": "2026-10-06T03:14:18.494Z"
+      },
+      "core": {
+        "seq": 160,
+        "type": "EVIDENCE_ARCHIVED",
+        "at": "2026-10-06T03:14:18.484Z",
+        "actorId": "OPR-002"
+      },
+      "seenAt": "2026-10-06T03:14:18.915Z",
+      "delayMsFromResponse": 421,
+      "delayMsFromCoreRow": 431,
+      "delayMsFromClick": 524,
+      "observerReloadsDuringChange": 0,
+      "result": "PASS",
+      "screenshots": [
+        "19_live_evidence_archive_supervisor_before.png",
+        "20_live_evidence_archive_investigator_before.png",
+        "21_live_evidence_archive_supervisor_after.png",
+        "22_live_evidence_archive_investigator_after.png"
+      ],
+      "note": "row before: EV-20261006-00156 Oct 2026 · 10:13Saksi E2E W2 LiveSaksiLP/2026/1006-0009AKP Budi Santoso00:00:2456.2 MBSealed; after: EV-20261006-00156 Oct 2026 · 10:13Saksi E2E W2 LiveSaksiLP/2026/1006-0009AKP Budi Santoso00:00:2456.2 MBArchived"
+    },
+    {
+      "change": "Storage policy auto-archive (change)",
+      "madeIn": "console 1 SUPERVISOR (Storage → Manage Storage → Apply)",
+      "seenIn": "console 2 INVESTIGATOR (Storage page, policy list)",
+      "clickAt": "2026-10-06T03:14:30.986Z",
+      "response": {
+        "status": 200,
+        "sentAt": "2026-10-06T03:14:31.050Z",
+        "respAt": "2026-10-06T03:14:31.065Z"
+      },
+      "core": {
+        "seq": 161,
+        "type": "STORAGE_POLICY_CHANGED",
+        "at": "2026-10-06T03:14:31.059Z",
+        "actorId": "OPR-002"
+      },
+      "seenAt": "2026-10-06T03:14:31.083Z",
+      "delayMsFromResponse": 18,
+      "delayMsFromCoreRow": 24,
+      "delayMsFromClick": 97,
+      "observerReloadsDuringChange": 0,
+      "result": "PASS",
+      "screenshots": [
+        "23_live_storage_policy_change_supervisor_before.png",
+        "24_live_storage_policy_change_investigator_before.png",
+        "25_live_storage_policy_change_supervisor_after.png",
+        "26_live_storage_policy_change_investigator_after.png"
+      ],
+      "note": "Enabled → Disabled"
+    },
+    {
+      "change": "Storage policy auto-archive (restore)",
+      "madeIn": "console 1 SUPERVISOR (Storage → Manage Storage → Apply)",
+      "seenIn": "console 2 INVESTIGATOR (Storage page, policy list)",
+      "clickAt": "2026-10-06T03:14:43.168Z",
+      "response": {
+        "status": 200,
+        "sentAt": "2026-10-06T03:14:43.237Z",
+        "respAt": "2026-10-06T03:14:43.260Z"
+      },
+      "core": {
+        "seq": 162,
+        "type": "STORAGE_POLICY_CHANGED",
+        "at": "2026-10-06T03:14:43.242Z",
+        "actorId": "OPR-002"
+      },
+      "seenAt": "2026-10-06T03:14:43.277Z",
+      "delayMsFromResponse": 17,
+      "delayMsFromCoreRow": 35,
+      "delayMsFromClick": 109,
+      "observerReloadsDuringChange": 0,
+      "result": "PASS",
+      "screenshots": [
+        "27_live_storage_policy_restore_supervisor_before.png",
+        "28_live_storage_policy_restore_investigator_before.png",
+        "29_live_storage_policy_restore_supervisor_after.png",
+        "30_live_storage_policy_restore_investigator_after.png"
+      ],
+      "note": "Disabled → Enabled"
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "01_live_sign_in_supervisor.png",
+      "caption": "Console 1 SUPERVISOR andi.pratama signed in (ADMINISTRATION group visible)"
+    },
+    {
+      "file": "02_live_sign_in_investigator.png",
+      "caption": "Console 2 INVESTIGATOR budi.santoso signed in (no ADMINISTRATION group)"
+    },
+    {
+      "file": "03_live_audit_access_denied_supervisor.png",
+      "caption": "SUPERVISOR: Security & Audit, audit log searched for \"Access denied\": the refusals of Part A (INVESTIGATOR and TECHNICIAN)"
+    },
+    {
+      "file": "04_live_audit_export_denied_supervisor.png",
+      "caption": "SUPERVISOR: Security & Audit, audit log searched for \"Export denied\": the two Export wizard attempts of Part A"
+    },
+    {
+      "file": "05_live_session_start_supervisor_before.png",
+      "caption": "SUPERVISOR Dashboard before the start (active session panel: setup)"
+    },
+    {
+      "file": "06_live_session_start_investigator_before.png",
+      "caption": "INVESTIGATOR ready to press Start"
+    },
+    {
+      "file": "07_live_session_start_supervisor_after.png",
+      "caption": "SUPERVISOR Dashboard after the start, no reload: active session panel RECORDING"
+    },
+    {
+      "file": "08_live_session_start_investigator_after.png",
+      "caption": "INVESTIGATOR after Start (countdown, then recording)"
+    },
+    {
+      "file": "09_live_session_note_supervisor_before.png",
+      "caption": "SUPERVISOR Session Monitor before the note"
+    },
+    {
+      "file": "10_live_session_note_investigator_before.png",
+      "caption": "INVESTIGATOR note drawer with \"E2E-W2 live note 03:13:43\" typed"
+    },
+    {
+      "file": "11_live_session_note_supervisor_after.png",
+      "caption": "SUPERVISOR Session Monitor after the note, no reload: the timeline shows \"E2E-W2 live note 03:13:43\""
+    },
+    {
+      "file": "12_live_session_note_investigator_after.png",
+      "caption": "INVESTIGATOR after Submit (\"Note added\")"
+    },
+    {
+      "file": "13_live_session_stop_supervisor_before.png",
+      "caption": "SUPERVISOR Dashboard before the stop (RECORDING; sealed today 8)"
+    },
+    {
+      "file": "14_live_session_stop_investigator_before.png",
+      "caption": "INVESTIGATOR End Session dialog"
+    },
+    {
+      "file": "15_live_session_stop_supervisor_after.png",
+      "caption": "SUPERVISOR Dashboard after the stop, no reload: active session panel FINALIZING/SEALED"
+    },
+    {
+      "file": "16_live_session_stop_investigator_after.png",
+      "caption": "INVESTIGATOR finalization after End Session"
+    },
+    {
+      "file": "17_live_dashboard_counter_supervisor_after.png",
+      "caption": "SUPERVISOR Dashboard, no reload: Sealed evidence today 8 → 9"
+    },
+    {
+      "file": "18_live_dashboard_counter_investigator_after.png",
+      "caption": "INVESTIGATOR: Evidence sealed (finalization done)"
+    },
+    {
+      "file": "19_live_evidence_archive_supervisor_before.png",
+      "caption": "SUPERVISOR evidence EV-20261006-0015, More menu open (Archive enabled: EVIDENCE_REVIEW)"
+    },
+    {
+      "file": "20_live_evidence_archive_investigator_before.png",
+      "caption": "INVESTIGATOR Evidence list before the review: EV-20261006-0015 Sealed"
+    },
+    {
+      "file": "21_live_evidence_archive_supervisor_after.png",
+      "caption": "SUPERVISOR after Archive (op 43): EV-20261006-0015 Archived"
+    },
+    {
+      "file": "22_live_evidence_archive_investigator_after.png",
+      "caption": "INVESTIGATOR Evidence list, no reload: EV-20261006-0015 Archived"
+    },
+    {
+      "file": "23_live_storage_policy_change_supervisor_before.png",
+      "caption": "SUPERVISOR Manage Storage, auto-archive switched (change)"
+    },
+    {
+      "file": "24_live_storage_policy_change_investigator_before.png",
+      "caption": "INVESTIGATOR Storage page before: auto-archive Enabled"
+    },
+    {
+      "file": "25_live_storage_policy_change_supervisor_after.png",
+      "caption": "SUPERVISOR after Apply (op 55, change)"
+    },
+    {
+      "file": "26_live_storage_policy_change_investigator_after.png",
+      "caption": "INVESTIGATOR Storage page, no reload: auto-archive Enabled → Disabled"
+    },
+    {
+      "file": "27_live_storage_policy_restore_supervisor_before.png",
+      "caption": "SUPERVISOR Manage Storage, auto-archive switched (restore)"
+    },
+    {
+      "file": "28_live_storage_policy_restore_investigator_before.png",
+      "caption": "INVESTIGATOR Storage page before: auto-archive Disabled"
+    },
+    {
+      "file": "29_live_storage_policy_restore_supervisor_after.png",
+      "caption": "SUPERVISOR after Apply (op 55, restore)"
+    },
+    {
+      "file": "30_live_storage_policy_restore_investigator_after.png",
+      "caption": "INVESTIGATOR Storage page, no reload: auto-archive Disabled → Enabled"
+    },
+    {
+      "file": "31_live_signed_out_supervisor.png",
+      "caption": "SUPERVISOR console signed out (own session), Login page"
+    },
+    {
+      "file": "32_live_signed_out_investigator.png",
+      "caption": "INVESTIGATOR console signed out (own session), Login page"
+    }
+  ],
+  "signOut": {
+    "supervisor": {
+      "at": "2026-10-06T03:14:48.870Z",
+      "loginShown": true,
+      "sessionAfter": 401,
+      "screenshot": "31_live_signed_out_supervisor.png"
+    },
+    "investigator": {
+      "at": "2026-10-06T03:14:55.496Z",
+      "loginShown": true,
+      "sessionAfter": 401,
+      "screenshot": "32_live_signed_out_investigator.png"
+    }
+  },
+  "preconditions": {
+    "tabletLink": "CONNECTED",
+    "currentSession": {
+      "id": "SES-20261006-0024",
+      "state": "SEALED"
+    },
+    "precheck": {
+      "settled": true,
+      "phase": "pass",
+      "blocked": null
+    }
+  },
+  "sealedEvidence": "EV-20261006-0015",
+  "archivedEvidence": "EV-20261006-0015",
+  "endedAt": "2026-10-06T03:14:57.888Z"
+}

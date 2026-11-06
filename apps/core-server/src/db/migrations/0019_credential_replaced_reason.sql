@@ -1,0 +1,4 @@
+ALTER TABLE "auth_sessions" DROP CONSTRAINT "auth_sessions_end_reason_check";--> statement-breakpoint
+ALTER TABLE "biometric_tokens" DROP CONSTRAINT "biometric_tokens_revoke_check";--> statement-breakpoint
+ALTER TABLE "auth_sessions" ADD CONSTRAINT "auth_sessions_end_reason_check" CHECK ("auth_sessions"."end_reason" IS NULL OR "auth_sessions"."end_reason" IN ('SIGNED_OUT', 'IDLE_EXPIRED', 'ABSOLUTE_EXPIRED', 'ROTATED', 'USER_DISABLED', 'DEVICE_REVOKED', 'DEVICE_UNPAIRED', 'TOKEN_REUSE', 'CREDENTIAL_REPLACED'));--> statement-breakpoint
+ALTER TABLE "biometric_tokens" ADD CONSTRAINT "biometric_tokens_revoke_check" CHECK (("biometric_tokens"."revoked_at" IS NULL) = ("biometric_tokens"."revoke_reason" IS NULL) AND ("biometric_tokens"."revoke_reason" IS NULL OR "biometric_tokens"."revoke_reason" IN ('DISABLED', 'REENROLLED', 'TOKEN_REUSE', 'DEVICE_REVOKED', 'DEVICE_UNPAIRED', 'USER_DISABLED', 'CREDENTIAL_REPLACED')));

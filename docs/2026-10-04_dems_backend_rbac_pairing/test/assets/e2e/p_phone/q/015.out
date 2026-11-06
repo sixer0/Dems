@@ -1,0 +1,12 @@
+09:56:32.131 mark a09 at 09:56:32.131
+09:56:33.078 tap 540,499
+09:56:34.963 slept 2500 ms
+09:56:37.733 declared screen device-detail
+09:56:37.819 screencap 11_device_detail_cam01.png 09:56:37.819..09:56:39.628
+09:56:40.163 ids(18): screen-device-detail@540,1102 ; device-detail-screen@540,1173 ; device-detail-back@95,216 "Back to Devices" ; device-detail-scroll@540,1137 ; device-detail-feed@540,569 "Live preview, Camera 1" ; device-detail-status-pulse@154,918 ; device-detail-status@154,918 "Online" ; device-detail-id@980,918 "CAM-01" ; device-tab-overview@177,1052 "Overview" ; device-tab-health@411,1052 "Health" ; device-tab-log@589,1052 "Log" ; device-overview@540,1577 ; device-fact-port@540,1791 "Port, PoE CAM 1" ; device-detail-actions@540,2063 ; device-action-diagnostics@200,2069 "Run diagnostics" ; device-action-test-signal@538,2069 "Test signal" ; device-action-restart@878,2069 "Restart" ; device-restart-hint@540,2173 "Requires the Technician role"
+09:56:47.646 swipe 540,1900,540,800 600 ms
+09:56:48.559 slept 1500 ms
+09:56:50.155 screencap 11b_device_detail_cam01_scrolled.png 09:56:50.155..09:56:51.398
+09:56:51.683 ids(18): screen-device-detail@540,1102 ; device-detail-screen@540,1173 ; device-detail-back@95,216 "Back to Devices" ; device-detail-scroll@540,1137 ; device-detail-feed@540,393 "Live preview, Camera 1" ; device-detail-status-pulse@154,566 ; device-detail-status@154,566 "Online" ; device-detail-id@980,566 "CAM-01" ; device-tab-overview@177,700 "Overview" ; device-tab-health@411,700 "Health" ; device-tab-log@589,700 "Log" ; device-overview@540,1370 ; device-fact-port@540,1439 "Port, PoE CAM 1" ; device-detail-actions@540,2063 ; device-action-diagnostics@200,2069 "Run diagnostics" ; device-action-test-signal@538,2069 "Test signal" ; device-action-restart@878,2069 "Restart" ; device-restart-hint@540,2173 "Requires the Technician role"
+09:56:54.416 serverlog since a09 (1):
+    09:56:39.377 POST /api/v1/auth/touch 200 operator:OPR-001

@@ -1,0 +1,11 @@
+13:14:02.981 nav /session load=true
+13:14:06.120 wait page-session-monitor present: 0 ms (at 13:14:06.120)
+13:14:06.145 js => "RECORDING"
+13:14:06.172 press sm-action-end ok at 13:14:06.192
+13:14:06.223 wait sm-end-dialog present: 1 ms (at 13:14:06.224)
+13:14:06.255 slept 600 ms
+13:14:06.879 type into [data-testid="sm-end-reason"]: "RP web stop repeat"
+13:14:06.912 slept 500 ms
+13:14:07.441 screenshot 77_p4b_web_end_dialog.png 13:14:07.441..13:14:07.564
+13:14:07.595 declared screen live
+13:14:07.620 screencap 78_p4b_phone_monitor_before_stop.png 13:14:07.620..13:14:07.918

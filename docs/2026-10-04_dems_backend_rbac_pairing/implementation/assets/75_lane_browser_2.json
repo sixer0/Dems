@@ -1,0 +1,532 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+    "headless": true
+  },
+  "viewport": "1920x1080",
+  "steps": {
+    "livePage": {
+      "loginCoreMode": "LIVE",
+      "signedIn": true,
+      "shown": true,
+      "coreStatus": {
+        "status": 200,
+        "posture": "SECURE",
+        "tamper": false,
+        "auditTotal": 151,
+        "auditHead": "50b5b680dc70d97a",
+        "securityKeys": [
+          "state",
+          "posture",
+          "tpm",
+          "secureBoot",
+          "encryption",
+          "hashAlgorithm",
+          "tamper",
+          "controls",
+          "keys"
+        ],
+        "securityFlags": {
+          "state": "READY",
+          "posture": "SECURE",
+          "secureBoot": true,
+          "encryption": "AES-256-GCM",
+          "hashAlgorithm": "SHA-256",
+          "tamper": false
+        }
+      },
+      "facts": {
+        "href": "http://127.0.0.1:5178/security-audit",
+        "onPage": true,
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "bannerState": "SECURE",
+        "banner": "SECURITY POSTURE SECURE9 of 9 controls active • Audit chain intact",
+        "posture": "SECURE",
+        "controls": [
+          "TPM:OK",
+          "SECURE_BOOT:OK",
+          "KEY_CUSTODY:OK",
+          "ENCRYPTION:OK",
+          "SIGNATURE:OK",
+          "HASH_CHAIN:OK",
+          "SECURE_TIMESTAMP:OK",
+          "TAMPER:OK",
+          "SIGNED_FIRMWARE:OK"
+        ],
+        "chainStatus": "PASS",
+        "chainStatusText": "151 entries linkedVerify chain",
+        "verified": null,
+        "verifiedText": null,
+        "stored": null,
+        "storedState": null,
+        "earlier": null,
+        "earlierEntries": [],
+        "auditCount": "151 of 151 entries",
+        "matrixSource": "core",
+        "matrixRows": 13,
+        "matrixState": "table",
+        "rbacSubtitle": "Operators of the Core and what each role may do, as the Core server enforces it",
+        "operators": [
+          "OPR-001",
+          "OPR-002",
+          "OPR-003"
+        ],
+        "authFeed": [],
+        "exportButtonDisabled": false,
+        "dialog": false,
+        "dialogText": null,
+        "result": null,
+        "fileRows": null,
+        "pages": null,
+        "saysSimulated": true,
+        "simulatedWords": [
+          " a99fac18121c7dec…TLS server certificateSIMULATED298 days leftECDSA P-256SHA-",
+          "cutor request • To: Case file transfer (simulated) • Package EXP-000031 • SHA"
+        ],
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/75_security_audit_live.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/rbac/matrix",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/security/status",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 79,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          },
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 155,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "shellPill": {
+      "pill": "ATTENTIONSome checks need attention",
+      "checks": [
+        "OK | Evidence encryption (AES-256-GCM)OK",
+        "OK | Audit hash chain (SHA-256)OK",
+        "OK | TPM 2.0 and Secure BootOK",
+        "OK | Enclosure tamper sealOK",
+        "OK | Trusted time sourceOK",
+        "OK | Evidence storageOK",
+        "OK | Cameras and microphonesOK",
+        "OK | Recording pipelineOK",
+        "ATTENTION | Operator tablet linkNeeds attention"
+      ],
+      "tabletLink": {
+        "status": 404
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/75_shell_pill_live.png"
+    },
+    "liveMatrix": {
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/75_rbac_matrix_live.png"
+    },
+    "verify": {
+      "verifiedShown": true,
+      "facts": {
+        "verified": "PASS",
+        "verifiedText": "PASSVerified 151 entries at 01:43:13",
+        "stored": "Stored chain: verified, 151 rows",
+        "storedState": "PASS",
+        "earlier": null,
+        "chainStatus": "PASS"
+      },
+      "coreChainStatusByPageRequest": {
+        "status": 200,
+        "view": {
+          "ok": true,
+          "checked": 151,
+          "head": "50b5b680dc70d97a5589804de662e6f0fa2162abaaed4206540201bdd8c24338"
+        },
+        "stored": {
+          "ok": true,
+          "checked": 151,
+          "head": "50b5b680dc70d97a",
+          "firstBadSeq": null
+        },
+        "lineageTotal": 0,
+        "lineage": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/75_chain_verified_live.png",
+      "lineage": null,
+      "network": {
+        "api": [
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/devices",
+            "status": 404
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/audit/chain",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/audit/chain",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "export": {
+      "dialogShown": true,
+      "dialog": {
+        "destinationLine": "Export Audit LogThe Core records the export as a new chain-of-custody event. The file is built here from the Core’s audit list: 151 entries.Reason for exportW75 lane check of the audit export fileRequired for the chain of custody. At least 5 characters.Destination: A file downloaded to this computerCancelExport",
+        "saysSimulated": false
+      },
+      "dialogScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/75_export_dialog_live.png",
+      "accepted": true,
+      "resultShown": true,
+      "facts": {
+        "result": "Export IDEXP-000033Entries151Chain head50b5b680dc70d97a…Chain at exportPASSReasonW75 lane check of the audit export fileRecorded by the Core in the audit row of the export.Filedems-audit-EXP-000033.jsonDownload again",
+        "fileRows": "151",
+        "toasts": [
+          "Audit export accepted by the CoreExport EXP-000033 with 151 entries."
+        ]
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/75_export_live.png",
+      "coreStatusBefore": {
+        "status": 200,
+        "posture": "SECURE",
+        "tamper": false,
+        "auditTotal": 151,
+        "auditHead": "50b5b680dc70d97a",
+        "securityKeys": [
+          "state",
+          "posture",
+          "tpm",
+          "secureBoot",
+          "encryption",
+          "hashAlgorithm",
+          "tamper",
+          "controls",
+          "keys"
+        ],
+        "securityFlags": {
+          "state": "READY",
+          "posture": "SECURE",
+          "secureBoot": true,
+          "encryption": "AES-256-GCM",
+          "hashAlgorithm": "SHA-256",
+          "tamper": false
+        }
+      },
+      "coreStatusAfter": {
+        "status": 200,
+        "posture": "SECURE",
+        "tamper": false,
+        "auditTotal": 152,
+        "auditHead": "34b9a54a52530091",
+        "securityKeys": [
+          "state",
+          "posture",
+          "tpm",
+          "secureBoot",
+          "encryption",
+          "hashAlgorithm",
+          "tamper",
+          "controls",
+          "keys"
+        ],
+        "securityFlags": {
+          "state": "READY",
+          "posture": "SECURE",
+          "secureBoot": true,
+          "encryption": "AES-256-GCM",
+          "hashAlgorithm": "SHA-256",
+          "tamper": false
+        }
+      },
+      "file": {
+        "name": "dems-audit-EXP-000032.json",
+        "bytes": 80715,
+        "sha256": "759ae56d02ee20deb0eff70be8b55350c3072179b2e33e7d66983ed946806a9b",
+        "kind": "dems-audit-export",
+        "exportId": "EXP-000032",
+        "rows": 140,
+        "firstSeq": 1,
+        "lastSeq": 140,
+        "contiguous": true,
+        "chain": {
+          "rows": 140,
+          "head": "94b19a13d2d239e9"
+        },
+        "containsAuditExported": false
+      },
+      "exportRowOnTheCore": {
+        "seq": 152,
+        "actorId": "OPR-002",
+        "exportId": "EXP-000033",
+        "detailsRows": 151,
+        "prevHash": "50b5b680dc70d97a",
+        "reasonRecorded": true,
+        "destination": "Audit archive (simulated)"
+      },
+      "network": {
+        "api": [
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/security/status",
+            "status": 200
+          },
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/audit/export",
+            "status": 202
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/audit?…",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/security/status",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/audit?…",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "simulated": {
+      "signOutOfLive": {
+        "status": 204,
+        "loginShown": true
+      },
+      "loginCoreMode": "SIMULATED",
+      "signInPath": "stored simulated sign-in (dems.auth), F63-3",
+      "pageShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/security-audit",
+        "onPage": true,
+        "shellMode": "SIMULATED",
+        "shellCoreMode": "SIMULATED",
+        "bannerState": "SECURE",
+        "banner": "SECURITY POSTURE SECURE9 of 9 controls active • Audit chain intact",
+        "posture": "SECURE",
+        "controls": [
+          "TPM:OK",
+          "SECURE_BOOT:OK",
+          "KEY_CUSTODY:OK",
+          "ENCRYPTION:OK",
+          "SIGNATURE:OK",
+          "HASH_CHAIN:OK",
+          "SECURE_TIMESTAMP:OK",
+          "TAMPER:OK",
+          "SIGNED_FIRMWARE:OK"
+        ],
+        "chainStatus": "PASS",
+        "chainStatusText": "82 entries linkedVerify chain",
+        "verified": "PASS",
+        "verifiedText": "PASSVerified 82 entries at 01:43:34",
+        "stored": null,
+        "storedState": null,
+        "earlier": null,
+        "earlierEntries": [],
+        "auditCount": "82 of 82 entries",
+        "matrixSource": null,
+        "matrixRows": 10,
+        "matrixState": "table",
+        "rbacSubtitle": "Demo operators and what each role may do",
+        "operators": [
+          "OPR-001",
+          "OPR-002",
+          "OPR-003"
+        ],
+        "authFeed": [],
+        "exportButtonDisabled": false,
+        "dialog": false,
+        "dialogText": null,
+        "result": null,
+        "fileRows": null,
+        "pages": null,
+        "saysSimulated": true,
+        "simulatedWords": [
+          "56789Device IDDEMS-IR-01Interview Room 1SIMULATEDAPLogged in asAKP Andi Prata",
+          " a99fac18121c7dec…TLS server certificateSIMULATED300 days leftECDSA P-256SHA-",
+          "cutor request • To: Case file transfer (simulated) • Package EXP-000031 • SHA",
+          "MS-IR-01, Interview Room 1   Data mode: SIMULATED   Notifications   Account m"
+        ],
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/75_security_audit_simulated.png",
+      "topScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/75_security_audit_simulated_top.png",
+      "apiRequestsToTheDevServer": 0,
+      "socketsToTheDevServerWs": 0,
+      "network": {
+        "api": [],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          }
+        ],
+        "console": []
+      }
+    }
+  },
+  "elapsedSeconds": 41
+}

@@ -1,0 +1,15 @@
+13:09:51.743 mark g01 at 13:09:51.743
+13:09:51.811 declared screen blank
+13:09:51.862 force-stopped the app
+13:09:52.173 slept 1500 ms
+13:09:53.804 deep link demsdemo:///login?core=LIVE&motion=off
+13:10:05.773 slept 15000 ms
+13:10:20.885 declared screen login
+13:10:20.943 screencap 69_relaunch_after_crash_login.png 13:10:20.943..13:10:22.451
+13:10:22.572 jslog (1): 13:10:06.550   message: 'Live source ready',
+13:10:22.679 warnlog since 10-06 13:09:51.000 (1): 10-06 13:10:04.816 20753 20789 W ReactNativeJS: [Reanimated] Reduced motion setting is overwritten with mode 'always'.
+13:10:22.780 serverlog since g01 (4):
+    13:10:05.427 [socket opened]
+    13:10:05.457 GET /api/v1/auth/session 401 NOT_SIGNED_IN
+    13:10:05.467 GET /api/v1/pairing/device 200
+    13:10:05.472 GET /api/v1/auth/status 200

@@ -1,0 +1,80 @@
+
+> @dems/core-web@0.1.0 test
+> vitest run --maxWorkers=2 src/test/live-strict-mode-starts.test.tsx
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-web
+
+Not implemented: Window's scrollTo() method
+stderr | src/test/live-strict-mode-starts.test.tsx > Session New resume, Simulated: the B-6 resume effect starts ONE pre-check under StrictMode > a session left in CREATE, the page opened at step 2: one `beginPrecheck`, no failure toast, the gate runs
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.beginPrecheck.resume',
+  message: 'Start New Session: the step "beginPrecheck.resume" did not complete.',
+  stack: '    at requireSession (/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/session-machine.ts:139:11)\n' +
+    '    at beginPrecheckTransition (/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/session-machine.ts:523:19)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/actions.ts:150:49\n' +
+    '    at commit (/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/actions.ts:117:18)\n' +
+    '    at Object.beginPrecheck (/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/actions.ts:150:26)\n' +
+    '    at Object.<anonymous> (/Users/gsp-budi/Documents/DEMS/apps/core-web/src/test/live-strict-mode-starts.test.tsx:85:9)\n' +
+    '    at Object.beginPrecheck (file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n' +
+    '    at fail.sessionId (/Users/gsp-budi/Documents/DEMS/apps/core-web/src/features/session-new/index.tsx:232:26)\n' +
+    '    at settle (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/settle.ts:80:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/apps/core-web/src/features/session-new/index.tsx:232:5',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvhmtlq-1',
+    errorClass: 'SimTransitionError',
+    code: 'ILLEGAL_STATE'
+  },
+  at: 1791219149978
+}
+TypeError: element.scrollTo is not a function
+    at Object.fn (file:///Users/gsp-budi/Documents/DEMS/node_modules/@tanstack/router-core/dist/esm/scroll-restoration.js:182:82)
+    at RouterCore.emit (file:///Users/gsp-budi/Documents/DEMS/node_modules/@tanstack/router-core/dist/esm/router.js:178:14)
+    at file:///Users/gsp-budi/Documents/DEMS/node_modules/@tanstack/router-core/dist/esm/load-client.js:951:46
+    at Router.batch (file:///Users/gsp-budi/Documents/DEMS/node_modules/@tanstack/store/dist/atom.js:38:3)
+    at file:///Users/gsp-budi/Documents/DEMS/node_modules/@tanstack/router-core/dist/esm/load-client.js:944:10
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at runClientTransaction (file:///Users/gsp-budi/Documents/DEMS/node_modules/@tanstack/router-core/dist/esm/load-client.js:916:2)
+    at loadClientRoute (file:///Users/gsp-budi/Documents/DEMS/node_modules/@tanstack/router-core/dist/esm/load-client.js:1045:2)
+    at RouterCore.load (file:///Users/gsp-budi/Documents/DEMS/node_modules/@tanstack/router-core/dist/esm/router.js:488:4)
+
+ ❯ src/test/live-strict-mode-starts.test.tsx (1 test | 1 failed) 473ms
+   ❯ Session New resume, Simulated: the B-6 resume effect starts ONE pre-check under StrictMode (1)
+     × a session left in CREATE, the page opened at step 2: one `beginPrecheck`, no failure toast, the gate runs 472ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/test/live-strict-mode-starts.test.tsx > Session New resume, Simulated: the B-6 resume effect starts ONE pre-check under StrictMode > a session left in CREATE, the page opened at step 2: one `beginPrecheck`, no failure toast, the gate runs
+AssertionError: expected 2 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ src/test/live-strict-mode-starts.test.tsx:93:19
+     91|     // Well past the one task the start waits: still one.
+     92|     await new Promise((resolve) => setTimeout(resolve, 50))
+     93|     expect(calls).toBe(1)
+       |                   ^
+     94|     expect(toastsWith(en.sessionNew.errors.precheck)).toHaveLength(0)
+     95|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  23:52:28
+   Duration  1.50s (tests 33%, transform 30%, import 21%, environment 12%, setup 4%)
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-web
+npm error workspace @dems/core-web@0.1.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-web
+npm error command failed
+npm error command sh -c vitest run --maxWorkers=2 src/test/live-strict-mode-starts.test.tsx

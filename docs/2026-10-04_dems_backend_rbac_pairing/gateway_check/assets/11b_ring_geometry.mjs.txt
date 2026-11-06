@@ -1,0 +1,85 @@
+// FX-W: where would each state word's ink sit in the Dashboard ring at full display size (32 px)?
+// Read-only: measures the live page's ring and word position, and canvas ink metrics of each word.
+import { writeFileSync } from 'node:fs'
+import { launch, openPage, signIn, signOut, sleep } from './cdp.mjs'
+
+const out = process.argv[2]
+const lines = []
+const log = (line) => {
+  const stamped = `${new Date().toISOString()} ${line}`
+  lines.push(stamped)
+  console.log(stamped)
+}
+process.on('unhandledRejection', (error) => log(`unhandled: ${error?.message ?? error}`))
+
+const geometry = () => {
+  const ring = document.querySelector('[data-testid="glow-ring"]')
+  const word = ring.querySelector('[data-ring-word]') ?? [...ring.querySelectorAll('[data-ring-center] span')].find((span) => /font-display/.test(span.className))
+  const ringBox = ring.getBoundingClientRect()
+  const wordBox = word.getBoundingClientRect()
+  const size = ringBox.width
+  const cx = ringBox.left + size / 2
+  const cy = ringBox.top + size / 2
+  const edge = ((74 - 1.25) / 200) * size // inner edge of the inner ring's stroke
+  const canvas = document.createElement('canvas').getContext('2d')
+  const style = getComputedStyle(word)
+  const result = {}
+  for (const text of ['READY', 'ATTENTION', 'CRITICAL', 'UNKNOWN']) {
+    canvas.font = `700 32px ${style.fontFamily}`
+    canvas.letterSpacing = '0.32px'
+    const metrics = canvas.measureText(text)
+    const inkWidth = metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight
+    // The line box (32 px, leading none) centred where the word's box is centred now.
+    const lineCentre = wordBox.top + wordBox.height / 2
+    const fontHeight = metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent
+    const baseline = lineCentre - 16 + (32 - fontHeight) / 2 + metrics.fontBoundingBoxAscent
+    const inkTop = baseline - metrics.actualBoundingBoxAscent
+    const inkBottom = baseline + metrics.actualBoundingBoxDescent
+    const left = cx - inkWidth / 2
+    const right = cx + inkWidth / 2
+    const corners = [
+      [left, inkTop],
+      [right, inkTop],
+      [left, inkBottom],
+      [right, inkBottom],
+    ]
+    const clearance = Math.min(...corners.map(([x, y]) => edge - Math.hypot(x - cx, y - cy)))
+    // Layout-box test (what RingWord measures): the box's width at 32 px and its reach from the centre.
+    const boxReach = Math.max(Math.abs(lineCentre - 16 - cy), Math.abs(lineCentre + 16 - cy))
+    result[text] = {
+      inkWidth: Math.round(inkWidth * 10) / 10,
+      inkTopFromCentre: Math.round((inkTop - cy) * 10) / 10,
+      inkBottomFromCentre: Math.round((inkBottom - cy) * 10) / 10,
+      inkCornerClearancePx: Math.round(clearance * 10) / 10,
+      boxReachPx: Math.round(boxReach * 10) / 10,
+    }
+  }
+  return { size: Math.round(size), edge: Math.round(edge * 10) / 10, wordBoxTopFromCentre: Math.round(wordBox.top - cy), wordBoxBottomFromCentre: Math.round(wordBox.bottom - cy), words: result }
+}
+
+const browser = await launch(log)
+const results = {}
+try {
+  const page = await openPage(browser.cdp, log)
+  await page.viewport(1440, 900)
+  await signIn(page, log)
+  await sleep(5000)
+  results.w1440 = await page.eval(geometry)
+  log(`1440: ${JSON.stringify(results.w1440)}`)
+  await page.viewport(390, 844)
+  await page.goto('/dashboard')
+  await page.waitFor(() => !!document.querySelector('[data-testid="glow-ring"]'), 15000)
+  await sleep(5000)
+  results.w390 = await page.eval(geometry)
+  log(`390: ${JSON.stringify(results.w390)}`)
+  await page.viewport(1920, 1080)
+  await page.goto('/dashboard')
+  await page.waitFor(() => !!document.querySelector('[data-testid="glow-ring"]'), 15000)
+  await sleep(5000)
+  results.w1920 = await page.eval(geometry)
+  log(`1920: ${JSON.stringify(results.w1920)}`)
+  await signOut(page, log)
+} finally {
+  await browser.close()
+  if (out) writeFileSync(out, `${lines.join('\n')}\n`)
+}

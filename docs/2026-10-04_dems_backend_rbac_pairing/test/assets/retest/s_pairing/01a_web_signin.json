@@ -1,0 +1,166 @@
+{
+  "at": "12:48:00.210 (epoch 1791265680.210)",
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "coreMode": "LIVE",
+  "submitAt": "12:47:53.444 (epoch 1791265673.444)",
+  "dashboard": true,
+  "sidebarLink": true,
+  "pageShown": true,
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "table",
+    "rows": [
+      {
+        "id": "DEV-0002",
+        "state": "Paired",
+        "online": "Online",
+        "operator": "—",
+        "lastSeen": "1 min ago",
+        "revokeShown": true
+      },
+      {
+        "id": "DEV-0001",
+        "state": "Revoked",
+        "online": "Offline",
+        "operator": "—",
+        "lastSeen": "2 h ago",
+        "revokeShown": false
+      }
+    ],
+    "summary": {
+      "paired": "1",
+      "online": "1",
+      "text": "1 paired · 1 online1 paired · 1 online"
+    },
+    "toasts": []
+  },
+  "registry": {
+    "status": 200,
+    "devices": [
+      {
+        "id": "DEV-0002",
+        "state": "PAIRED",
+        "online": true,
+        "signedInOperatorId": null,
+        "revokedAt": null
+      },
+      {
+        "id": "DEV-0001",
+        "state": "REVOKED",
+        "online": false,
+        "signedInOperatorId": null,
+        "revokedAt": "2026-10-06T03:08:24.580Z"
+      }
+    ]
+  },
+  "screenshot": {
+    "file": "01_web_paired_devices_before.png",
+    "at": "12:48:00.186 (epoch 1791265680.186)"
+  },
+  "network": {
+    "api": [
+      {
+        "sent": "12:47:50.096 (epoch 1791265670.096)",
+        "method": "GET",
+        "path": "/api/v1/auth/session",
+        "status": 401,
+        "done": "12:47:50.104 (epoch 1791265670.104)"
+      },
+      {
+        "sent": "12:47:50.104 (epoch 1791265670.104)",
+        "method": "GET",
+        "path": "/api/v1/auth/status",
+        "status": 200,
+        "done": "12:47:50.110 (epoch 1791265670.110)"
+      },
+      {
+        "sent": "12:47:50.337 (epoch 1791265670.337)",
+        "method": "GET",
+        "path": "/api/v1/health",
+        "status": 200,
+        "done": "12:47:50.392 (epoch 1791265670.392)"
+      },
+      {
+        "sent": "12:47:53.524 (epoch 1791265673.524)",
+        "method": "POST",
+        "path": "/api/v1/auth/sign-in",
+        "status": 200,
+        "done": "12:47:53.593 (epoch 1791265673.593)"
+      },
+      {
+        "sent": "12:47:57.338 (epoch 1791265677.338)",
+        "method": "GET",
+        "path": "/api/v1/pairing/code",
+        "status": 200,
+        "done": "12:47:57.352 (epoch 1791265677.352)"
+      },
+      {
+        "sent": "12:47:57.338 (epoch 1791265677.338)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "12:47:57.360 (epoch 1791265677.360)"
+      },
+      {
+        "sent": "12:48:00.192 (epoch 1791265680.192)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "12:48:00.205 (epoch 1791265680.205)"
+      }
+    ],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [
+      {
+        "url": "ws://127.0.0.1:5173/?…",
+        "status": 101,
+        "frames": 2,
+        "types": [
+          "connected",
+          "full-reload"
+        ]
+      },
+      {
+        "url": "ws://127.0.0.1:5173/?…",
+        "status": 101,
+        "frames": 1,
+        "types": [
+          "connected"
+        ]
+      },
+      {
+        "url": "ws://127.0.0.1:5173/ws",
+        "status": 101,
+        "frames": 6,
+        "types": [
+          "heartbeat",
+          "hello"
+        ]
+      },
+      {
+        "url": "ws://127.0.0.1:5173/ws",
+        "status": 101,
+        "frames": 144,
+        "types": [
+          "delta",
+          "heartbeat",
+          "hello",
+          "meters",
+          "snapshot"
+        ]
+      }
+    ],
+    "console": []
+  }
+}

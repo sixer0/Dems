@@ -1,0 +1,5 @@
+mark sign out budi at 12:56:46.795
+tap 1862,453 at 12:56:46.879
+signout 204 (10-06 12:56:48.575 POST /api/v1/auth/sign-out 204)
+slept 3500 ms
+screencap R2_a_signed_out_login.png (3256540 bytes) at 12:56:54.269

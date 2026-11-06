@@ -1,0 +1,158 @@
+{
+  "at": "13:12:19.080 (epoch 1791267139.080)",
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "table",
+    "rows": [
+      {
+        "id": "DEV-0003",
+        "state": "Paired",
+        "online": "Online",
+        "operator": "—",
+        "lastSeen": "3 min ago",
+        "revokeShown": true
+      },
+      {
+        "id": "DEV-0002",
+        "state": "Revoked",
+        "online": "Offline",
+        "operator": "—",
+        "lastSeen": "25 min ago",
+        "revokeShown": false
+      },
+      {
+        "id": "DEV-0001",
+        "state": "Revoked",
+        "online": "Offline",
+        "operator": "—",
+        "lastSeen": "3 h ago",
+        "revokeShown": false
+      }
+    ],
+    "summary": {
+      "paired": "1",
+      "online": "1",
+      "text": "1 paired · 1 online1 paired · 1 online"
+    },
+    "toasts": []
+  },
+  "registry": {
+    "status": 200,
+    "devices": [
+      {
+        "id": "DEV-0003",
+        "state": "PAIRED",
+        "online": true,
+        "signedInOperatorId": null,
+        "revokedAt": null
+      },
+      {
+        "id": "DEV-0002",
+        "state": "REVOKED",
+        "online": false,
+        "signedInOperatorId": null,
+        "revokedAt": "2026-10-06T05:49:21.176Z"
+      },
+      {
+        "id": "DEV-0001",
+        "state": "REVOKED",
+        "online": false,
+        "signedInOperatorId": null,
+        "revokedAt": "2026-10-06T03:08:24.580Z"
+      }
+    ]
+  },
+  "documentTimeOrigin": 1791265669672.8,
+  "screenshot": {
+    "file": "05_web_operator_cleared.png",
+    "at": "13:12:19.059 (epoch 1791267139.059)"
+  },
+  "audit": {
+    "AUTH_SIGNED_OUT": {
+      "status": 200,
+      "total": 182,
+      "rows": [
+        {
+          "seq": 182,
+          "id": "AUD-000182",
+          "at": "2026-10-06T06:08:23.168Z",
+          "atMs": 1791266903168,
+          "type": "AUTH_SIGNED_OUT",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": "DEV-0003",
+          "sessionId": null,
+          "message": "Operator signed out",
+          "details": {
+            "reason": "USER"
+          }
+        },
+        {
+          "seq": 170,
+          "id": "AUD-000170",
+          "at": "2026-10-06T03:18:04.735Z",
+          "atMs": 1791256684735,
+          "type": "AUTH_SIGNED_OUT",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed out",
+          "details": {
+            "reason": "USER"
+          }
+        },
+        {
+          "seq": 169,
+          "id": "AUD-000169",
+          "at": "2026-10-06T03:17:41.668Z",
+          "atMs": 1791256661668,
+          "type": "AUTH_SIGNED_OUT",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-003",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed out",
+          "details": {
+            "reason": "USER"
+          }
+        }
+      ]
+    }
+  },
+  "network": {
+    "api": [
+      {
+        "sent": "13:12:19.068 (epoch 1791267139.068)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "13:12:19.074 (epoch 1791267139.074)"
+      },
+      {
+        "sent": "13:12:19.076 (epoch 1791267139.076)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "13:12:19.079 (epoch 1791267139.079)"
+      }
+    ],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [],
+    "console": []
+  }
+}

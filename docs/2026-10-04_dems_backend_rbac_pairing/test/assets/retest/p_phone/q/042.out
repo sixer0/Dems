@@ -1,0 +1,15 @@
+13:14:17.589 declared screen live
+13:14:17.614 device-host clock offset ms: -335, -336, -335, -335, -336
+13:14:17.736 screenrecord p4b_web_stop started (pid 96768) at 13:14:18.338
+13:14:18.369 mark h02 at 13:14:18.369
+13:14:18.398 press sm-end-confirm ok at 13:14:18.403
+13:14:18.440 until true at 13:14:18.490 after 50 ms => "STOPPING"
+13:14:18.559 until true at 13:14:24.994 after 6435 ms => {"state":"SEALED","modal":"SEALED","sealed":"SEALEDEvidence EV-20261006-0024 sealedSealed 6.5 s after the recording endedLoading package details…"}
+13:14:25.123 screenshot 79_p4b_web_after_stop_sealed.png 13:14:25.123..13:14:25.311
+13:14:25.397 screenrecord p4b_web_stop pulled; every frame extracted (passthrough)
+13:14:35.503 device-host clock offset ms: -332, -333, -334, -334, -334
+13:14:35.651 declared screen summary
+13:14:35.680 screencap 80_p4b_phone_after_web_stop.png 13:14:35.680..13:14:35.876
+13:14:35.947 warnlog since 10-06 13:14:17.000 (0): 
+13:14:36.025 serverlog since h02 (1):
+    13:14:18.412 POST /api/v1/session/:id/stop 202

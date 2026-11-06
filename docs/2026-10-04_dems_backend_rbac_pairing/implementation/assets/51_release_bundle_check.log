@@ -1,0 +1,88 @@
+## W51 release-bundle check (2026-10-04 19:31:44); a count is the number of bundle lines that hold the text
+
+## 1. Metro's release transform of the row's files (node docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/51_release_gate_w51.cjs)
+debug build  (dev=true)  sim-adapters.ts          {"required":["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","@babel/runtime/helpers/objectWithoutProperties","@react-native-async-storage/async-storage","react-native","zustand/middleware","@dems/shared/api","@dems/shared/sim","./contract","./log","@dems/shared/live/source","@dems/shared/client","./secure-credentials","expo-de
+debug build  (dev=true)  debug.ts                 {"required":["react","react-native","@dems/shared/live","@dems/shared/sim","./core-link","./log","./dev-probes"],"hasProbeModule":true,"applyCoreSourceFromUrl":"if (__DEV__) { var _source = coreSourceFromUrl(url); if (_source === null || _source === (0, _coreLink.getCoreLinkSou...","hasCoreParser":true}
+debug build  (dev=true)  sim-runtime-provider.tsx {"required":["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/slicedToArray","heroui-native","react","react-i18next","@dems/shared/live","@dems/shared/realtime","@dems/shared/sim","./connection-banner","./contract","./core-link","./debug","./internals","./keep-awake","./log","./resync-bus","./sim-adapters","react/jsx-runtime"]}
+debug build  (dev=true)  core-errors.ts           {"required":["heroui-native","react","react-i18next","@dems/shared/live","@dems/shared/sim","@/motion/haptics","./log"]}
+debug build  (dev=true)  use-health.ts            {"required":["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","@tanstack/react-query","react","@dems/shared/api","@/runtime"]}
+    debug build loads the Live source, the typed client and the wrapper=ok debug build applies core==ok
+release build (dev=false) sim-adapters.ts          {"required":["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","@babel/runtime/helpers/objectWithoutProperties","@react-native-async-storage/async-storage","react-native","zustand/middleware","@dems/shared/api","@dems/shared/sim","./contract","./log"],"heavy":[],"createMobileLive":"var options = arguments.length > 0 && arguments
+release build (dev=false) debug.ts                 {"required":["react","react-native","@dems/shared/live","@dems/shared/sim","./core-link","./log"],"hasProbeModule":false,"applyCoreSourceFromUrl":"","hasCoreParser":true}
+release build (dev=false) sim-runtime-provider.tsx {"required":["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/slicedToArray","heroui-native","react","react-i18next","@dems/shared/live","@dems/shared/realtime","@dems/shared/sim","./connection-banner","./contract","./core-link","./debug","./internals","./keep-awake","./log","./resync-bus","./sim-adapters","react/jsx-runtime"]}
+release build (dev=false) core-errors.ts           {"required":["heroui-native","react","react-i18next","@dems/shared/live","@dems/shared/sim","@/motion/haptics","./log"]}
+release build (dev=false) use-health.ts            {"required":["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","@tanstack/react-query","react","@dems/shared/api","@/runtime"]}
+    release: sim-adapters.ts loads none of the five modules=ok release: createMobileLive is `return null`=ok release: no createLiveSim, no createCoreClient, no bearer header, no request log=ok
+    release: debug.ts holds no probe=ok release: core= is not applied (empty function)=ok release: no other file of the row loads the Live source or the typed client=ok
+exit=0
+
+## 1b. The earlier rows' transform check, unchanged (node docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/15_release_gate_w15.cjs)
+    debug build holds the probe=ok
+    release build holds no probe=ok release build keeps the wrapper=ok
+    MB-6a rule as a release build holds it: return Device.isDevice === false || false;
+
+## 2. Release bundle
+$ EXPO_NO_TELEMETRY=1 EXPO_OFFLINE=1 CI=1 npm exec -w @dems/mobile -- expo export --platform android --no-bytecode --output-dir <tmp>/release
+release exit=0
+Android Bundled 2198ms node_modules/expo-router/entry.js (5897 modules)
+_expo/static/js/android/entry-9332be19e7373f21b95fce87f7e50b7b.js (10MB)
+Exported: <tmp>/release
+bundle bytes: 9968521
+probe and debug text of the earlier rows (must be 0):
+  DEMS-PROBE-W15                               0
+  DEMS-PROBE-W12                               0
+  dev-probes                                   0
+  runDevProbe                                  0
+  devProbeFromUrl                              0
+  probe=                                       0
+  secure-store-wait                            0
+  dems.live.probe.v1                           0
+  DEMS secure-store probe                      0
+  secureStoreDevProbe                          0
+  PROBE_W15_                                   0
+the Live layer of this row (must be 0): the Live source, the typed client, the adapters' body, the wrapper
+  createLiveSim                                0
+  createCoreClient                             0
+  CoreClientUsageError                         0
+  createCommandGate                            0
+  DEVICE_CLEANUP_GAVE_UP                       0
+  DEMS-LIVE                                    0
+  runtime.live.registration                    0
+  runtime.live.credentials                     0
+  Bearer                                       0
+  secure-credentials                           0
+  dems.live.device.v1                          0
+  ExpoSecureStore                              0
+  isUnprotectedBiometricItemAllowed            0
+  Core link source set from a deep link        0
+what does ship (texts that must be there, or are there by the shared package's own layout):
+  runtime.sim.hydrated                         1
+  scenario=                                    1
+  runtime.live.unavailable                     1
+  limiting requests from this tablet           1
+  LiveTransportError                           2
+  CoreRefusalError                             2
+  createLiveSocketClient                       1
+  core=([^&#]*)                                1
+
+## 3. Development bundle (positive control: the same texts are found where they must be)
+$ EXPO_NO_TELEMETRY=1 EXPO_OFFLINE=1 CI=1 npm exec -w @dems/mobile -- expo export --dev --platform android --no-bytecode --output-dir <tmp>/dev
+dev exit=0
+Android Bundled 2739ms node_modules/expo-router/entry.js (6111 modules)
+_expo/static/js/android/entry-d41d8cd98f00b204e9800998ecf8427e.js (13MB)
+Exported: <tmp>/dev
+bundle bytes: 13285556
+  DEMS-PROBE-W15                               1
+  runtime/dev-probes.ts                        1
+  createLiveSim                                3
+  createCoreClient                             4
+  live/source/live-sim.ts                      1
+  client/core-client.ts                        1
+  DEVICE_CLEANUP_GAVE_UP                       3
+  DEMS-LIVE                                    1
+  runtime.live.registration                    1
+  runtime/secure-credentials.ts                1
+  dems.live.device.v1                          1
+  Core link source set from a deep link        1
+  runtime.sim.hydrated                         1
+  limiting requests from this tablet           1

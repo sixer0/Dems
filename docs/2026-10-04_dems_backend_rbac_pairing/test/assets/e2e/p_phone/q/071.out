@@ -1,0 +1,20 @@
+10:34:45.122 mark c01 at 10:34:45.122
+10:34:45.182 w2: HeadlessChrome/153.0.8010.12 headless=true devtools 127.0.0.1:9562, fresh profile in TMPDIR
+10:34:45.518 nav /login load=true
+10:34:48.191 signin budi.santoso (INVESTIGATOR) dashboard after 1092 ms
+10:34:51.449 nav / load=true
+10:34:54.630 wait page-dashboard present: 0 ms (at 10:34:54.630)
+10:34:54.718 slept 2000 ms
+10:34:56.800 js => {"start":true,"locked":false,"idle":false,"sealed":true,"user":"AKP Budi SantosoSECUREAll syst"}
+10:34:56.875 screenshot 73_sc4_w2_budi_dashboard_before.png 10:34:56.875..10:34:57.047
+10:34:57.122 serverlog since c01 (10):
+    10:34:45.827 [socket opened]
+    10:34:45.828 GET /api/v1/auth/session 401 NOT_SIGNED_IN null
+    10:34:45.829 GET /api/v1/auth/status 200 null
+    10:34:45.945 GET /api/v1/health 200 null
+    10:34:48.312 POST /api/v1/auth/sign-in 200 null
+    10:34:48.314 [socket closed]
+    10:34:48.317 [socket opened] operator:OPR-001
+    10:34:51.454 [socket closed] operator:OPR-001
+    10:34:51.593 GET /api/v1/auth/session 200 operator:OPR-001
+    10:34:51.608 [socket opened] operator:OPR-001

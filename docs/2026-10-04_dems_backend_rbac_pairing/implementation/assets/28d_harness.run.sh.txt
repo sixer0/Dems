@@ -1,0 +1,16 @@
+#!/bin/sh
+# Mutations of step c against this row's own tests: the unit project, then the db project.
+# Usage: run.sh <harness dir> [id ...]. Vitest writes into a file that is read afterwards.
+H="$1"; shift
+ROOT=/Users/gsp-budi/Documents/DEMS
+cd "$ROOT/apps/core-server" || exit 2
+if [ "$#" -eq 0 ]; then set -- $(python3 -c "import json; print(' '.join(x['id'] for x in json.load(open('$H/mutations.json'))))"); fi
+summary() { grep -E "^ +Tests |the text to replace is not in|no mutation " "$1" | sed -n '1p' | sed -e 's/^ *//' -e 's/  */ /g'; }
+for id in "$@"; do
+  note=$(python3 -c "import json,sys; print([x['note'] for x in json.load(open('$H/mutations.json')) if x['id']=='$id'][0])")
+  W28C_MUTATION="$id" "$ROOT/node_modules/.bin/vitest" run --config "$H/vitest.config.mjs" --project unit --maxWorkers=2 src/plugins/permission-guard src/modules/rbac > "$H/out.unit.txt" 2>&1
+  u=$(summary "$H/out.unit.txt")
+  W28C_MUTATION="$id" DEMS_TEST_STEP=50c "$ROOT/node_modules/.bin/vitest" run --config "$H/vitest.config.mjs" --project db --maxWorkers=2 src/plugins/permission-guard src/modules/rbac > "$H/out.db.txt" 2>&1
+  d=$(summary "$H/out.db.txt")
+  echo "$id | $note | unit: ${u:-NO-SUMMARY} | db: ${d:-NO-SUMMARY}"
+done

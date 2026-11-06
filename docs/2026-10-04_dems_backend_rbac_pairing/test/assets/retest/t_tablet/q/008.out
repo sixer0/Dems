@@ -1,0 +1,6 @@
+mark J1 tablet Next (create + precheck) at 12:45:57.068
+tap 1178,1455 at 12:45:57.113
+create 201 (10-06 12:45:56.895 POST /api/v1/session 201)
+precheck 202 (10-06 12:45:57.044 POST /api/v1/session/{id}/precheck 202)
+slept 4000 ms
+screencap J05_wizard_step2_devices_check.png (701616 bytes) at 12:46:02.720

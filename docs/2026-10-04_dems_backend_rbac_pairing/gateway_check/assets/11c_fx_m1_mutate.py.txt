@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""FX-M1 mutation check (rule: an in-memory mutation per fix, never modifying tree files).
+
+Each mutant changes texts of ONE production file IN MEMORY (the jest transformer beside this file)
+and runs the test files mapped to it. DETECTED = jest exits non-zero. Before a mutant runs, each
+`from` text is checked to occur exactly once in the file (otherwise: NOT APPLIED, never counted as
+detected). The SHA-256 of every mutated file is compared before and after the whole run.
+
+  python3 mutate.py [id ...]      (no id: all; 'control' runs the unmutated tests once)
+"""
+import hashlib, json, os, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+
+T_ROUTES = 'src/features/pairing/pairing-handoff-routes.test.tsx'
+T_MODEL = 'src/features/pairing/pairing-model.test.ts'
+T_SCREEN = 'src/features/pairing/pairing-screen.test.tsx'
+T_LIVE = 'src/features/pairing/pairing-live.test.tsx'
+T_ENDED = 'src/runtime/ended-link.test.tsx'
+T_PROBE = 'src/runtime/probe-failure.test.ts'
+T_GATE = 'src/runtime/pairing-gate-snapshot.test.ts'
+T_LANDING = 'src/runtime/signed-out-landing.test.ts'
+T_CONSOLE = 'src/runtime/log-console.test.ts'
+ALL = [T_ROUTES, T_MODEL, T_SCREEN, T_LIVE, T_ENDED, T_PROBE, T_GATE, T_LANDING, T_CONSOLE]
+
+PM = 'src/features/pairing/pairing-model.ts'
+FLOW = 'src/features/pairing/use-pairing-flow.ts'
+PANEL = 'src/features/pairing/pairing-code-panel.tsx'
+LAND = 'src/runtime/signed-out-landing.tsx'
+LAYOUT = 'src/app/_layout.tsx'
+ENDED = 'src/runtime/ended-link.ts'
+PROVIDER = 'src/runtime/sim-runtime-provider.tsx'
+INTENT = 'src/app/+native-intent.tsx'
+ADAPT = 'src/runtime/sim-adapters.ts'
+PROBE = 'src/runtime/probe-failure.ts'
+LOG = 'src/runtime/log.ts'
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+M = [
+  # ── E2E-S-1: the hand-off after a redeem ──
+  ('S1-a', PM, 'the signed-out hand-off follows the stack again (back to whatever is underneath)', [T_ROUTES, T_MODEL, T_SCREEN, T_LIVE],
+   [e("  if (reason === 'handoff' && !signedIn) return 'boot';\n", '')]),
+  ('S1-b', FLOW, 'the hand-off replaces the top screen only (no stack reset)', [T_ROUTES, T_SCREEN, T_LIVE],
+   [e("else if (reason === 'handoff') resetToBootRouter(router);", "else if (reason === 'handoff') router.replace('/');")]),
+  ('S1-c', PANEL, '"Continue to sign-in" hands the press event to leave() again', [T_ROUTES, T_SCREEN],
+   [e("onPress={() => flow.leave('handoff')}", 'onPress={flow.leave}')]),
+  ('S1-d', FLOW, 'the automatic hand-off leaves as a Cancel', [T_ROUTES, T_SCREEN, T_LIVE],
+   [e("if (!disposed) leave('handoff');", 'if (!disposed) leave();')]),
+  # ── E2E-S-1: the landing after a sign-out ──
+  ('S1-e', LAND, 'the landing never notices a sign-out', [T_ROUTES, T_LANDING],
+   [e('if (wasAuthenticated.current && !isAuthenticated) awaiting.current = true;', 'if (false) awaiting.current = true;')]),
+  ('S1-f', LAND, 'a public screen left on top is accepted (no reset)', [T_ROUTES, T_LANDING],
+   [e("  if (top === 'pair' && gateHeld) return 'done';\n  return 'boot';", "  if (top === 'pair' && gateHeld) return 'done';\n  return 'done';")]),
+  ('S1-g', LAND, 'the reset replaces the top screen only (no pop to the first)', [T_ROUTES, T_LANDING],
+   [e('  if (router.canDismiss()) router.dismissAll();\n', '')]),
+  ('S1-h', LAYOUT, 'the root layout no longer mounts the landing', [T_ROUTES],
+   [e('              <SignedOutLanding />\n', '')]),
+  # ── E2E-S-3: a run the Core ended on purpose ──
+  ('S3-a', ENDED, 'the Live link is not mapped while the run is ended', [T_ENDED, T_LIVE],
+   [e("return ended && link === 'OFFLINE' ? 'CONNECTING' : link;", 'return link;')]),
+  ('S3-b', ENDED, 'the heartbeat is not mapped while the run is ended', [T_ENDED],
+   [e("return ended && heartbeat === 'OFFLINE' ? 'CONNECTING' : heartbeat;", 'return heartbeat;')]),
+  ('S3-c', ENDED, 'the end of the run is never seen', [T_ENDED, T_LIVE],
+   [e('    return end !== null && end !== undefined;', '    return false;')]),
+  ('S3-d', ENDED, "the Pair screen's hook hands the raw link on", [T_ENDED, T_LIVE],
+   [e('(live === null ? null : liveLinkWhileEnded(live.link, isRunEndedByCore(live)))', '(live === null ? null : live.link)')]),
+  ('S3-e', PROVIDER, "the runtime's Core link ignores the end", [T_ENDED],
+   [e('const heartbeat = heartbeatWhileEnded(useHeartbeatState(), ended);', 'const heartbeat = heartbeatWhileEnded(useHeartbeatState(), false);')]),
+  # ── E2E-S-4: a guarded deep link while the gate holds ──
+  ('S4-a', INTENT, 'the intent does not look at the gate', [T_ROUTES],
+   [e('    return gatedTarget(target) ?? target;', '    return target;')]),
+  ('S4-b', INTENT, '/login (and the gallery) are not counted as gated', [T_ROUTES],
+   [e('GATED_PATHS.has(href.pathname) || isGuardedPath(href.pathname)', 'isGuardedPath(href.pathname)')]),
+  ('S4-c', ADAPT, 'a change of the gate is not written while running', [T_GATE, T_ROUTES],
+   [e('      if (wanted) notePairingGate(gateOwner, pairing);\n', '')]),
+  ('S4-d', ADAPT, 'stop() does not release the gate', [T_GATE],
+   [e('        releasePairingGate(gateOwner);\n', '')]),
+  ('S4-e', ADAPT, 'start() does not write the gate before the credential is read', [T_GATE],
+   [e('        notePairingGate(gateOwner, pairing);\n        await load();', '        await load();')]),
+  # ── E2E-T-1 / R5 ──
+  ('T1-a', ADAPT, 'no re-check of a probe that timed out', [T_PROBE],
+   [e('        if (!isRecheckable(operationId, first)) {', '        if (true) {')]),
+  ('T1-b', ADAPT, "the Live source's reports are not judged (an unanswered call is an error again)", [T_PROBE],
+   [e('logLiveReport(report, judgeLiveRejection(report, (operationId) => probeFailures.get(operationId) ?? 0));', 'logLiveReport(report);')]),
+  ('T1-c', PROBE, 'the first failure while the link is up is already a warning', [T_PROBE],
+   [e('export const PROBE_FAILURES_BEFORE_WARN = 2;', 'export const PROBE_FAILURES_BEFORE_WARN = 1;')]),
+  ('T1-d', PROBE, 'a down link makes the record info', [T_PROBE],
+   [e("if (view === 'down') return { level: 'warn',", "if (view === 'down') return { level: 'info',")]),
+  ('T1-e', PROBE, 'a command that timed out is re-sent too', [T_PROBE],
+   [e('return PROBE_OPERATIONS.has(operationId) && !result.ok && result.kind === TIMEOUT_KIND;', 'return !result.ok && result.kind === TIMEOUT_KIND;')]),
+  ('T1-f', ADAPT, "the probe's first time-out is a warning again", [T_PROBE],
+   [e("reportRuntimeIssue(probeTimeout ? 'info' : report.level, 'live.client'", "reportRuntimeIssue(report.level, 'live.client'")]),
+  ('T1-g', PROBE, 'a probe failure while the link is up keeps "Core server unreachable"', [T_PROBE],
+   [e("    message: `The background ${action} got no answer in time while the Core link was ${view === 'up' ? 'up' : 'not down'}; not an outage (R5).`,", '    message: report.message,')]),
+  ('T1-h', ADAPT, 'the consecutive count never grows', [T_PROBE],
+   [e('isUnanswered(result) ? (probeFailures.get(operationId) ?? 0) + 1 : 0', '0')]),
+  # ── F80 / R6 ──
+  ('F-a', LOG, 'a warn record reaches console.warn again', [T_CONSOLE, T_PROBE],
+   [e("        else if (!IN_JEST) console.info('[runtime]', record);", "        else if (record.level === 'warn') console.warn('[runtime]', record);\n        else if (!IN_JEST) console.info('[runtime]', record);")]),
+  ('F-b', LOG, 'an error record no longer reaches console.error', [T_CONSOLE],
+   [e("if (record.level === 'error') console.error('[runtime]', record);", "if (record.level === 'error') console.info('[runtime]', record);")]),
+]
+
+def sha(path):
+    with open(APP + '/' + path, 'rb') as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
+
+def run(tests, spec):
+    env = dict(os.environ)
+    if spec is None:
+        env.pop('FXM1_MUT_SPEC', None)
+    else:
+        with open(SPEC, 'w') as fh:
+            json.dump(spec, fh)
+        env['FXM1_MUT_SPEC'] = SPEC
+    started = time.time()
+    proc = subprocess.run(['npx', 'jest', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests], cwd=APP, env=env, capture_output=True, text=True)
+    out = proc.stdout + proc.stderr
+    summary = [line.strip() for line in out.splitlines() if line.strip().startswith('Tests:')]
+    failing = sorted({line.strip()[2:].strip() for line in out.splitlines() if line.strip().startswith('● ') and '›' in line})
+    return proc.returncode, (summary[-1] if summary else '(no summary)'), failing, round(time.time() - started)
+
+def load():
+    return os.getloadavg()[0]
+
+def main():
+    ids = sys.argv[1:]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(f) for f in files}
+    print(f'# FX-M1 mutation check, {time.strftime("%Y-%m-%d %H:%M:%S")}; the tree is not edited')
+    if not ids or 'control' in ids:
+        code, summary, failing, secs = run(ALL, None)
+        print(f'control (no mutation): exit={code} {summary} ({secs} s)')
+    detected = missed = skipped = 0
+    for mid, path, what, tests, edits in M:
+        if ids and mid not in ids:
+            continue
+        while load() > 14:
+            print(f'   (load {load():.1f} > 14: waiting)', flush=True)
+            time.sleep(20)
+        text = open(APP + '/' + path).read()
+        counts = [text.count(ed['from']) for ed in edits]
+        if any(c != 1 for c in counts):
+            skipped += 1
+            print(f'{mid} NOT APPLIED ({path}: occurrences {counts}) — {what}')
+            continue
+        code, summary, failing, secs = run(tests, {'id': mid, 'file': path, 'edits': edits})
+        ok = code != 0
+        detected += ok
+        missed += not ok
+        print(f'{mid} {"DETECTED" if ok else "NOT DETECTED"} exit={code} {summary} ({secs} s) — {what} [{path}]', flush=True)
+        for name in failing[:4]:
+            print(f'     fails: {name}')
+    after = {f: sha(f) for f in files}
+    print(f'## {detected} detected, {missed} not detected, {skipped} not applied')
+    print('## the mutated files in the tree, before and after:', 'identical' if before == after else 'CHANGED')
+    for f in files:
+        print(f'   {after[f][:16]}  {f}')
+    print(f'# finished {time.strftime("%H:%M:%S")}')
+
+main()

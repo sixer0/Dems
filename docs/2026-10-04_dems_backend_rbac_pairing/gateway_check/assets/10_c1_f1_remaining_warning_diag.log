@@ -1,0 +1,35 @@
+## C1 diagnosis of the remaining whole-run warning: each suspect suite with one clean suite, two workers, 09:17:03
+## src/features/home/home-screen.test.tsx + src/runtime/log-flush-timer.test.ts
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+Tests:       2 passed, 2 total
+exit 0
+## src/features/home/home-screen.test.tsx alone (in band)
+Tests:       1 passed, 1 total
+Jest did not exit one second after the test run has completed.
+exit 0
+## src/features/session-live/live-session-live-link.test.tsx + src/runtime/log-flush-timer.test.ts
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+Tests:       15 passed, 15 total
+exit 0
+## src/features/session-live/live-session-live-link.test.tsx alone (in band)
+Tests:       14 passed, 14 total
+Jest did not exit one second after the test run has completed.
+exit 0
+## src/features/devices/devices-model.test.ts + src/runtime/log-flush-timer.test.ts
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+Tests:       10 passed, 10 total
+exit 0
+## src/features/devices/devices-model.test.ts alone (in band)
+Tests:       9 passed, 9 total
+exit 0
+## src/runtime/use-pending-press.test.tsx + src/runtime/log-flush-timer.test.ts
+Tests:       9 passed, 9 total
+exit 0
+## src/runtime/use-pending-press.test.tsx alone (in band)
+Tests:       8 passed, 8 total
+exit 0
+## live-gap-read-only-dialog.test.tsx alone, 09:22:53, load averages: 3.83 7.26 9.98
+    ✓ the link drops with the Dialog open: confirm sends no stop — one read-only toast call, one `info` record, the Dialog keeps the reason; with the link back the same confirm stops (702 ms)
+Tests:       1 passed, 1 total
+Time:        2.127 s, estimated 3 s
+exit 0

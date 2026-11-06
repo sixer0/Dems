@@ -1,0 +1,204 @@
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-web
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ ❯ src/features/evidence/__tests__/cf-web-custody-media.test.tsx (6 tests | 6 failed) 154ms
+   ❯ R-W-1: the custody cells (2)
+     × an action code may break only after an underscore: a <wbr> follows each "_" and the words are unchanged 72ms
+     × the columns and cells carry the classes the fixed widths and the narrow layout use; an empty Detail is marked 75ms
+   ❯ R-W-1: the stylesheet (3)
+     × lays the table out with fixed column widths, so it is never wider than its card 1ms
+     × wraps the action, the actor and the Detail by words, and breaks a word only when it is longer than its column; never the time 0ms
+     × on a narrow card the Detail goes under the action (three columns), its heading kept for assistive technology 0ms
+   ❯ O-RT-1: Simulated mode keeps its words (1)
+     × an item without a DEMO package: "No DEMO media", and its record comes from the simulator 4ms
+ ❯ src/test/live-cf-web-media.test.tsx (2 tests | 2 failed) 807ms
+   ❯ O-RT-1: the Live Media tab of an item without a DEMO package (2)
+     × operation 40 answers NONE: the record is the Core server's, and no word of a simulator 684ms
+     × operation 40 does not answer: the tab says the reference is unavailable, as the chip does, and claims no absence 123ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/test/live-cf-web-media.test.tsx > O-RT-1: the Live Media tab of an item without a DEMO package > operation 40 answers NONE: the record is the Core server's, and no word of a simulator
+Error: [2mexpect([22m[31melement[39m[2m).toHaveAttribute([22m[32m[32m"data-source"[32m[39m[2m, [22m[32m[32m"core"[32m[39m[2m) // element.getAttribute("data-source") === "core"[22m
+
+Expected the element to have attribute:
+[32m  data-source="core"[39m
+Received:
+[31m  null[39m
+ ❯ src/test/live-cf-web-media.test.tsx:62:19
+     60|     const empty = await openMedia()
+     61|     expect(screen.getByTestId('evidence-package-chip')).toHaveAttribut…
+     62|     expect(empty).toHaveAttribute('data-source', 'core')
+       |                   ^
+     63|     expect(within(empty).getByText(en.evidence.media.noMedia)).toBeInT…
+     64|     expect(within(empty).getByText(L.noPackage)).toBeInTheDocument()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+
+ FAIL  src/test/live-cf-web-media.test.tsx > O-RT-1: the Live Media tab of an item without a DEMO package > operation 40 does not answer: the tab says the reference is unavailable, as the chip does, and claims no absence
+Error: [2mexpect([22m[31melement[39m[2m).toHaveAttribute([22m[32m[32m"data-source"[32m[39m[2m, [22m[32m[32m"unavailable"[32m[39m[2m) // element.getAttribute("data-source") === "unavailable"[22m
+
+Expected the element to have attribute:
+[32m  data-source="unavailable"[39m
+Received:
+[31m  null[39m
+ ❯ src/test/live-cf-web-media.test.tsx:73:19
+     71|     const empty = await openMedia({ before: (bed) => bed.fake.failOnce…
+     72|     expect(screen.getByTestId('evidence-package-chip')).toHaveAttribut…
+     73|     expect(empty).toHaveAttribute('data-source', 'unavailable')
+       |                   ^
+     74|     expect(within(empty).getByText(L.mediaUnavailable)).toBeInTheDocum…
+     75|     const words = empty.textContent ?? ''
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+
+ FAIL  src/features/evidence/__tests__/cf-web-custody-media.test.tsx > R-W-1: the custody cells > an action code may break only after an underscore: a <wbr> follows each "_" and the words are unchanged
+AssertionError: expected undefined to be 'SEALED' // Object.is equality
+
+- Expected:
+"SEALED"
+
++ Received:
+undefined
+
+ ❯ src/features/evidence/__tests__/cf-web-custody-media.test.tsx:120:33
+    118|       const action = newestFirst[index]!.action
+    119|       const code = row.querySelector('.evi-custody-action')
+    120|       expect(code?.textContent).toBe(action)
+       |                                 ^
+    121|       const breaks = Array.from(code?.querySelectorAll('wbr') ?? [])
+    122|       expect(breaks).toHaveLength(action.split('_').length - 1)
+ ❯ src/features/evidence/__tests__/cf-web-custody-media.test.tsx:117:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+
+ FAIL  src/features/evidence/__tests__/cf-web-custody-media.test.tsx > R-W-1: the custody cells > the columns and cells carry the classes the fixed widths and the narrow layout use; an empty Detail is marked
+AssertionError: expected [ undefined, undefined, …(2) ] to deeply equal [ 'time', 'action', 'actor', 'detail' ]
+
+- Expected
++ Received
+
+  [
+-   "time",
+-   "action",
+-   "actor",
+-   "detail",
++   undefined,
++   undefined,
++   undefined,
++   undefined,
+  ]
+
+ ❯ src/features/evidence/__tests__/cf-web-custody-media.test.tsx:132:143
+    130|     renderIntegrity(sim, rowOf(sim, item))
+    131|     const headers = within(screen.getByTestId('evidence-custody')).get…
+    132|     expect(headers.map((header) => ['time', 'action', 'actor', 'detail…
+       |                                                                                                                                               ^
+    133|       'time',
+    134|       'action',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯
+
+ FAIL  src/features/evidence/__tests__/cf-web-custody-media.test.tsx > R-W-1: the stylesheet > lays the table out with fixed column widths, so it is never wider than its card
+AssertionError: expected null to be 'table-layout: fixed;' // Object.is equality
+
+- Expected:
+"table-layout: fixed;"
+
++ Received:
+null
+
+ ❯ src/features/evidence/__tests__/cf-web-custody-media.test.tsx:164:65
+    162|
+    163|   it('lays the table out with fixed column widths, so it is never wide…
+    164|     expect(ruleBody(css, '.evi-custody-table .table__content')).toBe('…
+       |                                                                 ^
+    165|     expect(ruleBody(css, '.evi-custody-table :is(.table__column, .tabl…
+    166|     // The time column holds the date token whole ("6 Oct 2026" = 74 p…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯
+
+ FAIL  src/features/evidence/__tests__/cf-web-custody-media.test.tsx > R-W-1: the stylesheet > wraps the action, the actor and the Detail by words, and breaks a word only when it is longer than its column; never the time
+AssertionError: expected '' to contain 'overflow-wrap: anywhere;'
+
+- Expected
++ Received
+
+- overflow-wrap: anywhere;
+
+ ❯ src/features/evidence/__tests__/cf-web-custody-media.test.tsx:174:19
+    172|   it('wraps the action, the actor and the Detail by words, and breaks …
+    173|     const guard = ruleBody(css, '.evi-custody-table :is(.evi-custody-a…
+    174|     expect(guard).toContain('overflow-wrap: anywhere;')
+       |                   ^
+    175|     expect(guard).toContain('white-space: normal;')
+    176|     // E2E-W1-7 holds: the date and the clock never break inside, and …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯
+
+ FAIL  src/features/evidence/__tests__/cf-web-custody-media.test.tsx > R-W-1: the stylesheet > on a narrow card the Detail goes under the action (three columns), its heading kept for assistive technology
+AssertionError: expected null to be 'container: evi-custody / inline-size;' // Object.is equality
+
+- Expected:
+"container: evi-custody / inline-size;"
+
++ Received:
+null
+
+ ❯ src/features/evidence/__tests__/cf-web-custody-media.test.tsx:183:48
+    181|
+    182|   it('on a narrow card the Detail goes under the action (three columns…
+    183|     expect(ruleBody(css, '.evi-custody-card')).toBe('container: evi-cu…
+       |                                                ^
+    184|     const narrow = atRuleBlock(css, '@container evi-custody (width < 2…
+    185|     expect(narrow).not.toBeNull()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯
+
+ FAIL  src/features/evidence/__tests__/cf-web-custody-media.test.tsx > O-RT-1: Simulated mode keeps its words > an item without a DEMO package: "No DEMO media", and its record comes from the simulator
+Error: [2mexpect([22m[31melement[39m[2m).toHaveAttribute([22m[32m[32m"data-source"[32m[39m[2m, [22m[32m[32m"simulated"[32m[39m[2m) // element.getAttribute("data-source") === "simulated"[22m
+
+Expected the element to have attribute:
+[32m  data-source="simulated"[39m
+Received:
+[31m  null[39m
+ ❯ src/features/evidence/__tests__/cf-web-custody-media.test.tsx:206:19
+    204|     render(withProviders(<MediaTab row={row} playToken={null} onPlayHa…
+    205|     const empty = screen.getByTestId('evidence-media-empty')
+    206|     expect(empty).toHaveAttribute('data-source', 'simulated')
+       |                   ^
+    207|     expect(within(empty).getByText(en.evidence.media.noMedia)).toBeInT…
+    208|     expect(within(empty).getByText(en.evidence.media.noMediaBody)).toB…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  8 failed (8)
+   Start at  13:54:50
+   Duration  2.47s (transform 27%, import 26%, tests 23%, environment 17%, setup 7%)
+

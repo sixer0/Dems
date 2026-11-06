@@ -1,0 +1,10 @@
+10:00:02.150 tapid audit-back at 84,216 "Back to More"
+10:00:13.727 slept 2000 ms
+10:00:16.576 mark a14 at 10:00:16.576
+10:00:17.228 tapid more-dest-settings at 797,772 "Settings, Preferences, security, about, 5 sections"
+10:00:25.357 slept 2500 ms
+10:00:28.037 declared screen settings
+10:00:28.382 screencap 16_settings.png 10:00:28.382..10:00:30.809
+10:00:31.285 ids(16): screen-settings@540,1102 ; settings-list@540,1173 ; settings-header@540,216 ; settings-header-back@95,216 "Back" ; settings-account@540,473 ; settings-account-row@540,531 "Investigator, AKP Budi Santoso. Open profile" ; settings-group-application@540,991 ; settings-row-preferences@540,886 "App Preferences" ; settings-row-notifications@540,1049 "Notifications" ; settings-row-security@540,1213 "Security &amp; Privacy" ; settings-group-system@540,1765 ; settings-row-devices@540,1512 "Device Settings" ; settings-row-storage@540,1675 "Storage Management" ; settings-row-network-time@540,1839 "Network &amp; Time" ; settings-row-maintenance@540,2003 "System Maintenance" ; settings-row-about@540,2150 "About DEMS"
+10:00:34.423 serverlog since a14 (0):
+    

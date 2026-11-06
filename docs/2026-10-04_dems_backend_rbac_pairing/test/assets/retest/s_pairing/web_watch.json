@@ -1,0 +1,228 @@
+{
+  "tag": "web_watch",
+  "documentTimeOrigin": {
+    "start": 1791265669672.8,
+    "stop": 1791265669672.8,
+    "sameDocument": true
+  },
+  "startedObserverAt": "12:49:01.343 (epoch 1791265741.343)",
+  "initialCells": "DEV-0002|Paired|—|true ; DEV-0001|Revoked|—|false",
+  "href": "http://127.0.0.1:5173/admin/devices",
+  "events": [
+    {
+      "at": "12:49:01.310 (epoch 1791265741.310)",
+      "atMs": 1791265741310,
+      "what": "GET /api/v1/health 200"
+    },
+    {
+      "at": "12:49:21.194 (epoch 1791265761.194)",
+      "atMs": 1791265761194,
+      "what": "ws frame admin.changed DEVICES"
+    },
+    {
+      "at": "12:49:21.244 (epoch 1791265761.244)",
+      "atMs": 1791265761244,
+      "what": "POST /api/v1/pairing/devices/DEV-0002/revoke 200"
+    },
+    {
+      "at": "12:49:21.244 (epoch 1791265761.244)",
+      "atMs": 1791265761244,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "12:49:21.244 (epoch 1791265761.244)",
+      "atMs": 1791265761244,
+      "what": "GET /api/v1/pairing/code 200"
+    },
+    {
+      "at": "12:49:21.442 (epoch 1791265761.442)",
+      "atMs": 1791265761442,
+      "what": "DOM cells DEV-0002|Revoked|—|false ; DEV-0001|Revoked|—|false"
+    },
+    {
+      "at": "12:49:21.443 (epoch 1791265761.443)",
+      "atMs": 1791265761443,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "12:49:21.447 (epoch 1791265761.447)",
+      "atMs": 1791265761447,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "12:49:29.486 (epoch 1791265769.486)",
+      "atMs": 1791265769486,
+      "what": "GET /api/v1/audit?… 200"
+    },
+    {
+      "at": "12:58:58.763 (epoch 1791266338.763)",
+      "atMs": 1791266338763,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "12:58:58.780 (epoch 1791266338.780)",
+      "atMs": 1791266338780,
+      "what": "GET /api/v1/audit?… 200"
+    },
+    {
+      "at": "13:01:10.954 (epoch 1791266470.954)",
+      "atMs": 1791266470954,
+      "what": "ws frame admin.changed PAIRING_CODE"
+    },
+    {
+      "at": "13:01:10.987 (epoch 1791266470.987)",
+      "atMs": 1791266470987,
+      "what": "POST /api/v1/pairing/code 201"
+    },
+    {
+      "at": "13:01:10.987 (epoch 1791266470.987)",
+      "atMs": 1791266470987,
+      "what": "GET /api/v1/pairing/code 200"
+    },
+    {
+      "at": "13:01:11.040 (epoch 1791266471.040)",
+      "atMs": 1791266471040,
+      "what": "GET /api/v1/pairing/code 200"
+    },
+    {
+      "at": "13:01:13.204 (epoch 1791266473.204)",
+      "atMs": 1791266473204,
+      "what": "GET /api/v1/audit?… 200"
+    },
+    {
+      "at": "13:01:16.474 (epoch 1791266476.474)",
+      "atMs": 1791266476474,
+      "what": "ws frame admin.changed DEVICES"
+    },
+    {
+      "at": "13:01:16.475 (epoch 1791266476.475)",
+      "atMs": 1791266476475,
+      "what": "ws frame admin.changed PAIRING_CODE"
+    },
+    {
+      "at": "13:01:16.508 (epoch 1791266476.508)",
+      "atMs": 1791266476508,
+      "what": "GET /api/v1/pairing/code 200"
+    },
+    {
+      "at": "13:01:16.508 (epoch 1791266476.508)",
+      "atMs": 1791266476508,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "13:01:16.508 (epoch 1791266476.508)",
+      "atMs": 1791266476508,
+      "what": "GET /api/v1/pairing/code 200"
+    },
+    {
+      "at": "13:01:16.561 (epoch 1791266476.561)",
+      "atMs": 1791266476561,
+      "what": "DOM cells DEV-0003|Paired|—|false ; DEV-0002|Revoked|—|false ; DEV-0001|Revoked|—|false"
+    },
+    {
+      "at": "13:01:18.916 (epoch 1791266478.916)",
+      "atMs": 1791266478916,
+      "what": "GET /api/v1/audit?… 200"
+    },
+    {
+      "at": "13:01:19.270 (epoch 1791266479.270)",
+      "atMs": 1791266479270,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "13:01:19.302 (epoch 1791266479.302)",
+      "atMs": 1791266479302,
+      "what": "DOM cells DEV-0003|Paired|—|true ; DEV-0002|Revoked|—|false ; DEV-0001|Revoked|—|false"
+    },
+    {
+      "at": "13:01:20.408 (epoch 1791266480.408)",
+      "atMs": 1791266480408,
+      "what": "ws frame admin.changed DEVICES"
+    },
+    {
+      "at": "13:01:20.440 (epoch 1791266480.440)",
+      "atMs": 1791266480440,
+      "what": "GET /api/v1/pairing/code 200"
+    },
+    {
+      "at": "13:01:20.440 (epoch 1791266480.440)",
+      "atMs": 1791266480440,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "13:01:26.679 (epoch 1791266486.679)",
+      "atMs": 1791266486679,
+      "what": "ws frame admin.changed DEVICES"
+    },
+    {
+      "at": "13:01:26.718 (epoch 1791266486.718)",
+      "atMs": 1791266486718,
+      "what": "GET /api/v1/pairing/code 200"
+    },
+    {
+      "at": "13:01:26.719 (epoch 1791266486.719)",
+      "atMs": 1791266486719,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "13:06:29.690 (epoch 1791266789.690)",
+      "atMs": 1791266789690,
+      "what": "ws frame admin.changed DEVICES"
+    },
+    {
+      "at": "13:06:29.731 (epoch 1791266789.731)",
+      "atMs": 1791266789731,
+      "what": "GET /api/v1/pairing/code 200"
+    },
+    {
+      "at": "13:06:29.731 (epoch 1791266789.731)",
+      "atMs": 1791266789731,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "13:06:29.764 (epoch 1791266789.764)",
+      "atMs": 1791266789764,
+      "what": "DOM cells DEV-0003|Paired|AKP Budi Santoso|true ; DEV-0002|Revoked|—|false ; DEV-0001|Revoked|—|false"
+    },
+    {
+      "at": "13:06:48.175 (epoch 1791266808.175)",
+      "atMs": 1791266808175,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "13:06:48.183 (epoch 1791266808.183)",
+      "atMs": 1791266808183,
+      "what": "GET /api/v1/audit?… 200"
+    },
+    {
+      "at": "13:08:24.833 (epoch 1791266904.833)",
+      "atMs": 1791266904833,
+      "what": "ws frame admin.changed DEVICES"
+    },
+    {
+      "at": "13:08:24.857 (epoch 1791266904.857)",
+      "atMs": 1791266904857,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "13:08:24.857 (epoch 1791266904.857)",
+      "atMs": 1791266904857,
+      "what": "GET /api/v1/pairing/code 200"
+    },
+    {
+      "at": "13:08:24.877 (epoch 1791266904.877)",
+      "atMs": 1791266904877,
+      "what": "DOM cells DEV-0003|Paired|—|true ; DEV-0002|Revoked|—|false ; DEV-0001|Revoked|—|false"
+    },
+    {
+      "at": "13:12:19.074 (epoch 1791267139.074)",
+      "atMs": 1791267139074,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "13:12:19.079 (epoch 1791267139.079)",
+      "atMs": 1791267139079,
+      "what": "GET /api/v1/audit?… 200"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+--------- beginning of main
+10-04 11:29:43.527  5935  5967 I ReactNativeJS: Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+10-04 11:29:44.680  5935  5967 W ReactNativeJS: [Reanimated] Reduced motion setting is overwritten with mode 'never'.
+10-04 11:29:44.684  5935  5967 I ReactNativeJS: [34mHeroUI Native Styling Principles[0m
+10-04 11:29:44.684  5935  5967 I ReactNativeJS: • className: this is your go-to styling solution. Use Tailwind CSS classes via className prop on all components.
+10-04 11:29:44.684  5935  5967 I ReactNativeJS: • StyleSheet precedence: The style prop (StyleSheet API) has precedence over className when both are provided. This allows you to override Tailwind classes when needed.
+10-04 11:29:44.684  5935  5967 I ReactNativeJS: • Animated styles: Some style properties are animated using react-native-reanimated and have precedence over className. To identify which styles are animated:
+10-04 11:29:44.684  5935  5967 I ReactNativeJS:   - Hover over className in your IDE - TypeScript definitions show which properties are occupied by animated styles
+10-04 11:29:44.684  5935  5967 I ReactNativeJS:   - Check component documentation - Each component page includes a link to the component's style source
+10-04 11:29:44.684  5935  5967 I ReactNativeJS: • If styles are occupied by animation, modify them via the animation prop on components that support it.
+10-04 11:29:44.684  5935  5967 I ReactNativeJS: • To deactivate animated style completely and apply your own styles, use isAnimatedStyleActive prop.
+10-04 11:29:44.684  5935  5967 I ReactNativeJS: [33m💡 To disable this message, set config.devInfo.stylingPrinciples to false[0m
+10-04 11:29:44.698  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] START secure-store
+10-04 11:29:44.731  5935  5967 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-04T04:29:44.725Z',
+10-04 11:29:44.731  5935  5967 I ReactNativeJS:   level: 'info',
+10-04 11:29:44.731  5935  5967 I ReactNativeJS:   source: 'runtime.sim.hydrated',
+10-04 11:29:44.731  5935  5967 I ReactNativeJS:   message: 'Simulator ready',
+10-04 11:29:44.731  5935  5967 I ReactNativeJS:   context: { restored: true, state: null },
+10-04 11:29:44.731  5935  5967 I ReactNativeJS:   correlationId: 'Lmutbnrrv' }
+10-04 11:29:45.188  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] S0 environment PASS {"isDevice":false,"platformApiLevel":36,"osVersion":36,"model":"sdk_gphone64_arm64","deviceType":2,"debugBuild":true,"canUseBiometricAuthentication":false,"unprotectedBiometricItemAllowed":true,"localAuthentication":{"hasHardware":true,"isEnrolled":false,"enrolledLevel":0},"item":"dems.live.probe.v1","waitMs":8000}
+10-04 11:29:45.203  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] S1 probe item absent before the run PASS {"outcome":"ok","ms":14,"leftoverDeleted":false}
+10-04 11:29:45.370  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] U1 unprotected write PASS {"outcome":"ok","ms":167}
+10-04 11:29:45.377  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] U2 unprotected read gives the written value PASS {"outcome":"ok","ms":7,"read":"equal","length":34}
+10-04 11:29:45.385  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] U3 unprotected delete PASS {"outcome":"ok","ms":8}
+10-04 11:29:45.386  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] U4 read after the delete gives nothing PASS {"outcome":"ok","ms":1,"read":"absent"}
+10-04 11:29:45.390  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] P1 protected write PASS {"outcome":"threw","ms":3,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:29:45.391  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] P2 protected read PASS {"outcome":"ok","ms":0,"read":"absent"}
+10-04 11:29:45.392  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] P3 rotation: delete of the old value PASS {"outcome":"ok","ms":1}
+10-04 11:29:45.393  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] P4 rotation: protected write of a new value PASS {"outcome":"threw","ms":1,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:29:45.395  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] P5 rotation in place: protected write over the stored value PASS {"outcome":"threw","ms":1,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:29:45.395  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] P6 protected read after the rotation PASS {"outcome":"ok","ms":0,"read":"absent"}
+10-04 11:29:45.396  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] Z1 delete of the probe item PASS {"outcome":"ok","ms":1}
+10-04 11:29:45.396  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] Z2 probe item absent after the run PASS {"outcome":"ok","ms":0,"read":"absent","protectedStepPending":false}
+10-04 11:29:45.396  5935  5967 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x112937] DONE secure-store pass=14 fail=0

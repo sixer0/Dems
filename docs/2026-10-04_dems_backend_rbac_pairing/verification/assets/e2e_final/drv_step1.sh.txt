@@ -1,0 +1,22 @@
+#!/bin/sh
+# W94 step 1 on emulator-5558: Stack Check reachable while unpaired, a guarded link (/home) reaches no guarded
+# screen, back to Pair; UI dumps only on Pair / Stack Check (never Login/Summary/Home).
+set -u
+OUT=/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/verification/assets/e2e_final
+S=emulator-5558; APP=com.dems.demo.tablet
+a() { adb -s "$S" "$@"; }
+now() { python3 -c 'import time; t=time.time(); print(time.strftime("%H:%M:%S", time.localtime(t)) + ".%03d" % int((t % 1) * 1000))'; }
+kg() { a shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1; }
+link() { echo "-- host $(now) warm link '$1'"; a shell "am start -W -a android.intent.action.VIEW -d '$1' $APP" 2>&1 | tr -d '\r' | grep -E "Status|Error" | sed 's/^/   /'; }
+ids() { a shell uiautomator dump /sdcard/e2f_ui.xml >/dev/null 2>&1; a shell cat /sdcard/e2f_ui.xml > "$OUT/$1"; a shell rm -f /sdcard/e2f_ui.xml; echo "   UI dump $1: screen ids [$(grep -o 'resource-id="screen-[a-z-]*"' "$OUT/$1" | sed 's/resource-id=//; s/"//g' | sort -u | tr '\n' ' ')]"; }
+echo "== W94 step 1 — host $(now); $(kg); load $(uptime | sed 's/.*averages: //')"
+ids w94_s1_ui_pair.xml
+link 'demsdemo:///stack-check'; sleep 5
+a exec-out screencap -p > "$OUT/w94_s1_stack_check.png"; echo "   screencap w94_s1_stack_check.png at host $(now)"
+ids w94_s1_ui_stack_check.xml
+link 'demsdemo:///home'; sleep 6
+a exec-out screencap -p > "$OUT/w94_s1_guarded_home_link.png"; echo "   screencap w94_s1_guarded_home_link.png at host $(now)"
+ids w94_s1_ui_after_home_link.xml
+link 'demsdemo:///pair'; sleep 5
+ids w94_s1_ui_pair_again.xml
+a exec-out screencap -p > "$OUT/w94_s1_pair.png"; echo "   screencap w94_s1_pair.png at host $(now); $(kg)"

@@ -1,0 +1,4 @@
+mousetext "Security & Audit" LI at 116,508 10:50:08.727
+slept 4500
+eval: "/security-audit"
+testids  (47): app-shell top-bar top-bar-clock shell-mode notifications-bell user-menu secure-pill secure-ring-pulse nav-admin-group page-security-audit page-header security-banner panel-posture posture-shield glow-layer posture-state panel-controls panel-keys expiry-DEVICE_CERT expiry-EVIDENCE_SIGNING_KEY expiry-TLS_SERVER panel-chain chain-status verify-chain chain-strip chain-inspect panel-audit audit-live export-audit audit-search audit-filter-type hidden-select-container audit-filter-severity audit-filter-operator audit-table panel-auth auth-lockout auth-feed panel-tamper tamper-enclosure tamper-chain tamper-packages tamper-feed-empty panel-custody custody-feed panel-rbac rbac-matrix

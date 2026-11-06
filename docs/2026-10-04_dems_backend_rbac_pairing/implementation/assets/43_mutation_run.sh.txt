@@ -1,0 +1,30 @@
+#!/bin/zsh
+# Mutation check of plan row W43 (rule M15). One mutation at a time, applied by a transform of the
+# runner configuration in this directory: no file of the workspace is changed. The unit tests of
+# the folder run first; the database tests only when the unit tests did not detect the mutation.
+S="$(cd "$(dirname "$0")" && pwd)"
+ROOT=/Users/gsp-budi/Documents/DEMS
+cd "$ROOT" || exit 2
+OUT="$S/results.tsv"
+: > "$OUT"
+ids=("$@")
+if [ ${#ids[@]} -eq 0 ]; then ids=($(python3 -c "import json;print(' '.join(x['id'] for x in json.load(open('$S/mutations.json'))))")); fi
+for id in "${ids[@]}"; do
+  rm -f "$S/applied-$id" "$S/invalid-$id"
+  started=$(date '+%H:%M:%S')
+  W43_MUTATION="$id" npx vitest run --root apps/core-server --config "$S/vitest.mutation.config.mjs" --project unit src/modules/demo > "$S/log-$id-unit.log" 2>&1
+  unit=$?
+  db=-
+  if [ $unit -eq 0 ]; then
+    DEMS_TEST_STEP=65m W43_MUTATION="$id" npx vitest run --root apps/core-server --config "$S/vitest.mutation.config.mjs" --project db src/modules/demo > "$S/log-$id-db.log" 2>&1
+    db=$?
+  fi
+  applied=no; [ -f "$S/applied-$id" ] && applied=yes
+  [ -f "$S/invalid-$id" ] && applied=INVALID
+  if [ "$applied" != yes ]; then verdict=NOT-APPLIED
+  elif [ $unit -ne 0 ]; then verdict=detected-by-unit
+  elif [ "$db" != 0 ]; then verdict=detected-by-db
+  else verdict=SURVIVED; fi
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$started" "$applied" "$unit" "$db" "$verdict" >> "$OUT"
+done
+echo done >> "$S/finished"

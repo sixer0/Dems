@@ -1,0 +1,31 @@
+// Scratch configuration for the mutation check of plan row W41 (the harness of plan rows W24,
+// W28, W32 and W33, reused; rule M15). It is the workspace's own configuration plus one
+// transform: ONE production file is given to Vitest with ONE text replaced. Nothing in the
+// repository is changed, so no other row's run sees a mutated file.
+import { readFileSync } from 'node:fs';
+import { mergeConfig } from 'vitest/config';
+import base from '/Users/gsp-budi/Documents/DEMS/apps/core-server/vitest.config.ts';
+
+const ROOT = '/Users/gsp-budi/Documents/DEMS/apps/core-server';
+const mutations = JSON.parse(readFileSync(new URL('./mutations.json', import.meta.url), 'utf8'));
+const chosen = process.env.W41_MUTATION;
+const mutation = chosen === undefined || chosen === '' ? null : mutations.find((entry) => entry.id === chosen);
+if (chosen && !mutation) throw new Error(`no mutation ${chosen}`);
+
+const plugin = {
+  name: 'w41-mutate',
+  enforce: 'pre',
+  load(id) {
+    if (mutation === null) return null;
+    const file = id.split('?')[0];
+    if (file !== `${ROOT}/${mutation.file}`) return null;
+    const source = readFileSync(file, 'utf8');
+    if (!source.includes(mutation.from)) throw new Error(`mutation ${mutation.id}: the text to replace is not in ${mutation.file}`);
+    return source.replace(mutation.from, () => mutation.to);
+  },
+};
+
+const merged = mergeConfig(base, { root: ROOT, plugins: [plugin] });
+// Each project extends the root configuration; give each the plugin explicitly as well.
+merged.test.projects = merged.test.projects.map((project) => ({ ...project, plugins: [plugin] }));
+export default merged;

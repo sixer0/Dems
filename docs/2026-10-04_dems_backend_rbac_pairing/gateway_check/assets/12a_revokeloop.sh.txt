@@ -1,0 +1,13 @@
+#!/bin/bash
+# The phone2 proof loop: revoke signed-out, signed-in, signed-out, signed-in; re-pair after each.
+cd /Users/gsp-budi/Documents/DEMS/.cache/cf_m1
+for spec in ${SPECS:-R1:0 R2:1 R3:0 R4:1}; do
+  IFS=: read TAG IN <<< "$spec"
+  DEV=$(cat own_device_phone2.id)
+  echo "=== $TAG signedIn=$IN dev=$DEV $(date +%T)"
+  OUT=$(./cycle.sh $TAG $IN $DEV | node send.mjs q_phone2 600)
+  echo "$OUT" | grep -E "signin|revoke|issued|redeem|ERROR|REFUSED|POST|socket" | cut -c1-300
+  NEXT=$(echo "$OUT" | grep -o '"id":"DEV-[0-9]*","state":"Paired"' | head -1 | grep -o 'DEV-[0-9]*')
+  if [ -n "$NEXT" ]; then echo "$NEXT" > own_device_phone2.id; echo "new device $NEXT"; else echo "NO PAIRED DEVICE AFTER $TAG: stop"; break; fi
+done
+echo "=== loop done $(date +%T)"

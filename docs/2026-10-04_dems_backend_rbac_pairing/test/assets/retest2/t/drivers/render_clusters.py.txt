@@ -1,0 +1,19 @@
+"""Render one example glyph per cluster (from the frame and position where it first occurs) for labelling."""
+import json, sys, os
+from PIL import Image, ImageDraw
+sys.argv = [sys.argv[0]] + sys.argv[1:]
+frames_dir, js, out = sys.argv[1:4]
+d = json.load(open(js))
+rows = {r['frame']: r for r in d['rows']}
+TIMER_BOX = (560, 105, 720, 150)
+tiles = []
+for c in d['clusters']:
+    r = rows[c['example']]
+    pos = r['glyphs'].index(c['id'])
+    im = Image.open(os.path.join(frames_dir, c['example'] + '.png')).convert('RGB').crop(TIMER_BOX).resize((480, 135))
+    t = Image.new('RGB', (480, 175), (255, 255, 255)); t.paste(im, (0, 40))
+    ImageDraw.Draw(t).text((5, 5), f"cluster {c['id']} = digit position {pos} in {c['example']}", fill=(0, 0, 0))
+    tiles.append(t)
+s = Image.new('RGB', (480 * 3, 175 * ((len(tiles) + 2) // 3)), (255, 255, 255))
+for k, t in enumerate(tiles): s.paste(t, ((k % 3) * 480, (k // 3) * 175))
+s.save(out)

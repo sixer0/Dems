@@ -1,0 +1,243 @@
+
+== src/core/__tests__/support.ts
+   BOOT_CHECKS                            engine
+   CLOCK_START                            plugins/permission-guard
+   RecordingErrorLog                      modules/identity, modules/security-audit
+   StandInDatabase                        modules/sessions, modules/storage, modules/system, plugins/permission-guard
+   TestLogger                             modules/identity
+   linkProblems                           engine, modules/admin, modules/alerts, modules/devices, modules/evidence, modules/identity, modules/pairing, modules/rbac, modules/sessions, modules/storage, modules/system, plugins/permission-guard, test/acceptance
+   passedAmong                            engine
+   readEventCounter                       engine
+   readEvents                             engine, modules/admin, modules/alerts, modules/evidence, modules/identity, modules/pairing, modules/security-audit, modules/sessions, modules/storage, modules/system, plugins/permission-guard
+   readHead                               engine, modules/admin, modules/alerts, modules/demo, modules/devices, modules/evidence, modules/identity, modules/pairing, modules/rbac, modules/sessions, modules/storage, modules/system, plugins/permission-guard, test/acceptance
+   readTrail                              engine, modules/admin, modules/alerts, modules/demo, modules/devices, modules/evidence, modules/identity, modules/network-time, modules/pairing, modules/rbac, modules/security-audit, modules/sessions, modules/storage, modules/system, plugins/authenticate, plugins/permission-guard, test/acceptance
+   recordingErrorLog                      modules/identity, modules/security-audit
+   sleep                                  engine, modules/admin, test/acceptance
+   standInDatabase                        engine, modules/pairing, modules/sessions, modules/storage, modules/system, plugins/permission-guard
+   testLogger                             modules/identity, modules/security-audit
+   verifyTrail                            engine, modules/admin, modules/alerts, modules/demo, modules/devices, modules/evidence, modules/identity, modules/pairing, modules/rbac, modules/sessions, modules/storage, modules/system, plugins/permission-guard, test/acceptance
+
+== src/db/fixtures/__tests__/template-hook.bulk.ts
+   BULK_TEMPLATE_NOW                      modules/admin, modules/evidence, modules/pairing, modules/security-audit, modules/sessions, test/acceptance
+
+== src/db/reset/__tests__/pools.ts
+   rewritesAppendOnlyTable                modules/demo
+
+== src/db/reset/__tests__/support.ts
+   ACTIVE_CODE_ID                         modules/demo
+   PATIENT_MS                             modules/demo
+   catalogOf                              modules/demo
+   chainFacts                             modules/demo
+   contractChecksum                       modules/demo
+   digestAll                              modules/demo
+   discard                                engine, modules/demo, modules/security-audit
+   dropOwn                                modules/demo
+   dumpKept                               modules/demo
+   dumpTable                              modules/demo
+   lineageRows                            modules/demo, modules/security-audit
+   maintenancePool                        engine, modules/demo, modules/security-audit
+   occurrences                            modules/demo
+   plantKeptRows                          modules/demo
+   resetApplicationName                   modules/demo
+   resetLockHeld                          modules/demo
+   sessionsOf                             modules/demo
+   untilNoSession                         modules/demo
+
+== src/db/seed/__tests__/support.ts
+   DAY_MS                                 db/mapping
+   EXPECTED_SEED_COUNTS                   db/mapping
+   FIXED_NOW                              db/mapping, db/store, engine
+   Host                                   db/fixtures, db/mapping, db/store, engine, modules/devices, modules/sessions, modules/system, realtime
+   SCENARIOS                              db/mapping, modules/devices
+   asStored                               db/mapping, engine
+   createHost                             db/fixtures, db/mapping, db/store, engine, modules/devices, modules/sessions, modules/system, realtime
+   dumpDatabase                           engine, modules/identity, modules/pairing
+   negativeZeros                          db/mapping
+   occurrences                            engine
+   sha256Hex                              engine
+   tableChecksums                         db/store, engine, test/acceptance
+   withoutNegativeZeros                   db/mapping, db/store, engine, modules/alerts, modules/demo, modules/devices, modules/evidence, modules/sessions, modules/system, test/acceptance
+
+== src/db/seed/__tests__/template-hook.seed.ts
+   SEED_TEMPLATE_NOW                      modules/network-time
+
+== src/engine/__tests__/support.ts
+   CountingPool                           modules/demo, modules/devices, modules/evidence, modules/system
+   EngineApp                              modules/sessions
+   EngineAppOptions                       modules/sessions
+   EngineAppTarget                        modules/sessions
+   FIXED_NOW                              modules/evidence, modules/security-audit, modules/sessions, test/acceptance
+   ManualTimer                            modules/admin, modules/demo, modules/devices, modules/evidence, modules/security-audit, modules/storage, modules/system, realtime
+   TICK_MS                                modules/evidence, modules/security-audit
+   countChanges                           modules/alerts, modules/storage, modules/system
+   countingPool                           modules/demo, modules/devices, modules/evidence, modules/system
+   engineApp                              modules/sessions, modules/storage
+   manualTimer                            modules/admin, modules/demo, modules/devices, modules/evidence, modules/identity, modules/pairing, modules/rbac, modules/security-audit, modules/storage, modules/system, realtime, test/acceptance
+   stateChanges                           modules/evidence
+   storedSlices                           modules/alerts, modules/demo, modules/devices, modules/evidence, modules/sessions, modules/system, test/acceptance
+   tableCounts                            modules/alerts, modules/storage, modules/system
+
+== src/modules/admin/__tests__/support.ts
+   USERS                                  test/acceptance
+   disableUrl                             modules/identity, realtime
+   enableUrl                              modules/identity, realtime
+   roleUrl                                realtime, test/acceptance
+
+== src/modules/identity/__tests__/support.ts
+   CLOCK_START                            modules/admin, modules/demo, modules/pairing, plugins/authenticate, plugins/permission-guard
+   DeviceRegistryDouble                   modules/admin, modules/evidence, plugins/authenticate, plugins/permission-guard
+   FOREIGN_ORIGIN                         modules/alerts, modules/devices, modules/system, plugins/permission-guard, realtime
+   Headers                                modules/admin, modules/demo, modules/devices, modules/evidence, modules/network-time, modules/pairing, modules/rbac, modules/security-audit, modules/sessions, modules/storage, modules/system, plugins/permission-guard, realtime, test/acceptance
+   IdentityApp                            modules/devices, modules/pairing, modules/system, plugins/authenticate, realtime
+   IdentityAppOptions                     modules/pairing, realtime
+   IdentityTarget                         modules/devices, modules/pairing, modules/system, realtime
+   MINUTE                                 modules/pairing, realtime
+   ManualClock                            modules/demo, modules/devices, modules/system, realtime
+   OWN_ORIGIN                             modules/pairing, plugins/authenticate, plugins/permission-guard, realtime
+   SESSION                                modules/admin, modules/pairing, modules/rbac, plugins/authenticate, plugins/permission-guard, test/acceptance
+   SIGN_IN                                modules/pairing, plugins/authenticate, plugins/permission-guard, realtime
+   SIGN_OUT                               modules/pairing, plugins/authenticate, realtime, test/acceptance
+   STATUS                                 modules/pairing, plugins/authenticate, plugins/permission-guard
+   TOUCH                                  modules/admin, modules/pairing, plugins/authenticate, plugins/permission-guard, realtime, test/acceptance
+   WEB_ORIGIN                             modules/admin, modules/demo, modules/devices, modules/evidence, modules/pairing, modules/rbac, modules/security-audit, modules/sessions, modules/system, plugins/authenticate, plugins/permission-guard, realtime
+   WebSession                             plugins/authenticate
+   bearer                                 modules/admin, modules/evidence, modules/network-time, modules/pairing, modules/rbac, modules/storage, plugins/authenticate, plugins/permission-guard, realtime
+   closeOpenSessions                      plugins/authenticate
+   cookieValue                            modules/admin, modules/demo, modules/evidence, modules/security-audit, modules/sessions, modules/storage, plugins/permission-guard, test/acceptance
+   deviceRegistryDouble                   modules/admin, modules/evidence, plugins/authenticate, plugins/permission-guard
+   deviceSignIn                           modules/admin, modules/evidence, modules/pairing, plugins/authenticate, plugins/permission-guard, realtime, test/acceptance
+   errorOf                                modules/admin, modules/pairing, modules/rbac, plugins/authenticate, plugins/permission-guard
+   expectAbsent                           modules/pairing, plugins/permission-guard
+   forgetCounters                         modules/devices, plugins/authenticate
+   get                                    modules/pairing, plugins/authenticate, test/acceptance
+   identityApp                            modules/devices, modules/pairing, modules/system, plugins/authenticate, realtime
+   insertPairedDevice                     modules/admin, modules/evidence, modules/network-time, modules/rbac, modules/storage, plugins/authenticate, plugins/permission-guard
+   occurrences                            modules/pairing
+   sessionOfToken                         modules/pairing, plugins/authenticate
+   setCookies                             modules/pairing
+   signInOnWeb                            modules/devices, modules/pairing, modules/system, plugins/authenticate, realtime
+   storedSessions                         modules/admin, modules/pairing, plugins/authenticate
+   webPost                                test/acceptance
+   webSignIn                              modules/admin, modules/demo, modules/evidence, modules/security-audit, modules/sessions, modules/storage, plugins/authenticate, plugins/permission-guard, test/acceptance
+
+== src/modules/pairing/__tests__/support.ts
+   CODE                                   test/acceptance
+   DEVICE                                 test/acceptance
+   DEVICES                                realtime, test/acceptance
+   PairedTestDevice                       modules/identity, realtime
+   PairingApp                             realtime
+   UNPAIR                                 realtime
+   deviceGet                              modules/identity, test/acceptance
+   devicePost                             modules/identity, test/acceptance
+   expectContract                         test/acceptance
+   pairDevice                             realtime
+   portalPost                             test/acceptance
+   redeem                                 test/acceptance
+   revokeUrl                              realtime, test/acceptance
+   wrongCodeFor                           test/acceptance
+
+== src/modules/sessions/__tests__/support.ts
+   CURRENT                                test/acceptance
+   HISTORY                                test/acceptance
+   SESSION                                test/acceptance
+   on                                     test/acceptance
+   seeded                                 test/acceptance
+   sessionInput                           test/acceptance
+
+== src/modules/storage/__tests__/static-rules.ts
+   * as rules                             modules/network-time
+
+== src/modules/storage/__tests__/support.ts
+   ANONYMOUS                              modules/network-time
+   BootedApp                              modules/network-time
+   CLOCK_START                            modules/network-time
+   HOUR                                   modules/network-time
+   INVESTIGATOR                           modules/network-time
+   ModuleApp                              modules/network-time
+   ModuleAppOptions                       modules/network-time
+   PAIRED_DEVICE                          modules/network-time
+   ROLES                                  modules/network-time
+   SECOND                                 modules/network-time
+   SUPERVISOR                             modules/network-time
+   TECHNICIAN                             modules/network-time
+   WEB_ORIGIN                             modules/network-time
+   YEAR                                   modules/network-time
+   bareRoutes                             modules/network-time
+   bootedApp                              modules/network-time
+   moduleApp                              modules/network-time
+   operatorOf                             modules/network-time
+   outcome                                modules/network-time
+   registryOperationsOf                   modules/network-time
+   registrySignatures                     modules/network-time
+   routeSignatures                        modules/network-time
+
+== src/modules/system/__tests__/static-rules.ts
+   * as rules                             modules/alerts
+
+== src/modules/system/__tests__/support.ts
+   ALERTS                                 modules/alerts
+   ANONYMOUS                              modules/alerts
+   BootedServer                           modules/alerts
+   LogLine                                modules/alerts
+   ModuleApp                              modules/alerts
+   ModuleAppOptions                       modules/alerts
+   PAIRED_DEVICE                          modules/alerts
+   ROLES                                  modules/alerts
+   ServerTarget                           modules/alerts
+   acknowledge                            modules/alerts
+   bareRoutes                             modules/alerts
+   bodyOf                                 modules/alerts
+   bootedServer                           modules/alerts
+   errorOf                                modules/alerts
+   linesWith                              modules/alerts
+   memberNames                            modules/alerts
+   moduleApp                              modules/alerts
+   operatorOf                             modules/alerts
+   outcome                                modules/alerts
+   ownMembers                             modules/alerts
+   post                                   modules/alerts
+   registryOperationsOf                   modules/alerts
+   registrySignatures                     modules/alerts
+   routeSignatures                        modules/alerts
+   seeded                                 modules/alerts
+   stringValues                           modules/alerts
+
+== src/plugins/config/__tests__/test-config.ts
+   CLOSED_PORT                            db/fixtures, plugins/db
+   CapturedLog                            core, engine, modules/admin, modules/demo, modules/devices, modules/evidence, modules/identity, modules/pairing, modules/rbac, modules/security-audit, modules/sessions, modules/storage, modules/system, plugins/authenticate, plugins/logger, plugins/permission-guard, realtime, test/acceptance
+   captureLog                             core, engine, modules/admin, modules/demo, modules/devices, modules/evidence, modules/identity, modules/pairing, modules/rbac, modules/security-audit, modules/sessions, modules/storage, modules/system, plugins/authenticate, plugins/db, plugins/logger, plugins/origin-guard, plugins/permission-guard, plugins/readiness, plugins/response-headers, plugins/throttle, realtime, test/acceptance, test/db
+   createFakePool                         core, engine, modules/admin, modules/devices, modules/health, modules/identity, modules/pairing, modules/rbac, modules/sessions, plugins/authenticate, plugins/db, plugins/origin-guard, plugins/permission-guard, plugins/readiness
+   credentialLeaks                        engine, modules/demo, modules/identity, modules/pairing, plugins/authenticate, plugins/logger, plugins/permission-guard, realtime
+   unitTestConfig                         core, engine, modules/admin, modules/demo, modules/devices, modules/evidence, modules/health, modules/identity, modules/pairing, modules/rbac, modules/security-audit, modules/sessions, modules/storage, modules/system, plugins/authenticate, plugins/db, plugins/error-envelope, plugins/logger, plugins/origin-guard, plugins/permission-guard, plugins/readiness, plugins/response-headers, plugins/throttle, realtime, test/acceptance
+
+== src/plugins/origin-guard/__tests__/guard-test-app.ts
+   CLOCK_START                            plugins/throttle
+   FOREIGN_ORIGIN                         plugins/throttle
+   GuardApp                               plugins/throttle
+   GuardAppOptions                        plugins/throttle
+   OWN_ORIGIN                             plugins/throttle
+   SCRATCH_COMMAND                        plugins/throttle
+   SCRATCH_PATTERN                        plugins/throttle
+   SCRATCH_READ                           plugins/throttle
+   SESSION_COOKIE                         plugins/throttle
+   WEB_CONSOLE_ORIGIN                     plugins/throttle
+   authenticateAs                         plugins/throttle
+   authenticateBySpecification            plugins/throttle
+   buildGuardApp                          plugins/throttle
+   devicePrincipal                        plugins/throttle
+   expectRefusal                          plugins/throttle
+   operatorPrincipal                      plugins/throttle
+   retiredDevice                          plugins/throttle
+
+== src/plugins/permission-guard/__tests__/support.ts
+   GuardApp                               modules/rbac, modules/storage
+   GuardAppOptions                        modules/rbac
+   GuardTarget                            modules/network-time, modules/storage
+   buildGuardApp                          modules/rbac, modules/storage
+   deviceOperator                         modules/network-time, modules/rbac, modules/storage
+   outcome                                modules/rbac
+   passScratchRoutes                      modules/identity
+   webOperator                            modules/network-time, modules/rbac, modules/storage
+
+== test/identity/__tests__/support
+   helper                                 test/static

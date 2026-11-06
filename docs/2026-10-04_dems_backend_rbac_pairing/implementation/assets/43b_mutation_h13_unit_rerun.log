@@ -1,0 +1,30 @@
+   ❯ operations 72 and 75: the reset routine, through the server's own wiring (13)
+     × resetDemo: the caller is the actor, the scenario is idle; hold, drain, roles, engine stop, pool close, the routine, pool reopen, boot checks, matrix, engine reload; 200 with the routine's epoch 8ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| src/modules/demo/__tests__/routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; hold, drain, roles, engine stop, pool close, the routine, pool reopen, boot checks, matrix, engine reload; 200 with the routine's epoch
+AssertionError: expected 1791107741897 to be 1924992000000 // Object.is equality
+
+- Expected
++ Received
+
+- 1924992000000
++ 1791107741897
+
+ ❯ src/modules/demo/__tests__/routes.test.ts:436:33
+    434|     expect(Object.keys(calls[0] ?? {}).sort()).toEqual(['actorId', 'cl…
+    435|     // The clock the routine reads is the server clock of the app (her…
+    436|     expect(calls[0]?.clock?.()).toBe(CLOCK_START);
+       |                                 ^
+    437|     expect(built.trace).toContain(`routine:clock ${CLOCK_START}`);
+    438|     expect(calls[0]).toMatchObject({ database: 'dems_unit_test', dataD…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 4 passed (5)
+      Tests  1 failed | 141 passed (142)
+   Start at  16:55:40
+   Duration  1.77s (import 53%, transform 35%, tests 11%)
+

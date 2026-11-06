@@ -1,0 +1,152 @@
+
+== 22:39:54 0. run w65223954; the ports must be free before anything is started (nothing is stopped that this check did not start)
+free: 4422 5177 9397 8083
+2026-10-05 22:39:55 WIB
+22:39  up 4 days,  5:52, 2 users, load averages: 3.19 4.05 3.86
+-- emulator-user-lock.sh status tablet (read-only, before):
+tablet (emulator-5556): AVD dems2_tablet, isKeyguardShowing=false, CredentialType=PIN, fingerprint count=1, lock screen disabled=unreadable
+
+== 22:39:55 1. lane database before the check (not reset)
+   audit_log                95
+   device_credentials       1
+   events                   77
+   evidence_items           13
+   paired_devices           1
+   db:status: OK: dems_lane_2 is at the schema version this code expects and the ledger matches the files.
+
+== 22:39:55 2. start the lane backend: DEMS_CORE_PORT=4422 npm run start:server (demo flag OFF)
+backend up after 4 quarter seconds, npm pid 70042
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    70085 gsp-budi   17u  IPv4 0xb195fa2660ac398d      0t0  TCP 127.0.0.1:4422 (LISTEN)
+"port":4422,"database":"dems_lane_2","demoControls":false
+-- direct health on the backend:
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T15:39:57.078Z","uptimeMs":302,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 22:39:57 3. start Vite for lane 2: DEMS_CORE_PROXY_PORT=4422 VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port 5177 --strictPort
+waited 2 quarter seconds
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    70148 gsp-budi   14u  IPv4 0x73e4e07ae3a326a0      0t0  TCP 127.0.0.1:5177 (LISTEN)
+-- health through the dev server: 200
+
+== 22:39:57 4. a headless Chromium (devtools on 127.0.0.1:9397)
+chrome pid 70161
+Google Chrome for Testing 153.0.8010.12
+
+== 22:39:58 5. device session: tablet (emulator-5556), Metro 8083, device tcp:4420 -> host tcp:4422
+[device-session tablet 22:39:58] lock held; hard cap 600 s, until 22:49:58 (watchdog PID 70191)
+[device-session tablet 22:39:58] session serial: emulator-5556 (dems2_tablet)
+[device-session tablet 22:39:58] emulator-5556: screen awake, no keyguard
+[device-session tablet 22:39:58] Metro PID 70228 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session tablet 22:40:00] emulator-5556: bundler location set to localhost:8081 (H-MB-09)
+[device-session tablet 22:40:00] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5556
+[device-session tablet 22:40:00] Core server: device tcp:4420 -> host tcp:4422 on emulator-5556
+-- serial emulator-5556 (dems2_tablet), app com.dems.demo.tablet, Metro port 8083, run w65223954
+-- adb reverse --list (start of commands):
+host-16 tcp:8081 tcp:8083
+host-16 tcp:4400 tcp:4400
+host-16 tcp:4420 tcp:4422
+
+-- lock state (start of the session; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: PIN
+   fingerprints enrolled: "count":1
+-- dems.mobile.prefs.v1 (before the launch; absent = the default source, SIMULATED): {"coreLinkSource":"SIMULATED"}
+
+-- secure-store entry NAMES (before the launch; no value is read):
+   entry: name="key_v1-dems.live.device.v1"
+
+== A. LIVE mode on the PAIRED tablet: demsdemo:///?core=LIVE
+-- am start -W -a android.intent.action.VIEW -d 'demsdemo:///?core=LIVE' com.dems.demo.tablet
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+   Activity: com.dems.demo.tablet/.MainActivity
+-- waited 5 s for the tablet's DEVICE socket in the backend's log
+{"level":30,"principal":"device:DEV-0001","kind":"DEVICE","msg":"socket opened"}
+-- dems.mobile.prefs.v1 (after the launch with core=LIVE; absent = the default source, SIMULATED): {"coreLinkSource":"LIVE"}
+
+-- screencap 65_tablet_live_connected.png (3305101 bytes)
+-- 'live.misuse' reports on the tablet (must be 0): 0
+
+== B. the web console on 127.0.0.1:5177 while the tablet is connected (the driver)
+cdp-driver exit 0
+[15:40:33] signed in: true
+[15:40:38] session SES-20261005-0024: RECORDING
+[15:40:52] meters: ["−51 dBFS","−12 dBFS"] -> ["−51 dBFS","−15 dBFS"]; moved=true
+[15:41:03] stop: dialog closed true, overlay true, sealed true, server state SEALED, evidence EV-20261005-0014
+-- the tablet's socket lines during the check:
+   DEVICE socket lines: 1
+-- lines with a credential or a bearer value in the tablet's log of this session (must be 0): 0
+
+== C. the default source again: stop the app, then a launch with core=SIMULATED (the choice is stored, D124)
+-- am start -W -a android.intent.action.VIEW -d 'demsdemo:///?core=SIMULATED' com.dems.demo.tablet
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+   Activity: com.dems.demo.tablet/.MainActivity
+-- waited 3 s for: runtime.sim.hydrated
+-- request lines to the Core server after the relaunch (must be 0): 0
+-- dems.mobile.prefs.v1 (after the launch with core=SIMULATED; absent = the default source, SIMULATED): {"coreLinkSource":"SIMULATED"}
+
+-- secure-store entry NAMES (at the end (the pairing must still be listed); no value is read):
+   entry: name="key_v1-dems.live.device.v1"
+-- lock state (end of the commands; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: PIN
+   fingerprints enrolled: "count":1
+-- adb reverse --list (end of commands; device-session.sh removes its own rules after this):
+host-16 tcp:8081 tcp:8083
+host-16 tcp:4400 tcp:4400
+host-16 tcp:4420 tcp:4422
+
+[device-session tablet 22:41:28] Metro 70228 stopped
+[device-session tablet 22:41:28] session ended with status 0
+device session exit=0
+
+== 22:41:28 6. the backend's request log of the check, by route and status (no body is logged)
+      1 GET /api/v1/auth/session 200 principal=operator
+      1 GET /api/v1/auth/session 401 principal=device
+      1 GET /api/v1/auth/session 401 principal=null
+      1 GET /api/v1/auth/status 200 principal=device
+      2 GET /api/v1/auth/status 200 principal=null
+      7 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/device 200 principal=device
+     14 GET /api/v1/session/current 200 principal=operator
+      1 POST /api/v1/auth/sign-in 200 principal=null
+      1 POST /api/v1/auth/sign-out 204 principal=operator
+      1 POST /api/v1/session 201 principal=operator
+      1 POST /api/v1/session/:id/start 200 principal=operator
+      1 POST /api/v1/session/:id/start 202 principal=operator
+      1 POST /api/v1/session/:id/stop 202 principal=operator
+      1 POST /api/v1/session/case-number 200 principal=operator
+-- tablet link lines:
+{"level":30,"time":1791214796845,"mode":"boot","epoch":4,"auditTotal":95,"session":null,"restartFault":null,"tamperCleared":false,"tabletLinkReset":false,"tabletLinkCarried":false,"auditRows":0,"msg":"engine started"}
+-- what Vite printed (error lines):
+-- emulator-user-lock.sh status tablet (read-only, after):
+tablet (emulator-5556): AVD dems2_tablet, isKeyguardShowing=false, CredentialType=PIN, fingerprint count=1, lock screen disabled=unreadable
+
+== 22:41:28 stop what this check started
+chrome stopped
+vite: npm exit status 143
+backend: npm exit status 0
+
+== 22:41:29 listeners left on 4422, 5177, 9397, 8083 (expect none):
+lsof exit 1 (1 with no output: no listener)
+-- adb reverse --list on emulator-5556 after the session (expect empty):
+
+adb reverse --list exit 0
+
+== 22:41:29 lane database after the check (not reset)
+   audit_log                106
+   device_credentials       1
+   events                   88
+   evidence_items           14
+   paired_devices           1
+   db:status: OK: dems_lane_2 is at the schema version this code expects and the ledger matches the files.
+-- the backend's log: lines       77; lines with level error or fatal: 0
+-- lines with a bearer value, a cookie or a credential in the backend's log (must be 0): 0
+
+== 22:41:29 end of run w65223954
+2026-10-05 22:41:29 WIB
+lockf exit=0
+22:41:29

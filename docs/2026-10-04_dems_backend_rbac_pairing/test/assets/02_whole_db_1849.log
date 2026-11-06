@@ -1,0 +1,254 @@
+$ DEMS_TEST_STEP=69 npm run test:db -w @dems/core-server -- --maxWorkers=2   # started 18:49:21, load 8.35 7.06 5.93
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_69_tmdsua94_
+[test:db] stale sweep: dropped 0; kept 11 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_69_tmdsua94_tpl_schema: built in 199 ms (create 61 ms, hook 134 ms)
+[test:db] template dems_test_step_69_tmdsua94_tpl_seed: built in 289 ms (create 99 ms, hook 188 ms)
+[test:db] bulk fixture: dems_test_step_69_tmdsua94_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 26e251887c667e1e...; digest e58f1ae233811851...; build 313 ms, write 1403 ms, total 1719 ms
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: A and B took the snapshot: engine 1/7; digests A 3e8be8f0c514, B 3e8be8f0c514, engine 3e8be8f0c514; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: createSession: engine 1/8; digests A 83fb347bb1ca, B 83fb347bb1ca, engine 83fb347bb1ca; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: createSession: answered 201 with 1/8 (before: 1/7); the effect is in the delta of revision 8; A's store showed it when the action settled; B got every delta up to 8
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: beginPrecheck: engine 1/9; digests A 3c62fb8978f9, B 3c62fb8978f9, engine 3c62fb8978f9; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: beginPrecheck: answered 202 with 1/9 (before: 1/8); the effect is in the delta of revision 9; A's store showed it when the action settled; B got every delta up to 9
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: the pre-check ran (5 s of the engine): engine 1/21; digests A edd7504f0df7, B edd7504f0df7, engine edd7504f0df7; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: startRecording: engine 1/22; digests A 98534699f110, B 98534699f110, engine 98534699f110; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: startRecording: answered 200 with 1/22 (before: 1/21); the effect is in the delta of revision 22; A's store showed it when the action settled; B got every delta up to 22
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: recording (2 s of the engine): engine 1/24; digests A 28f61c828954, B 28f61c828954, engine 28f61c828954; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: addMarker: engine 1/25; digests A 7ab082be1c15, B 7ab082be1c15, engine 7ab082be1c15; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: addMarker: answered 204 with 1/25 (before: 1/24); the effect is in the delta of revision 25; A's store showed it when the action settled; B got every delta up to 25
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: stopRecording: engine 1/26; digests A 908852d4a30f, B 908852d4a30f, engine 908852d4a30f; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: stopRecording: answered 202 with 1/26 (before: 1/25); the effect is in the delta of revision 26; A's store showed it when the action settled; B got every delta up to 26
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: finalised and sealed (20 s of the engine): engine 1/53; digests A 26f6392b2953, B 26f6392b2953, engine 26f6392b2953; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: drop: B at 1/53; the server destroyed the stream of its socket (no close frame); new connections of B are refused; B's link OFFLINE +1 ms
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: acknowledgeSummary (B is away): engine 1/54; digests A 5c6bef7db381, engine 5c6bef7db381; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: acknowledgeSummary (B is away): answered 204 with 1/54 (before: 1/53); the effect is in the delta of revision 54; A's store showed it when the action settled
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: createSession, the second (B is away): engine 1/55; digests A 73284d64af2d, engine 73284d64af2d; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: createSession, the second (B is away): answered 201 with 1/55 (before: 1/54); the effect is in the delta of revision 55; A's store showed it when the action settled
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: while B is away: A ran two commands, the engine is at 1/55; B holds 1/53 and is behind in 5 slice(s): meta, session, lastSealedAcknowledged, events, audit
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: B is back: engine 1/55; digests A 73284d64af2d, B 73284d64af2d, engine 73284d64af2d; 28 of 28 slices equal (waited 4 turn(s) for B)
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: resync by reconnect: network restored +33 ms; 0 attempt(s) of B were refused while it was down; B's socket #3 synced +691 ms with a snapshot at 1/55; one GET /api/v1/auth/session; B's store equal to the engine +729 ms
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: a fresh client C joined: B = C = engine: engine 1/55; digests A 73284d64af2d, B 73284d64af2d, C 73284d64af2d, engine 73284d64af2d; 28 of 28 slices equal (waited 0 turn(s) for C)
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: B asked for a resync: B = C = engine: engine 1/55; digests A 73284d64af2d, B 73284d64af2d, C 73284d64af2d, engine 73284d64af2d; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: C's role changed: A = B = C = engine: engine 1/57; digests A 1c6b9803852f, B 1c6b9803852f, C 1c6b9803852f, engine 1c6b9803852f; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (i) web + web: B signed out: A = C = engine: engine 1/58; digests A 76e239aab744, C 76e239aab744, engine 76e239aab744; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: A and B took the snapshot: engine 1/7; digests A 3337b7c87bec, B 3337b7c87bec, engine 3337b7c87bec; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: createSession: engine 1/8; digests A 42b5da4fb065, B 42b5da4fb065, engine 42b5da4fb065; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: createSession: answered 201 with 1/8 (before: 1/7); the effect is in the delta of revision 8; A's store showed it when the action settled; B got every delta up to 8
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: beginPrecheck: engine 1/9; digests A feca665fc844, B feca665fc844, engine feca665fc844; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: beginPrecheck: answered 202 with 1/9 (before: 1/8); the effect is in the delta of revision 9; A's store showed it when the action settled; B got every delta up to 9
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: the pre-check ran (5 s of the engine): engine 1/21; digests A 800a500b4089, B 800a500b4089, engine 800a500b4089; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: startRecording: engine 1/22; digests A 64d1e0b7cbec, B 64d1e0b7cbec, engine 64d1e0b7cbec; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: startRecording: answered 200 with 1/22 (before: 1/21); the effect is in the delta of revision 22; A's store showed it when the action settled; B got every delta up to 22
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: recording (2 s of the engine): engine 1/24; digests A 1822eaf621f5, B 1822eaf621f5, engine 1822eaf621f5; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: addMarker: engine 1/25; digests A 28d72795a5f7, B 28d72795a5f7, engine 28d72795a5f7; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: addMarker: answered 204 with 1/25 (before: 1/24); the effect is in the delta of revision 25; A's store showed it when the action settled; B got every delta up to 25
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: stopRecording: engine 1/26; digests A 758faba699d2, B 758faba699d2, engine 758faba699d2; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: stopRecording: answered 202 with 1/26 (before: 1/25); the effect is in the delta of revision 26; A's store showed it when the action settled; B got every delta up to 26
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: finalised and sealed (20 s of the engine): engine 1/53; digests A 1325faf3df09, B 1325faf3df09, engine 1325faf3df09; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: drop: B at 1/53; the network between the tablet and the Core was cut (both TCP legs destroyed, new connections refused); B's link OFFLINE +1 ms
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: acknowledgeSummary (B is away): engine 1/54; digests A fbfadda9afd7, engine fbfadda9afd7; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: acknowledgeSummary (B is away): answered 204 with 1/54 (before: 1/53); the effect is in the delta of revision 54; A's store showed it when the action settled
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: the Core link went OFFLINE (B is away): engine 1/59; digests A 810541d97378, engine 810541d97378; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: createSession, the second (B is away): engine 1/60; digests A 367e4143d8a0, engine 367e4143d8a0; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: createSession, the second (B is away): answered 201 with 1/60 (before: 1/59); the effect is in the delta of revision 60; A's store showed it when the action settled
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: while B is away: A ran two commands, the engine is at 1/60; B holds 1/53 and is behind in 11 slice(s): meta, tabletLink, session, lastSealedAcknowledged, storage, time, network, health, otherDevices, events, audit
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: B is back: engine 1/61; digests A cc6b2052c623, B cc6b2052c623, engine cc6b2052c623; 28 of 28 slices equal (waited 0 turn(s) for B)
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: resync by reconnect: network restored +84 ms; 0 attempt(s) of B were refused while it was down; B's socket #3 synced +686 ms with a snapshot at 1/60; one GET /api/v1/auth/session; B's store equal to the engine +703 ms
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: a fresh client C joined: B = C = engine: engine 1/61; digests A cc6b2052c623, B cc6b2052c623, C cc6b2052c623, engine cc6b2052c623; 28 of 28 slices equal (waited 0 turn(s) for C)
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: B asked for a resync: B = C = engine: engine 1/61; digests A cc6b2052c623, B cc6b2052c623, C cc6b2052c623, engine cc6b2052c623; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: C's role changed: A = B = C = engine: engine 1/63; digests A 677a5d73c1b2, B 677a5d73c1b2, C 677a5d73c1b2, engine 677a5d73c1b2; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+[w49] (ii) web + tablet: B signed out: A = C = engine: engine 1/64; digests A 3849031d53a1, C 3849031d53a1, engine 3849031d53a1; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts
+[w49] durations: (i) web + web 1531 ms; (ii) web + tablet 1527 ms; new epoch 217 ms; withheld delta 172 ms; unknown member 110 ms
+
+ ❯ |db| test/acceptance/shared-state.test.ts (5 tests | 2 failed) 5797ms
+   ❯ SC3, two clients on one Core, (i) web + web (1)
+     × A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs 1545ms
+   ❯ SC3, two clients on one Core, (ii) web + tablet (1)
+     × A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs 1530ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |db| test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (i) web + web > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+ FAIL  |db| test/acceptance/shared-state.test.ts > SC3, two clients on one Core, (ii) web + tablet > A and B take the snapshot; after create, pre-check, start, marker and stop the replicas of A and B equal app.engine.state() slice by slice; B is dropped while A runs two commands, reconnects by itself and equals a fresh client; an explicit resync gives the same; every frame validates and nobody is sent what is not theirs
+AssertionError: expected [ 'hello', 'heartbeat', …(3) ] to deeply equal [ 'hello', 'heartbeat', …(4) ]
+
+- Expected
++ Received
+
+  [
+    "hello",
+    "heartbeat",
+    "snapshot",
+    "delta",
+-   "meters",
+    "session.updated",
+  ]
+
+ ❯ test/acceptance/shared-state.test.ts:533:28
+
+ ❯ timed test/acceptance/shared-state.test.ts:127:12
+ ❯ test/acceptance/shared-state.test.ts:314:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed | 113 passed (114)
+      Tests  2 failed | 1662 passed | 1 skipped (1665)
+   Start at  18:49:22
+   Duration  136.24s (tests 79%, import 19%, transform 2%)
+
+[test:db] forced drops that needed a retry: 1 (1 refusal(s) with SQLSTATE 42501 while a backend that the owner role may not end, such as an autovacuum worker, was on the database; each drop then went through)
+[test:db] teardown: dropped 8 database(s) in 340 ms; 0 remain with the run prefix dems_test_step_69_tmdsua94_
+npm error Lifecycle script `test:db` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c vitest run --project db --maxWorkers=2
+exit 1 at 18:51:38, load 8.50 7.13 6.09

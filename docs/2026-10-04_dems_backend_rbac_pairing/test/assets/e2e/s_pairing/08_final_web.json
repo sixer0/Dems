@@ -1,0 +1,382 @@
+{
+  "at": "10:18:05.211 (epoch 1791256685.211)",
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "table",
+    "rows": [
+      {
+        "id": "DEV-0002",
+        "state": "Paired",
+        "online": "",
+        "operator": "—",
+        "lastSeen": "1 min ago",
+        "revokeShown": true
+      },
+      {
+        "id": "DEV-0001",
+        "state": "Revoked",
+        "online": "",
+        "operator": "—",
+        "lastSeen": "10 min ago",
+        "revokeShown": false
+      }
+    ],
+    "summary": {
+      "paired": "1",
+      "online": "1",
+      "text": "1 paired · 1 online1 paired · 1 online"
+    },
+    "toasts": []
+  },
+  "screenshot": {
+    "file": "08_web_final_paired_devices.png",
+    "at": "10:18:04.703 (epoch 1791256684.703)"
+  },
+  "registry": [
+    {
+      "id": "DEV-0002",
+      "state": "PAIRED",
+      "online": true,
+      "signedInOperatorId": null
+    },
+    {
+      "id": "DEV-0001",
+      "state": "REVOKED",
+      "online": false,
+      "signedInOperatorId": null
+    }
+  ],
+  "audit": {
+    "AUTH_SIGNED_OUT": {
+      "status": 200,
+      "total": 169,
+      "rows": [
+        {
+          "seq": 169,
+          "id": "AUD-000169",
+          "at": "2026-10-06T03:17:41.668Z",
+          "atMs": 1791256661668,
+          "type": "AUTH_SIGNED_OUT",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-003",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed out",
+          "details": {
+            "reason": "USER"
+          }
+        },
+        {
+          "seq": 167,
+          "id": "AUD-000167",
+          "at": "2026-10-06T03:17:11.955Z",
+          "atMs": 1791256631955,
+          "type": "AUTH_SIGNED_OUT",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed out",
+          "details": {
+            "reason": "USER"
+          }
+        },
+        {
+          "seq": 165,
+          "id": "AUD-000165",
+          "at": "2026-10-06T03:16:23.658Z",
+          "atMs": 1791256583658,
+          "type": "AUTH_SIGNED_OUT",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": "DEV-0002",
+          "sessionId": null,
+          "message": "Operator signed out",
+          "details": {
+            "reason": "USER"
+          }
+        },
+        {
+          "seq": 164,
+          "id": "AUD-000164",
+          "at": "2026-10-06T03:14:55.574Z",
+          "atMs": 1791256495574,
+          "type": "AUTH_SIGNED_OUT",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed out",
+          "details": {
+            "reason": "USER"
+          }
+        },
+        {
+          "seq": 163,
+          "id": "AUD-000163",
+          "at": "2026-10-06T03:14:48.932Z",
+          "atMs": 1791256488932,
+          "type": "AUTH_SIGNED_OUT",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed out",
+          "details": {
+            "reason": "USER"
+          }
+        },
+        {
+          "seq": 140,
+          "id": "AUD-000140",
+          "at": "2026-10-06T03:06:53.999Z",
+          "atMs": 1791256013999,
+          "type": "AUTH_SIGNED_OUT",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-003",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed out",
+          "details": {
+            "reason": "USER"
+          }
+        }
+      ]
+    },
+    "AUTH_LOGOUT": {
+      "status": 422,
+      "rows": []
+    },
+    "AUTH_EXPIRED": {
+      "status": 200,
+      "total": 169,
+      "rows": [
+        {
+          "seq": 144,
+          "id": "AUD-000144",
+          "at": "2026-10-06T03:08:27.864Z",
+          "atMs": 1791256107864,
+          "type": "AUTH_EXPIRED",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator session expired after 15 min idle",
+          "details": {
+            "reason": "IDLE"
+          }
+        },
+        {
+          "seq": 126,
+          "id": "AUD-000126",
+          "at": "2026-10-06T03:04:02.624Z",
+          "atMs": 1791255842624,
+          "type": "AUTH_EXPIRED",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator session expired after 15 min idle",
+          "details": {
+            "reason": "IDLE"
+          }
+        },
+        {
+          "seq": 115,
+          "id": "AUD-000115",
+          "at": "2026-10-06T02:59:20.996Z",
+          "atMs": 1791255560996,
+          "type": "AUTH_EXPIRED",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator session expired after 15 min idle",
+          "details": {
+            "reason": "IDLE"
+          }
+        },
+        {
+          "seq": 88,
+          "id": "AUD-000088",
+          "at": "2026-10-05T22:46:22.473Z",
+          "atMs": 1791240382473,
+          "type": "AUTH_EXPIRED",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator session expired 8 h after sign-in",
+          "details": {
+            "reason": "ABSOLUTE"
+          }
+        },
+        {
+          "seq": 87,
+          "id": "AUD-000087",
+          "at": "2026-10-05T22:46:22.473Z",
+          "atMs": 1791240382473,
+          "type": "AUTH_EXPIRED",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator session expired 8 h after sign-in",
+          "details": {
+            "reason": "ABSOLUTE"
+          }
+        },
+        {
+          "seq": 86,
+          "id": "AUD-000086",
+          "at": "2026-10-05T22:46:22.473Z",
+          "atMs": 1791240382473,
+          "type": "AUTH_EXPIRED",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator session expired 8 h after sign-in",
+          "details": {
+            "reason": "ABSOLUTE"
+          }
+        }
+      ]
+    }
+  },
+  "signOut": {
+    "status": 204,
+    "loginShown": true
+  },
+  "network": {
+    "api": [
+      {
+        "sent": "10:17:59.200 (epoch 1791256679.200)",
+        "method": "GET",
+        "path": "/api/v1/auth/session",
+        "status": 200,
+        "done": "10:17:59.204 (epoch 1791256679.204)"
+      },
+      {
+        "sent": "10:17:59.364 (epoch 1791256679.364)",
+        "method": "GET",
+        "path": "/api/v1/pairing/code",
+        "status": 200,
+        "done": "10:17:59.398 (epoch 1791256679.398)"
+      },
+      {
+        "sent": "10:17:59.364 (epoch 1791256679.364)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "10:17:59.398 (epoch 1791256679.398)"
+      },
+      {
+        "sent": "10:18:04.712 (epoch 1791256684.712)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "10:18:04.716 (epoch 1791256684.716)"
+      },
+      {
+        "sent": "10:18:04.717 (epoch 1791256684.717)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "10:18:04.724 (epoch 1791256684.724)"
+      },
+      {
+        "sent": "10:18:04.725 (epoch 1791256684.725)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 422,
+        "done": "10:18:04.728 (epoch 1791256684.728)"
+      },
+      {
+        "sent": "10:18:04.728 (epoch 1791256684.728)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "10:18:04.732 (epoch 1791256684.732)"
+      },
+      {
+        "sent": "10:18:04.732 (epoch 1791256684.732)",
+        "method": "POST",
+        "path": "/api/v1/auth/sign-out",
+        "status": 204,
+        "done": "10:18:04.784 (epoch 1791256684.784)"
+      },
+      {
+        "sent": "10:18:04.786 (epoch 1791256684.786)",
+        "method": "GET",
+        "path": "/api/v1/auth/status",
+        "status": 200,
+        "done": "10:18:04.790 (epoch 1791256684.790)"
+      },
+      {
+        "sent": "10:18:05.104 (epoch 1791256685.104)",
+        "method": "GET",
+        "path": "/api/v1/health",
+        "status": 200,
+        "done": "10:18:05.127 (epoch 1791256685.127)"
+      }
+    ],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [
+      {
+        "url": "ws://127.0.0.1:5173/?…",
+        "status": 101,
+        "frames": 1,
+        "types": [
+          "connected"
+        ]
+      },
+      {
+        "url": "ws://127.0.0.1:5173/ws",
+        "status": 101,
+        "frames": 123,
+        "types": [
+          "delta",
+          "heartbeat",
+          "hello",
+          "meters",
+          "session.ended",
+          "snapshot"
+        ]
+      },
+      {
+        "url": "ws://127.0.0.1:5173/ws",
+        "status": 101,
+        "frames": 2,
+        "types": [
+          "heartbeat",
+          "hello"
+        ]
+      }
+    ],
+    "console": []
+  }
+}

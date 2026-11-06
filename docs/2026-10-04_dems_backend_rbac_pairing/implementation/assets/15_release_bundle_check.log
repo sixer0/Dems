@@ -1,0 +1,54 @@
+## W15 release-bundle check (2026-10-04 11:33:28); a count is the number of bundle lines that hold the text
+
+## 1. Metro's release transform of debug.ts and secure-credentials.ts (node .../assets/15_release_gate_w15.cjs)
+debug build  (dev=true)  debug.ts              {"required":["react","react-native","@dems/shared/sim","./core-link","./log","./dev-probes"],"hasProbeModule":true,"hasProbeHook":true}
+debug build  (dev=true)  secure-credentials.ts {"required":["@babel/runtime/helpers/interopRequireWildcard","@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","expo-device","expo-secure-store","zod","@dems/shared/api","./log"],"hasProbeItemName":true,"hasProbePromptTitle":true,"probeExport":"object","hasDeviceItemName":true,"hasUnprotectedRule":true}
+    debug build holds the probe=ok
+release build (dev=false) debug.ts              {"required":["react","react-native","@dems/shared/sim","./core-link","./log"],"hasProbeModule":false,"hasProbeHook":false}
+release build (dev=false) secure-credentials.ts {"required":["@babel/runtime/helpers/interopRequireWildcard","@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","expo-device","expo-secure-store","zod","@dems/shared/api","./log"],"hasProbeItemName":false,"hasProbePromptTitle":false,"probeExport":"null","hasDeviceItemName":true,"hasUnprotectedRule":true}
+    release build holds no probe=ok release build keeps the wrapper=ok
+    MB-6a rule as a release build holds it: return Device.isDevice === false || false;
+
+## 2. Release bundle
+$ EXPO_NO_TELEMETRY=1 EXPO_OFFLINE=1 CI=1 npm exec -w @dems/mobile -- expo export --platform android --no-bytecode --output-dir <tmp>/release
+Android Bundled 2236ms node_modules/expo-router/entry.js (5889 modules)
+_expo/static/js/android/entry-5990c27ecf7174d339052900a6bf7e75.js (9.9MB)
+Exported: <tmp>/release
+release exit=0
+bundle bytes: 9942919
+probe text (must be 0):
+  DEMS-PROBE-W15                     0
+  DEMS-PROBE-W12                     0
+  dev-probes                         0
+  runDevProbe                        0
+  devProbeFromUrl                    0
+  probe=                             0
+  secure-store-wait                  0
+  dems.live.probe.v1                 0
+  DEMS secure-store probe            0
+  secureStoreDevProbe                0
+  PROBE_W15_                         0
+the wrapper itself (0 today: its only importer is the debug-only probe module; W51 and W56 will import it):
+  secure-credentials                 0
+  dems.live.device.v1                0
+  ExpoSecureStore                    0
+  isUnprotectedBiometricItemAllowed  0
+positive controls (text that must be there):
+  runtime.sim.hydrated               1
+  scenario=                          1
+
+## 3. Development bundle (positive control: the same texts are found where they must be)
+$ EXPO_NO_TELEMETRY=1 EXPO_OFFLINE=1 CI=1 npm exec -w @dems/mobile -- expo export --dev --platform android --no-bytecode --output-dir <tmp>/dev
+Android Bundled 2102ms node_modules/expo-router/entry.js (6090 modules)
+_expo/static/js/android/entry-d41d8cd98f00b204e9800998ecf8427e.js (13MB)
+Exported: <tmp>/dev
+dev exit=0
+bundle bytes: 13180281
+  DEMS-PROBE-W15                     1
+  DEMS-PROBE-W12                     1
+  runtime/dev-probes.ts              1
+  dems.live.probe.v1                 1
+  runtime/secure-credentials.ts      1
+  dems.live.device.v1                1
+  ExpoSecureStore                    2
+  runtime.sim.hydrated               1

@@ -1,0 +1,112 @@
+features/audit/chain-strip.tsx:113:  const live = useCoreLink().source === 'LIVE';
+features/audit/use-audit-data.ts:70:  const live = useCoreLink().source === 'LIVE';
+features/dashboard/home-header.tsx:57:  const live = useCoreLink().source === 'LIVE';
+features/dashboard/home-header.tsx:134:      label={t('features.dashboard.header.coreLink', { state: word })}
+features/dashboard/home-header.tsx:137:        source: t(`mobile.coreLink.source.${chip.source}`),
+features/dashboard/i18n.ts:21:    coreLink: 'Core {{state}}',
+features/dashboard/recent-sessions.tsx:79:  const live = useCoreLink().source === 'LIVE';
+features/devices/device-command-dialog.tsx:40:  /** The Core link source is LIVE (`useCoreLink().source === 'LIVE'`): the Core's words, its refusals. */
+features/devices/device-detail.tsx:146:  const live = useCoreLink().source === 'LIVE';
+features/devices/device-detail.tsx:542:        { id: 'link', label: label('link'), value: t('devices.other.tabletLink') },
+features/devices/device-detail.tsx:589:      return typeof row.details.state === 'string' ? t(`common.tabletLinkState.${row.details.state}`) : EMPTY_DATE_TEXT;
+features/devices/devices-model.ts:82:type StatusInput = Pick<SimState, 'cameras' | 'mics' | 'network' | 'tabletLink' | 'otherDevices'>;
+features/devices/devices-model.ts:104:      return state.tabletLink.state === 'CONNECTED' ? 'CONNECTED' : 'OFFLINE';
+features/devices/sim-adapter.ts:89:  readonly tabletLink: SimState['tabletLink'];
+features/devices/sim-adapter.ts:99:    tabletLink: state.tabletLink,
+features/devices/sim-adapter.ts:123:        const offlineSince = state.tabletLink.state === 'OFFLINE' ? state.tabletLink.changedAt : null;
+features/devices/use-devices-data.ts:51:  return useSim((s) => s.tabletLink);
+features/devices/use-devices-data.ts:61:  const [history, poeDrawW, cameras, faults, tabletLink, session] = useSim(
+features/devices/use-devices-data.ts:62:    (s) => [s.network.bandwidth.history, s.network.poe.drawW, s.cameras, s.faults, s.tabletLink, s.session] as const,
+features/devices/use-devices-data.ts:65:    () => healthSeries({ history, poeDrawW, cameras, faults, tabletLink, session }, deviceId),
+features/devices/use-devices-data.ts:66:    [history, poeDrawW, cameras, faults, tabletLink, session, deviceId],
+features/evidence/archive-dialog.tsx:43:  const live = useCoreLink().source === 'LIVE';
+features/evidence/evidence-detail.tsx:91:  const live = useCoreLink().source === 'LIVE';
+features/evidence/export-sheet.tsx:91:  const live = useCoreLink().source === 'LIVE';
+features/evidence/use-evidence-media-ref.ts:50:  const live = useMobileLive();
+features/home/home-screen.tsx:8:import { HeartbeatStateLabel } from '@dems/shared/domain';
+features/home/home-screen.tsx:9:import { useHeartbeat } from '@dems/shared/realtime';
+features/home/home-screen.tsx:12:  HeartbeatStateIcon,
+features/home/home-screen.tsx:13:  HeartbeatStateTone,
+features/home/home-screen.tsx:178:  const heartbeat = useHeartbeat();
+features/home/home-screen.tsx:179:  const tone = HeartbeatStateTone[heartbeat.state];
+features/home/home-screen.tsx:180:  const StateIcon = TONE_ICONS[HeartbeatStateIcon[heartbeat.state]];
+features/home/home-screen.tsx:191:          <Chip.Label>{HeartbeatStateLabel[heartbeat.state]}</Chip.Label>
+features/home/use-health.ts:23:  const live = useMobileLive();
+features/login/login-card.tsx:588:  const chip = coreChipFor(controller.coreLink);
+features/login/login-card.tsx:620:        <LinkButton.Label>{t(liveText ? liveText.linkKey : 'mobile.pairing.link')}</LinkButton.Label>
+features/login/login-live-model.ts:23:/** LIVE mode: the Core server is the Core. The runtime's word (`useCoreLink().source`), and nothing else, decides it. */
+features/login/login-live-model.ts:24:export function isLiveLogin(coreLink: Pick<CoreLinkInfo, 'source'>): boolean {
+features/login/login-live-model.ts:25:  return coreLink.source === 'LIVE';
+features/login/login-live-model.ts:59:  if (line.kind === 'unpaired') return { textKey: 'features.login.live.trust.unpaired', values: {}, linkKey: 'mobile.pairing.link' };
+features/login/login-live-model.ts:85:export type LiveSignInFailure = Pick<CoreErrorPresentation, 'kind' | 'outage' | 'label' | 'description'>;
+features/login/login-live-model.ts:107:  if (lastAttempt.kind === 'core-offline' && failure.outage && failure.label !== null) {
+features/login/login-model.ts:49:  readonly coreLink: CoreLinkInfo;
+features/login/login-model.ts:57:export function ringStateFor({ coreLink, locked }: RingInputs): GlowRingState {
+features/login/login-model.ts:59:  if (coreLink.state === 'OFFLINE') return 'critical';
+features/login/login-model.ts:60:  if (coreLink.heartbeat === 'STALE') return 'attention';
+features/login/login-model.ts:67:export function coreChipFor(coreLink: CoreLinkInfo): { kind: CoreChipKind; tone: 'success' | 'warning' | 'danger' } {
+features/login/login-model.ts:68:  if (coreLink.state === 'OFFLINE') return { kind: 'OFFLINE', tone: 'danger' };
+features/login/login-model.ts:69:  if (coreLink.heartbeat === 'STALE') return { kind: 'STALE', tone: 'warning' };
+features/login/login-model.ts:78:export function isCoreBlocked(coreLink: CoreLinkInfo): boolean {
+features/login/login-model.ts:79:  return coreLink.source !== 'SIMULATED' && coreLink.state === 'OFFLINE';
+features/login/login-screen.tsx:62:  const coreOffline = controller.coreLink.state === 'OFFLINE';
+features/login/login-screen.tsx:68:  const ringState = ringStateFor({ coreLink: controller.coreLink, locked: controller.lockout.locked });
+features/login/use-login-controller.ts:34:import { HeartbeatContext, useRetryCooldown } from '@dems/shared/realtime';
+features/login/use-login-controller.ts:41:  isCoreBlocked,
+features/login/use-login-controller.ts:69:  const coreLink = useCoreLink();
+features/login/use-login-controller.ts:71:  const heartbeat = useContext(HeartbeatContext);
+features/login/use-login-controller.ts:73:  const live = isLiveLogin(coreLink);
+features/login/use-login-controller.ts:74:  const mobileLive = useMobileLive();
+features/login/use-login-controller.ts:103:  const coreBlocked = isCoreBlocked(coreLink);
+features/login/use-login-controller.ts:109:  const linkHeartbeat = coreLink.heartbeat;
+features/login/use-login-controller.ts:334:    coreLink,
+features/more/i18n.ts:89:    coreLink: 'Core {{state}}',
+features/more/more-links.tsx:170:          label={t('features.more.footer.coreLink', { state: word })}
+features/more/more-links.tsx:173:            source: t(`mobile.coreLink.source.${chip.source}`),
+features/more/use-core-link-chip.ts:30:  /** For the accessibility label (`mobile.coreLink.source.*`): the label keeps naming the source (MD-8). */
+features/more/use-core-link-chip.ts:32:  /** The data mode is LIVE (rule 5: `useCoreLink().source === 'LIVE'`). */
+features/more/use-core-link-chip.ts:37:  const link = useCoreLink();
+features/network-time/lan-sheet.tsx:30:  const tabletTone = network.tabletLink === 'CONNECTED' ? 'success' : 'warning';
+features/network-time/lan-sheet.tsx:60:        <StatusChip size="sm" tone={tabletTone} label={t(`networkTime.network.tabletState.${network.tabletLink}`)} />
+features/network-time/network-time-model.ts:180:  tabletLink: SimState['tabletLink']['state'];
+features/network-time/network-time-model.ts:195:    tabletLink: s.tabletLink.state,
+features/pairing/pairing-code-panel.tsx:81:  const offline = flow.link === 'offline' && !pairing;
+features/pairing/pairing-code-panel.tsx:204:  if (flow.link === 'offline' && flow.view !== 'pairing') {
+features/pairing/pairing-connection.tsx:86:  const offline = live !== null && live.link === 'offline' && view !== 'pairing' && view !== 'paired';
+features/pairing/pairing-connection.tsx:88:  const statusKey = live === null ? statusKeyFor(view, phase) : `live.${liveStatusKeyFor({ view, phase, sent: live.sent, link: live.link, outcome: live.outcome })}`;
+features/pairing/pairing-connection.tsx:89:  const statuses = live === null ? stepStatusesFor(view, phase) : liveStepStatusesFor(view, phase, live.link);
+features/pairing/pairing-connection.tsx:164:            { id: 'link', label: t('features.pairing.live.identity.link'), value: t(`features.pairing.live.identity.linkState.${live.link}`), testID: 'pairing-identity-link' },
+features/pairing/pairing-connection.tsx:176:        ringState={live === null ? ringStateFor(view) : liveRingStateFor(view, live.link)}
+features/pairing/pairing-connection.tsx:242:            tone={live === null ? 'info' : live.link === 'offline' ? 'danger' : 'success'}
+features/pairing/pairing-live-model.ts:23:import { LiveTransportError, type LiveLinkState } from '@dems/shared/live';
+features/pairing/pairing-live-model.ts:53:export function liveLinkViewFor(link: LiveLinkState | null, offlineShown: boolean): LiveLinkView {
+features/pairing/pairing-screen.tsx:139:                  live={flow.live ? { link: flow.link ?? 'connecting', sent: flow.sent, outcome: flow.outcome, tabletId: flow.tabletId } : null}
+features/pairing/use-pairing-flow.ts:33:import { settle, useCoreActions, useLiveLink } from '@dems/shared/live';
+features/pairing/use-pairing-flow.ts:133:  const live = useCoreLink().source === 'LIVE';
+features/pairing/use-pairing-flow.ts:134:  const liveLink = useLiveLink();
+features/pairing/use-pairing-flow.ts:136:  const mobileLive = useMobileLive();
+features/session-live/connection-banner.tsx:17:import { useConnectionBanner } from '@/runtime';
+features/session-live/connection-banner.tsx:21:  const banner = useConnectionBanner();
+features/session-live/use-monitor.ts:163:  const live = useCoreLink().source === 'LIVE';
+features/session-new/device-previews.tsx:57:  const liveSource = useCoreLink().source === 'LIVE';
+features/session-new/device-previews.tsx:109:  const live = useCoreLink().source === 'LIVE';
+features/session-new/session-info-step.tsx:53:  const live = useCoreLink().source === 'LIVE';
+features/session-new/session-new-screen.tsx:150:  const live = useCoreLink().source === 'LIVE';
+features/session-new/use-session-new.ts:185:  const live = useCoreLink().source === 'LIVE';
+features/session-recovery/session-recovery-screen.tsx:120:  const live = useCoreLink().source === 'LIVE';
+features/session-recovery/use-recovery.ts:231:  const live = useCoreLink().source === 'LIVE';
+features/session-summary/use-summary.ts:150:  const live = useCoreLink().source === 'LIVE';
+features/settings/core-link-switch.tsx:59:  const live = useCoreLink().source === 'LIVE';
+features/settings/core-link-switch.tsx:83:            reportRuntimeIssue('warn', 'settings.coreLink.signOut', error, context);
+features/settings/core-link-switch.tsx:86:          reportRuntimeIssue('error', 'settings.coreLink.signOut', error, context);
+features/settings/core-link-switch.tsx:91:          reportRuntimeIssue('info', 'settings.coreLink.switch', 'The Core link source changed across the LIVE boundary after a sign-out', context);
+features/settings/maintenance-section.tsx:96:  const live = useCoreLink().source === 'LIVE';
+features/settings/maintenance-section.tsx:129:  const live = useCoreLink().source === 'LIVE';
+features/settings/maintenance-section.tsx:160:  const live = useCoreLink().source === 'LIVE';
+features/settings/maintenance-section.tsx:256:  const live = useCoreLink().source === 'LIVE';
+features/settings/maintenance-section.tsx:337:  const live = useCoreLink().source === 'LIVE';
+features/settings/preferences-section.tsx:72:            label={t('mobile.coreLink.sourceLabel')}
+features/settings/preferences-section.tsx:81:              label: t(`mobile.coreLink.source.${source}`),
+features/settings/security-section.tsx:39:  const live = useCoreLink().source === 'LIVE';
+features/settings/settings-screen.tsx:40:  const live = useCoreLink().source === 'LIVE';
+features/storage/storage-screen.tsx:205:  const live = useCoreLink().source === 'LIVE';

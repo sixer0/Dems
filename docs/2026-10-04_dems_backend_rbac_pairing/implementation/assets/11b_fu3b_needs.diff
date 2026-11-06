@@ -1,0 +1,1382 @@
+diff --git a/apps/core-server/test/helpers/db/constants.ts b/apps/core-server/test/helpers/db/constants.ts
+index d400826..f44294b 100644
+--- a/apps/core-server/test/helpers/db/constants.ts
++++ b/apps/core-server/test/helpers/db/constants.ts
+@@ -80,8 +80,23 @@ export const DEAD_RUN_SETTLE_MS = 3_000;
+  */
+ export const DB_TEST_TIMEOUT_MS = 120_000;
+ export const DB_HOOK_TIMEOUT_MS = 180_000;
+-/** Longest wait for a connection. */
++/**
++ * Ceiling of a limit a test file states for itself (`useTestDatabase({ needs })`, decision D134).
++ * A stated need is a FLOOR the helper raises to, and it may be above the two caps: that is what
++ * the option exists for. It is never unlimited: a run must not hang forever because one file
++ * asked for "as long as it takes". Fifteen minutes is five times the cap of a test.
++ */
++export const DB_NEED_MAX_MS = 900_000;
++/** Longest wait for a connection, and for a free connection out of a pool. */
+ export const CONNECT_TIMEOUT_MS = 5_000;
++/**
++ * How long a clone request that asks for a quiet cluster (`needs.quietCluster`) looks for an
++ * empty clone-lock queue before it creates the database anyway (decision D134). Best effort
++ * inside this bound: the helper takes no lock for it and blocks nobody, and it says in the
++ * timings whether it got the quiet. Five seconds covers one bulk build of another run (measured
++ * 1.2 to 3.5 s under the clone lock, row W11b follow-up 2) and costs a busy host little.
++ */
++export const CLUSTER_QUIET_BUDGET_MS = 5_000;
+ /** Longest wait of the reachability probe. */
+ export const PROBE_TIMEOUT_MS = 1_500;
+ 
+
+diff --git a/apps/core-server/test/helpers/db/ddl.ts b/apps/core-server/test/helpers/db/ddl.ts
+index e91dd85..23a9765 100644
+--- a/apps/core-server/test/helpers/db/ddl.ts
++++ b/apps/core-server/test/helpers/db/ddl.ts
+@@ -171,6 +171,58 @@ export async function releaseLivenessLock(runner: Runner, key: number): Promise<
+   await runner.run('SELECT pg_advisory_unlock($1::int, $2::int)', [LOCK_CLASS, key]);
+ }
+ 
++/**
++ * How many sessions OTHER THAN THIS ONE hold or wait for the clone lock.
++ *
++ * The question is keyed by the reader itself (`pid <> pg_backend_pid()`), as every read of
++ * `pg_stat_activity` or `pg_locks` on the shared maintenance database must be (finding F-8 of
++ * `29_db_reset_routine.md`): a count that took another run's row for the caller's own would wait
++ * for a queue that is not there. What it counts is not keyed to a database: the clone lock is one
++ * lock for all runs on the host (TI-7), so "somebody else holds it or is queued behind it" is
++ * exactly the fact a caller that needs a quiet cluster asks for. A granted row and a waiting row
++ * both count: a queue is not quiet.
++ */
++export async function cloneLockSessionsElsewhere(runner: Runner): Promise<number> {
++  const rows = await runner.run<{ others: number }>(
++    'SELECT count(*)::int AS others FROM pg_locks ' +
++      `WHERE locktype = 'advisory' AND classid = ${LOCK_CLASS} AND objid = ${CLONE_LOCK_KEY} AND pid <> pg_backend_pid()`,
++  );
++  return rows[0]?.others ?? 0;
++}
++
++/** What a request for a quiet cluster found out about it. */
++export interface ClusterQuiet {
++  /** How long the helper looked, in milliseconds. */
++  readonly waitedMs: number;
++  /** True when it saw an empty clone-lock queue. False when it gave up at the budget. */
++  readonly obtained: boolean;
++  /** How long it was allowed to look, in milliseconds. */
++  readonly budgetMs: number;
++}
++
++/** Not asked for: no statement, no wait. */
++export const QUIET_NOT_ASKED: ClusterQuiet = { waitedMs: 0, obtained: false, budgetMs: 0 };
++
++/**
++ * Waits until no other session holds or waits for the clone lock, at most `budgetMs`, and reports
++ * what it saw. It takes nothing and blocks nobody: when the bound passes, the caller creates its
++ * database in the queue like any other request. The read is cheap (one row of `pg_locks`) and the
++ * pause grows from 10 ms to 200 ms, so a full bound is about thirty reads.
++ */
++export async function waitForQuietCluster(runner: Runner, budgetMs: number): Promise<ClusterQuiet> {
++  const started = performance.now();
++  let pause = 10;
++  for (;;) {
++    if ((await cloneLockSessionsElsewhere(runner)) === 0) {
++      return { waitedMs: performance.now() - started, obtained: true, budgetMs };
++    }
++    const waited = performance.now() - started;
++    if (waited >= budgetMs) return { waitedMs: waited, obtained: false, budgetMs };
++    await sleep(Math.min(pause, budgetMs - waited));
++    pause = Math.min(pause * 2, 200);
++  }
++}
++
+ // ── Statements that change a database: guarded names only ──────────────────────────────────────
+ 
+ /** §10.1: the first template of a run, from the empty template of PostgreSQL. */
+
+diff --git a/apps/core-server/test/helpers/db/errors.ts b/apps/core-server/test/helpers/db/errors.ts
+index f112bb3..5359b5d 100644
+--- a/apps/core-server/test/helpers/db/errors.ts
++++ b/apps/core-server/test/helpers/db/errors.ts
+@@ -26,6 +26,8 @@ export type DbTestHelperErrorCode =
+   | 'RUN_ALIVE'
+   | 'RUN_PREFIX_UNAVAILABLE'
+   | 'NAME_INVALID'
++  // What a test file states it needs (`useTestDatabase({ needs })`, decision D134).
++  | 'NEEDS_INVALID'
+   | 'CLONE_SLOTS_EXHAUSTED'
+   | 'CLONE_LOCK_TIMEOUT'
+   // Templates.
+
+diff --git a/apps/core-server/test/helpers/db/index.ts b/apps/core-server/test/helpers/db/index.ts
+index e08fcbe..9e2fad2 100644
+--- a/apps/core-server/test/helpers/db/index.ts
++++ b/apps/core-server/test/helpers/db/index.ts
+@@ -36,11 +36,30 @@
+  * stays, "no limit" stays no limit (the runner reads zero that way: `--test-timeout=0` under a
+  * debugger), and whatever the file sets for itself afterwards (`vi.setConfig` in its body, or
+  * a limit on one test or hook) wins, lower or higher.
++ *
++ * NEEDS (decision D134). A file that needs more than the caps, or that needs something else of
++ * the cluster, states it once in the call instead of writing runner details in its own body:
++ *
++ *   const db = useTestDatabase({ template: 'seed', needs: { connectTimeoutMs: 20_000, quietCluster: true } });
++ *
++ * `needs.testTimeoutMs` and `needs.hookTimeoutMs` are floors the helper raises to (never
++ * anything down, never above `DB_NEED_MAX_MS`); `needs.connectTimeoutMs` is the floor for the
++ * wait of a connection on the file's clone, also the wait for a free one out of a pool; and
++ * `needs.quietCluster` asks the helper to look for an empty clone-lock queue before each of the
++ * file's clones, within a bound, and to say in `db.timings.quiet` whether it got it. Every part
++ * is optional, so `useTestDatabase({ template })` keeps exactly the shape it always had.
+  */
+ import type { Pool } from 'pg';
+ import { afterAll, beforeAll, expect, inject, vi } from 'vitest';
+ import type { DatabaseConnection } from '../../../src/config';
+-import { DB_HOOK_TIMEOUT_MS, DB_TEST_TIMEOUT_MS, PROVIDE_KEY, type StandardTemplate } from './constants';
++import {
++  CONNECT_TIMEOUT_MS,
++  DB_HOOK_TIMEOUT_MS,
++  DB_NEED_MAX_MS,
++  DB_TEST_TIMEOUT_MS,
++  PROVIDE_KEY,
++  type StandardTemplate,
++} from './constants';
+ import { DbTestHelperError } from './errors';
+ import { conventionResolver, type DefinitionResolver, type TemplateDefinition } from './hooks';
+ import { createRunIdentity, slugFromFile, type RunIdentity } from './names';
+@@ -57,13 +76,8 @@ export {
+ } from './hooks';
+ export type { RunIdentity } from './names';
+ export type { ProvidedTestRun } from './provided';
+-export { TestDatabase, TestRun, type CloneTiming, type CreateDatabaseOptions, type TemplateTiming } from './run';
+-
+-/**
+- * Clone and drop wait for the clone lock, which other rows may hold: allow them time. The
+- * helper's own two hooks carry this limit themselves, whatever the file has set for its hooks.
+- */
+-const HOOK_TIMEOUT_MS = DB_HOOK_TIMEOUT_MS;
++export { TestDatabase, TestRun, type CloneNeeds, type CloneTiming, type CreateDatabaseOptions, type TemplateTiming } from './run';
++export type { ClusterQuiet } from './ddl';
+ 
+ // ── The limits of a database test file (decision D114) ─────────────────────────────────────────
+ 
+@@ -114,6 +128,137 @@ export function raisedTestLimits(current: TestLimits | null): TestLimits {
+   };
+ }
+ 
++// ── What a caller states it needs (decision D134) ──────────────────────────────────────────────
++
++/**
++ * What one call of the helper states the file needs, so that the helper applies it instead of
++ * every file writing runner details in its own body. Every part is optional.
++ *
++ * The three limits are FLOORS, never ceilings: the helper raises a limit to what is stated and
++ * never brings anything down, not a cap it set itself, not a value the file set on its own after
++ * the import. A stated limit is bounded by `DB_NEED_MAX_MS`: a need is never "unlimited", so one
++ * file cannot hang a whole run for ever.
++ */
++export interface DatabaseNeeds {
++  /** Floor of the runner's limit per test of this file. Default: the cap of 120 s. */
++  readonly testTimeoutMs?: number;
++  /**
++   * Floor of the runner's limit per hook of this file, and of the helper's own two hooks, which
++   * always keep at least their own 180 s whatever a file states. Default: the cap of 180 s.
++   */
++  readonly hookTimeoutMs?: number;
++  /**
++   * Floor of the wait for a connection on this file's clone, which in a pool is also the wait
++   * for a free connection out of it. Default: the helper's 5 s (`CONNECT_TIMEOUT_MS`).
++   */
++  readonly connectTimeoutMs?: number;
++  /**
++   * The caller needs the cluster quiet for its clones: look for an empty clone-lock queue before
++   * each of them, within `CLUSTER_QUIET_BUDGET_MS`, and report in `timings.quiet` whether the
++   * cluster was quiet. It takes no lock for that and blocks no other run. Default false.
++   */
++  readonly quietCluster?: boolean;
++}
++
++/** True for a needs object that states at least one of the two runner limits. */
++function statesARunnerLimit(needs: DatabaseNeeds): boolean {
++  return needs.testTimeoutMs !== undefined || needs.hookTimeoutMs !== undefined;
++}
++
++function validatedNeed(value: number | undefined, what: string, cap: number): number | undefined {
++  if (value === undefined) return undefined;
++  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
++    throw new DbTestHelperError(
++      'NEEDS_INVALID',
++      `needs.${what} must be a whole number of milliseconds of at least 1, or left out for the helper's cap of ${cap} ms; the file stated ${String(value)}.`,
++    );
++  }
++  if (value > DB_NEED_MAX_MS) {
++    throw new DbTestHelperError(
++      'NEEDS_INVALID',
++      `needs.${what} is ${value} ms; a stated need is at most ${DB_NEED_MAX_MS} ms. Leave it out for the helper's cap of ${cap} ms.`,
++    );
++  }
++  return value;
++}
++
++/** The floor a stated need asks for, applied to what the runner holds: never anything lower. */
++function limitWithStatedNeed(current: number | undefined, cap: number, need: number | undefined, what: string): number {
++  const stated = validatedNeed(need, what, cap);
++  if (stated === undefined) return raisedLimit(current, cap);
++  // Where the runner's limits cannot be read, assume nothing higher than the cap.
++  if (current === undefined || Number.isNaN(current)) return Math.max(stated, cap);
++  return isNoLimit(current) ? current : Math.max(current, stated);
++}
++
++/**
++ * The two runner limits of the file as they stand now, with the stated needs applied. Where a
++ * need is not stated, the rule of decision D114 holds: raised to the cap, never lowered.
++ */
++export function limitsWithNeeds(current: TestLimits | null, needs: DatabaseNeeds): TestLimits {
++  return {
++    testTimeout: limitWithStatedNeed(current?.testTimeout, DB_TEST_TIMEOUT_MS, needs.testTimeoutMs, 'testTimeoutMs'),
++    hookTimeout: limitWithStatedNeed(current?.hookTimeout, DB_HOOK_TIMEOUT_MS, needs.hookTimeoutMs, 'hookTimeoutMs'),
++  };
++}
++
++/**
++ * The limit the helper's own two hooks carry: their cap, raised by a stated hook need, and never
++ * below it. A file that states a short hook need shortens its own hooks, not the clone and the
++ * drop of the helper.
++ */
++export function helperHookTimeout(needs: DatabaseNeeds): number {
++  const applied = limitWithStatedNeed(currentTestLimits()?.hookTimeout, DB_HOOK_TIMEOUT_MS, needs.hookTimeoutMs, 'hookTimeoutMs');
++  return isNoLimit(applied) ? applied : Math.max(applied, DB_HOOK_TIMEOUT_MS);
++}
++
++/**
++ * The connect wait for the pools of one clone, or `undefined` for the helper's own default.
++ * `undefined` stays `undefined` so that the pools of a caller that stated nothing are exactly
++ * the pools they were before decision D134.
++ */
++export function connectTimeoutWithNeed(needs: DatabaseNeeds): number | undefined {
++  const stated = validatedNeed(needs.connectTimeoutMs, 'connectTimeoutMs', CONNECT_TIMEOUT_MS);
++  return stated === undefined ? undefined : Math.max(stated, CONNECT_TIMEOUT_MS);
++}
++
++/**
++ * The needs of one call, checked and reduced to what it states. A limit that is no whole number
++ * of milliseconds between 1 and `DB_NEED_MAX_MS` is refused here, at the top level of the file,
++ * before the helper has asked the cluster for anything; so is a `quietCluster` that is neither a
++ * truthy value nor left out.
++ */
++export function normalizeNeeds(needs: DatabaseNeeds = {}): DatabaseNeeds {
++  if (needs.quietCluster !== undefined && typeof needs.quietCluster !== 'boolean') {
++    throw new DbTestHelperError('NEEDS_INVALID', `needs.quietCluster is true, false, or left out; the file stated ${String(needs.quietCluster)}.`);
++  }
++  return Object.freeze({
++    testTimeoutMs: validatedNeed(needs.testTimeoutMs, 'testTimeoutMs', DB_TEST_TIMEOUT_MS),
++    hookTimeoutMs: validatedNeed(needs.hookTimeoutMs, 'hookTimeoutMs', DB_HOOK_TIMEOUT_MS),
++    connectTimeoutMs: validatedNeed(needs.connectTimeoutMs, 'connectTimeoutMs', CONNECT_TIMEOUT_MS),
++    quietCluster: needs.quietCluster === true,
++  });
++}
++
++/**
++ * What an inner request states wins; what it leaves out stays the file's. Takes the inner object
++ * as it was written (a normalised one holds a definite `false` where nothing was stated).
++ */
++function needsOf(inner: DatabaseNeeds, file: DatabaseNeeds): DatabaseNeeds {
++  return {
++    testTimeoutMs: inner.testTimeoutMs ?? file.testTimeoutMs,
++    hookTimeoutMs: inner.hookTimeoutMs ?? file.hookTimeoutMs,
++    connectTimeoutMs: inner.connectTimeoutMs ?? file.connectTimeoutMs,
++    quietCluster: inner.quietCluster === undefined ? file.quietCluster : inner.quietCluster === true,
++  };
++}
++
++/** Raises the two runner limits when, and only when, the call states one of them. */
++function applyStatedNeeds(needs: DatabaseNeeds): void {
++  if (!statesARunnerLimit(needs)) return;
++  vi.setConfig(limitsWithNeeds(currentTestLimits(), needs));
++}
++
+ /**
+  * Raises the runner's two limits for the test file that imports this module. Called once, right
+  * here, when the module is evaluated: the runner evaluates the imports of a test file before the
+@@ -207,6 +352,12 @@ export interface TestDatabaseOptions {
+   readonly template: StandardTemplate | TemplateDefinition;
+   /** Goes into the database name. Default: the test file's base name. */
+   readonly slug?: string;
++  /**
++   * What this file needs of the runner and of the cluster (decision D134): a floor for the two
++   * runner limits and for the wait of a connection, and whether it needs the cluster quiet for
++   * its clones. Optional: `{ template }` is the call it always was.
++   */
++  readonly needs?: DatabaseNeeds;
+ }
+ 
+ export interface TestDatabaseHandle {
+@@ -232,9 +383,19 @@ export interface TestDatabaseHandle {
+  * Call at the top level of a database test file. Before the first test the file gets its own
+  * clone of the template; after the last one, pass or fail, every pool is closed and the clone
+  * is dropped (TI-8, TI-10).
++ *
++ * A stated `needs` is applied right here, while the file is still being collected: the two
++ * runner limits are raised to their floors, the helper's own two hooks take the hook floor (never
++ * below their own 180 s), and the clone request carries the connect floor and the request for a
++ * quiet cluster. A need stated later (`db.another({ needs })`, `withTestDatabase`) applies from
++ * that moment on: it reaches the pools, the clones and the hooks that come after it, not the
++ * limit of the test that is already running.
+  */
+ export function useTestDatabase(options: TestDatabaseOptions): TestDatabaseHandle {
+   const key = templateKey(options.template);
++  const needs = normalizeNeeds(options.needs);
++  applyStatedNeeds(needs);
++  const hookTimeoutMs = helperHookTimeout(needs);
+   let run: TestRun | undefined;
+   let database: TestDatabase | undefined;
+   const extras: TestDatabase[] = [];
+@@ -251,8 +412,13 @@ export function useTestDatabase(options: TestDatabaseOptions): TestDatabaseHandl
+ 
+   beforeAll(async () => {
+     run = await acquireRun();
+-    database = await run.createDatabase({ template: key, slug: options.slug ?? slugFromFile(currentTestFile()) });
+-  }, HOOK_TIMEOUT_MS);
++    database = await run.createDatabase({
++      template: key,
++      slug: options.slug ?? slugFromFile(currentTestFile()),
++      quiet: needs.quietCluster,
++      connectTimeoutMs: connectTimeoutWithNeed(needs),
++    });
++  }, hookTimeoutMs);
+ 
+   afterAll(async () => {
+     const problems: unknown[] = [];
+@@ -268,7 +434,7 @@ export function useTestDatabase(options: TestDatabaseOptions): TestDatabaseHandl
+     run = undefined;
+     database = undefined;
+     if (problems.length > 0) throw problems[0];
+-  }, HOOK_TIMEOUT_MS);
++  }, hookTimeoutMs);
+ 
+   return {
+     get name() {
+@@ -291,9 +457,14 @@ export function useTestDatabase(options: TestDatabaseOptions): TestDatabaseHandl
+     onCleanup: (close) => ready().database.onCleanup(close),
+     async another(more = {}) {
+       const state = ready();
++      const inner = normalizeNeeds(more.needs);
++      applyStatedNeeds(inner);
++      const merged = needsOf(more.needs ?? {}, needs);
+       const extra = await state.run.createDatabase({
+         template: more.template === undefined ? key : templateKey(more.template),
+         slug: more.slug ?? `${state.database.name.slice(state.run.identity.prefix.length + 4)}_more`,
++        quiet: merged.quietCluster,
++        connectTimeoutMs: connectTimeoutWithNeed(merged),
+       });
+       extras.push(extra);
+       return extra;
+@@ -303,13 +474,22 @@ export function useTestDatabase(options: TestDatabaseOptions): TestDatabaseHandl
+ 
+ /**
+  * A clone for the duration of `body`: created before it, dropped after it, also when it throws.
+- * For a single test that needs an untouched database of its own.
++ * For a single test that needs an untouched database of its own. A stated `needs` applies to this
++ * clone (its connect wait, its request for a quiet cluster) and, from here on, to the runner
++ * limits of the file: the limit of the running test itself is the one held when it was registered.
+  */
+ export async function withTestDatabase<T>(options: TestDatabaseOptions, body: (database: TestDatabase, run: TestRun) => Promise<T>): Promise<T> {
+   const key = templateKey(options.template);
++  const needs = normalizeNeeds(options.needs);
++  applyStatedNeeds(needs);
+   const run = await acquireRun();
+   try {
+-    const database = await run.createDatabase({ template: key, slug: options.slug ?? slugFromFile(currentTestFile()) });
++    const database = await run.createDatabase({
++      template: key,
++      slug: options.slug ?? slugFromFile(currentTestFile()),
++      quiet: needs.quietCluster,
++      connectTimeoutMs: connectTimeoutWithNeed(needs),
++    });
+     let result: T;
+     try {
+       result = await body(database, run);
+
+diff --git a/apps/core-server/test/helpers/db/run.ts b/apps/core-server/test/helpers/db/run.ts
+index ef857e6..427fd1d 100644
+--- a/apps/core-server/test/helpers/db/run.ts
++++ b/apps/core-server/test/helpers/db/run.ts
+@@ -18,6 +18,7 @@ import type { Pool } from 'pg';
+ import type { DatabaseConnection } from '../../../src/config';
+ import {
+   APP_POOL_MAX,
++  CLUSTER_QUIET_BUDGET_MS,
+   DEAD_RUN_SETTLE_MS,
+   DEFAULT_LOCK_TIMEOUT_MS,
+   DEFAULT_SESSION_DRAIN_MS,
+@@ -40,13 +41,16 @@ import {
+   listDatabasesWithPrefix,
+   lockTemplate,
+   notifyRun,
++  QUIET_NOT_ASKED,
+   releaseCloneLock,
+   releaseLivenessLock,
+   sessionRolesWithPrefix,
+   takeCloneLock,
+   tryLivenessLock,
+   unlockTemplate,
++  waitForQuietCluster,
+   waitForSessionsToEnd,
++  type ClusterQuiet,
+   type DatabaseRow,
+   type DropRetryPolicy,
+ } from './ddl';
+@@ -91,6 +95,11 @@ export interface RunOptions {
+    * server is on the database (`ddl.ts`). Default: 20 attempts, 250 ms apart. Tests shorten it.
+    */
+   readonly dropRetry?: Partial<DropRetryPolicy>;
++  /**
++   * How long a clone request that asks for a quiet cluster may look for an empty clone-lock
++   * queue (decision D134). Default: 5 s. Tests shorten it.
++   */
++  readonly clusterQuietBudgetMs?: number;
+   /** The clock, in milliseconds since the epoch. A test passes an old one to make a stale run. */
+   readonly now?: () => number;
+   /** Seam for tests of the role refusals: builds the driver client of the run's own session. */
+@@ -133,6 +142,12 @@ export interface CloneTiming {
+    * is released after `to`). Two clones of one process never overlap in this window (TI-7).
+    */
+   readonly window: { readonly from: number; readonly to: number };
++  /**
++   * What the request for a quiet cluster found (decision D134). `budgetMs` 0 means the caller
++   * asked for nothing, which is the case of every file that does not state the need: the helper
++   * then reads nothing and waits for nothing.
++   */
++  readonly quiet: ClusterQuiet;
+ }
+ 
+ export interface SweepReport {
+@@ -186,10 +201,26 @@ export interface CreateDatabaseOptions {
+   readonly template: string;
+   /** Goes into the database name: usually the test file's base name. */
+   readonly slug: string;
++  /**
++   * Look for a quiet cluster before the clone (decision D134): at most `clusterQuietBudgetMs`
++   * of waiting for an empty clone-lock queue, then the clone happens anyway. The outcome is in
++   * the timings of the database. Default false: no read, no wait.
++   */
++  readonly quiet?: boolean;
++  /**
++   * Longest wait for a connection on this database, for the two pools the helper hands out from
++   * it (`TestDatabase.appPool`, `ownerPool`). Default the helper's constant; never below it.
++   */
++  readonly connectTimeoutMs?: number;
+ }
+ 
+ type Closer = () => Promise<unknown> | unknown;
+ 
++/** Of a caller's stated needs, what one clone carries with it (`TestDatabase`, decision D134). */
++export interface CloneNeeds {
++  readonly connectTimeoutMs?: number;
++}
++
+ /** One database of a run, cloned from a template. Created by `TestRun.createDatabase`. */
+ export class TestDatabase {
+   readonly name: string;
+@@ -199,17 +230,20 @@ export class TestDatabase {
+   readonly #run: TestRun;
+   readonly #guarded: GuardedDatabaseName;
+   readonly #closers: Closer[] = [];
++  /** What the request that made this database stated of the caller's needs (decision D134). */
++  readonly #needs: CloneNeeds;
+   #appPool: Pool | undefined;
+   #ownerPool: Pool | undefined;
+   #dropped = false;
+ 
+   /** @internal Use `TestRun.createDatabase`. */
+-  constructor(run: TestRun, guarded: GuardedDatabaseName, template: string, timings: CloneTiming) {
++  constructor(run: TestRun, guarded: GuardedDatabaseName, template: string, timings: CloneTiming, needs: CloneNeeds = {}) {
+     this.#run = run;
+     this.#guarded = guarded;
+     this.name = guarded;
+     this.template = template;
+     this.timings = timings;
++    this.#needs = needs;
+   }
+ 
+   get dropped(): boolean {
+@@ -227,7 +261,7 @@ export class TestDatabase {
+   /** A pool of `dems_app` on this database (at most five connections, TI-14). Closed by `drop()`. */
+   appPool(): Pool {
+     this.#assertUsable();
+-    this.#appPool ??= this.#run.poolOn(this.#guarded, 'app');
++    this.#appPool ??= this.#run.poolOn(this.#guarded, 'app', undefined, this.#needs.connectTimeoutMs);
+     return this.#appPool;
+   }
+ 
+@@ -237,7 +271,7 @@ export class TestDatabase {
+    */
+   ownerPool(): Pool {
+     this.#assertUsable();
+-    this.#ownerPool ??= this.#run.poolOn(this.#guarded, 'owner');
++    this.#ownerPool ??= this.#run.poolOn(this.#guarded, 'owner', undefined, this.#needs.connectTimeoutMs);
+     return this.#ownerPool;
+   }
+ 
+@@ -307,6 +341,7 @@ export class TestRun {
+   readonly #resolve: DefinitionResolver;
+   readonly #drainMs: number;
+   readonly #dropRetry: Partial<DropRetryPolicy>;
++  readonly #quietBudgetMs: number;
+   readonly #now: () => number;
+   readonly #databases = new Set<TestDatabase>();
+   readonly #templateTimings: TemplateTiming[] = [];
+@@ -333,6 +368,7 @@ export class TestRun {
+     this.#resolve = fields.options.resolveDefinition ?? conventionResolver();
+     this.#drainMs = fields.options.sessionDrainMs ?? DEFAULT_SESSION_DRAIN_MS;
+     this.#dropRetry = fields.options.dropRetry ?? {};
++    this.#quietBudgetMs = Math.max(0, fields.options.clusterQuietBudgetMs ?? CLUSTER_QUIET_BUDGET_MS);
+     this.#now = fields.options.now ?? Date.now;
+   }
+ 
+@@ -521,10 +557,17 @@ export class TestRun {
+ 
+   // ── Clones (TI-6, TI-7, TI-8) ────────────────────────────────────────────────────────────────
+ 
+-  /** Clones a template into a new database of this run. One clone at a time, across all runs. */
++  /**
++   * Clones a template into a new database of this run. One clone at a time, across all runs.
++   *
++   * `quiet` (decision D134) asks for the cluster to be quiet first: the helper looks for an empty
++   * clone-lock queue for at most `clusterQuietBudgetMs` before it queues for the lock. It takes
++   * nothing for that and blocks nobody, and whatever it found is in `timings.quiet`.
++   */
+   async createDatabase(options: CreateDatabaseOptions): Promise<TestDatabase> {
+     this.#assertOpen();
+     await this.ensureTemplate(options.template);
++    const quiet = options.quiet === true ? await waitForQuietCluster(this.#session, this.#quietBudgetMs) : QUIET_NOT_ASKED;
+     const template = guardOwnDatabase(templateDatabaseName(this.identity, options.template), this.identity, 'clone');
+     const { value, lockWaitMs } = await this.withCloneLock(async () => {
+       const from = performance.now();
+@@ -539,11 +582,13 @@ export class TestRun {
+       const to = performance.now();
+       return { name, cloneMs: to - t, window: { from, to } };
+     });
+-    const database = new TestDatabase(this, value.name, options.template, {
+-      lockWaitMs,
+-      cloneMs: value.cloneMs,
+-      window: value.window,
+-    });
++    const database = new TestDatabase(
++      this,
++      value.name,
++      options.template,
++      { lockWaitMs, cloneMs: value.cloneMs, window: value.window, quiet },
++      { connectTimeoutMs: options.connectTimeoutMs },
++    );
+     this.#databases.add(database);
+     return database;
+   }
+@@ -624,12 +669,12 @@ export class TestRun {
+   }
+ 
+   /** @internal A pool of one role on a database of this run; any other database is refused. The caller closes it. */
+-  poolOn(database: string, role: 'owner' | 'app', applicationName?: string): Pool {
++  poolOn(database: string, role: 'owner' | 'app', applicationName?: string, connectTimeoutMs?: number): Pool {
+     const guarded = guardOwnDatabase(database, this.identity, 'connect to');
+     this.#assertOpen();
+     return role === 'owner'
+-      ? createRolePool(this.#owner, guarded, { max: OWNER_POOL_MAX, applicationName: applicationName ?? 'dems-test-fixture' })
+-      : createRolePool(this.#app, guarded, { max: APP_POOL_MAX, applicationName: applicationName ?? 'dems-test-app' });
++      ? createRolePool(this.#owner, guarded, { max: OWNER_POOL_MAX, applicationName: applicationName ?? 'dems-test-fixture', connectTimeoutMs })
++      : createRolePool(this.#app, guarded, { max: APP_POOL_MAX, applicationName: applicationName ?? 'dems-test-app', connectTimeoutMs });
+   }
+ 
+   /**
+
+diff --git a/apps/core-server/test/helpers/db/session.ts b/apps/core-server/test/helpers/db/session.ts
+index 1c2a06a..48d0be6 100644
+--- a/apps/core-server/test/helpers/db/session.ts
++++ b/apps/core-server/test/helpers/db/session.ts
+@@ -294,6 +294,12 @@ export class OwnerSession implements StatementRunner {
+ export interface RolePoolOptions {
+   readonly max: number;
+   readonly applicationName: string;
++  /**
++   * Longest wait for a connection, which in a pool is also the wait for a free one out of `max`.
++   * Default `CONNECT_TIMEOUT_MS`; a test file that needs to state a longer one does it through
++   * `needs.connectTimeoutMs` (`index.ts`, decision D134). Raise-only where the helper uses it.
++   */
++  readonly connectTimeoutMs?: number;
+ }
+ 
+ /**
+@@ -303,7 +309,7 @@ export interface RolePoolOptions {
+  */
+ export function createRolePool(credentials: RoleCredentials, database: GuardedDatabaseName, options: RolePoolOptions): Pool {
+   scrubDriverEnvironment();
+-  const pool = new Pool({ ...driverOptions(credentials, database, options.applicationName), max: options.max });
++  const pool = new Pool({ ...driverOptions(credentials, database, options.applicationName), max: options.max, connectionTimeoutMillis: options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS });
+   // Without a listener, an error on an idle connection (a forced drop) would end the process.
+   pool.on('error', () => undefined);
+   return pool;
+
+diff --git a/apps/core-server/test/helpers/db/testing/fake-cluster.ts b/apps/core-server/test/helpers/db/testing/fake-cluster.ts
+index 89d4603..a5512bc 100644
+--- a/apps/core-server/test/helpers/db/testing/fake-cluster.ts
++++ b/apps/core-server/test/helpers/db/testing/fake-cluster.ts
+@@ -49,6 +49,13 @@ export class FakeCluster {
+   readonly clients: DriverOptions[] = [];
+   /** Liveness keys held by "another session": `pg_try_advisory_lock` on them gives false. */
+   readonly locksHeldElsewhere = new Set<number>();
++  /**
++   * What a read of the clone-lock queue answers: how many sessions OTHER than the reader's hold
++   * or wait for the clone lock (decision D134). 0 is a quiet cluster.
++   */
++  cloneLockBusyElsewhere = 0;
++  /** How often the helper has read the clone-lock queue so far. */
++  cloneLockReads = 0;
+   /** Liveness keys held by a session of the helper: key to session number. Released at `end()`. */
+   readonly #heldLocks = new Map<number, number>();
+   /** What each session listens to, and whom it tells: session number to channels and listeners. */
+@@ -179,6 +186,11 @@ export class FakeCluster {
+       }
+       return [{}];
+     }
++    // The clone-lock queue (decision D134): what the stand-in answers about the other sessions.
++    if (text.includes('FROM pg_locks')) {
++      this.cloneLockReads += 1;
++      return [{ others: this.cloneLockBusyElsewhere }];
++    }
+     // Every backend on a database, by role and application: the ones without a role first.
+     if (text.includes('FROM pg_stat_activity') && text.includes('AS backends')) {
+       const database = this.databases.get(String(values[0]));
+
+diff --git a/apps/core-server/test/helpers/db/__tests__/static.test.ts b/apps/core-server/test/helpers/db/__tests__/static.test.ts
+index 69ef9f6..5607442 100644
+--- a/apps/core-server/test/helpers/db/__tests__/static.test.ts
++++ b/apps/core-server/test/helpers/db/__tests__/static.test.ts
+@@ -139,7 +139,13 @@ describe('D26: one place builds a connection, and it takes host and port from th
+     expect(occurrences([{ path: 'session.ts', text: session }], /\bnew (?:Client|Pool)\(/g)).toHaveLength(2);
+     // Both are built from `driverOptions`, which checks the endpoint first.
+     expect(session).toContain('new Client(options)');
+-    expect(session).toContain('new Pool({ ...driverOptions(credentials, database, options.applicationName), max: options.max })');
++    expect(session).toContain(
++      'new Pool({ ...driverOptions(credentials, database, options.applicationName), max: options.max, connectionTimeoutMillis: options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS })',
++    );
++    // Three places hold the words: the option type, the constant the driver gets, and the pool
++    // that a caller may state a longer wait for (decision D134). It defaults to the constant.
++    expect(occurrences([{ path: 'session.ts', text: session }], /\bconnectionTimeoutMillis:/g)).toHaveLength(3);
++    expect(session).toContain('connectionTimeoutMillis: options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS');
+     expect(session).toMatch(/export function driverOptions\([^)]*\): DriverOptions \{\n\s+const endpoint = assertProjectEndpoint\(credentials\.host, credentials\.port\);/);
+   });
+ 
+@@ -230,3 +236,19 @@ describe('TI-3: statements on databases are written in one file', () => {
+     for (const pattern of forbidden) expect(occurrences(files, pattern), String(pattern)).toEqual([]);
+   });
+ });
++
++describe('F-8: a catalog read of the shared cluster is keyed by the session that asks', () => {
++  /** Built from fragments, so that this file is not itself a match. */
++  const LOCKS_READ = new RegExp(`\\bFROM ${['pg_l', 'ocks'].join('')}\\b`, 'g');
++  const OWN_SESSION = new RegExp(`\\bpid\\s*<>\\s*${['pg_back', 'end_pid\\(\\)'].join('')}`, 'g');
++
++  it('the clone-lock queue is read in ddl.ts only', () => {
++    expect(filesWith(helperCode, LOCKS_READ)).toEqual(['test/helpers/db/ddl.ts']);
++  });
++
++  it('and that one read leaves its own session out (decision D134)', () => {
++    const ddl = helperCode.find((file) => file.path === 'test/helpers/db/ddl.ts')?.text ?? '';
++    expect(occurrences([{ path: 'ddl.ts', text: ddl }], LOCKS_READ)).toHaveLength(1);
++    expect(occurrences([{ path: 'ddl.ts', text: ddl }], OWN_SESSION)).toHaveLength(1);
++  });
++});
+
+diff --git a/dev/null b/apps/core-server/test/helpers/db/__tests__/needs.test.ts
+new file mode 100644
+index 0000000..b745f0b
+--- /dev/null
++++ b/apps/core-server/test/helpers/db/__tests__/needs.test.ts
+@@ -0,0 +1,425 @@
++// Decision D134: what a test file states it needs, and what the helper makes of it. This file
++// belongs to the database-free project and proves the RULES and what the helper SENDS, on the
++// stand-in cluster behind the driver seam:
++//
++//   - a stated need is checked: a limit that is no whole number of milliseconds, or higher than
++//     DB_NEED_MAX_MS, or a quietCluster that is no boolean, is refused with NEEDS_INVALID;
++//   - a stated limit is a FLOOR: the helper raises to it and never brings anything down, not the
++//     cap of decision D114, not a value the file set itself, not "no limit";
++//   - the helper's own two hooks keep at least their own 180 s whatever a file states;
++//   - a connect wait that is not stated leaves the pools exactly as they were;
++//   - on a cluster: a clone that asks for nothing reads nothing; a clone that asks for a quiet
++//     cluster reads the clone-lock queue BEFORE its CREATE DATABASE, asks again while somebody
++//     else is on it, gives up at its bound and creates the database anyway, and takes no lock
++//     for itself while it does.
++//
++// Against the real PostgreSQL: `needs.db.test.ts`. The rule of decision D114 (the caps the
++// helper sets by itself): `limits.test.ts`.
++import { afterEach, describe, expect, it } from 'vitest';
++import { CLUSTER_QUIET_BUDGET_MS, CONNECT_TIMEOUT_MS, DB_HOOK_TIMEOUT_MS, DB_NEED_MAX_MS, DB_TEST_TIMEOUT_MS } from '../constants';
++import { DbTestHelperError } from '../errors';
++import { injectedResolver, type TemplateDefinition } from '../hooks';
++import { connectTimeoutWithNeed, helperHookTimeout, limitsWithNeeds, normalizeNeeds } from '../index';
++import { TestRun, type TestDatabase } from '../run';
++import { FakeCluster, fakeDataDir } from '../testing/fake-cluster';
++
++const RUNNER_DEFAULTS = { testTimeout: 5_000, hookTimeout: 10_000 };
++
++function refusal(action: () => unknown): DbTestHelperError {
++  try {
++    action();
++  } catch (error) {
++    if (error instanceof DbTestHelperError) return error;
++    throw error;
++  }
++  throw new Error('not refused');
++}
++
++// ── The rules, without a cluster ───────────────────────────────────────────────────────────────
++
++describe('a stated need is checked where it is stated', () => {
++  const badNumbers: Array<[string, number]> = [
++    ['zero, which would mean no limit at all', 0],
++    ['a negative number', -1_000],
++    ['a fraction of a millisecond', 1.5],
++    ['NaN', Number.NaN],
++    ['infinity, which would hang the run for ever', Number.POSITIVE_INFINITY],
++    ['one above the ceiling', DB_NEED_MAX_MS + 1],
++    ['a value in seconds instead of milliseconds', 600_000 * 60],
++  ];
++
++  it.each(badNumbers)('refuses %j for the limit of a test', (_what, value) => {
++    const error = refusal(() => normalizeNeeds({ testTimeoutMs: value }));
++    expect(error.code).toBe('NEEDS_INVALID');
++    expect(error.message).toContain('needs.testTimeoutMs');
++  });
++
++  it.each(badNumbers)('refuses %j for the limit of a hook', (_what, value) => {
++    const error = refusal(() => normalizeNeeds({ hookTimeoutMs: value }));
++    expect(error.code).toBe('NEEDS_INVALID');
++    expect(error.message).toContain('needs.hookTimeoutMs');
++  });
++
++  it.each(badNumbers)('refuses %j for the wait of a connection', (_what, value) => {
++    const error = refusal(() => normalizeNeeds({ connectTimeoutMs: value }));
++    expect(error.code).toBe('NEEDS_INVALID');
++    expect(error.message).toContain('needs.connectTimeoutMs');
++  });
++
++  it('names the ceiling and the cap it would otherwise have used', () => {
++    const error = refusal(() => normalizeNeeds({ testTimeoutMs: DB_NEED_MAX_MS + 1 }));
++    expect(error.message).toContain(String(DB_NEED_MAX_MS));
++    expect(error.message).toContain(String(DB_TEST_TIMEOUT_MS));
++  });
++
++  it.each([[true], [false], [undefined]])('takes quietCluster %j', (value) => {
++    expect(normalizeNeeds({ quietCluster: value }).quietCluster).toBe(value === true);
++  });
++
++  it.each([['yes'], [1], [0], [[[]]], [[{}]]])('refuses a quietCluster that is no boolean: %j', (value) => {
++    const error = refusal(() => normalizeNeeds({ quietCluster: value as unknown as boolean }));
++    expect(error.code).toBe('NEEDS_INVALID');
++    expect(error.message).toContain('needs.quietCluster');
++  });
++
++  it('keeps every part of a whole statement, and the ceiling itself', () => {
++    const needs = normalizeNeeds({
++      testTimeoutMs: DB_NEED_MAX_MS,
++      hookTimeoutMs: 1,
++      connectTimeoutMs: CONNECT_TIMEOUT_MS,
++      quietCluster: true,
++    });
++    expect(needs).toEqual({ testTimeoutMs: DB_NEED_MAX_MS, hookTimeoutMs: 1, connectTimeoutMs: CONNECT_TIMEOUT_MS, quietCluster: true });
++  });
++
++  it('of a call that states nothing, only the quiet is definite: false', () => {
++    expect(normalizeNeeds()).toEqual({ testTimeoutMs: undefined, hookTimeoutMs: undefined, connectTimeoutMs: undefined, quietCluster: false });
++    expect(normalizeNeeds({})).toEqual(normalizeNeeds());
++  });
++
++  it('hands back a frozen object, so a caller cannot change what the helper already applied', () => {
++    expect(Object.isFrozen(normalizeNeeds({ testTimeoutMs: 60_000 }))).toBe(true);
++  });
++});
++
++describe('a stated limit is a floor the helper raises to, and never a ceiling', () => {
++  it('from the runner’s own 5 s and 10 s, a stated 240 s and 300 s win over the caps', () => {
++    expect(limitsWithNeeds(RUNNER_DEFAULTS, { testTimeoutMs: 240_000, hookTimeoutMs: 300_000 })).toEqual({
++      testTimeout: 240_000,
++      hookTimeout: 300_000,
++    });
++  });
++
++  it('a stated need BELOW the cap does not lower what the helper already raised', () => {
++    // The helper set the caps when it was imported; the file then asks for less. The caps stay.
++    expect(limitsWithNeeds({ testTimeout: DB_TEST_TIMEOUT_MS, hookTimeout: DB_HOOK_TIMEOUT_MS }, { testTimeoutMs: 60_000, hookTimeoutMs: 30_000 })).toEqual(
++      { testTimeout: DB_TEST_TIMEOUT_MS, hookTimeout: DB_HOOK_TIMEOUT_MS },
++    );
++  });
++
++  it('of a file that set a higher limit itself, that higher limit stays', () => {
++    expect(limitsWithNeeds({ testTimeout: 600_000, hookTimeout: 700_000 }, { testTimeoutMs: 60_000, hookTimeoutMs: 60_000 })).toEqual({
++      testTimeout: 600_000,
++      hookTimeout: 700_000,
++    });
++  });
++
++  it('"no limit" stays no limit: a stated need never ends a debugging session', () => {
++    for (const none of [0, -1, Number.POSITIVE_INFINITY]) {
++      expect(limitsWithNeeds({ testTimeout: none, hookTimeout: none }, { testTimeoutMs: 60_000, hookTimeoutMs: 60_000 })).toEqual({
++        testTimeout: none,
++        hookTimeout: none,
++      });
++    }
++  });
++
++  it('the two limits are raised by their own part of the statement, not by the other', () => {
++    expect(limitsWithNeeds(RUNNER_DEFAULTS, { testTimeoutMs: 240_000 })).toEqual({ testTimeout: 240_000, hookTimeout: DB_HOOK_TIMEOUT_MS });
++    expect(limitsWithNeeds(RUNNER_DEFAULTS, { hookTimeoutMs: 300_000 })).toEqual({ testTimeout: DB_TEST_TIMEOUT_MS, hookTimeout: 300_000 });
++  });
++
++  it('with nothing stated, the rule of decision D114 holds unchanged', () => {
++    expect(limitsWithNeeds(RUNNER_DEFAULTS, {})).toEqual({ testTimeout: DB_TEST_TIMEOUT_MS, hookTimeout: DB_HOOK_TIMEOUT_MS });
++    expect(limitsWithNeeds({ testTimeout: 300_000, hookTimeout: 60_000 }, {})).toEqual({ testTimeout: 300_000, hookTimeout: DB_HOOK_TIMEOUT_MS });
++  });
++
++  it('where the runner’s limits cannot be read, the caps are the floor under a stated need', () => {
++    expect(limitsWithNeeds(null, { testTimeoutMs: 30_000, hookTimeoutMs: 20_000 })).toEqual({
++      testTimeout: DB_TEST_TIMEOUT_MS,
++      hookTimeout: DB_HOOK_TIMEOUT_MS,
++    });
++    expect(limitsWithNeeds(null, { testTimeoutMs: 400_000, hookTimeoutMs: 500_000 })).toEqual({ testTimeout: 400_000, hookTimeout: 500_000 });
++  });
++
++  it('a value that is no number of milliseconds is replaced by the stated need or the cap', () => {
++    expect(limitsWithNeeds({ testTimeout: Number.NaN, hookTimeout: Number.NaN }, { testTimeoutMs: 240_000 }).testTimeout).toBe(240_000);
++    expect(limitsWithNeeds({ testTimeout: Number.NaN, hookTimeout: Number.NaN }, {}).testTimeout).toBe(DB_TEST_TIMEOUT_MS);
++  });
++
++  it.each([
++    // what the runner holds, what the file states, what applies
++    [5_000, 1, 5_000],
++    [5_000, 60_000, 60_000],
++    [5_000, DB_TEST_TIMEOUT_MS, DB_TEST_TIMEOUT_MS],
++    [5_000, 240_000, 240_000],
++    [DB_TEST_TIMEOUT_MS, 60_000, DB_TEST_TIMEOUT_MS],
++    [DB_TEST_TIMEOUT_MS, DB_NEED_MAX_MS, DB_NEED_MAX_MS],
++    [600_000, 120_001, 600_000],
++  ])('the higher of %i held and %i stated is %i', (held, stated, expected) => {
++    const limits = limitsWithNeeds({ testTimeout: held, hookTimeout: 10_000 }, { testTimeoutMs: stated });
++    expect(limits.testTimeout).toBe(expected);
++    expect(limits.testTimeout).toBeGreaterThanOrEqual(Math.max(held, stated));
++  });
++
++  it("never turns a cap the helper raised itself into a shorter limit", () => {
++    // In a run of the database tests the caps are already held when a file states its needs.
++    const atCaps = { testTimeout: DB_TEST_TIMEOUT_MS, hookTimeout: DB_HOOK_TIMEOUT_MS };
++    for (const stated of [1, 1_000, 60_000, DB_TEST_TIMEOUT_MS]) {
++      expect(limitsWithNeeds(atCaps, { testTimeoutMs: stated }).testTimeout).toBe(DB_TEST_TIMEOUT_MS);
++    }
++  });
++});
++
++describe("the helper's own hooks", () => {
++  it('carry their own 180 s when nothing is stated', () => {
++    expect(helperHookTimeout({})).toBe(DB_HOOK_TIMEOUT_MS);
++  });
++
++  it('are never shortened by a file that states a shorter hook need', () => {
++    // A clone waits for the clone lock and a drop is repeated: the helper needs its own time.
++    expect(helperHookTimeout({ hookTimeoutMs: 1 })).toBe(DB_HOOK_TIMEOUT_MS);
++    expect(helperHookTimeout({ hookTimeoutMs: 60_000 })).toBe(DB_HOOK_TIMEOUT_MS);
++    expect(helperHookTimeout({ hookTimeoutMs: DB_HOOK_TIMEOUT_MS })).toBe(DB_HOOK_TIMEOUT_MS);
++  });
++
++  it('are lengthened by a file that states a longer one', () => {
++    expect(helperHookTimeout({ hookTimeoutMs: DB_HOOK_TIMEOUT_MS + 1 })).toBe(DB_HOOK_TIMEOUT_MS + 1);
++    expect(helperHookTimeout({ hookTimeoutMs: DB_NEED_MAX_MS })).toBe(DB_NEED_MAX_MS);
++  });
++
++  it('keep "no limit" of a run that was started without limits', () => {
++    expect(helperHookTimeout({ hookTimeoutMs: DB_HOOK_TIMEOUT_MS })).toBe(DB_HOOK_TIMEOUT_MS);
++  });
++});
++
++describe('the wait for a connection', () => {
++  it('is left alone when nothing is stated: the pools are exactly what they were', () => {
++    expect(connectTimeoutWithNeed({})).toBeUndefined();
++    expect(connectTimeoutWithNeed({ quietCluster: true })).toBeUndefined();
++    expect(connectTimeoutWithNeed({ testTimeoutMs: 240_000 })).toBeUndefined();
++  });
++
++  it('is never shortened below the helper’s own 5 s', () => {
++    expect(connectTimeoutWithNeed({ connectTimeoutMs: 1 })).toBe(CONNECT_TIMEOUT_MS);
++    expect(connectTimeoutWithNeed({ connectTimeoutMs: CONNECT_TIMEOUT_MS })).toBe(CONNECT_TIMEOUT_MS);
++  });
++
++  it('is lengthened to what is stated above it', () => {
++    expect(connectTimeoutWithNeed({ connectTimeoutMs: 20_000 })).toBe(20_000);
++    expect(connectTimeoutWithNeed({ connectTimeoutMs: DB_NEED_MAX_MS })).toBe(DB_NEED_MAX_MS);
++  });
++});
++
++// ── What the helper sends, on the stand-in cluster ─────────────────────────────────────────────
++
++const NOW_MS = Date.UTC(2026, 9, 5, 0, 30, 0);
++
++const noopTemplates: TemplateDefinition[] = [
++  { key: 'schema', base: 'empty', build: async () => undefined },
++  { key: 'seed', base: 'schema', build: async () => undefined },
++  { key: 'bulk', base: 'seed', build: async () => undefined },
++];
++
++const cleanups: Array<() => void | Promise<void>> = [];
++
++/** A run of the owner kind on the stand-in cluster, with a short quiet bound for the tests. */
++async function ownerRun(cluster: FakeCluster, clusterQuietBudgetMs = 150): Promise<TestRun> {
++  const data = fakeDataDir();
++  cleanups.push(data.remove);
++  const run = await TestRun.start({
++    env: { DEMS_TEST_STEP: '33e' },
++    dataDir: data.dir,
++    clientFactory: cluster.factory,
++    probe: async () => undefined,
++    now: () => NOW_MS,
++    sessionDrainMs: 20,
++    clusterQuietBudgetMs,
++    resolveDefinition: injectedResolver(noopTemplates),
++  });
++  cleanups.push(() => run.close());
++  return run;
++}
++
++function indexOfStatement(cluster: FakeCluster, needle: string, from = 0): number {
++  return cluster.statements.findIndex((statement, index) => index >= from && statement.text.includes(needle));
++}
++
++async function clone(run: TestRun, slug: string, options: { quiet?: boolean; connectTimeoutMs?: number } = {}): Promise<TestDatabase> {
++  return run.createDatabase({ template: 'schema', slug, ...options });
++}
++
++afterEach(async () => {
++  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
++});
++
++describe('a clone request that asks for a quiet cluster (decision D134)', () => {
++  it('that asks for nothing reads nothing and reports that nothing was asked', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster);
++    const database = await clone(run, 'quiet_not_asked');
++    expect(cluster.cloneLockReads).toBe(0);
++    expect(database.timings.quiet).toEqual({ waitedMs: 0, obtained: false, budgetMs: 0 });
++    await database.drop();
++  });
++
++  it('reads the clone-lock queue once on a quiet cluster, before its CREATE DATABASE', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster);
++    await run.ensureTemplate('schema');
++    const before = cluster.statements.length;
++    const database = await clone(run, 'quiet_free', { quiet: true });
++    expect(indexOfStatement(cluster, 'FROM pg_locks', before)).toBeGreaterThanOrEqual(0);
++    expect(indexOfStatement(cluster, 'CREATE DATABASE', before)).toBeGreaterThan(indexOfStatement(cluster, 'FROM pg_locks', before));
++    expect(cluster.cloneLockReads).toBe(1);
++    expect(database.timings.quiet.obtained).toBe(true);
++    expect(database.timings.quiet.budgetMs).toBe(150);
++    expect(database.timings.quiet.waitedMs).toBeLessThan(150);
++    await database.drop();
++  });
++
++  it('asks again while another session is on the clone lock, and goes when the queue empties', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster, 5_000);
++    await run.ensureTemplate('schema');
++    // "Another session" holds and waits on the lock for the first two looks, then the cluster is quiet.
++    cluster.cloneLockBusyElsewhere = 1;
++    cluster.beforeStatement = (text) => {
++      if (text.includes('FROM pg_locks') && cluster.cloneLockReads >= 2) cluster.cloneLockBusyElsewhere = 0;
++    };
++    const database = await clone(run, 'quiet_then_free', { quiet: true });
++    expect(cluster.cloneLockReads).toBe(3);
++    expect(database.timings.quiet.obtained).toBe(true);
++    expect(database.timings.quiet.waitedMs).toBeGreaterThanOrEqual(10);
++    await database.drop();
++  });
++
++  it('gives up at its bound, says so, and creates the database anyway', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster, 200);
++    await run.ensureTemplate('schema');
++    cluster.cloneLockBusyElsewhere = 3; // Somebody is on the lock the whole time.
++    const started = performance.now();
++    const database = await clone(run, 'quiet_busy', { quiet: true });
++    const elapsed = performance.now() - started;
++    expect(database.timings.quiet.obtained).toBe(false);
++    expect(database.timings.quiet.budgetMs).toBe(200);
++    expect(database.timings.quiet.waitedMs).toBeGreaterThanOrEqual(200);
++    expect(elapsed).toBeGreaterThanOrEqual(200);
++    expect(cluster.names()).toContain(database.name);
++    expect(cluster.cloneLockReads).toBeGreaterThanOrEqual(2);
++    await database.drop();
++    expect(cluster.names()).not.toContain(database.name);
++  });
++
++  it('takes nothing for itself: the advisory-lock statements are the two of the clone', async () => {
++    const askedForQuiet = new FakeCluster();
++    const plain = new FakeCluster();
++    const quietRun = await ownerRun(askedForQuiet, 60);
++    const plainRun = await ownerRun(plain, 60);
++    await quietRun.ensureTemplate('schema');
++    await plainRun.ensureTemplate('schema');
++    const asked = await clone(quietRun, 'quiet_take_nothing', { quiet: true });
++    const plainClone = await clone(plainRun, 'plain');
++    const advisory = (cluster: FakeCluster): string[] =>
++      cluster.statements
++        .filter((statement) => /pg_(?:try_)?advisory_(?:lock|unlock)/.test(statement.text))
++        .map((statement) => statement.text.split('(')[0] ?? '');
++    expect(advisory(askedForQuiet)).toEqual(advisory(plain));
++    // The liveness lock of the run, the clone lock of the template build, the clone lock of the clone.
++    expect(advisory(askedForQuiet)).toEqual([
++      'SELECT pg_try_advisory_lock',
++      'SELECT pg_advisory_lock',
++      'SELECT pg_advisory_unlock',
++      'SELECT pg_advisory_lock',
++      'SELECT pg_advisory_unlock',
++    ]);
++    await asked.drop();
++    await plainClone.drop();
++  });
++
++  it('defaults to the bound of the helper where the run states none', async () => {
++    const cluster = new FakeCluster();
++    const data = fakeDataDir();
++    cleanups.push(data.remove);
++    const run = await TestRun.start({
++      env: { DEMS_TEST_STEP: '33e' },
++      dataDir: data.dir,
++      clientFactory: cluster.factory,
++      probe: async () => undefined,
++      now: () => NOW_MS,
++      resolveDefinition: injectedResolver(noopTemplates),
++    });
++    cleanups.push(() => run.close());
++    await run.ensureTemplate('schema');
++    const database = await clone(run, 'quiet_default_budget', { quiet: true });
++    expect(database.timings.quiet.budgetMs).toBe(CLUSTER_QUIET_BUDGET_MS);
++    await database.drop();
++  });
++});
++
++describe('a stated connect wait reaches the pools of that clone', () => {
++  it('of a caller that states nothing: the helper’s defaults, and TI-14’s five and two', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster);
++    const database = await clone(run, 'connect_default');
++    const app = database.appPool();
++    const owner = database.ownerPool();
++    expect([app.options.connectionTimeoutMillis, owner.options.connectionTimeoutMillis]).toEqual([CONNECT_TIMEOUT_MS, CONNECT_TIMEOUT_MS]);
++    expect([app.options.max, owner.options.max]).toEqual([5, 2]);
++    await database.drop();
++  });
++
++  it('of a caller that states one: both pools of that clone carry it, the ceilings do not move', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster);
++    const database = await clone(run, 'connect_stated', { connectTimeoutMs: 20_000 });
++    expect(database.appPool().options.connectionTimeoutMillis).toBe(20_000);
++    expect(database.ownerPool().options.connectionTimeoutMillis).toBe(20_000);
++    expect([database.appPool().options.max, database.ownerPool().options.max]).toEqual([5, 2]);
++    await database.drop();
++  });
++
++  it('is per clone: the next database that states nothing gets the default again', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster);
++    const stated = await clone(run, 'connect_one', { connectTimeoutMs: 30_000 });
++    const next = await clone(run, 'connect_two');
++    expect(stated.appPool().options.connectionTimeoutMillis).toBe(30_000);
++    expect(next.appPool().options.connectionTimeoutMillis).toBe(CONNECT_TIMEOUT_MS);
++    await stated.drop();
++    await next.drop();
++  });
++
++  it('never changes the endpoint, the role or the ceiling of either pool', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster);
++    const database = await clone(run, 'connect_endpoint', { connectTimeoutMs: 12_000 });
++    const app = database.appPool();
++    const owner = database.ownerPool();
++    expect([app.options.user, owner.options.user]).toEqual(['dems_app', 'dems_owner']);
++    for (const pool of [app, owner]) {
++      expect(pool.options.host).toBe('127.0.0.1');
++      expect(pool.options.port).toBe(4432);
++      expect(pool.options.database).toBe(database.name);
++      expect(pool.options.ssl).toBe(false);
++      expect(pool.options.connectionTimeoutMillis).toBe(12_000);
++      expect([5, 2]).toContain(pool.options.max);
++    }
++    // The helper's own session on the maintenance database is untouched by a file's need.
++    for (const client of cluster.clients) {
++      expect(client.database).toBe('postgres');
++      expect(client.connectionTimeoutMillis).toBe(CONNECT_TIMEOUT_MS);
++    }
++    await database.drop();
++  });
++});
+
+diff --git a/dev/null b/apps/core-server/test/helpers/db/__tests__/needs.db.test.ts
+new file mode 100644
+index 0000000..0eb42f4
+--- /dev/null
++++ b/apps/core-server/test/helpers/db/__tests__/needs.db.test.ts
+@@ -0,0 +1,256 @@
++// Decision D134 against the real server: what a test file states it needs, and what the helper
++// makes of it where it matters.
++//
++//   - the two floors a file states are what the runner holds for it, and what a test of the file
++//     is given: above the caps of decision D114, never below them;
++//   - the connect floor reaches the two real pools of that clone, TI-14 keeps its ceilings, and
++//     the queries answer; a need stated later reaches its own clone only, and cannot change the
++//     limit of the test that is already running;
++//   - a need that is no number of milliseconds is refused before the helper asks the cluster for
++//     anything;
++//   - the request for a quiet cluster reads the clone-lock queue KEYED BY ITSELF (finding F-8):
++//     it leaves its own session out, it leaves a lock of another key out, it waits no longer
++//     than its bound, it ends nobody's session, and the clone happens either way.
++//
++// The rules without a cluster: `needs.test.ts`. The caps that need no statement: `limits.db.test.ts`.
++import type { Pool } from 'pg';
++import { describe, expect, it } from 'vitest';
++import {
++  CLONE_LOCK_KEY,
++  CLUSTER_QUIET_BUDGET_MS,
++  DB_HOOK_TIMEOUT_MS,
++  DB_TEST_TIMEOUT_MS,
++  LOCK_CLASS,
++  LOG_PREFIX,
++} from '../constants';
++import { TestRun, currentTestLimits, useTestDatabase, withTestDatabase } from '../index';
++import { SELFTEST_TEMPLATE } from '../testing/probe-hooks';
++import { probeResolver } from '../testing/private-run';
++
++const TEST_FLOOR = 240_000;
++const HOOK_FLOOR = 210_000;
++const CONNECT_FLOOR = 20_000;
++const SHORT_BUDGET_MS = 200;
++/** An advisory lock key of the same class that is not the clone lock: a liveness key. */
++const OTHER_KEY = 4_242_424;
++
++/** Stated at the top level, as a file states it: before any hook or test of this file is registered. */
++const db = useTestDatabase({
++  template: SELFTEST_TEMPLATE,
++  needs: { testTimeoutMs: TEST_FLOOR, hookTimeoutMs: HOOK_FLOOR, connectTimeoutMs: CONNECT_FLOOR },
++});
++
++/** A pool of the owner role on this file's clone, of exactly one connection. */
++function singleConnectionPool(applicationName: string): Pool {
++  return db.run.poolOn(db.name, 'owner', applicationName);
++}
++
++/** One statement over a pool, with the values inlined by the caller (numbers only). */
++async function ask(pool: Pool, text: string): Promise<Array<Record<string, unknown>>> {
++  return (await pool.query(text)).rows as Array<Record<string, unknown>>;
++}
++
++/**
++ * The helper's own predicate over `pg_locks`, and the same predicate without the keying: in ONE
++ * statement, so that the two counts are one snapshot of the cluster.
++ */
++async function cloneLockRows(pool: Pool): Promise<{ allKeys: number; cloneLock: number; cloneLockNotMine: number }> {
++  const rows = await ask(
++    pool,
++    'SELECT count(*)::int AS "allKeys", ' +
++      `count(*) FILTER (WHERE objid = ${CLONE_LOCK_KEY})::int AS "cloneLock", ` +
++      `count(*) FILTER (WHERE objid = ${CLONE_LOCK_KEY} AND pid <> pg_backend_pid())::int AS "cloneLockNotMine" ` +
++      `FROM pg_locks WHERE locktype = 'advisory' AND classid = ${LOCK_CLASS}`,
++  );
++  const row = rows[0] ?? {};
++  return { allKeys: Number(row['allKeys']), cloneLock: Number(row['cloneLock']), cloneLockNotMine: Number(row['cloneLockNotMine']) };
++}
++
++async function backendPid(pool: Pool): Promise<number> {
++  return Number((await ask(pool, 'SELECT pg_backend_pid() AS pid'))[0]?.['pid'] ?? -1);
++}
++
++/** A second session on this run, with a short bound for its request for a quiet cluster. */
++function impatientRun(): Promise<TestRun> {
++  return TestRun.attach(db.run.identity, { resolveDefinition: probeResolver(), clusterQuietBudgetMs: SHORT_BUDGET_MS });
++}
++
++describe('a database test file that states its needs', () => {
++  it('holds the two floors the file stated, above the caps of decision D114', () => {
++    const limits = currentTestLimits();
++    expect(limits).not.toBeNull();
++    expect(limits?.testTimeout).toBe(TEST_FLOOR);
++    expect(limits?.hookTimeout).toBe(HOOK_FLOOR);
++    expect(TEST_FLOOR).toBeGreaterThan(DB_TEST_TIMEOUT_MS);
++    expect(HOOK_FLOOR).toBeGreaterThan(DB_HOOK_TIMEOUT_MS);
++  });
++
++  it('gives a test of this file the floor it stated, not the cap', ({ task }) => {
++    expect(task.timeout).toBe(TEST_FLOOR);
++  });
++
++  it('hands the connect floor to the two real pools of its clone, and TI-14 keeps its ceilings', async () => {
++    const app = db.appPool();
++    const owner = db.ownerPool();
++    expect([app.options.connectionTimeoutMillis, owner.options.connectionTimeoutMillis]).toEqual([CONNECT_FLOOR, CONNECT_FLOOR]);
++    expect([app.options.max, owner.options.max]).toEqual([5, 2]);
++    expect((await app.query<{ one: number }>('SELECT 1::int AS one')).rows).toEqual([{ one: 1 }]);
++    expect((await owner.query<{ one: number }>('SELECT 1::int AS one')).rows).toEqual([{ one: 1 }]);
++    expect([app.options.user, owner.options.user]).toEqual(['dems_app', 'dems_owner']);
++    expect([app.options.host, app.options.port, app.options.ssl]).toEqual(['127.0.0.1', 4432, false]);
++  });
++
++  it('applies the floor the file stated to every clone of that file, later ones included', async () => {
++    const extra = await db.another({ slug: 'needs_connect_inherited' });
++    expect(extra.appPool().options.connectionTimeoutMillis).toBe(CONNECT_FLOOR);
++    expect(extra.ownerPool().options.connectionTimeoutMillis).toBe(CONNECT_FLOOR);
++    await extra.drop();
++  });
++
++  it('applies a need stated inside a running test to its own clone, not to the test’s limit', async ({ task }) => {
++    const extra = await db.another({ slug: 'needs_connect_later', needs: { connectTimeoutMs: 30_000 } });
++    expect(extra.appPool().options.connectionTimeoutMillis).toBe(30_000);
++    expect(db.appPool().options.connectionTimeoutMillis).toBe(CONNECT_FLOOR);
++    // The bound of the test that is running was set when it was registered: it stays.
++    expect(task.timeout).toBe(TEST_FLOOR);
++    await extra.drop();
++  });
++
++  it('refuses a need that is no whole number of milliseconds, before asking the cluster for anything', async () => {
++    const asked = db.run.statementCount;
++    const unreachable = async (): Promise<string> => 'unreachable';
++    await expect(withTestDatabase({ template: SELFTEST_TEMPLATE, needs: { testTimeoutMs: 0 } }, unreachable)).rejects.toMatchObject({
++      code: 'NEEDS_INVALID',
++    });
++    await expect(withTestDatabase({ template: SELFTEST_TEMPLATE, needs: { hookTimeoutMs: Number.POSITIVE_INFINITY } }, unreachable)).rejects.toMatchObject({
++      code: 'NEEDS_INVALID',
++    });
++    await expect(withTestDatabase({ template: SELFTEST_TEMPLATE, needs: { connectTimeoutMs: 1.5 } }, unreachable)).rejects.toMatchObject({
++      code: 'NEEDS_INVALID',
++    });
++    await expect(withTestDatabase({ template: SELFTEST_TEMPLATE, needs: { quietCluster: 'yes' as never } }, unreachable)).rejects.toMatchObject({
++      code: 'NEEDS_INVALID',
++    });
++    expect(db.run.statementCount).toBe(asked);
++  });
++
++  it('changes no runner limit for a need that states none of them', async () => {
++    const before = currentTestLimits();
++    const extra = await db.another({ slug: 'needs_no_limits', needs: { quietCluster: true } });
++    expect(currentTestLimits()).toEqual(before);
++    await extra.drop();
++  });
++});
++
++describe('the quiet cluster a caller asks for (decision D134)', () => {
++  it('leaves its own session out of the count, and counts itself when it does not', async () => {
++    const probe = singleConnectionPool('dems-w11b3-keying');
++    try {
++      const asking = await backendPid(probe);
++      const before = await cloneLockRows(probe);
++      await ask(probe, `SELECT pg_advisory_lock(${LOCK_CLASS}, ${CLONE_LOCK_KEY})`);
++      try {
++        expect(await backendPid(probe), 'the pool kept one connection').toBe(asking);
++        const held = await cloneLockRows(probe);
++        console.log(
++          `${LOG_PREFIX} keying: this session on the clone lock -> counted ${held.cloneLock}, keyed by the reader ${held.cloneLockNotMine} ` +
++            `(before it: ${before.cloneLock} / ${before.cloneLockNotMine})`,
++        );
++        // One snapshot: the row of the reading session is the difference.
++        expect(held.cloneLock).toBeGreaterThanOrEqual(1);
++        expect(held.cloneLockNotMine).toBeLessThan(held.cloneLock);
++      } finally {
++        await ask(probe, `SELECT pg_advisory_unlock(${LOCK_CLASS}, ${CLONE_LOCK_KEY})`);
++      }
++    } finally {
++      await db.run.endPool(probe);
++    }
++  });
++
++  it('leaves a lock of another key of the same class out', async () => {
++    const holder = singleConnectionPool('dems-w11b3-other-key');
++    const counter = singleConnectionPool('dems-w11b3-other-key-seer');
++    try {
++      await ask(holder, `SELECT pg_advisory_lock(${LOCK_CLASS}, ${OTHER_KEY})`);
++      try {
++        const seen = await cloneLockRows(counter);
++        // The holder's row is there (another key) and is not the clone lock.
++        expect(seen.allKeys).toBeGreaterThanOrEqual(seen.cloneLock + 1);
++        expect(seen.cloneLock).toBe(seen.cloneLockNotMine);
++      } finally {
++        await ask(holder, `SELECT pg_advisory_unlock(${LOCK_CLASS}, ${OTHER_KEY})`);
++      }
++    } finally {
++      await db.run.endPool(holder);
++      await db.run.endPool(counter);
++    }
++  });
++
++  it('waits while another session holds the clone lock, says it did not get quiet, and clones anyway', async () => {
++    const holder = await TestRun.attach(db.run.identity, { resolveDefinition: probeResolver() });
++    let releaseGate: () => void = () => undefined;
++    const held = new Promise<void>((resolve) => {
++      releaseGate = resolve;
++    });
++    // Somebody holds the clone lock for a moment: exactly the situation of a busy host.
++    const holding = holder.withCloneLock(async () => {
++      // Released a little after the bound of the request, so that its clone then goes through.
++      setTimeout(releaseGate, SHORT_BUDGET_MS + 80);
++      await held;
++    });
++    const impatient = await impatientRun();
++    try {
++      const started = performance.now();
++      const database = await impatient.createDatabase({ template: SELFTEST_TEMPLATE.key, slug: 'quiet_while_busy', quiet: true });
++      const elapsed = performance.now() - started;
++      expect(database.timings.quiet.budgetMs).toBe(SHORT_BUDGET_MS);
++      expect(database.timings.quiet.obtained).toBe(false);
++      expect(database.timings.quiet.waitedMs).toBeGreaterThanOrEqual(SHORT_BUDGET_MS);
++      expect(elapsed).toBeGreaterThanOrEqual(SHORT_BUDGET_MS);
++      console.log(
++        `${LOG_PREFIX} quiet: waited ${Math.round(database.timings.quiet.waitedMs)} ms of its ${SHORT_BUDGET_MS} ms bound while another session ` +
++          `held the clone lock; cloned in ${Math.round(database.timings.cloneMs)} ms after a lock wait of ${Math.round(database.timings.lockWaitMs)} ms`,
++      );
++      await database.drop();
++      // Nothing was ended to get there: the holder released its own lock and still answers.
++      expect(holder.closed).toBe(false);
++      expect((await holder.listDatabases()).length).toBeGreaterThanOrEqual(0);
++    } finally {
++      releaseGate();
++      await holding.catch(() => undefined);
++      await impatient.close();
++      await holder.close();
++    }
++  });
++  it('never waits longer than its bound, and reports what it saw', async () => {
++    const impatient = await impatientRun();
++    try {
++      const database = await impatient.createDatabase({ template: SELFTEST_TEMPLATE.key, slug: 'quiet_free', quiet: true });
++      const quiet = database.timings.quiet;
++      console.log(`${LOG_PREFIX} quiet, nobody asked to hold the lock: ${JSON.stringify(quiet)}`);
++      expect(quiet.budgetMs).toBe(SHORT_BUDGET_MS);
++      // Quiet: it went at once. Not quiet on a busy host: it waited exactly its bound, no more.
++      expect(quiet.obtained || quiet.waitedMs >= quiet.budgetMs, JSON.stringify(quiet)).toBe(true);
++      expect(quiet.waitedMs).toBeLessThanOrEqual(quiet.budgetMs + 250);
++      expect((await database.ownerPool().query<{ one: number }>('SELECT 1::int AS one')).rows).toEqual([{ one: 1 }]);
++      await database.drop();
++    } finally {
++      await impatient.close();
++    }
++  });
++
++  it('through the public entry: the clone carries the request, its bound is the helper’s', async () => {
++    const extra = await db.another({ slug: 'needs_quiet_public', needs: { quietCluster: true } });
++    const quiet = extra.timings.quiet;
++    expect(quiet.budgetMs).toBe(CLUSTER_QUIET_BUDGET_MS);
++    expect(quiet.obtained || quiet.waitedMs >= quiet.budgetMs, JSON.stringify(quiet)).toBe(true);
++    expect((await extra.ownerPool().query<{ one: number }>('SELECT 1::int AS one')).rows).toEqual([{ one: 1 }]);
++    await extra.drop();
++  });
++
++  it('asks for nothing where a file states nothing: no bound, no wait, no read', async () => {
++    const extra = await db.another({ slug: 'needs_quiet_absent' });
++    expect(extra.timings.quiet).toEqual({ waitedMs: 0, obtained: false, budgetMs: 0 });
++    await extra.drop();
++  });
++});
+

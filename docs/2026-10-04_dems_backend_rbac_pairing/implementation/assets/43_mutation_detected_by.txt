@@ -1,0 +1,83 @@
+C00|SURVIVED|0||
+R01|detected-by-unit|27|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R02|detected-by-unit|18|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R03|detected-by-unit|19|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R04|detected-by-unit|15|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R05|detected-by-unit|16|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R06|detected-by-unit|18|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R07|detected-by-unit|16|reset-order.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R08|detected-by-unit|17|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R09|detected-by-unit|2|reset-order.test.ts |reset-order.test.ts > the quiesce breaks off: exactly what was stopped is brought back > at stopEngine: the routine reports RESET_QUIESCE_FAILED; resu
+R10|detected-by-unit|25|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R11|detected-by-unit|21|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R12|detected-by-unit|21|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R13|detected-by-unit|18|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R14|detected-by-unit|20|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R15|detected-by-unit|22|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R16|detected-by-unit|21|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R17|detected-by-unit|23|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R18|detected-by-unit|11|reset-order.test.ts routes.test.ts |reset-order.test.ts > the resume fails: the server does NOT go back to serving, the hold is kept, 503 > reopenPool fails after a reset that succeeded:
+R19|detected-by-unit|16|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R20|detected-by-unit|2|reset-order.test.ts |reset-order.test.ts > the quiesce breaks off: exactly what was stopped is brought back > at drain: the routine reports RESET_QUIESCE_FAILED; resumed: 
+R21|detected-by-unit|10|reset-order.test.ts routes.test.ts |reset-order.test.ts > the routine refuses at R-0: nothing was stopped > RESET_ALREADY_RUNNING: no hold, no drain, no stop, no close, no resume; 503 wi
+R22|detected-by-unit|13|reset-order.test.ts routes.test.ts |reset-order.test.ts > the routine fails after the quiesce: the server is brought back, then 503 > RESET_TARGET_IN_USE at R-1 (target untouched: true):
+R23|detected-by-unit|2|reset-order.test.ts routes.test.ts |reset-order.test.ts > one reset at a time in one server > a second call while the first runs is refused at once: the routine is not asked, nothing of 
+R24|detected-by-unit|3|reset-order.test.ts routes.test.ts |reset-order.test.ts > the resume fails: the server does NOT go back to serving, the hold is kept, 503 > the hold of a reset that could not resume outl
+R25|detected-by-unit|10|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > hands the routine the instance database, the data directory, the clock, the actor, the reason, the scena
+R26|detected-by-unit|5|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > loadScenario with the scenario recording tells the routine the reason SCENARIO_LOAD
+R27|detected-by-unit|13|reset-order.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R28|detected-by-unit|34|reset-order.test.ts routes.test.ts |reset-order.test.ts > the routine refuses at R-0: nothing was stopped > RESET_ALREADY_RUNNING: no hold, no drain, no stop, no close, no resume; 503 wi
+R29|detected-by-unit|2|reset-order.test.ts routes.test.ts |reset-order.test.ts > the routine refuses at R-0: nothing was stopped > RESET_ALREADY_RUNNING: no hold, no drain, no stop, no close, no resume; 503 wi
+R30|detected-by-unit|23|reset-order.test.ts routes.test.ts |reset-order.test.ts > the routine refuses at R-0: nothing was stopped > RESET_ALREADY_RUNNING: no hold, no drain, no stop, no close, no resume; 503 wi
+R31|detected-by-unit|2|reset-order.test.ts |reset-order.test.ts > what a reset publishes once the server is back > session.updated for each operator whose role the seed put back, with the permis
+R32|detected-by-unit|5|reset-order.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R33|detected-by-unit|4|reset-order.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R34|detected-by-unit|16|reset-order.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R35|detected-by-unit|16|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > quiesces in the order hold, drain, roles, engine stop, pool close, resumes in the order pool, boot check
+R36|detected-by-unit|2|reset-order.test.ts |reset-order.test.ts > what a reset publishes once the server is back > session.updated for each operator whose role the seed put back, with the permis
+R37|detected-by-unit|1|reset-order.test.ts |reset-order.test.ts > a reset that succeeds > passes the routine's own log lines on, by code, at their level
+R38|detected-by-unit|4|reset-order.test.ts |reset-order.test.ts > the quiesce breaks off: exactly what was stopped is brought back > at drain: the routine reports RESET_QUIESCE_FAILED; resumed: 
+R39|detected-by-unit|1|reset-order.test.ts |reset-order.test.ts > a reset that succeeds > answers the epoch the routine wrote, and says so when the engine reloaded with another one
+R40|detected-by-unit|10|reset-order.test.ts routes.test.ts |reset-order.test.ts > the resume fails: the server does NOT go back to serving, the hold is kept, 503 > reopenPool fails after a reset that succeeded:
+R41|detected-by-unit|20|reset-order.test.ts |reset-order.test.ts > the routine refuses at R-0: nothing was stopped > RESET_ALREADY_RUNNING: no hold, no drain, no stop, no close, no resume; 503 wi
+O01|detected-by-unit|11|reset-order.test.ts routes.test.ts |reset-order.test.ts > a reset that succeeds > hands the routine the instance database, the data directory, the clock, the actor, the reason, the scena
+O02|detected-by-unit|1|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; 
+H01|detected-by-unit|1|host.test.ts |host.test.ts > B-1 on the reopened pool > the database does not answer: the resume fails at B-1, and nothing else is asked
+H02|detected-by-unit|6|host.test.ts |host.test.ts > B-1 on the reopened pool > a pooled connection without the pinned path: the resume fails at B-1 with the code of the pool plugin's own 
+H03|detected-by-db|5|reset.db.test.ts |reset.db.test.ts > AC-B-57: resetDemo through the routine, inside the running server > rebuilds the database, keeps the eight kept tables, closes the 
+H04|detected-by-unit|3|host.test.ts |host.test.ts > B-2 to B-9, in the order of the contract > a check that does not pass is named by its own ID, with what it threw; the checks after it d
+H05|detected-by-unit|10|host.test.ts |host.test.ts > B-1 on the reopened pool > the database does not answer: the resume fails at B-1, and nothing else is asked
+H06|detected-by-unit|3|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; 
+H07|detected-by-unit|2|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; 
+H08|detected-by-unit|5|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; 
+H09|detected-by-unit|2|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; 
+H10|detected-by-unit|5|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; 
+H11|detected-by-unit|7|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; 
+H12|detected-by-db|5|reset.db.test.ts |reset.db.test.ts > AC-B-57: resetDemo through the routine, inside the running server > rebuilds the database, keeps the eight kept tables, closes the 
+H13|detected-by-unit|1|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; 
+H14|detected-by-db|1|reset.db.test.ts |reset.db.test.ts > loadScenario, and a reset while a recording runs > after three resets: no connection of the reset is left, the pool is the runtime 
+H15|detected-by-db|5|reset.db.test.ts |reset.db.test.ts > AC-B-57: resetDemo through the routine, inside the running server > rebuilds the database, keeps the eight kept tables, closes the 
+H16|detected-by-unit|2|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > decision D95: the stored matrix of the rebuilt database is
+H17|detected-by-db|15|reset-failures.db.test.ts reset.db.test.ts |reset-failures.db.test.ts > refused at R-0: nothing of the server was stopped > two resets at once through HTTP: one runs, the other is answered 503; 
+H18|detected-by-unit|1|host.test.ts |host.test.ts > the read of the operators > names the two columns it needs and no other: the operator and its role
+I01|detected-by-unit|1|routes.test.ts |routes.test.ts > operations 73 and 74: one hosted command with the caller's principal, one log line that names the operator > injectFault runs /api/v1
+I02|detected-by-unit|1|routes.test.ts |routes.test.ts > operations 73 and 74: one hosted command with the caller's principal, one log line that names the operator > clearFault runs /api/v1/
+I03|detected-by-unit|2|routes.test.ts |routes.test.ts > operations 73 and 74: one hosted command with the caller's principal, one log line that names the operator > injectFault runs /api/v1
+I04|detected-by-unit|1|routes.test.ts |routes.test.ts > operations 73 and 74: one hosted command with the caller's principal, one log line that names the operator > injectFault runs /api/v1
+I05|detected-by-unit|1|routes.test.ts |routes.test.ts > operations 73 and 74: one hosted command with the caller's principal, one log line that names the operator > clearFault runs /api/v1/
+I06|detected-by-unit|6|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; 
+I07|detected-by-unit|1|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; 
+I08|detected-by-unit|3|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > loadScenario with recording: that scenario, the reason SCE
+I09|detected-by-unit|4|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; 
+I10|detected-by-unit|5|routes.test.ts |routes.test.ts > operations 72 and 75: the reset routine, through the server's own wiring > resetDemo: the caller is the actor, the scenario is idle; 
+I11|detected-by-unit|2|routes.test.ts |routes.test.ts > operation 71 getDemoStatus > answers the pure mapping of the committed state, the engine's epoch and the stored seed facts; one read,
+I12|detected-by-unit|2|routes.test.ts |routes.test.ts > operations 73 and 74: one hosted command with the caller's principal, one log line that names the operator > injectFault runs /api/v1
+I13|detected-by-unit|1|routes.test.ts |routes.test.ts > M3: who may call is stage 6, only > without stage 6 (a defect of the server) no handler acts for a caller that is no operator: 500 or
+I14|detected-by-unit|4|routes.test.ts |routes.test.ts > operation 71 getDemoStatus > answers the pure mapping of the committed state, the engine's epoch and the stored seed facts; one read,
+S01|detected-by-unit|2|routes.test.ts status.test.ts |routes.test.ts > operation 71 getDemoStatus > lists the active faults of the committed state, and the last reset once there was one
+S02|detected-by-unit|9|routes.test.ts status.test.ts |routes.test.ts > operation 71 getDemoStatus > lists the active faults of the committed state, and the last reset once there was one
+S03|detected-by-unit|10|routes.test.ts status.test.ts |routes.test.ts > operation 71 getDemoStatus > answers the pure mapping of the committed state, the engine's epoch and the stored seed facts; one read,
+S04|detected-by-unit|4|routes.test.ts status.test.ts |routes.test.ts > operation 71 getDemoStatus > lists the active faults of the committed state, and the last reset once there was one
+S05|detected-by-unit|1|status.test.ts |status.test.ts > seedFactsOf: the one row of core_state > no row, or more than one, is a defect: it throws and names the count, never a value
+S06|detected-by-unit|7|status.test.ts |status.test.ts > seedFactsOf: the one row of core_state > an instant that is no whole number of milliseconds ("-1") is refused, for either column
+S07|detected-by-unit|6|routes.test.ts status.test.ts |routes.test.ts > operation 71 getDemoStatus > answers the pure mapping of the committed state, the engine's epoch and the stored seed facts; one read,

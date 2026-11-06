@@ -1,0 +1,9 @@
++   "src/modules/health/index.ts:83 { error }",
+      Tests  1 failed | 6 passed (7)
+AssertionError: expected [ 'src/modules/health/index.ts:83' ] to deeply equal []
++   "src/modules/health/index.ts:83",
+      Tests  1 failed | 6 passed (7)
++   "src/modules/health/index.ts",
+      Tests  1 failed | 3 passed (4)
++   "src/modules/health/index.ts",
+      Tests  1 failed | 3 passed (4)

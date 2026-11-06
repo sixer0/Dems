@@ -1,0 +1,171 @@
+"""RF-T frame analyser for tablet screenrecord --bugreport clips (frames scaled to 960x600).
+Per frame: PTS, device time (first-frame overlay time + PTS), blank test (content std-dev), monitor test
+(red End Session button), banner probes (content shift of the 'LIVE SESSION FEED' header row and
+amber/green pixel counts in the band under the app header), and the six timer glyphs (bitmaps).
+Glyphs are clustered; cluster labels come from a JSON file written after viewing representatives.
+  python3 frames.py <frames_dir> <pts_file> <first_device_time HH:MM:SS.mmm> <out_json> [labels.json]
+"""
+import json, os, sys
+from PIL import Image
+
+frames_dir, pts_file, first_dev, out_json = sys.argv[1:5]
+labels_path = sys.argv[5] if len(sys.argv) > 5 else None
+THR = int(os.environ.get("GLYPH_THR", "14"))
+
+def to_s(hms):
+    h, m, s = hms.split(':')
+    return int(h) * 3600 + int(m) * 60 + float(s)
+
+def to_hms(x):
+    h = int(x // 3600); m = int((x % 3600) // 60); s = x - h * 3600 - m * 60
+    return f'{h:02d}:{m:02d}:{s:06.3f}'
+
+pts = {}
+for line in open(pts_file):
+    a, b = line.split()
+    pts[a] = float(b)
+t0 = to_s(first_dev)
+
+TIMER_BOX = (560, 105, 720, 150)   # timer card digits in the 960x600 frame
+
+def glyphs(im):
+    """Segment the white timer glyphs by column projection inside TIMER_BOX; return the 6 digit bitmaps."""
+    c = im.crop(TIMER_BOX).convert('L')
+    w, h = c.size
+    px = c.load()
+    cols = [sum(1 for y in range(h) if px[x, y] > 170) for x in range(w)]
+    segs = []
+    x = 0
+    while x < w:
+        if cols[x] > 0:
+            s = x
+            while x < w and cols[x] > 0:
+                x += 1
+            segs.append((s, x))
+        else:
+            x += 1
+    # merge segments separated by 1 px (glyph strokes), drop colons (narrow + few pixels)
+    merged = []
+    for s in segs:
+        if merged and s[0] - merged[-1][1] <= 1:
+            merged[-1] = (merged[-1][0], s[1])
+        else:
+            merged.append(s)
+    digits = [s for s in merged if (s[1] - s[0]) >= 6 or sum(cols[s[0]:s[1]]) > 60]
+    digits = [s for s in digits if sum(cols[s[0]:s[1]]) > 40]
+    out = []
+    for (s, e) in digits:
+        # fixed 18x26 cell anchored at the segment's right edge (narrow '1' glyphs stay aligned)
+        cell = []
+        x0 = e - 18
+        for y in range(8, 34):
+            for xx in range(x0, e):
+                cell.append(1 if 0 <= xx < w and px[xx, y] > 170 else 0)
+        out.append(cell)
+    return out, digits
+
+def is_monitor(px):
+    red = 0; n = 0
+    for y in range(515, 553, 2):
+        for x in range(770, 945, 3):
+            r, g, b = px[x, y][:3]; n += 1
+            if r > 200 and g < 90 and b < 90:
+                red += 1
+    return red / n > 0.4
+
+def header_row_y(px):
+    """First y (60..200) where the 'LIVE SESSION FEED' label row has white text in x 985-1100 of a 960 frame
+    -> in frame coords x 25-140."""
+    for y in range(60, 200):
+        if sum(1 for x in range(25, 140) if sum(px[x, y][:3]) > 600) >= 3:
+            return y
+    return None
+
+def band_colours(px, y0, y1):
+    amber = green = 0
+    for y in range(y0, y1, 2):
+        for x in range(10, 950, 3):
+            r, g, b = px[x, y][:3]
+            if r > 190 and 120 < g < 215 and b < 110:
+                amber += 1
+            elif g > 160 and r < 140 and b < 150:
+                green += 1
+    return amber, green
+
+def stats(px, W, H):
+    n = s = s2 = 0
+    for y in range(45, H, 5):
+        for x in range(0, W, 5):
+            r, g, b = px[x, y][:3]
+            v = (r + g + b) / 3
+            n += 1; s += v; s2 += v * v
+    mean = s / n
+    return mean, max(0.0, s2 / n - mean * mean) ** 0.5
+
+files = sorted(f for f in os.listdir(frames_dir) if f.endswith('.png'))
+rows = []
+clusters = []  # list of (bitmap, count, example)
+def cluster_of(bits):
+    for i, (b, cnt, ex) in enumerate(clusters):
+        if sum(1 for p, q in zip(b, bits) if p != q) <= THR:
+            clusters[i] = (b, cnt + 1, ex)
+            return i
+    clusters.append((bits, 1, None))
+    return len(clusters) - 1
+
+for f in files:
+    name = f[:-4]
+    im = Image.open(os.path.join(frames_dir, f)).convert('RGB')
+    px = im.load(); W, H = im.size
+    mean, sd = stats(px, W, H)
+    mon = is_monitor(px)
+    row = {'frame': name, 'overlay_f': int(name[2:]) - 1, 'pts': pts.get(name), 'dev': to_hms(t0 + pts.get(name, 0.0)),
+           'mean': round(mean, 1), 'sd': round(sd, 1), 'blank': sd < 6, 'monitor': mon}
+    if mon:
+        hy = header_row_y(px)
+        a, g = band_colours(px, 62, 92)
+        row.update({'headerY': hy, 'bandAmber': a, 'bandGreen': g})
+        gl, segs = glyphs(im)
+        row['nglyph'] = len(gl)
+        if len(gl) == 6:
+            ids = [cluster_of(b) for b in gl]
+            row['glyphs'] = ids
+            row['bits'] = gl
+            for i in ids:
+                b, cnt, ex = clusters[i]
+                if ex is None:
+                    clusters[i] = (b, cnt, name)
+    rows.append(row)
+
+labels = json.load(open(labels_path)) if labels_path and os.path.exists(labels_path) else {}
+for r in rows:
+    if 'glyphs' in r and labels:
+        digs = ''.join(str(labels.get(str(i), '?')) for i in r['glyphs'])
+        r['timer'] = f'{digs[0:2]}:{digs[2:4]}:{digs[4:6]}'
+        if '?' not in digs:
+            r['timerS'] = int(digs[0:2]) * 3600 + int(digs[2:4]) * 60 + int(digs[4:6])
+# Template mode: TEMPLATES=<json of {label, bits}> classifies each glyph by the nearest template (Hamming).
+tpl_path = os.environ.get('TEMPLATES')
+if tpl_path:
+    tpls = json.load(open(tpl_path))
+    worst = 0
+    for r in rows:
+        if 'bits' in r:
+            digs = ''
+            dists = []
+            for bits in r['bits']:
+                best = min(tpls, key=lambda t: sum(1 for p, q in zip(t['bits'], bits) if p != q))
+                dist = sum(1 for p, q in zip(best['bits'], bits) if p != q)
+                dists.append(dist)
+                digs += str(best['label']) if dist <= 6 else '?'
+            r['tplDist'] = max(dists); worst = max(worst, max(dists))
+            r['timer'] = f'{digs[0:2]}:{digs[2:4]}:{digs[4:6]}'
+            if '?' not in digs:
+                r['timerS'] = int(digs[0:2]) * 3600 + int(digs[2:4]) * 60 + int(digs[4:6])
+    print(f'template mode: worst glyph distance {worst}')
+for r in rows:
+    r.pop('bits', None)
+json.dump({'rows': rows, 'clusters': [{'id': i, 'count': c, 'example': ex, 'bits': b} for i, (b, c, ex) in enumerate(clusters)]}, open(out_json, 'w'), indent=1)
+print(f'{len(rows)} frames; monitor {sum(r["monitor"] for r in rows)}; blank {sum(r["blank"] for r in rows)}; clusters {len(clusters)}')
+for i, (b, c, ex) in enumerate(clusters):
+    print(f'  cluster {i}: {c} glyphs, first in {ex}')

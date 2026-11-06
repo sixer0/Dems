@@ -1,0 +1,5 @@
+ERROR in "type": page script failed: focus input[placeholder^="Search"]: SyntaxError: Failed to execute 'querySelector' on 'Document': '[data-testid="input[placeholder^="Search"]"]' is not a valid selector.
+    at <anonymous>:1:30
+    at <anonymous>:1:199
+slept 2000
+eval: []

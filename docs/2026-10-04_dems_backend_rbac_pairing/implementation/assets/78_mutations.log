@@ -1,0 +1,85 @@
+# W78 mutation check, 2026-10-05 23:45:20; 4 test files per run; the tree is not edited
+control (no mutation): exit=0 Tests:       51 passed, 51 total (7 s)
+DC1  detected       7s  the success toast shows at the press, before the answer (AC-C-63)  | Tests:       6 failed, 45 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › answer first, delta later: the toast waits for the revision the answer named (CL-16)
+DC2  detected       6s  the dialog closes at the press, not in done  | Tests:       2 failed, 49 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › answer first, delta later: the toast waits for the revision the answer named (CL-16)
+DC3  detected       7s  the presenter is not consulted in Live mode (generic toast instead of the denied one)  | Tests:       5 failed, 46 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › refusal: a 403 NOT_PERMITTED of the Core's guard → the denied toast naming the role; no success toast; the dialog closes
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › outage: "Core server unreachable. Nothing was changed."; no success toast; a second try sends again
+DC4  detected       5s  the 409 answers lose their wording (generic toast)  | Tests:       3 failed, 48 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › 409 COMMAND_UNSUPPORTED (the contract's example) → "MIC 2 does not accept this command."; no success toast
+      e.g. S3-2 and S5-4: Restart (operation 48) through the device-command dialog › 409 RECORDING_ACTIVE (the contract's example: a recording started on the Core) → "Not available while recording"
+DC5  detected       7s  the LIVE success toast says "(simulated)" (the Simulated copy in LIVE)  | Tests:       5 failed, 46 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › answer first, delta later: the toast waits for the revision the answer named (CL-16)
+DC6  detected       7s  the LIVE dialog body is the Simulated one  | Tests:       2 failed, 49 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+      e.g. S3-2 and S5-4: Restart (operation 48) through the device-command dialog › success as the TECHNICIAN: the toast after the Core's 204, the Core's audit row, the Core's words
+DC7  detected       7s  the confirm button is not marked busy while the command is out (LB-1)  | Tests:       1 failed, 50 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+DC8  detected       7s  no spinner after the reveal time (LB-1)  | Tests:       1 failed, 50 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+DC9  detected       7s  Cancel closes the dialog while the command is out  | Tests:       1 failed, 50 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+DC10  detected      12s  the dialog does not close in done  | Tests:       6 failed, 45 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › answer first, delta later: the toast waits for the revision the answer named (CL-16)
+DD1  detected      10s  the diagnostics sheet opens at the press, before the Core accepted the run  | Tests:       3 failed, 48 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S2-8: Run diagnostics (operation 65) › success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve
+      e.g. S2-8: Run diagnostics (operation 65) › refusal: a 403 NOT_PERMITTED of the Core's guard → the denied toast; the sheet stays closed; the button is idle
+DD2  detected       8s  a diagnostics rejection skips the presenter in Live mode  | Tests:       2 failed, 49 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S2-8: Run diagnostics (operation 65) › refusal: a 403 NOT_PERMITTED of the Core's guard → the denied toast; the sheet stays closed; the button is idle
+      e.g. S2-8: Run diagnostics (operation 65) › outage: "Core server unreachable. Nothing was changed."; the sheet stays closed; a second press sends again and opens it
+DD3  detected       8s  a clip-reset rejection is not presented  | Tests:       1 failed, 50 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. the clip reset (operation 52): result ignored as before, a rejection presented › outage: "Core server unreachable" instead of an unhandled rejection; the latch stays
+DD4  detected       8s  the screen never takes the LIVE branch  | Tests:       17 failed, 34 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › answer first, delta later: the toast waits for the revision the answer named (CL-16)
+DD5  detected       8s  the Diagnostics button is not marked busy (LB-1)  | Tests:       1 failed, 50 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S2-8: Run diagnostics (operation 65) › success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve
+DD6  detected       8s  no spinner on the Diagnostics button after the reveal time  | Tests:       1 failed, 50 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S2-8: Run diagnostics (operation 65) › success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve
+DD7  detected       7s  the Log names LIVE commands with the Simulated words  | Tests:       1 failed, 50 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+DD8  detected       8s  "Run again" is never marked busy  | Tests:       1 failed, 50 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S2-8: Run diagnostics (operation 65) › Run again: one more run on the Core; marked busy until the Core accepted it
+DD9  detected       8s  the diagnostics run is not guarded against a second press  | Tests:       2 failed, 49 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S2-8: Run diagnostics (operation 65) › success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve
+      e.g. S2-8: Run diagnostics (operation 65) › Run again: one more run on the Core; marked busy until the Core accepted it
+SM1  detected      11s  a Core command starts from a mount effect (F69-1: twice under StrictMode)  | Tests:       4 failed, 47 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S2-8: Run diagnostics (operation 65) › success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve
+      e.g. S2-8: Run diagnostics (operation 65) › Run again: one more run on the Core; marked busy until the Core accepted it
+DS1  detected      10s  the LIVE diagnostics subtitle is the Simulated one  | Tests:       1 failed, 50 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S2-8: Run diagnostics (operation 65) › success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve
+HC1  detected      10s  the LIVE health caption is the Simulated one  | Tests:       1 failed, 50 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. the LIVE copy (rule 8, MD-8) › the health caption and the Overview of a camera say nothing about a simulation
+I1  detected      11s  a LIVE text says "(simulated)"  | Tests:       5 failed, 46 passed, 51 total  | devices-live-static.test.ts, live-devices-sites.test.tsx
+      e.g. the copy (rule 8; §3.2) › the text LIVE mode adds says nothing about a simulation; the texts it replaces did
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+PP1  detected      11s  the spinner shows at once (no reveal time)  | Tests:       2 failed, 49 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+      e.g. S2-8: Run diagnostics (operation 65) › success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve
+PP2  detected      11s  the spinner never shows  | Tests:       3 failed, 48 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+      e.g. S2-8: Run diagnostics (operation 65) › success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve
+PP3  detected      13s  a second press while in flight sends a second command  | Tests:       2 failed, 49 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+      e.g. S2-8: Run diagnostics (operation 65) › success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve
+PP4  detected      12s  the control is never marked busy  | Tests:       3 failed, 48 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S3-2: Test signal (operation 49) through the device-command dialog › success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words
+      e.g. S2-8: Run diagnostics (operation 65) › success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve
+PP5  detected      15s  busy is never cleared after the command settled  | Tests:       3 failed, 48 passed, 51 total  | live-devices-sites.test.tsx
+      e.g. S2-8: Run diagnostics (operation 65) › success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve
+      e.g. S2-8: Run diagnostics (operation 65) › refusal: a 403 NOT_PERMITTED of the Core's guard → the denied toast; the sheet stays closed; the button is idle
+## 28 detected, 0 not detected, 0 not applied, of 28
+## the mutated files in the tree, before and after: identical
+   4ba3c211a8edbe94  src/features/devices/device-command-dialog.tsx
+   ed1a97fc2d1e5ede  src/features/devices/device-detail.tsx
+   b37b982b24969947  src/features/devices/diagnostics-sheet.tsx
+   20b65529834ffd0e  src/features/devices/health-chart.tsx
+   9bb72d4c1e9557f9  src/features/devices/i18n.ts
+   a1a38ac8249d7bda  src/features/devices/use-pending-press.ts
+# finished 23:49:33

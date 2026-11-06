@@ -1,0 +1,16 @@
+12:58:22.826 mark d01 at 12:58:22.826
+12:58:22.884 declared screen stack-check
+12:58:22.937 key 4
+12:58:23.096 slept 2000 ms
+12:58:25.183 tap 108,2283
+12:58:25.405 slept 2500 ms
+12:58:27.941 declared screen home
+12:58:27.965 screencap 48_home_before_start.png 12:58:27.965..12:58:28.179
+12:58:28.254 tap 302,1239
+12:58:28.333 slept 3000 ms
+12:58:31.387 declared screen session-new
+12:58:31.437 screencap 49_start_session_step1.png 12:58:31.437..12:58:31.792
+12:58:31.892 ids(25): screen-session-new@540,1212 ; session-new-header@540,216 ; session-new-back@95,216 "Back" ; session-new-profile-menu@986,216 "Load last session profile" ; session-new-stepper-root@540,389 "Session setup progress" ; session-new-stepper@540,389 ; session-new-stepper-step-0@208,442 "Step 1 of 3, Session Info, current" ; session-new-stepper-step-1@541,442 "Step 2 of 3, Devices Check, not started" ; session-new-stepper-step-2@872,442 "Step 3 of 3, Ready, not started" ; session-new-scroll@540,1331 ; session-new-step-1@540,1331 ; session-new-info@540,1331 ; session-new-case-number@540,747 "LP/YYYY/MMDD-NNNN" ; session-new-scan@913,748 "Fill in the next case number" ; session-new-subject-type@540,994 ; session-new-subject-TERSANGKA@229,994 "Tersangka" ; session-new-subject-SAKSI@540,994 "Saksi" ; session-new-subject-LAINNYA@851,994 "Lainnya" ; session-new-subject-gloss@540,1099 "Long-press a type for its English meaning." ; session-new-subject-name@540,1309 "Full name" ; session-new-investigator@540,1561 "Investigator" ; session-new-room@540,1813 "Room / Location" ; session-new-profile@540,2065 "Recording Profile" ; session-new-notes@540,2205 "Context for this interview" ; session-new-next@540,2257 "Next"
+12:58:34.239 warnlog since 10-06 12:58:22.000 (0): 
+12:58:34.337 serverlog since d01 (1):
+    12:58:32.736 POST /api/v1/auth/touch 200

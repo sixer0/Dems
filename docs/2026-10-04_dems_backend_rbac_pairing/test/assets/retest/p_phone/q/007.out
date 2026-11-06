@@ -1,0 +1,23 @@
+12:47:02.646 mark p1r1 at 12:47:02.646
+12:47:02.698 declared screen sessions
+12:47:02.758 tap 540,866
+12:47:03.025 slept 2500 ms
+12:47:05.582 declared screen session-detail
+12:47:05.626 screencap 10_p1_r1_a_session_detail.png 12:47:05.626..12:47:06.076
+12:47:06.172 ids(15): screen-session-detail@540,1102 ; session-detail-screen@540,1173 ; session-detail-back@95,216 "Back to Sessions" ; session-detail-hero@540,660 ; session-detail-status@822,389 "Incomplete" ; session-detail-id@540,793 "SES-20261006-0029" ; session-detail-range@540,882 "6 Oct 2026 01:53:38 – 01:53:56" ; session-detail-subject-chip@534,962 "Tersangka" ; session-detail-incomplete@540,1215 "Session marked INCOMPLETE, Power failure. It will never be sealed (SYS" ; session-detail-details@540,1802 ; session-detail-case@540,1573 "Case Number, LP/2026/1006-0013" ; session-detail-subject@540,1737 "Subject, Dewi W73 Device" ; session-detail-investigator@540,1902 "Investigator, AKP Budi Santoso" ; session-detail-room@540,2040 "Interview Room, Interview Room 1" ; session-detail-start@540,2157 "Start Time, 6 Oct 2026 01:53:38"
+12:47:08.430 tap 540,2283
+12:47:08.557 slept 1200 ms
+12:47:09.794 declared screen evidence
+12:47:09.822 screencap 11_p1_r1_b_evidence_t1.png 12:47:09.822..12:47:10.211
+12:47:10.330 slept 1800 ms
+12:47:12.160 screencap 11_p1_r1_b_evidence_t3.png 12:47:12.160..12:47:12.421
+12:47:12.492 tap 756,2283
+12:47:12.579 slept 1200 ms
+12:47:13.809 declared screen devices
+12:47:13.836 screencap 12_p1_r1_c_devices_t1.png 12:47:13.836..12:47:14.029
+12:47:14.103 slept 1800 ms
+12:47:15.936 screencap 12_p1_r1_c_devices_t3.png 12:47:15.936..12:47:16.121
+12:47:16.196 ids(10): nav-item-home-face-icon@109,2258 ; nav-item-home-face-label@108,2320 "Home" ; nav-item-sessions-face-icon@325,2258 ; nav-item-sessions-face-label@324,2320 "Sessions" ; nav-item-evidence-face-icon@541,2258 ; nav-item-evidence-face-label@540,2320 "Evidence" ; nav-item-devices-face-icon@757,2258 ; nav-item-devices-face-label@756,2320 "Devices" ; nav-item-more-face-icon@973,2258 ; nav-item-more-face-label@972,2320 "More"
+12:47:18.410 warnlog since 10-06 12:47:02.000 (0): 
+12:47:18.508 serverlog since p1r1 (0):
+    

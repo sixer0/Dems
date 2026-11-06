@@ -1,0 +1,62 @@
+
+== 05:47:58 0. ports 4421 and 8083 free; lock status (read-only)
+free: 4421 8083
+lock status exit 0
+phone (emulator-5554): AVD dems2_phone, isKeyguardShowing=false, CredentialType=PIN, fingerprint count=1, lock screen disabled=unreadable
+phone2 (emulator-5558): AVD dems2_phone2, isKeyguardShowing=false, CredentialType=NONE, fingerprint count=0, lock screen disabled=true
+tablet (emulator-5556): AVD dems2_tablet, isKeyguardShowing=false, CredentialType=PIN, fingerprint count=1, lock screen disabled=unreadable
+
+== 05:47:59 1. lane-1 backend: DEMS_CORE_PORT=4421 npm run start:server (demo flag off)
+-- up after 3 quarter seconds; listener PID 20439
+"port":4421,"database":"dems_lane_1","demoControls":false
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T22:48:00.140Z","uptimeMs":284,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 05:48:00 2. device session: phone, Metro 8083, device tcp:4420 -> host tcp:4421 (cap 600 s)
+device session exit=0
+-- serial emulator-5554 (dems2_phone), Metro 8083
+-- reverse rules of this session (device -> host):
+   host-16 tcp:8081 tcp:8083
+   host-16 tcp:4400 tcp:4400
+   host-16 tcp:4420 tcp:4421
+   
+-- prefs before: {"coreLinkSource":"SIMULATED"}
+-- $ adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+   exit 0
+-- $ adb -s emulator-5554 shell 'am start -W -a android.intent.action.VIEW -d "demsdemo:///login?core=LIVE&motion=off" com.dems.demo.tablet'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 10 s for runtime.live.ready
+-- screencap 86_m1_live_login_lane1.png (1720568 B)
+-- prefs in LIVE: {"coreLinkSource":"LIVE"}
+-- Core request lines of the app (method, path template, status):
+      1 DEMS-LIVE] GET /api/v1/pairing/device 200
+      1 DEMS-LIVE] GET /api/v1/auth/status 200
+      1 DEMS-LIVE] GET /api/v1/auth/session 401
+-- runtime lines: runtime.debug.core runtime.live.ready 
+-- $ adb -s emulator-5554 shell 'am start -W -a android.intent.action.VIEW -d "demsdemo:///login?core=SIMULATED&motion=off" com.dems.demo.tablet'
+   Status: ok
+   LaunchState: UNKNOWN (0)
+   TotalTime: 0
+-- waited 2 s for runtime.sim.hydrated
+-- screencap 86_m2_simulated_login_lane1.png (1719328 B)
+-- prefs after: {"coreLinkSource":"SIMULATED"}
+-- credential/token lines in the JS log since the start (must be 0): 0
+-- lock at end: isKeyguardShowing=false
+
+== 05:48:50 3. lane backend requests during the session (method, route, status, principal)
+      1 GET /api/v1/auth/session 401 principal=device
+      1 GET /api/v1/auth/status 200 principal=device
+      2 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/device 200 principal=device
+-- demo operations (must be 0): 0
+-- credential-shaped values in the lane server log (must be 0): 0
+
+== 05:48:50 4. stop the lane backend; nothing left
+-- 05:48:50 lane backend stopped (npm exit 0)
+lsof exit 1 (1: none)
+
+reverse rules listed above (none expected)
+lock status exit 0
+lock status identical before and after
+
+== 05:48:51 end

@@ -1,0 +1,44 @@
+// Minimal reproduction of finding W48-F1 (plan row W48, blueprint step 70). Not a file of the
+// tree: it is loaded IN PLACE of `test/acceptance/pairing-lifecycle.test.ts` through the scratch
+// runner configuration (`W48_REPLACE=<this file>`), so its imports are relative to that folder.
+//
+// The real app on a clone of the seed, every stage real, no listener (the pairing row's test
+// support). A device is paired and revoked. Its retired credential is then presented 21 times
+// within one minute of the server clock. After that a NEW device redeems the RIGHT code.
+//
+// No code and no credential is printed: statuses, error codes, a header and row counts only.
+import { expect, it, vi } from 'vitest';
+import { useTestDatabase } from '../helpers/db';
+import { readTrail } from '../support/core';
+import { DEVICE, deviceGet, issueCode, outcomeOf, pairDevice, pairingApp, portalPost, redeem, revokeUrl, storedCode, supervisorCookie } from '../support/pairing';
+
+const db = useTestDatabase({ template: 'seed' });
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
+
+it('W48-F1: refused calls of a revoked device use up the budget that the redeem of a new device needs', async () => {
+  const pairing = await pairingApp(db);
+  const owner = db.ownerPool();
+  const cookie = await supervisorCookie(pairing);
+  const old = await pairDevice(pairing, cookie, 'Old tablet');
+  expect((await portalPost(pairing.app, revokeUrl(old.deviceId), cookie, { reason: 'Tablet reported lost' })).statusCode).toBe(200);
+
+  const before = (await readTrail(owner)).length;
+  const statuses: number[] = [];
+  for (let call = 0; call < 21; call += 1) statuses.push((await deviceGet(pairing.app, DEVICE, old.credential)).statusCode);
+  const denied = (await readTrail(owner)).slice(before).map((row) => row.type);
+  console.info(`[w48-f1] 21 calls with the retired credential: ${statuses.join(' ')}; rows: ${denied.length} x ${[...new Set(denied)].join(', ')}`);
+
+  const issued = await issueCode(pairing, cookie);
+  const refused = await redeem(pairing.app, issued.code, { deviceName: 'New tablet' });
+  console.info(`[w48-f1] a NEW device redeems the RIGHT code: ${JSON.stringify(outcomeOf(refused))}, retry-after ${String(refused.headers['retry-after'])} s; the code: ${(await storedCode(owner, issued.codeId)).state}, failed attempts ${(await storedCode(owner, issued.codeId)).failedAttempts}`);
+  const portal = await pairing.app.inject({ method: 'GET', url: '/api/v1/pairing/devices', headers: cookie });
+  console.info(`[w48-f1] the portal at the same instant: ${portal.statusCode}`);
+
+  pairing.clock.advance(60_000);
+  const paired = await redeem(pairing.app, issued.code, { deviceName: 'New tablet' });
+  console.info(`[w48-f1] 60 s later the same redeem: ${paired.statusCode}`);
+
+  expect(statuses).toEqual([...Array.from({ length: 20 }, () => 403), 429]);
+  expect(outcomeOf(refused)).toEqual([429, 'RATE_LIMITED']);
+  expect(paired.statusCode).toBe(201);
+});

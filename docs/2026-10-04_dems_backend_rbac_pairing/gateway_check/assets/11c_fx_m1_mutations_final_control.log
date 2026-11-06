@@ -1,0 +1,17 @@
+# FX-M1 mutation check, 2026-10-06 11:59:37; the tree is not edited
+control (no mutation): exit=0 Tests:       94 passed, 94 total (23 s)
+S1-h NOT DETECTED exit=0 Tests:       20 passed, 20 total (9 s) — the root layout no longer mounts the landing [src/app/_layout.tsx]
+## 0 detected, 1 not detected, 0 not applied
+## the mutated files in the tree, before and after: identical
+   87b8e2bcd04a00ad  src/app/+native-intent.tsx
+   7596a9222c5e1c55  src/app/_layout.tsx
+   a384b2510a381825  src/features/pairing/pairing-code-panel.tsx
+   09208e85fa54c99a  src/features/pairing/pairing-model.ts
+   cb73e811daa38f73  src/features/pairing/use-pairing-flow.ts
+   aa5b6fca78992e84  src/runtime/ended-link.ts
+   721f1eb723a2050a  src/runtime/log.ts
+   25019912fde57a3f  src/runtime/probe-failure.ts
+   befdaebbc0798f41  src/runtime/signed-out-landing.tsx
+   4272199c14a53e94  src/runtime/sim-adapters.ts
+   b50d17fba641437b  src/runtime/sim-runtime-provider.tsx
+# finished 12:00:10

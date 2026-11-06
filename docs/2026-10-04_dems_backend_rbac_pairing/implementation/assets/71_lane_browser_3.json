@@ -1,0 +1,695 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+    "headless": true
+  },
+  "viewport": "1920x1080",
+  "steps": {
+    "liveStorage": {
+      "loginCoreMode": "LIVE",
+      "signedIn": true,
+      "storageShown": true,
+      "corePolicyBefore": {
+        "status": 200,
+        "policy": {
+          "retentionPolicy": "DAYS_90",
+          "retentionDays": 90,
+          "autoArchive": true
+        }
+      },
+      "facts": {
+        "href": "http://127.0.0.1:5178/storage",
+        "onStorage": true,
+        "panels": [
+          "capacity",
+          "kpis",
+          "usage",
+          "sealed",
+          "volumes",
+          "activity",
+          "calculator",
+          "policy"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: AKP Andi Pratama",
+        "bannerState": "READY",
+        "banner": "Storage ready3.2 TB free · about 389h 45m of recording left",
+        "retention": "90 days",
+        "kpiRetention": "Retention days90days90 days · auto-archive on",
+        "volumes": [
+          "storage-volume-NVME-SYS",
+          "storage-volume-HDD-EVIDENCE"
+        ],
+        "volumesFootnote": "Roles per design book §10.1 · SMART values are demo values derived by the console: the Core server does not report them",
+        "activityRows": 10,
+        "firstActivity": "11:11:52Evidence sealedEV-20261004-0013",
+        "drawerOpen": false,
+        "drawerRbac": null,
+        "applyDisabled": null,
+        "applyText": null,
+        "footerBusy": null,
+        "selected": null,
+        "saysSimulated": false,
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/71_storage_live_supervisor.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/storage/detail",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 79,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          },
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 123,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "b9Apply": {
+      "target": "YEAR_1",
+      "opened": true,
+      "trigger": true,
+      "listed": true,
+      "picked": true,
+      "drawerBefore": {
+        "selected": "Retention policy1 year 30 days90 days1 yearUntil case closure",
+        "applyText": "Apply policy",
+        "applyDisabled": false
+      },
+      "drawerScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/71_storage_live_b9_applied_drawer.png",
+      "pressed": true,
+      "toastShown": true,
+      "after": {
+        "href": "http://127.0.0.1:5178/storage",
+        "onStorage": true,
+        "panels": [
+          "capacity",
+          "kpis",
+          "usage",
+          "sealed",
+          "volumes",
+          "activity",
+          "calculator",
+          "policy"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: AKP Andi Pratama",
+        "bannerState": "READY",
+        "banner": "Storage ready3.2 TB free · about 389h 45m of recording left",
+        "retention": "1 year",
+        "kpiRetention": "Retention days364days1 year · auto-archive on",
+        "volumes": [
+          "storage-volume-NVME-SYS",
+          "storage-volume-HDD-EVIDENCE"
+        ],
+        "volumesFootnote": "Roles per design book §10.1 · SMART values are demo values derived by the console: the Core server does not report them",
+        "activityRows": 10,
+        "firstActivity": "23:10:53Storage policy changed365 days · auto-archive on",
+        "drawerOpen": false,
+        "drawerRbac": null,
+        "applyDisabled": null,
+        "applyText": null,
+        "footerBusy": null,
+        "selected": null,
+        "saysSimulated": false,
+        "toasts": [
+          "Storage policy updated"
+        ]
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/71_storage_live_b9_applied.png",
+      "corePolicyAfter": {
+        "status": 200,
+        "policy": {
+          "retentionPolicy": "YEAR_1",
+          "retentionDays": 365,
+          "autoArchive": true
+        }
+      },
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/storage/policy",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/storage/detail",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "b9SetBack": {
+      "opened": true,
+      "trigger": true,
+      "listed": true,
+      "picked": true,
+      "drawerBefore": {
+        "selected": "Retention policy90 days 30 days90 days1 yearUntil case closure",
+        "applyText": "Apply policy",
+        "applyDisabled": false
+      },
+      "drawerScreenshot": null,
+      "pressed": true,
+      "toastShown": true,
+      "after": {
+        "href": "http://127.0.0.1:5178/storage",
+        "onStorage": true,
+        "panels": [
+          "capacity",
+          "kpis",
+          "usage",
+          "sealed",
+          "volumes",
+          "activity",
+          "calculator",
+          "policy"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: AKP Andi Pratama",
+        "bannerState": "READY",
+        "banner": "Storage ready3.2 TB free · about 389h 45m of recording left",
+        "retention": "90 days",
+        "kpiRetention": "Retention days91days90 days · auto-archive on",
+        "volumes": [
+          "storage-volume-NVME-SYS",
+          "storage-volume-HDD-EVIDENCE"
+        ],
+        "volumesFootnote": "Roles per design book §10.1 · SMART values are demo values derived by the console: the Core server does not report them",
+        "activityRows": 10,
+        "firstActivity": "23:10:55Storage policy changed90 days · auto-archive on",
+        "drawerOpen": false,
+        "drawerRbac": null,
+        "applyDisabled": null,
+        "applyText": null,
+        "footerBusy": null,
+        "selected": null,
+        "saysSimulated": false,
+        "toasts": [
+          "Storage policy updated",
+          "Storage policy updated"
+        ]
+      },
+      "screenshot": null,
+      "exactRestore": null,
+      "corePolicyAfterRestore": {
+        "status": 200,
+        "policy": {
+          "retentionPolicy": "DAYS_90",
+          "retentionDays": 90,
+          "autoArchive": true
+        }
+      },
+      "equalsOriginal": true,
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/storage/policy",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/storage/detail",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "liveNetworkTime": {
+      "shown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/network-time",
+        "onNetworkTime": true,
+        "panels": [
+          "system-time",
+          "hierarchy",
+          "network",
+          "domains",
+          "offset",
+          "log"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "clock": "23:11:02",
+        "source": "GPS (GNSS stratum 1)",
+        "banner": "Synchronized • ConnectedGNSS · stratum 1 · 192.168.10.21",
+        "bannerTone": "success",
+        "activeTier": "GNSS",
+        "orbit": "13 SV",
+        "lastSync": "23:10:52 · 10 s ago",
+        "lan": "LAN ConnectionConnected192.168.10.21 · Interview LAN · 1 Gbps · gateway 192.168.10.1",
+        "poe": "PoE NetworkActiveCAM 1link upCAM 2 / AUXlink up2/2 ports18.6 W of 60 W budget",
+        "tablet": "Offline",
+        "tabletAlert": "Recording continues on the Core. The tablet resyncs when it reconnects.",
+        "domains": {
+          "CAMERA": "Camera DomainVLAN 10Camera ↔ Core onlyNo direct tablet routingActive",
+          "MANAGEMENT": "Management DomainVLAN 20Tablet ↔ Core approved servicesDefault deny other servicesDegraded",
+          "SERVICE_UPDATE": "Service / UpdateVLAN 30Authorized service workflow onlyDisabled or restricted in normal modeRestricted",
+          "EXPORT_TRANSFER": "Export / TransferVLAN 40Role-authorized flow onlyAudited and verifiedOn demand"
+        },
+        "logRows": 6,
+        "offsetPoints": "120",
+        "saysSimulated": false,
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/71_network_time_live.png",
+      "network": {
+        "api": [
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 120,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "investigator": {
+      "signOutOfSupervisor": {
+        "status": 204,
+        "loginShown": true
+      },
+      "signedIn": true,
+      "drawer": {
+        "open": true,
+        "rbac": "Requires the Supervisor / Technician role",
+        "applyDisabled": true,
+        "saysSimulated": false
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/71_storage_live_investigator_drawer.png",
+      "coreAnswerToOperation55": {
+        "status": 403,
+        "code": "NOT_PERMITTED",
+        "details": {
+          "operationId": "setStoragePolicy",
+          "permission": "EVIDENCE_REVIEW_OR_MAINTENANCE",
+          "role": "INVESTIGATOR"
+        }
+      },
+      "corePolicyAfterRefusal": {
+        "status": 200,
+        "policy": {
+          "retentionPolicy": "DAYS_90",
+          "retentionDays": 90,
+          "autoArchive": true
+        }
+      },
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 200
+          },
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/storage/policy",
+            "status": 403
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/storage/detail",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 77,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          },
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 144,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "heartbeat"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "simulated": {
+      "signOutOfLive": {
+        "status": 204,
+        "loginShown": true
+      },
+      "loginCoreMode": "SIMULATED",
+      "submitDisabledOnTheLoginPage": true,
+      "signInPath": "stored simulated sign-in (dems.auth), F63-3",
+      "storageShown": true,
+      "storage": {
+        "href": "http://127.0.0.1:5178/storage",
+        "onStorage": true,
+        "panels": [
+          "capacity",
+          "kpis",
+          "usage",
+          "sealed",
+          "volumes",
+          "activity",
+          "calculator",
+          "policy"
+        ],
+        "shellMode": "SIMULATED",
+        "shellCoreMode": "SIMULATED",
+        "user": "Account menu: AKP Andi Pratama",
+        "bannerState": "READY",
+        "banner": "Storage ready3.2 TB free · about 389h 45m of recording left",
+        "retention": "90 days",
+        "kpiRetention": "Retention days90days90 days · auto-archive on",
+        "volumes": [
+          "storage-volume-NVME-SYS",
+          "storage-volume-HDD-EVIDENCE"
+        ],
+        "volumesFootnote": "Roles per design book §10.1 · SMART values are demo values derived by the console until the simulator models them",
+        "activityRows": 10,
+        "firstActivity": "22:46:26Evidence sealedEV-20261005-0013",
+        "drawerOpen": false,
+        "drawerRbac": null,
+        "applyDisabled": null,
+        "applyText": null,
+        "footerBusy": null,
+        "selected": null,
+        "saysSimulated": true,
+        "toasts": []
+      },
+      "storageScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/71_storage_simulated.png",
+      "networkTimeShown": true,
+      "networkTime": {
+        "href": "http://127.0.0.1:5178/network-time",
+        "onNetworkTime": true,
+        "panels": [
+          "system-time",
+          "hierarchy",
+          "network",
+          "domains",
+          "offset",
+          "log"
+        ],
+        "shellMode": "SIMULATED",
+        "shellCoreMode": "SIMULATED",
+        "clock": "23:11:33",
+        "source": "GPS (GNSS stratum 1)",
+        "banner": "Synchronized • ConnectedGNSS · stratum 1 · 192.168.10.21",
+        "bannerTone": "success",
+        "activeTier": "GNSS",
+        "orbit": "10 SV",
+        "lastSync": "23:11:22 · 11 s ago",
+        "lan": "LAN ConnectionConnected192.168.10.21 · Interview LAN · 1 Gbps · gateway 192.168.10.1",
+        "poe": "PoE NetworkActiveCAM 1link upCAM 2 / AUXlink up2/2 ports18.6 W of 60 W budget",
+        "tablet": "Connected",
+        "tabletAlert": null,
+        "domains": {
+          "CAMERA": "Camera DomainVLAN 10Camera ↔ Core onlyNo direct tablet routingActive",
+          "MANAGEMENT": "Management DomainVLAN 20Tablet ↔ Core approved servicesDefault deny other servicesActive",
+          "SERVICE_UPDATE": "Service / UpdateVLAN 30Authorized service workflow onlyDisabled or restricted in normal modeRestricted",
+          "EXPORT_TRANSFER": "Export / TransferVLAN 40Role-authorized flow onlyAudited and verifiedOn demand"
+        },
+        "logRows": 4,
+        "offsetPoints": "120",
+        "saysSimulated": true,
+        "toasts": []
+      },
+      "networkTimeScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/71_network_time_simulated.png",
+      "apiRequestsToTheDevServer": 0,
+      "socketsToTheDevServerWs": 0,
+      "network": {
+        "api": [],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          }
+        ],
+        "console": []
+      }
+    }
+  },
+  "elapsedSeconds": 56
+}

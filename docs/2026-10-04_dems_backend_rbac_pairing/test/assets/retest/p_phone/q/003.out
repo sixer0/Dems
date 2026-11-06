@@ -1,0 +1,21 @@
+12:45:40.738 mark a01 at 12:45:40.738
+12:45:40.788 declared screen login
+12:45:40.837 tap 539,1184
+12:45:41.227 slept 900 ms
+12:45:42.176 username typed (budi.santoso, INVESTIGATOR); inputType 0x80001
+12:45:42.573 slept 500 ms
+12:45:43.107 screencap 02_login_username_typed_budi.png 12:45:43.107..12:45:43.870
+12:45:43.953 tap 539,1342
+12:45:44.134 slept 800 ms
+12:45:44.968 password typed (not shown); inputType 0x80081
+12:45:45.441 slept 300 ms
+12:45:45.775 key 66
+12:45:45.868 signin 200 at device 10-06 12:45:45.641 (POST /api/v1/auth/sign-in 200)
+12:45:46.504 slept 3000 ms
+12:45:49.553 declared screen home
+12:45:49.594 screencap 03_after_signin_biometric_offer.png 12:45:49.594..12:45:50.026
+12:45:50.111 warnlog since 10-06 12:45:40.000 (0): 
+12:45:50.211 serverlog since a01 (3):
+    12:45:45.934 POST /api/v1/auth/sign-in 200
+    12:45:45.979 [socket closed]
+    12:45:45.987 [socket opened]

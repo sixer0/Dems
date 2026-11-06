@@ -1,0 +1,23 @@
+| Module | Changes | Detected | Survived | Not applied |
+|---|--:|--:|--:|--:|
+| `runtime/core-mode.ts` | 16 | 16 | 0 | 0 |
+| `runtime/live-host.ts` | 10 | 10 | 0 | 0 |
+| `runtime/live-host-refusal.tsx` | 4 | 4 | 0 | 0 |
+| `runtime/boot.ts` | 23 | 23 | 0 | 0 |
+| `runtime/owed-sign-out-storage.ts` | 24 | 23 | 1 | 0 |
+| `runtime/live-start.ts` | 12 | 12 | 0 | 0 |
+| `runtime/query-bridge.ts` | 28 | 26 | 2 | 0 |
+| `runtime/error-sink.ts` | 14 | 14 | 0 | 0 |
+| `lib/core-endpoint.ts` | 8 | 8 | 0 | 0 |
+| `router.tsx` | 3 | 3 | 0 | 0 |
+| `routes/__root.tsx` | 5 | 5 | 0 | 0 |
+| `runtime/hooks.ts` | 2 | 2 | 0 | 0 |
+| `lib/core-errors.ts` | 43 | 42 | 1 | 0 |
+| **All** | **192** | **188** | **4** | **0** |
+
+S14 SURVIVED runtime/owed-sign-out-storage.ts: the probe accepts no storage
+Q27 SURVIVED runtime/query-bridge.ts: detaching keeps the change listener
+Q28 SURVIVED runtime/query-bridge.ts: detaching keeps the resync listener
+X38 SURVIVED lib/core-errors.ts: a successful answer counts as a failure
+detected with no failing test name in the output (a suite error, e.g. an exception while a file was loaded): 0 []
+seconds in all: 952

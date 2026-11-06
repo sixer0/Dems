@@ -1,0 +1,116 @@
+## 2026-10-06 05:02:19 WIB (re-run after the type fix of the new test's form default)  5:02  2 users, load averages: 3.05 2.47 2.34
+## 05:02:19 $ npm run typecheck -w @dems/shared
+typecheck @dems/shared exit=0
+## 05:02:22 $ npm run lint -w @dems/shared
+lint @dems/shared exit=0
+## 05:02:22 $ npm run typecheck -w @dems/core-web
+typecheck @dems/core-web exit=0
+## 05:02:32 $ npm run lint -w @dems/core-web
+lint @dems/core-web exit=0
+## 05:02:32 $ npm run typecheck -w @dems/mobile
+typecheck @dems/mobile exit=0
+## 05:02:37 $ npm run lint -w @dems/mobile
+lint @dems/mobile exit=0
+## 05:03:00  5:03  2 users, load averages: 5.47 3.08 2.57 $ npm run test -w @dems/shared -- --maxWorkers=2
+ Test Files  69 passed (69)
+      Tests  1840 passed (1840)
+exit=0
+## 05:03:14  5:03  2 users, load averages: 5.22 3.15 2.60 $ npm run test -w @dems/core-web -- --maxWorkers=2
+ Test Files  100 passed (100)
+      Tests  1381 passed (1381)
+exit=0
+## finished 05:05:17
+## 05:05:35  5:05  2 users, load averages: 4.56 3.62 2.87 $ npm run test -w @dems/mobile -- --maxWorkers=2
+Test Suites: 140 passed, 140 total
+Tests:       1721 passed, 1721 total
+exit=0
+## finished 05:07:04
+## 05:07:13 KI-07: grep -rhoE "SIM-GAP-M[0-9]+-[0-9]+" apps/mobile/src | wc -l
+62
+## protected tests (6 web + 72 mobile baseline), sha256 now vs 04:39
+identical: 78 files
+## web baseline tests (acaff20) changed by this round? (git diff of the 39 against the 04:39 pre-images is not kept; checked: none of them is in the round's file list)
+## 05:08:00 one source per merged sentence: grep over apps/core-web/src apps/mobile/src packages/shared/src (*.ts, *.tsx; test files excluded)
+-- Microphone levels from the Core server
+packages/shared/src/i18n/en/session-new.ts:198:    speakToTest: 'Microphone levels from the Core server',
+-- Fill in the next case number
+packages/shared/src/i18n/en/session-new.ts:199:    scanCaseNumber: 'Fill in the next case number',
+-- 'Storage policy updated'
+packages/shared/src/i18n/en/storage.ts:211:      applied: 'Storage policy updated',
+-- Eight health checks on the Core
+packages/shared/src/i18n/en/system.ts:342:    diagnosticsSubtitle: 'Eight health checks on the Core server, one after another.',
+-- 'Install update'
+packages/shared/src/i18n/en/system.ts:340:    install: 'Install update',
+-- 'Installing v{{version}}'
+packages/shared/src/i18n/en/system.ts:341:    startedToast: 'Installing v{{version}}',
+-- Export of {{id}} accepted by the Core
+packages/shared/src/i18n/en/evidence.ts:348:      success: 'Export of {{id}} accepted by the Core',
+-- Recorded by the simulator in the audit row
+packages/shared/src/i18n/en/security-audit.ts:246:      reasonNote: 'Recorded by the simulator in the audit row of the export.',
+-- does not record the export reason
+packages/shared/src/i18n/en/security-audit.ts:242:       * simulator does not record the export reason yet.") stopped being true at step 54, when the
+-- Media reference unavailable
+packages/shared/src/i18n/en/evidence.ts:328:    mediaUnavailable: 'Media reference unavailable',
+-- callers of the merged keys (production files)
+apps/core-web/src/features/evidence/metadata-tab.tsx:128:          <p className="evi-empty-title">{t(packageUnknown ? 'evidence.live.mediaUnavailable' : 'evidence.metadata.noPackage')}</p>
+apps/core-web/src/features/evidence/detail-page.tsx:189:        ? { kind: 'unavailable', label: t('evidence.live.mediaUnavailable') }
+apps/core-web/src/features/session-new/info-step.tsx:92:  const scanLabel = t(live ? 'sessionNew.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')
+apps/core-web/src/features/storage/manage-drawer.tsx:32:  [CoreMode.LIVE]: 'storage.manage.live.applied',
+apps/core-web/src/features/system/update-panel.tsx:80:        if (version) toast.info(live ? t('system.live.startedToast', { version }) : t('system.update.startedToast', { version }), { description: t('system.update.startedBody') })
+apps/core-web/src/features/system/update-panel.tsx:99:      {update.state === 'RUNNING' ? t('system.update.installing') : live ? t('system.live.install') : t('system.update.install')}
+apps/core-web/src/features/system/update-panel.tsx:155:              <Tooltip.Trigger className="rounded-lg" aria-label={`${live ? t('system.live.install') : t('system.update.install')}: ${denied}`} data-testid="system-update-locked">
+apps/core-web/src/features/system/diagnostics.tsx:187:          hint={live ? t('system.live.diagnosticsSubtitle') : t('system.diagnostics.subtitle')}
+apps/core-web/src/features/system/diagnostics.tsx:323:              {summary && !complete ? t('system.diagnostics.running') : live ? t('system.live.diagnosticsSubtitle') : t('system.diagnostics.subtitle')}
+apps/core-web/src/features/session-new/devices-step.tsx:225:              {t(live ? 'sessionNew.live.speakToTest' : 'sessionNew.devices.speakToTest')}
+apps/core-web/src/features/security-audit/export-audit-dialog.tsx:395:                    {isLive ? t('securityAudit.live.exportAudit.reasonNote') : t('securityAudit.exportAudit.result.reasonNote')}
+apps/mobile/src/features/settings/maintenance-section.tsx:165:  const subtitle = t(live ? 'system.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle');
+apps/mobile/src/features/settings/maintenance-section.tsx:273:            toast.show({ variant: 'default', label: t(live ? 'system.live.startedToast' : 'system.update.startedToast', { version: update.availableVersion }) });
+apps/mobile/src/features/settings/maintenance-section.tsx:320:          <Button.Label>{t(live ? 'system.live.install' : 'system.update.install')}</Button.Label>
+apps/mobile/src/features/evidence/export-sheet.tsx:232:        toast.show({ variant: 'success', label: t(live ? 'evidence.live.export.success' : 'evidence.exportWizard.success', { id: evidenceId }) });
+apps/mobile/src/features/session-new/device-previews.tsx:86:        {t(liveSource ? 'sessionNew.live.speakToTest' : 'sessionNew.devices.speakToTest')}
+apps/mobile/src/features/session-new/session-info-step.tsx:83:                accessibilityLabel={t(live ? 'sessionNew.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')}
+apps/mobile/src/features/storage/storage-screen.tsx:214:          toast.show({ variant: 'success', label: live ? t('storage.manage.live.applied') : t('storage.manage.applied') });
+apps/mobile/src/features/devices/diagnostics-sheet.tsx:63:                subtitleKey={live ? 'system.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle'}
+-- the removed mobile keys: any reader left?
+(none above = no reader)
+
+######## D186 (#90 option A landed) final gate re-run
+## 2026-10-06 05:15:04 WIB  5:15  2 users, load averages: 4.46 3.74 3.21
+## 05:15:04 $ npm run typecheck -w @dems/shared
+typecheck @dems/shared exit=0
+## 05:15:06 $ npm run lint -w @dems/shared
+lint @dems/shared exit=0
+## 05:15:07 $ npm run typecheck -w @dems/core-web
+typecheck @dems/core-web exit=0
+## 05:15:17 $ npm run lint -w @dems/core-web
+lint @dems/core-web exit=0
+## 05:15:17 $ npm run typecheck -w @dems/mobile
+typecheck @dems/mobile exit=0
+## 05:15:22 $ npm run lint -w @dems/mobile
+lint @dems/mobile exit=0
+## 05:15:33 $ npm run test -w @dems/shared -- --maxWorkers=2
+ Test Files  69 passed (69)
+      Tests  1840 passed (1840)
+exit=0
+## 05:15:46  5:15  2 users, load averages: 4.21 3.78 3.25 $ npm run test -w @dems/core-web -- --maxWorkers=2
+ Test Files  101 passed (101)
+      Tests  1384 passed (1384)
+exit=0
+## finished 05:17:59
+## 05:18:10  5:18  2 users, load averages: 6.52 4.78 3.72 $ npm run test -w @dems/mobile -- --maxWorkers=2
+Test Suites: 140 passed, 140 total
+Tests:       1721 passed, 1721 total
+exit=0
+## 05:19:47 KI-07: grep -rhoE "SIM-GAP-M[0-9]+-[0-9]+" apps/mobile/src | wc -l
+62
+## protected tests (6 web + 72 mobile baseline), sha256 now vs 04:39
+identical: 78 files
+## one source for the #90 caption (test files excluded)
+apps/mobile/src/features/devices/i18n.ts:100:    // `devices.live.samples`, one sentence for both clients ("Derived from the Core's data · last N samples"):
+packages/shared/src/i18n/en/devices.ts:336:    samples_one: "Derived from the Core's data · {{count}} sample",
+packages/shared/src/i18n/en/devices.ts:337:    samples_other: "Derived from the Core's data · last {{count}} samples",
+## callers of devices.live.samples
+apps/core-web/src/features/devices/live.ts:36:    samples: 'devices.live.samples',
+apps/mobile/src/features/devices/health-chart.tsx:94:        {enough ? t(live ? 'devices.live.samples' : 'devices.drawer.health.samples', { count: data.length }) : t('devices.drawer.health.collecting')}
+## readers of the removed mobile key
+(none above = no reader)

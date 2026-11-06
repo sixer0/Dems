@@ -1,0 +1,91 @@
+"""proof_report.py <run> [<run> ...]: per lane-1 proof run, the facts of its start and stop recordings, logs and batch output.
+
+For each run NAME the files are NAME_start.mp4 / NAME_stop.mp4 (frames in phone_frames/NAME_start|stop), NAME_native.txt
+(W/E/F lines of the app process), NAME_js.txt (ReactNativeJS lines) and the driver's batch output (q_phone/*.out with
+'mark NAME'). Prints one JSON line per run."""
+import glob, json, os, re, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fx import scan
+
+S = '/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cf'
+Q = '/Users/gsp-budi/Documents/DEMS/.cache/cf_m1/q_phone'
+CRASH = re.compile(r'addViewAt|Tried to remove view|handleHostException|reactInstance is null|FATAL EXCEPTION|IndexOutOfBoundsException')
+
+
+def timer_seconds(t):
+    if not t or '?' in t:
+        return None
+    return int(t[0:2]) * 3600 + int(t[2:4]) * 60 + int(t[4:6])
+
+
+def recording_facts(name):
+    frames = f'{S}/phone_frames/{name}'
+    mp4 = f'{S}/phone_assets/{name}.mp4'
+    if not os.path.isdir(frames):
+        return {'missing': True}
+    rows = scan(frames, mp4)
+    rows = [r for r in rows if r['frame'] != 'f_001.png']
+    banner = [r for r in rows if r.get('banner') in ('offline', 'resynced', '?')]
+    blank = [r for r in rows if r['blank']]
+    red = [r for r in rows if r['redbox']]
+    # Timer: decoded seconds over the frames with the REC row; a decrease is a backwards step.
+    values = [(r['dev'], timer_seconds(r.get('timer'))) for r in rows if r['dot'] is not None]
+    values = [(d, v) for d, v in values if v is not None]
+    backwards = [(values[i - 1], values[i]) for i in range(1, len(values)) if values[i][1] < values[i - 1][1]]
+    # Hand-over: the last frame with the monitor (REC row) and the frame after it.
+    last_mon = max((i for i, r in enumerate(rows) if r['dot'] is not None), default=None)
+    after = rows[last_mon + 1] if last_mon is not None and last_mon + 1 < len(rows) else None
+    handover = None
+    if after is not None and any(r['dot'] is None for r in rows[last_mon + 1:]):
+        handover = {
+            'lastMonitor': rows[last_mon]['dev'],
+            'next': after['dev'],
+            'nextFrame': after['frame'],
+            'nextBlank': after['blank'],
+            'nextMean': after['mean'],
+            'nextSd': after['sd'],
+        }
+    return {
+        'frames': len(rows),
+        'bannerFrames': len(banner),
+        'bannerFirst': banner[0]['dev'] if banner else None,
+        'blankFrames': len(blank),
+        'redFrames': len(red),
+        'timerFirst': values[0] if values else None,
+        'timerLast': values[-1] if values else None,
+        'timerBackwardSteps': backwards[:5],
+        'handover': handover,
+    }
+
+
+def batch_out(name):
+    for f in sorted(glob.glob(f'{Q}/*.cmd')):
+        if f'mark {name}\n' in open(f).read() + '\n':
+            out = f[:-4] + '.out'
+            return open(out).read() if os.path.exists(out) else ''
+    return ''
+
+
+def main():
+    for name in sys.argv[1:]:
+        native = f'{S}/phone_assets/{name}_native.txt'
+        crash = [l.strip()[:200] for l in open(native)] if os.path.exists(native) else []
+        crash = [l for l in crash if CRASH.search(l)]
+        out = batch_out(name)
+        banners = re.findall(r'hermes eval sent [0-9:.]+ answered [0-9:.]+ => "([a-z]+)"', out)
+        sealed = 'SEALED' in out
+        stop = re.search(r'(\d\d:\d\d:\d\d\.\d+) POST /api/v1/session/:id/stop (\d+)', out)
+        start = re.search(r'start (\d{3}) at device ([0-9-]+ [0-9:.]+)', out)
+        fact = {
+            'run': name,
+            'start': {'answer': start.group(1) if start else None, 'device': start.group(2) if start else None, **recording_facts(f'{name}_start')},
+            'stop': {'core': stop.group(2) if stop else None, 'coreAt': stop.group(1) if stop else None, 'webSealed': sealed, **recording_facts(f'{name}_stop')},
+            'debugBannerReadings': banners,
+            'crashLines': len(crash),
+            'crashSample': crash[:3],
+        }
+        print(json.dumps(fact))
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,68 @@
+== 015
+21:42:05.093 batch start; device time 10-06 21:42:04.000; host load 6.11
+21:42:05.172 mark P3 at 21:42:05.172
+21:42:05.223 declared screen summary
+21:42:05.283 tap 244,2252
+21:42:05.454 sumack 204 at device 10-06 21:42:05.030 (POST /api/v1/session/{id}/summary/acknowledge 204)
+21:42:05.549 slept 6000 ms
+21:42:11.620 declared screen home
+21:42:11.680 tap 107,2279
+21:42:11.927 slept 3000 ms
+21:42:14.954 tap 302,1239
+21:42:15.081 slept 4000 ms
+21:42:19.109 declared screen session-new
+21:42:19.136 tap 913,748
+21:42:19.259 slept 900 ms
+21:42:20.202 tap 229,994
+21:42:20.321 slept 700 ms
+21:42:21.063 tap 540,1309
+21:42:21.194 slept 900 ms
+21:42:22.139 text typed (CF2A P3); inputType 0x2001
+21:42:22.571 slept 800 ms
+21:42:23.409 key 111
+21:42:23.544 slept 800 ms
+21:42:24.381 tap 540,2257
+21:42:24.487 create 201 at device 10-06 21:42:24.085 (POST /api/v1/session 201)
+21:42:24.592 precheck 202 at device 10-06 21:42:24.257 (POST /api/v1/session/{id}/precheck 202)
+21:42:25.358 slept 9000 ms
+21:42:34.491 tap 540,2257
+21:42:34.821 slept 2500 ms
+21:42:37.364 nav /session load=true
+21:42:40.011 wait page-session-monitor present: 1 ms (at 21:42:40.012)
+21:42:40.054 js => "ARMED"
+21:42:40.095 declared screen live
+21:42:40.152 host load 6.73 7.57 7.75
+21:42:40.215 device-host clock offset ms: -430, -431, -427, -430, -431
+21:42:40.456 screencap P3_ready.png 21:42:40.456..21:42:42.438
+21:42:42.575 screenrecord P3 started (pid 92851) at 21:42:43.177; load 6.51 7.51 7.73
+21:42:43.245 tap 540,2257
+21:42:43.447 start 200 at device 10-06 21:42:46.349 (POST /api/v1/session/{id}/start 200)
+21:42:47.153 until true at 21:42:47.164 after 11 ms => "RECORDING"
+21:42:47.230 slept 23000 ms
+21:43:10.340 press sm-action-end ok at 21:43:10.371
+21:43:10.505 wait sm-end-dialog present: 1 ms (at 21:43:10.506)
+21:43:10.620 slept 400 ms
+21:43:11.124 type into [data-testid="sm-end-reason"]: "CF2A P3 web stop after 30 s"
+21:43:11.283 slept 4500 ms
+21:43:15.963 press sm-end-confirm ok at 21:43:15.971
+21:43:16.169 until true at 21:43:16.170 after 1 ms => "STOPPING"
+21:43:16.328 slept 1200 ms
+21:43:17.756 until true at 21:43:22.194 after 4438 ms => {"state":"SEALED","modal":"SEALED"}
+21:43:22.287 slept 5000 ms
+21:43:27.406 screenrecord P3 pulled; every frame extracted (passthrough)
+21:43:49.226 declared screen summary
+21:43:49.281 screencap P3_after.png 21:43:49.281..21:43:50.257
+21:43:50.501 native P3_native.txt pid 31182: 253489 lines; crash-class lines 1469: 10-06 21:42:24.488 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [49994] | 10-06 21:42:24.489 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [49968] | 10-06 21:42:24.489 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [49848] | 10-06 21:42:24.490 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [49694] | 10-06 21:42:24.491 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [49994] | 10-06 21:42:24.491 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [49968]
+21:43:52.036 appjs P3_js.txt: 37 lines since 10-06 21:42:04.000
+21:43:52.499 focused true; keyguard false; inputType 0x2001
+21:43:54.262 serverlog since P3 (8):
+    21:42:05.470 POST /api/v1/session/:id/summary/acknowledge 204
+    21:42:24.474 POST /api/v1/session 201
+    21:42:24.697 POST /api/v1/session/:id/precheck 202
+    21:42:37.373 [socket closed]
+    21:42:37.497 [socket opened]
+    21:42:37.498 GET /api/v1/auth/session 200
+    21:42:46.735 POST /api/v1/session/:id/start 200
+    21:43:15.982 POST /api/v1/session/:id/stop 202
+21:43:54.362 js => {"id":"SES-20261006-0084","state":"SEALED","subject":"CF2A P3","startedAt":"2026-10-06T21:42:46.729+07:00","stoppedAt":"2026-10-06T21:43:15.975+07:00","sealedAt":"2026-10-06T21:43:21.995+07:00","evidenceId":"EV-20261006-0071","elapsedMs":29246,"audit":[["AUD-001235","SESSION_CREATED","OPR-001","21:42:24.470",""],["AUD-001236","PRECHECK_PASSED","OPR-001","21:42:28.569",""],["AUD-001237","RECORDING_STARTED","OPR-001","21:42:46.729",""],["AUD-001238","FRAME_HASH",null,"21:42:57.457",""],["AUD-001239","WRITE_VERIFIED",null,"21:43:12.936",""],["AUD-001240","WRITE_VERIFIED",null,"21:43:13.852",""],["AUD-001241","FRAME_HASH",null,"21:43:14.715",""],["AUD-001242","RECORDING_STOPPED","OPR-002","21:43:15.975","CF2A P3 web stop after 30 s"],["AUD-001243","EVIDENCE_SEALED",null,"21:43:21.995",""]]}
+21:43:54.468 nav /admin/devices load=true

@@ -1,0 +1,35 @@
+// W87 scratch: the web app's own Vite / Vitest configuration plus ONE transform plugin (W87_MUT, kind
+// "transform") or ONE setup file that patches fs reads (W87_FS_INJECT, kind "fs"). No tree file changes.
+import { readFileSync, writeFileSync } from 'node:fs'
+import { mergeConfig } from 'vite'
+import appConfig from '../../../apps/core-web/vite.config.ts'
+
+const here = '/Users/gsp-budi/Documents/DEMS/.cache/w87/mut/'
+const web = '/Users/gsp-budi/Documents/DEMS/apps/core-web/'
+const table = JSON.parse(readFileSync(`${here}mutations.json`, 'utf8'))
+const id = process.env.W87_MUT ?? ''
+const mutation = id === '' ? null : table.find((entry: { id: string }) => entry.id === id)
+if (id !== '' && !mutation) throw new Error(`W87 mutation "${id}" is not in mutations.json`)
+
+function mutationPlugin() {
+  return {
+    name: 'w87-mutation',
+    enforce: 'pre' as const,
+    transform(code: string, moduleId: string) {
+      if (!mutation) return null
+      const file = moduleId.split('?')[0] ?? ''
+      if (!file.endsWith(mutation.file)) return null
+      const count = code.split(mutation.from).length - 1
+      if (count !== 1) throw new Error(`W87 mutation ${mutation.id}: the text occurs ${count} times in ${mutation.file}`)
+      writeFileSync(`${here}applied/${mutation.id}`, 'applied\n')
+      return { code: code.replace(mutation.from, () => mutation.to), map: null }
+    },
+  }
+}
+
+const base = typeof appConfig === 'function' ? await (appConfig as (env: unknown) => unknown)({ command: 'serve', mode: 'test', isPreview: false, isSsrBuild: false }) : appConfig
+const { plugins = [], ...rest } = base as { plugins?: unknown[] } & Record<string, unknown>
+const setupFiles = process.env.W87_FS_INJECT ? [`${here}web-fs.setup.ts`] : []
+const merged = mergeConfig(rest, { root: web, cacheDir: `${here}vite-cache`, test: { root: web } }) as Record<string, any>
+merged.test.setupFiles = [...setupFiles, ...([] as string[]).concat(merged.test.setupFiles ?? [])]
+export default { ...merged, plugins: [mutationPlugin(), ...plugins] }

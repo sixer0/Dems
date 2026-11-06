@@ -1,0 +1,92 @@
+load: 11.21 9.30 7.69
+## 2026-10-04 21:37:56 WIB $ npm run test -w @dems/core-web -- --maxWorkers=2 --reporter=default --reporter=json --outputFile.json=.cache/w55/web_final.json
+     ✓ gives FAIL on exactly one track (AUDIO-02) for the tampered EV 0005, and the audit trail agrees 1974ms
+     ✓ AC-55 UI path: after inject AUDIT_TAMPER the chain view reports FAIL at the tampered index 1333ms
+ FAIL  src/test/live-runtime-startup.test.tsx > the simulator's stored state is not touched in Live mode (MD-5; AC-C-21) > `dems.sim.v1` and `dems.auth` are byte-equal after a Live session with the shell mounted, and nothing about the session is stored
+AssertionError: expected { …(3) } to deeply equal { …(2) }
+ ❯ src/test/live-runtime-startup.test.tsx:398:42
+ Test Files  1 failed | 53 passed (54)
+      Tests  1 failed | 751 passed (752)
+(the runner's exit status is in the JSON summary below)
+
+## per file, from the JSON report of that run
+   54 files, 752 tests, 751 passed, 1 failed; runner success: false
+   the new files of this row: 3 files, 71 tests, 71 passed
+     src/test/live-login-model.test.tsx: 24 / 24
+     src/test/live-login-page.test.tsx: 30 / 30
+     src/test/live-login-signin.test.tsx: 17 / 17
+   the test files of the folder that existed (CLG a): 2 files, 31 tests, 31 passed
+     src/features/login/__tests__/login-model.test.tsx: 14 / 14
+     src/features/login/__tests__/login-page.test.tsx: 17 / 17
+   every file but the three of this row: 51 files, 681 tests, 680 passed
+   FAILED src/test/live-runtime-startup.test.tsx > the simulator's stored state is not touched in Live mode (MD-5; AC-C-21) `dems.sim.v1` and `dems.auth` are byte-equal after a Live session with the shell mounted, and nothing about the session is stored
+
+## 2026-10-04 21:39:29 WIB $ npm run typecheck -w @dems/core-web
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+exit=0
+typecheck exit=0
+## 2026-10-04 21:40:07 WIB $ npm run lint -w @dems/core-web
+> @dems/core-web@0.1.0 lint
+> oxlint
+lint exit=0
+
+## 2026-10-04 21:40:08 WIB $ npm run test -w @dems/shared -- --maxWorkers=2
+ Test Files  68 passed (68)
+      Tests  1814 passed (1814)
+exit=0
+## 2026-10-04 21:40:24 WIB $ npm run typecheck -w @dems/shared
+exit=0
+## 2026-10-04 21:40:29 WIB $ npm run lint -w @dems/shared
+> @dems/shared@0.1.0 lint
+> oxlint
+exit=0
+## 2026-10-04 21:40:30 WIB $ npm run typecheck -w @dems/mobile
+exit=0
+
+## 2026-10-04 21:40:39 WIB CLG (a): the folder's existing test files are absent from the diff against acaff20
+$ git diff --stat acaff20 -- apps/core-web/src/features/login/__tests__ | wc -c
+       0
+$ git status --short apps/core-web/src/features/login/__tests__ | wc -l
+       0
+## CLG (c), AC-C-53: $ grep -rnE 'useSimActions|\.actions' apps/core-web/src/features/login --include='*.ts' --include='*.tsx' | grep -v __tests__
+apps/core-web/src/features/login/use-mode-switch.tsx:90:                {t('common.actions.cancel')}
+apps/core-web/src/features/login/login-alert.tsx:127:              ? t('common.actions.retryIn', { seconds: coreRetry.cooldown })
+apps/core-web/src/features/login/login-alert.tsx:128:              : t('common.actions.retry')}
+   (the same without the i18n words `common.actions.*`:) lines: 0
+## the shared file of this row is additive: $ git diff acaff20 -- packages/shared/src/i18n/en/login.ts | grep -c '^-[^-]'
+0
+## AC-C-41, AC-C-35 (not this row's files, shown unchanged): $ git diff acaff20 -- apps/core-web/src/routes/login.tsx apps/core-web/src/routes/_app.tsx apps/core-web/src/lib/packaged-csp.ts apps/mock-core | wc -c
+       0
+## what this row changed or created (tracked and untracked), by path
+ M apps/core-web/src/features/login/auth-card.tsx
+ M apps/core-web/src/features/login/device-strip.tsx
+ M apps/core-web/src/features/login/index.tsx
+ M apps/core-web/src/features/login/login-alert.tsx
+ M apps/core-web/src/features/login/login-model.ts
+ M apps/core-web/src/features/login/login.css
+ M apps/core-web/src/features/login/report.ts
+ M apps/core-web/src/features/login/sim-adapter.ts
+ M apps/core-web/src/features/login/use-login-controller.ts
+ M packages/shared/src/i18n/en/login.ts
+?? apps/core-web/src/features/login/live-adapter.ts
+?? apps/core-web/src/features/login/login-live-model.ts
+?? apps/core-web/src/features/login/mode-selector.tsx
+?? apps/core-web/src/features/login/use-mode-switch.tsx
+?? apps/core-web/src/test/live-login-model.test.tsx
+?? apps/core-web/src/test/live-login-page.test.tsx
+?? apps/core-web/src/test/live-login-signin.test.tsx
+## $ git diff --stat acaff20 -- apps/core-web/src/features/login packages/shared/src/i18n/en/login.ts
+ apps/core-web/src/features/login/auth-card.tsx     | 146 ++++++++---
+ apps/core-web/src/features/login/device-strip.tsx  | 141 +++++++---
+ apps/core-web/src/features/login/index.tsx         |  41 ++-
+ apps/core-web/src/features/login/login-alert.tsx   |  88 +++++--
+ apps/core-web/src/features/login/login-model.ts    |  43 +++-
+ apps/core-web/src/features/login/login.css         |  37 +++
+ apps/core-web/src/features/login/report.ts         |  22 ++
+ apps/core-web/src/features/login/sim-adapter.ts    |  15 +-
+ .../src/features/login/use-login-controller.ts     | 285 +++++++++++++++++----
+ packages/shared/src/i18n/en/login.ts               |  43 ++++
+ 10 files changed, 705 insertions(+), 156 deletions(-)
+## 2026-10-04 21:40:39 WIB listeners on the lane's ports: $ lsof -nP -iTCP:4423 -iTCP:5178 -iTCP:9398 -sTCP:LISTEN
+lsof exit 1 (1 with no output: no listener)

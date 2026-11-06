@@ -1,0 +1,10 @@
+"""slots_check.py <frame.png> [...]: bright-pixel count in the pairing-code slot row (540-wide frame, x 30..510,
+y 1105..1160). Empty slots are dark boxes; a typed digit is a bright glyph. Prints counts only, never the image."""
+import sys
+from PIL import Image
+for p in sys.argv[1:]:
+    im = Image.open(p).convert('L')
+    if im.size[0] != 540: im = im.resize((540, int(im.size[1] * 540 / im.size[0])))
+    px = im.load()
+    n = sum(1 for y in range(1105, 1160) for x in range(30, 510) if px[x, y] > 150)
+    print(p.split('/')[-1], n)

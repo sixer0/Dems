@@ -1,0 +1,569 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+    "headless": true
+  },
+  "viewport": "1920x1080",
+  "steps": {
+    "liveSupervisor": {
+      "loginCoreMode": "LIVE",
+      "dashboardShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/dashboard",
+        "onDashboard": true,
+        "panels": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e",
+          "f",
+          "g",
+          "h",
+          "i",
+          "j"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: AKP Andi Pratama",
+        "strip": {
+          "cameras": "2 Cameras: Ready. Open Devices & Inputs",
+          "mics": "2 Microphones: Ready. Open Devices & Inputs",
+          "storage": "Storage: 3.2 TB Free. Open Storage",
+          "time": "GNSS / Time: Synchronized. Open Network & Time",
+          "security": "Security: Secure. Open Security & Audit",
+          "network": "Network: Connected. Open Network & Time"
+        },
+        "tiles": {
+          "CAM-01": "READY",
+          "CAM-02": "READY",
+          "MIC-01": "READY",
+          "MIC-02": "READY"
+        },
+        "sessionView": [
+          "session-idle"
+        ],
+        "sealedManifestSource": null,
+        "sealedToday": "0",
+        "recentEvents": 6,
+        "saysSimulated": false,
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/63_dashboard_live_supervisor.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 109,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "menuSupervisor": {
+      "opened": true,
+      "items": [
+        {
+          "text": "Details",
+          "disabled": false
+        },
+        {
+          "text": "Test signalRequires the Technician role",
+          "disabled": true
+        },
+        {
+          "text": "RestartRequires the Technician role",
+          "disabled": true
+        }
+      ],
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/63_dashboard_live_menu_supervisor.png",
+      "network": {
+        "api": [],
+        "origins": [],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "restartAsSupervisor": {
+      "answer": {
+        "status": 403,
+        "code": "NOT_PERMITTED",
+        "permission": "DEVICE_MANAGE"
+      },
+      "facts": {
+        "href": "http://127.0.0.1:5178/dashboard",
+        "onDashboard": true,
+        "panels": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e",
+          "f",
+          "g",
+          "h",
+          "i",
+          "j"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: AKP Andi Pratama",
+        "strip": {
+          "cameras": "2 Cameras: Ready. Open Devices & Inputs",
+          "mics": "2 Microphones: Ready. Open Devices & Inputs",
+          "storage": "Storage: 3.2 TB Free. Open Storage",
+          "time": "GNSS / Time: Synchronized. Open Network & Time",
+          "security": "Security: Secure. Open Security & Audit",
+          "network": "Network: Connected. Open Network & Time"
+        },
+        "tiles": {
+          "CAM-01": "READY",
+          "CAM-02": "READY",
+          "MIC-01": "READY",
+          "MIC-02": "READY"
+        },
+        "sessionView": [
+          "session-idle"
+        ],
+        "sealedManifestSource": null,
+        "sealedToday": "0",
+        "recentEvents": 6,
+        "saysSimulated": false,
+        "toasts": []
+      },
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/device/CAM-01/restart",
+            "status": 403
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "liveTechnician": {
+      "signOut": {
+        "status": 204,
+        "loginShown": true
+      },
+      "dashboardShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/dashboard",
+        "onDashboard": true,
+        "panels": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e",
+          "f",
+          "g",
+          "h",
+          "i",
+          "j"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: Rina Wijaya",
+        "strip": {
+          "cameras": "2 Cameras: Ready. Open Devices & Inputs",
+          "mics": "2 Microphones: Ready. Open Devices & Inputs",
+          "storage": "Storage: 3.2 TB Free. Open Storage",
+          "time": "GNSS / Time: Synchronized. Open Network & Time",
+          "security": "Security: Secure. Open Security & Audit",
+          "network": "Network: Connected. Open Network & Time"
+        },
+        "tiles": {
+          "CAM-01": "READY",
+          "CAM-02": "READY",
+          "MIC-01": "READY",
+          "MIC-02": "READY"
+        },
+        "sessionView": [
+          "session-idle"
+        ],
+        "sealedManifestSource": null,
+        "sealedToday": "0",
+        "recentEvents": 6,
+        "saysSimulated": false,
+        "toasts": []
+      },
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 105,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "testSignal": {
+      "menu": {
+        "opened": true,
+        "items": [
+          {
+            "text": "Details",
+            "disabled": false
+          },
+          {
+            "text": "Test signal",
+            "disabled": false
+          },
+          {
+            "text": "Restart",
+            "disabled": false
+          }
+        ]
+      },
+      "pressed": true,
+      "toastShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/dashboard",
+        "onDashboard": true,
+        "panels": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e",
+          "f",
+          "g",
+          "h",
+          "i",
+          "j"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: Rina Wijaya",
+        "strip": {
+          "cameras": "2 Cameras: Ready. Open Devices & Inputs",
+          "mics": "2 Microphones: Ready. Open Devices & Inputs",
+          "storage": "Storage: 3.2 TB Free. Open Storage",
+          "time": "GNSS / Time: Synchronized. Open Network & Time",
+          "security": "Security: Secure. Open Security & Audit",
+          "network": "Network: Connected. Open Network & Time"
+        },
+        "tiles": {
+          "CAM-01": "READY",
+          "CAM-02": "READY",
+          "MIC-01": "READY",
+          "MIC-02": "READY"
+        },
+        "sessionView": [
+          "session-idle"
+        ],
+        "sealedManifestSource": null,
+        "sealedToday": "0",
+        "recentEvents": 6,
+        "saysSimulated": false,
+        "toasts": [
+          "Test signal sent to MIC 1"
+        ]
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/63_dashboard_live_test_signal.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/device/MIC-01/test-signal",
+            "status": 204
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "restart": {
+      "menu": {
+        "opened": true,
+        "items": [
+          {
+            "text": "Details",
+            "disabled": false
+          },
+          {
+            "text": "Test signal",
+            "disabled": false
+          },
+          {
+            "text": "Restart",
+            "disabled": false
+          }
+        ]
+      },
+      "pressed": true,
+      "toastShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/dashboard",
+        "onDashboard": true,
+        "panels": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e",
+          "f",
+          "g",
+          "h",
+          "i",
+          "j"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: Rina Wijaya",
+        "strip": {
+          "cameras": "2 Cameras: Ready. Open Devices & Inputs",
+          "mics": "2 Microphones: Ready. Open Devices & Inputs",
+          "storage": "Storage: 3.2 TB Free. Open Storage",
+          "time": "GNSS / Time: Synchronized. Open Network & Time",
+          "security": "Security: Secure. Open Security & Audit",
+          "network": "Network: Connected. Open Network & Time"
+        },
+        "tiles": {
+          "CAM-01": "READY",
+          "CAM-02": "READY",
+          "MIC-01": "READY",
+          "MIC-02": "READY"
+        },
+        "sessionView": [
+          "session-idle"
+        ],
+        "sealedManifestSource": null,
+        "sealedToday": "0",
+        "recentEvents": 6,
+        "saysSimulated": false,
+        "toasts": [
+          "Camera 2 restart requested",
+          "Test signal sent to MIC 1"
+        ]
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/63_dashboard_live_restart.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/device/CAM-02/restart",
+            "status": 204
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      },
+      "tilesFourSecondsLater": {
+        "CAM-01": "READY",
+        "CAM-02": "READY",
+        "MIC-01": "READY",
+        "MIC-02": "READY"
+      }
+    },
+    "simulated": {
+      "signOutOfLive": {
+        "status": 204,
+        "loginShown": true
+      },
+      "loginCoreMode": "SIMULATED",
+      "dashboardShown": false,
+      "facts": {
+        "href": "http://127.0.0.1:5178/login",
+        "onDashboard": false,
+        "panels": [],
+        "shellMode": null,
+        "shellCoreMode": null,
+        "user": null,
+        "strip": {
+          "cameras": null,
+          "mics": null,
+          "storage": null,
+          "time": null,
+          "security": null,
+          "network": null
+        },
+        "tiles": {
+          "CAM-01": null,
+          "CAM-02": null,
+          "MIC-01": null,
+          "MIC-02": null
+        },
+        "sessionView": [],
+        "sealedManifestSource": null,
+        "sealedToday": null,
+        "recentEvents": 0,
+        "saysSimulated": true,
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/63_dashboard_simulated.png",
+      "menu": {
+        "opened": false,
+        "items": []
+      },
+      "menuScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/63_dashboard_simulated_menu.png",
+      "apiRequestsToTheDevServer": 0,
+      "socketsToTheDevServerWs": 0,
+      "network": {
+        "api": [],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          }
+        ],
+        "console": []
+      }
+    }
+  },
+  "elapsedSeconds": 75
+}

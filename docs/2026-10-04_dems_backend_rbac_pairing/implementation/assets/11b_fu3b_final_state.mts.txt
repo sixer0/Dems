@@ -1,0 +1,93 @@
+// W11b follow-up 3 (decision D134): the state of the project cluster at the end of the row, as
+// dems_owner sees it. Reads only. Two digests of pg_settings are printed on purpose:
+//
+//   - HELPER SESSION: through the helper's own session, which sets lock_timeout for its statements.
+//     This is the digest of row W11b and its follow-ups (68b90376...); it compares with those rows.
+//   - PLAIN SESSION: a driver client that sets nothing but its application name. This is the digest
+//     of the reset row's read-only script (6373391c...), read at 11:00, 11:44, 12:37, 18:15.
+//
+// Names, counts, process numbers and times only: never a statement text, never a credential value.
+import { Client } from 'pg';
+import { DEFAULT_DATA_DIR, readOwnerCredentials } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/credentials';
+import { OwnerSession } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/session';
+
+const MINE = ['dems_test_step_w11b3_', 'dems_test_step_w11b3m_'];
+type Row = Record<string, unknown>;
+
+const credentials = readOwnerCredentials(DEFAULT_DATA_DIR);
+
+async function digest(read: (text: string) => Promise<Row[]>): Promise<string> {
+  const settings = (
+    await read(
+      "SELECT count(*)::text AS settings, md5(string_agg(name || '=' || coalesce(setting, ''), E'\\n' ORDER BY name)) AS digest, " +
+        '(SELECT count(*)::text FROM pg_db_role_setting) AS overrides FROM pg_settings',
+    )
+  )[0];
+  return `${String(settings?.['settings'])} visible setting(s), digest ${String(settings?.['digest'])}; pg_db_role_setting ${String(settings?.['overrides'])} row(s)`;
+}
+
+const session = await OwnerSession.open(credentials, { applicationName: 'dems-w11b3-final' });
+try {
+  const who = (
+    await session.run<Row>(
+      'SELECT current_user::text AS role, r.rolsuper AS superuser, host(inet_server_addr()) AS address, inet_server_port() AS port, ' +
+        "to_char(pg_postmaster_start_time(), 'YYYY-MM-DD HH24:MI:SS TZ') AS started, current_setting('server_version') AS version " +
+        'FROM pg_roles r WHERE r.rolname = current_user',
+    )
+  )[0];
+  console.log(`session         ${String(who?.['role'])} (superuser ${String(who?.['superuser'])}) on ${String(who?.['address'])}:${String(who?.['port'])}, PostgreSQL ${String(who?.['version'])}, postmaster started ${String(who?.['started'])}`);
+
+  const databases = await session.run<Row>('SELECT d.datname::text AS name, pg_get_userbyid(d.datdba)::text AS owner FROM pg_database d ORDER BY 1');
+  console.log(`pg_database     ${databases.length} row(s): ${databases.map((row) => `${String(row['name'])} (${String(row['owner'])})`).join(', ')}`);
+  for (const prefix of MINE) {
+    const mine = databases.filter((row) => String(row['name']).startsWith(prefix));
+    console.log(`databases with the prefix ${prefix.replace(/_$/, '')}: ${mine.length}${mine.length > 0 ? ` (${mine.map((row) => String(row['name'])).join(', ')})` : ''}`);
+  }
+  const testRuns = new Set(databases.map((row) => String(row['name'])).filter((name) => name.startsWith('dems_test_')).map((name) => name.slice(0, name.lastIndexOf('_'))));
+  console.log(`test databases in total: ${databases.filter((row) => String(row['name']).startsWith('dems_test_')).length}; run prefixes seen: ${testRuns.size > 0 ? [...testRuns].join(', ') : 'none'}`);
+
+  const roles = await session.run<Row>(
+    "SELECT r.rolname::text AS role, r.rolsuper, r.rolcreatedb, r.rolcreaterole, pg_has_role(r.rolname, 'pg_signal_backend', 'MEMBER') AS signal_backend, " +
+      "pg_has_role(r.rolname, 'pg_read_all_stats', 'MEMBER') AS read_all_stats FROM pg_roles r WHERE r.rolname IN ('dems_owner', 'dems_app') ORDER BY 1",
+  );
+  for (const row of roles) console.log(`role            ${JSON.stringify(row)}`);
+  const all = await session.run<Row>("SELECT count(*)::int AS n FROM pg_roles WHERE rolname NOT LIKE 'pg\\_%'");
+  console.log(`pg_roles        ${String(all[0]?.['n'])} role(s) outside pg_*`);
+  console.log(`HELPER SESSION  ${await digest((text) => session.run(text))}`);
+  const autovacuum = await session.run<Row>("SELECT name, setting FROM pg_settings WHERE name IN ('autovacuum', 'autovacuum_naptime', 'max_connections') ORDER BY 1");
+  console.log(`settings named  ${autovacuum.map((row) => `${String(row['name'])}=${String(row['setting'])}`).join(', ')}`);
+
+  for (const prefix of MINE) {
+    const backends = await session.run<Row>(
+      'SELECT count(*)::int AS n FROM pg_stat_activity WHERE starts_with(datname, $1)',
+      [prefix],
+    );
+    console.log(`backends on databases with the prefix ${prefix.replace(/_$/, '')}: ${String(backends[0]?.['n'])}`);
+  }
+  const cloneLock = await session.run<Row>(
+    "SELECT pid, granted, application_name FROM pg_locks l LEFT JOIN pg_stat_activity a USING (pid) WHERE l.locktype = 'advisory' AND l.classid = 442002 AND l.objid = 0",
+  );
+  console.log(`clone lock (442002, 0): ${cloneLock.length === 0 ? 'free' : `${cloneLock.length} row(s)`}`);
+  const liveness = await session.run<Row>(
+    "SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND classid = 442002 AND objid <> 0 AND granted",
+  );
+  console.log(`liveness locks held: ${String(liveness[0]?.['n'])}`);
+} finally {
+  await session.close();
+}
+
+const plain = new Client({
+  host: credentials.host,
+  port: credentials.port,
+  database: 'postgres',
+  user: credentials.user,
+  password: credentials.password.reveal(),
+  ssl: false,
+  application_name: 'dems-w11b3-digest',
+});
+await plain.connect();
+try {
+  console.log(`PLAIN SESSION   ${await digest(async (text) => (await plain.query(text)).rows as Row[])}`);
+} finally {
+  await plain.end();
+}

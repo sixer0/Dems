@@ -1,0 +1,4 @@
+signin andi.pratama (SUPERVISOR): dashboard true at 09:45:36.541
+shot W01_web_dashboard_supervisor.png at 09:45:36.795
+testids nav (1): nav-admin-group
+net -> wq/net_signin.txt: 442 requests, api ["GET /api/v1/auth/session 401","GET /api/v1/auth/status 200","GET /api/v1/health 200","POST /api/v1/auth/sign-in 200"]; origins {"http://127.0.0.1:5177":442,"ws://127.0.0.1:5177":3}; console 0

@@ -1,0 +1,63 @@
+20:44:43.835 ACK 001 | mCurrentFocus=Window{d3a6e79 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false | app pid 12423 at 20:44:39.825 | screencap 001.png (3256009 bytes) at 20:44:43.835
+20:45:09.561 ACK 002 | tap 2022,406 at 20:45:07.057 | slept 0.8 ms | username typed (budi.santoso); editor inputType 0x80001 | tap 2022,526 at 20:45:07.837 | slept 0.8 ms | password typed (not shown); editor inputType 0x80081 | key 66 at 20:45:08.436 | signin 200 (10-06 20:45:08.122 POST /api/v1/auth/sign-in 200) | slept 3 ms
+20:45:10.233 ACK 003 | mCurrentFocus=Window{d3a6e79 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false | screencap 003.png (711556 bytes) at 20:45:10.233
+20:45:33.420 ACK 004 | tap 180,424 at 20:45:28.169 | slept 2500 ms | ids: 157 nodes -> q/b_evidence.txt | screencap 004.png (776884 bytes) at 20:45:33.420
+20:45:51.968 ACK 005 | slept 3000 ms | app pid 12423 at 20:45:50.812 | jserr jserr.txt: 0 lines | screencap 005.png (776949 bytes) at 20:45:51.968
+20:46:29.457 ACK 006 | mCurrentFocus=Window{d3a6e79 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false | screencap 006.png (777150 bytes) at 20:46:29.457
+20:46:45.374 ACK 007 | tap 180,424 at 20:46:42.090 | slept 3000 ms | screencap 007.png (654216 bytes) at 20:46:45.374
+20:46:59.692 ACK 008 | tap 820,922 at 20:46:56.802 | slept 2500 ms | screencap 008.png (1370108 bytes) at 20:46:59.692
+20:47:02.965 ACK 009 | tap 820,1146 at 20:47:00.110 | slept 2500 ms | screencap 009.png (1293308 bytes) at 20:47:02.965
+20:47:16.626 ACK 010 | ids: 160 nodes -> q/b_evidence_deselected.txt
+20:47:25.239 ACK 011 | tap 820,700 at 20:47:22.413 | slept 2500 ms | screencap 011.png (1209651 bytes) at 20:47:25.239
+20:48:06.577 ACK 012 | tap 180,320 at 20:48:03.332 | slept 3000 ms | screencap 012.png (583184 bytes) at 20:48:06.577
+20:48:21.396 ACK 013 | tap 1400,947 at 20:48:18.151 | slept 3000 ms | screencap 013.png (766763 bytes) at 20:48:21.396
+20:48:24.139 ACK 014 | ids: 150 nodes -> q/b_sessions_selected.txt
+20:48:34.295 ACK 015 | tap 1400,726 at 20:48:31.047 | slept 3000 ms | screencap 015.png (714213 bytes) at 20:48:34.294
+20:48:49.245 ACK 016 | tap 226,736 at 20:48:46.043 | slept 3000 ms | screencap 016.png (344247 bytes) at 20:48:49.245
+20:48:51.917 ACK 017 | ids: 284 nodes -> q/b_network_time.txt
+20:49:10.906 ACK 018 | tap 173,527 at 20:49:07.677 | slept 3000 ms | screencap 018.png (413611 bytes) at 20:49:10.906
+20:49:25.971 ACK 019 | tap 800,336 at 20:49:19.451 | slept 3000 ms | tap 800,465 at 20:49:22.504 | slept 3000 ms | screencap 019.png (1297079 bytes) at 20:49:25.971
+20:57:49.626 ACK 020 | force-stop com.dems.demo.tablet at 20:57:49.625
+20:58:09.634 ACK 021 | slept 15000 ms | app pid 23345 at 20:58:06.513 | mCurrentFocus=Window{d1c8bea u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false | screencap 021.png (3306583 bytes) at 20:58:09.634
+20:58:30.173 ACK 022 | tap 2022,346 at 20:58:22.429 | slept 800 ms | username typed (budi.santoso); editor inputType 0x80001 | tap 2022,466 at 20:58:24.282 | slept 800 ms | password typed (not shown); editor inputType 0x80081 | key 66 at 20:58:25.542 | signin 200 (10-06 20:58:25.193 POST /api/v1/auth/sign-in 200) | slept 3500 ms
+20:58:32.146 ACK 023 | mCurrentFocus=Window{d1c8bea u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false | screencap 023.png (595068 bytes) at 20:58:32.146
+20:58:48.066 ACK 024 | tap 1280,925 at 20:58:43.236 | slept 1500 ms | tap 180,424 at 20:58:44.790 | slept 3000 ms | screencap 024.png (653749 bytes) at 20:58:48.066
+20:59:04.670 ACK 025 | tap 820,922 at 20:59:01.830 | slept 2500 ms | screencap 025.png (1370579 bytes) at 20:59:04.670
+20:59:07.919 ACK 026 | tap 820,1146 at 20:59:05.082 | slept 2500 ms | screencap 026.png (1294040 bytes) at 20:59:07.919
+20:59:10.938 ACK 027 | ids: 159 nodes -> q/a_evidence_run1.txt
+21:01:01.299 ACK 028 | force-stop com.dems.demo.tablet at 21:01:01.299
+21:01:20.675 ACK 029 | slept 15000 ms | app pid 23851 at 21:01:17.983 | screencap 029.png (3303500 bytes) at 21:01:20.675
+21:01:54.881 ACK 030 | tap 2022,346 at 21:01:48.332 | slept 800 ms | username typed (budi.santoso); editor inputType 0x80001 | tap 2022,466 at 21:01:49.776 | slept 800 ms | password typed (not shown); editor inputType 0x80081 | key 66 at 21:01:51.303 | signin 200 (10-06 21:01:50.938 POST /api/v1/auth/sign-in 200) | slept 3500 ms
+21:01:57.065 ACK 031 | mCurrentFocus=Window{d6e4127 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false | screencap 031.png (590812 bytes) at 21:01:57.065
+21:02:16.184 ACK 032 | tap 1280,925 at 21:02:11.348 | slept 1500 ms | tap 180,424 at 21:02:12.940 | slept 3000 ms | screencap 032.png (646573 bytes) at 21:02:16.184
+21:02:19.651 ACK 033 | tap 820,922 at 21:02:16.808 | slept 2500 ms | screencap 033.png (1364792 bytes) at 21:02:19.651
+21:02:22.917 ACK 034 | tap 820,1146 at 21:02:20.073 | slept 2500 ms | screencap 034.png (1366361 bytes) at 21:02:22.916
+21:02:37.348 ACK 035 | tap 820,700 at 21:02:34.507 | slept 2500 ms | screencap 035.png (1363956 bytes) at 21:02:37.348
+21:02:40.303 ACK 036 | ids: 164 nodes -> q/a_evidence_run2.txt
+21:02:54.492 ACK 037 | tap 180,320 at 21:02:51.286 | slept 3000 ms | screencap 037.png (583847 bytes) at 21:02:54.492
+21:02:57.357 ACK 038 | ids: 131 nodes -> q/a_sessions_list.txt
+21:03:07.030 ACK 039 | tap 1400,964 at 21:03:03.733 | slept 3000 ms | screencap 039.png (899255 bytes) at 21:03:07.030
+21:03:10.940 ACK 040 | tap 1400,736 at 21:03:07.662 | slept 3000 ms | screencap 040.png (900890 bytes) at 21:03:10.940
+21:03:13.690 ACK 041 | ids: 165 nodes -> q/a_sessions_run1.txt
+21:03:29.008 ACK 042 | swipe 2185,1350,2185,600 500 ms | slept 1500 ms | screencap 042.png (677673 bytes) at 21:03:29.007
+21:03:42.173 ACK 043 | tap 226,736 at 21:03:38.965 | slept 3000 ms | screencap 043.png (350552 bytes) at 21:03:42.173
+21:03:54.169 ACK 044 | ids: uiautomator could not dump within 12 s
+21:04:16.619 ACK 045 | tap 180,424 at 21:04:10.700 | slept 3000 ms | tap 820,480 at 21:04:13.770 | slept 2500 ms | screencap 045.png (1360850 bytes) at 21:04:16.618
+21:04:19.861 ACK 046 | tap 820,1392 at 21:04:17.035 | slept 2500 ms | screencap 046.png (1364363 bytes) at 21:04:19.860
+21:04:23.814 ACK 047 | swipe 860,1300,860,500 500 ms | slept 1500 ms | screencap 047.png (1296766 bytes) at 21:04:23.813
+21:04:27.914 ACK 048 | swipe 860,500,860,1400 500 ms | slept 1500 ms | screencap 048.png (1364363 bytes) at 21:04:27.913
+21:04:52.764 ACK 049 | tap 180,320 at 21:04:46.192 | slept 3000 ms | tap 1400,280 at 21:04:49.280 | slept 3000 ms | screencap 049.png (896794 bytes) at 21:04:52.764
+21:04:56.821 ACK 050 | tap 1400,1192 at 21:04:53.402 | slept 3000 ms | screencap 050.png (896042 bytes) at 21:04:56.821
+21:05:00.397 ACK 051 | ids: 164 nodes -> q/a_sessions_run2.txt
+21:05:14.637 ACK 052 | tap 226,736 at 21:05:10.968 | slept 3500 ms | screencap 052.png (350521 bytes) at 21:05:14.637
+21:05:34.377 ACK 053 | tap 173,527 at 21:05:28.811 | slept 2500 ms | tap 180,320 at 21:05:31.376 | slept 3000 ms
+21:05:38.082 ACK 054 | tap 1400,458 at 21:05:34.783 | slept 3000 ms | screencap 054.png (898584 bytes) at 21:05:38.082
+21:05:40.637 ACK 055 | ids: 165 nodes -> q/v_sessions.txt
+21:05:44.830 ACK 056 | tap 226,736 at 21:05:41.093 | slept 3500 ms | screencap 056.png (350832 bytes) at 21:05:44.830
+21:05:56.445 ACK 057 | ids: uiautomator could not dump within 12 s
+21:06:19.854 ACK 058 | tap 174,943 at 21:06:16.633 | slept 3000 ms | screencap 058.png (479958 bytes) at 21:06:19.854
+21:06:22.767 ACK 059 | ids: 106 nodes -> q/settings.txt
+21:06:40.345 ACK 060 | tap 784,358 at 21:06:37.142 | slept 3000 ms | screencap 060.png (255132 bytes) at 21:06:40.345
+21:06:42.906 ACK 061 | ids: 133 nodes -> q/account.txt
+21:06:52.990 ACK 062 | tap 1907,1408 at 21:06:47.426 | signout 204 (10-06 21:06:48.294 POST /api/v1/auth/sign-out 204) | slept 3000 ms | screencap 062.png (3261220 bytes) at 21:06:52.990
+21:06:59.398 ACK 063 done 0

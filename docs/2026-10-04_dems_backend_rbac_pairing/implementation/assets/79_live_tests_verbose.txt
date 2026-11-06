@@ -1,0 +1,52 @@
+PASS src/features/network-time/live-network-time.test.tsx
+  Network & Time on the Core's data (LIVE)
+    ✓ shows the Core's address, LAN, satellites, NTP server, PoE ports and clock; sends nothing of its own; says nothing about a simulation (326 ms)
+    ✓ follows the Core by delta: GNSS lost (NTP fallback, one warning toast), then restored (213 ms)
+    ✓ the tablet link is the Core's: OFFLINE by delta reads Offline in the LAN sheet (140 ms)
+    ✓ an outage keeps the Core's last data and says nothing about a simulation (69 ms)
+    ✓ SIMULATED mode is as before: the seed's address and server (172 ms)
+  Network & Time: no production change, nothing from the simulator's actions (static)
+    ✓ the production files are the 14 of `acaff20` (this row adds tests only)
+    ✓ no action hook of the simulator or of the Core, no `.actions` read, no command (2 ms)
+    ✓ no network API, no Core address, no Live source or client, no LIVE idiom of its own; through the barrel only
+    ✓ the copy is that of `acaff20` (35 texts, one digest), says nothing about a simulation, and the folder holds no `SIM-GAP` marker (1 ms)
+PASS src/features/storage/storage-live-static.test.ts
+  Storage takes the Core through the light Live API (CLG c, AC-C-53)
+    ✓ reads the folder: every production file, sub-folders included (no new production file)
+    ✓ no production file calls the simulator's action hook
+    ✓ no production file reads `.actions` of a `Sim` (translation keys in quotes are no reads) (1 ms)
+    ✓ S2-6: the one call is `useCoreActions` through `settle`; the presenter first in LIVE; toast and close in `ok`, idle in `done` (1 ms)
+  the pending control is the runtime's (09b §8; LB-1)
+    ✓ `usePendingPress`, `busyState` and `PendingSpinner` come from `@/runtime`; the folder holds no copy of the hook
+  what belongs to the runtime stays there (rules 3, 4, 7 and 9)
+    ✓ the folder names no network API, no Core server address, no storage package, no Live source module (1 ms)
+    ✓ rule 7: no new timer or wall clock — the three that exist are older than this task and read no Core time
+  one LIVE idiom (rule 5)
+    ✓ the LIVE wording is picked from `useCoreLink().source` in one file, never from a preference or the data-mode hook
+  the copy (rule 8; §3.2)
+    ✓ the text LIVE mode adds says nothing about a simulation; the text it replaces did
+    ✓ no `SIM-GAP` marker was added or removed: the folder keeps its 10 markers of `acaff20` (KI-07 stays 13 IDs / 62 markers)
+    ✓ the copy of Simulated mode is as it was at `acaff20`: 26 texts, one digest (1 ms)
+PASS src/features/storage/live-storage-sites.test.tsx (11.749 s)
+  S2-6: Apply in the Manage Storage sheet (operation 55)
+    ✓ success as the SUPERVISOR: busy at once, spinner late (LB-1); one request; the toast and the closing only after the Core's 200; the Core's words (1015 ms)
+    ✓ answer first, delta later: the toast and the closing wait for the revision the answer named (CL-16) (784 ms)
+    ✓ the other half of the any-of rule: the TECHNICIAN (MAINTENANCE) applies as well (193 ms)
+    ✓ refusal: 403 (the contract's example `notPermitted`) → the denied toast, no role of the wrong kind; the sheet stays open with the draft; Apply idle (802 ms)
+    ✓ refusal in the Core's own spelling of the any-of permission (`EVIDENCE_REVIEW_OR_MAINTENANCE`, D88, F64) reads the same (764 ms)
+    ✓ the Core's 422 (`invalidInput`, the Live source rebuilds it as POLICY_RANGE) keeps the screen's own failure toast; the sheet stays open (790 ms)
+    ✓ outage: "Core server unreachable. Nothing was changed."; the sheet stays open with the draft; a second press sends again and closes it (1422 ms)
+    ✓ a dead link (CL-22): presses send nothing, the offline toast shows, the sheet stays open (195 ms)
+    ✓ a 429 is a limit, not an outage (LB-10): the limit toast with the seconds; the sheet keeps the draft (766 ms)
+  S5-3: the role gate is a hint; the Core enforces the any-of rule
+    ✓ the INVESTIGATOR (neither EVIDENCE_REVIEW nor MAINTENANCE in the replica) sees the policy read-only; nothing is sent (132 ms)
+  the Storage screen on the Core's data
+    ✓ shows the Core's policy, fill and activity, says nothing about a simulation, and calls no storage operation (144 ms)
+    ✓ follows the Core by delta: a disk that fills (one LOW toast) and a policy another client changed (100 ms)
+    ✓ a lost link keeps the Core's last data on the screen (89 ms)
+  React StrictMode (decision D158, finding F69-1): no Core command or query starts on mount
+    ✓ Storage, its sheet, Network & Time and its LAN sheet mount (effects twice) and send nothing; one Apply then sends exactly ONE request (1233 ms)
+  SIMULATED mode is as before (the same call site; the simulator settles at once)
+    ✓ Apply writes the store before the press returns, toasts "(simulated)", closes the sheet, and nothing is ever marked busy (773 ms)
+Test Suites: 3 passed, 3 total
+Tests:       35 passed, 35 total

@@ -1,0 +1,66 @@
+# W11b follow-up: what the bounds of the test helper met today. Collected 2026-10-04 18:16:17 WIB.
+# Sources: .data/postgres.log (only the lines 'permission denied to terminate process', the DROP DATABASE statement of each, and a count of forced checkpoints), and the evidence files of all rows under docs/2026-10-04_dems_backend_rbac_pairing/.
+
+## 1. The drop retry (20 attempts, 250 ms apart): refusals per drop since the fix (12:27:53)
+refused forced drops in the server log since 12:27:53: 115
+  the deliberate test of the helper (a dems_app session held on purpose; never retried): 90
+  this row's reproduction on 600,000-row tables at 12:25 is before 12:27:53 and not counted; other databases of this row's scripts: 0
+  drops of test runs that were refused with nobody holding a session on purpose: 25 databases
+  refusals per drop -> number of drops: {1: 25}
+  largest number of refusals for one drop: 1  (the bound is 20; decision D76 DN-2 names about 10 as the point to raise it)
+  by run label: {'step_48': 3, 'step_50b': 2, 'step_63': 2, 'step_60b': 2, 'step_33c': 2, 'step_51b': 1, 'step_51bthr': 1, 'step_50': 1, 'step_59': 1, 'step_58dead': 1, 'step_57': 1, 'step_60a': 1, 'step_56': 1, 'step_47b': 1, 'step_62tpl': 1, 'step_56b': 1, 'step_64': 1, 'step_33cthr': 1, 'step_33ctpl': 1}
+  first at 12:33:56.467, last at 17:59:22.305
+forced checkpoints in the server log since 12:27:53 (each DROP DATABASE requests one; W11 finding F-4): 36224
+
+## 2. The line every run prints, in the evidence files of all rows (value -> number of lines)
+ 155 forced drops that needed a retry: 0
+   2 forced drops that needed a retry: 1
+   9 forced drops that needed a retry: 1, refusals 1
+   3 forced drops that needed a retry: 2, refusals 15
+(the lines with 15 refusals are this row's own reproduction on 600,000-row tables)
+
+## 3. A bound of the helper that failed a run: evidence files of other rows that hold the text (files)
+  0  DROP_REFUSED
+  0  could not be dropped: PostgreSQL refused
+  0  CLONE_LOCK_TIMEOUT
+  0  was not free in time
+  0  left sessions open
+  0  sessions are still open on it
+  0  session of another role is connected to it
+  0  timeout exceeded when trying to connect
+  0  Connection terminated due to connection timeout
+  0  POSTGRES_UNREACHABLE
+  0  CLEANUP_INCOMPLETE
+  0  left [0-9]* database(s) behind
+
+## 4. How long one builder holds the clone lock: the bulk template, as printed by runs (ms)
+  runs: 38  min: 1216  median: 1366  p90: 2391  max: 3504
+## 5. tpl_schema and tpl_seed, built by the global setup (ms)
+  builds: 200  median: 127  p99: 831  max: 1405
+## 6. The teardown of a run (ms), and runs that left a database
+  lines: 121  median: 118  max: 1741  lines with a database remaining: 0
+
+## 7. The three time-outs of helper tests recorded today (runner default: 5 s per test)
+  14:58:22  sweep.db.test.ts > drops a run that is older than six hours and dead ...   (load average 17; whole run 179 s)   implementation/assets/36_final_runs.log
+  15:06:09  templates.db.test.ts > a hook that throws: the half-built database is dropped ...   (whole run 225 s)   implementation/assets/36_final_runs.log
+  17:25:18  templates.db.test.ts > a template nobody plugged a hook in for ...   (load average 7.76; whole run 196 s; bulk build 3,065 ms in that run)   test/assets/06_whole_db_1725.log
+  the same three tests on a quiet host, three runs before the change (ms):
+    [679, 759, 561]  drops a run that is older than six hours and dead
+    [274, 226, 353]  a hook that throws: the half-built database is dropped
+    [297, 226, 318]  a template nobody plugged a hook in for
+
+## 8. The helper's database-free tests (project unit), before the change: is any close to 5 s?
+# helper unit tests, 17:48:53: 1 report(s); per file: sum of the test durations in ms (tests), one column per run
+file                                                  run 1   median
+test/helpers/db/__tests__/credentials.test.ts       21 (30)   21
+test/helpers/db/__tests__/drop-retry.test.ts       258 (43)   258
+test/helpers/db/__tests__/endpoint.test.ts           2 (30)   2
+test/helpers/db/__tests__/hooks.test.ts              14 (8)   14
+test/helpers/db/__tests__/names.test.ts             13 (43)   13
+test/helpers/db/__tests__/run.test.ts              166 (50)   166
+test/helpers/db/__tests__/session.test.ts            5 (18)   5
+test/helpers/db/__tests__/static.test.ts             8 (17)   8
+all files above                                         487   487
+# run 1 (unit.before.json): files 44, tests 239, passed 239, failed 0, success True; not passed in the files listed: 0
+# tests of these files that took 50 ms or more: 1
+       94 ms  run 1  drop-retry.test.ts  passed  the forced drop, refused while a background worker is on the database waits between two attempts

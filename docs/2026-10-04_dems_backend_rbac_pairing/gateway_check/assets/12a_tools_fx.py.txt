@@ -1,0 +1,178 @@
+"""CF-M1 frame tools: per-frame facts of a phone screen recording (540 px wide frames of screenrecord --bugreport).
+Facts: device time (from the overlay is not OCR'd; frame index + ffprobe pts are used), REC-row position (banner shift),
+banner kind by colour, blank frame, red-box, timer digits by template match."""
+import json, os, sys
+from PIL import Image
+
+def load(path):
+    return Image.open(path).convert('RGB')
+
+def red_dot_y(px, W, H):
+    rows = [y for y in range(120, 700) if sum(1 for x in range(26, 52) if px[x, y][0] > 200 and px[x, y][1] < 90 and px[x, y][2] < 90) > 3]
+    if not rows:
+        return None
+    # first cluster
+    first = [rows[0]]
+    for y in rows[1:]:
+        if y - first[-1] <= 2:
+            first.append(y)
+        else:
+            break
+    return (first[0] + first[-1]) / 2 if 6 <= len(first) <= 22 else None
+
+def band_colours(px, y0, y1, x0=20, x1=520):
+    yellow = green = 0
+    for y in range(max(0, y0), y1, 2):
+        for x in range(x0, x1, 2):
+            r, g, b = px[x, y]
+            if r > 190 and 130 < g < 215 and b < 110:
+                yellow += 1
+            elif g > 170 and r < 140 and b < 150:
+                green += 1
+    return yellow, green
+
+def stats(px, W, H, y0=60):
+    n = 0; s = 0; s2 = 0; red = 0
+    for y in range(y0, H, 6):
+        for x in range(0, W, 6):
+            r, g, b = px[x, y]
+            v = (r + g + b) / 3
+            n += 1; s += v; s2 += v * v
+            if r > 170 and g < 70 and b < 70:
+                red += 1
+    mean = s / n
+    var = s2 / n - mean * mean
+    return mean, var ** 0.5, red / n
+
+CELLS = {'h1': 303, 'h2': 338.5, 'm1': 384, 'm2': 419.5, 's1': 465, 's2': 501}
+
+def cell_bits(px, cx, cy):
+    # 34 x 34 box, centred on the column; binarised (white glyph), downsampled to 17 x 17
+    bits = []
+    for yy in range(17):
+        for xx in range(17):
+            on = 0
+            for dy in (0, 1):
+                for dx in (0, 1):
+                    x = int(cx - 17 + xx * 2 + dx); y = int(cy - 17 + yy * 2 + dy)
+                    r, g, b = px[x, y]
+                    if r + g + b > 450:
+                        on += 1
+            bits.append(1 if on >= 2 else 0)
+    return bits
+
+def frame_facts(path, templates=None):
+    im = load(path); px = im.load(); W, H = im.size
+    mean, sd, redfrac = stats(px, W, H)
+    dot = red_dot_y(px, W, H)
+    f = {'mean': round(mean, 1), 'sd': round(sd, 1), 'red': round(redfrac, 3), 'dot': dot}
+    f['blank'] = sd < 6
+    f['redbox'] = redfrac > 0.35
+    if dot is not None:
+        y, g = band_colours(px, 160, int(dot) - 30)
+        f['bannerYellow'] = y; f['bannerGreen'] = g
+        f['banner'] = 'offline' if y > 60 else ('resynced' if g > 60 else ('?' if dot > 230 else None))
+        if templates:
+            digits = ''
+            for k in ('h1', 'h2', 'm1', 'm2', 's1', 's2'):
+                bits = cell_bits(px, CELLS[k], dot + 2)
+                best = min(templates, key=lambda kv: sum(a != b for a, b in zip(kv[1], bits)))
+                dist = sum(a != b for a, b in zip(best[1], bits))
+                digits += best[0] if dist <= 30 else '?'
+            f['timer'] = digits
+    return f
+
+
+def load_templates():
+    return json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates.json')))
+
+def pts_list(mp4):
+    import subprocess
+    out = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'frame=pts_time', '-of', 'csv=p=0', mp4], capture_output=True, text=True).stdout
+    return [float(x) for x in out.split() if x.strip()]
+
+def scan(frames_dir, mp4=None, step=1):
+    t = load_templates()
+    files = sorted(os.listdir(frames_dir), key=lambda n: int("".join(ch for ch in n if ch.isdigit()) or 0))
+    pts = pts_list(mp4) if mp4 else []
+    rows = []
+    for i, fn in enumerate(files):
+        if i % step:
+            continue
+        f = frame_facts(os.path.join(frames_dir, fn), t)
+        f['frame'] = fn
+        f['pts'] = pts[i] if i < len(pts) else None
+        f['dev'] = hms_of(overlay_time(os.path.join(frames_dir, fn)))
+        rows.append(f)
+    return rows
+
+
+OVL_C = [8, 22, 43.5, 57.5, 79, 93, 114.5, 128.5, 143]
+
+def ovl_bits(px, cx):
+    out = []
+    for y in range(3, 27):
+        for x in range(int(cx - 7), int(cx + 7)):
+            out.append(1 if sum(px[x, y]) > 400 else 0)
+    return out
+
+_OVL = None
+def overlay_time(path):
+    """Device time printed by screenrecord --bugreport on the frame, as seconds of the day, or None."""
+    global _OVL
+    if _OVL is None:
+        _OVL = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ovl_templates.json')))
+    im = load(path); px = im.load()
+    d = ''
+    for cx in OVL_C:
+        b = ovl_bits(px, cx)
+        best = min(_OVL, key=lambda kv: sum(a != bb for a, bb in zip(kv[1], b)))
+        if sum(a != bb for a, bb in zip(best[1], b)) > 40:
+            return None
+        d += best[0]
+    h, m, s, ms = int(d[0:2]), int(d[2:4]), int(d[4:6]), int(d[6:9])
+    if h > 23 or m > 59 or s > 59:
+        return None
+    return h * 3600 + m * 60 + s + ms / 1000
+
+def hms_of(sec):
+    if sec is None:
+        return None
+    h = int(sec // 3600); m = int(sec % 3600 // 60); s = sec % 60
+    return f'{h:02d}:{m:02d}:{s:06.3f}'
+
+if __name__ == '__main__':
+    rows = scan(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
+    for r in rows:
+        print(json.dumps(r))
+
+def classify_screen(path):
+    """'blank' | 'login' | 'login-unreachable' | 'pair' | 'other' for a phone frame (any width; judged at 540)."""
+    im = load(path)
+    if im.size[0] != 540:
+        im = im.resize((540, int(im.size[1] * 540 / im.size[0])))
+    px = im.load(); W, H = im.size
+    mean, sd, _ = stats(px, W, H)
+    if sd < 6:
+        return 'blank', {'mean': round(mean, 1), 'sd': round(sd, 1)}
+    gold = red = 0
+    for y in range(110, 330, 2):
+        for x in range(170, 370, 2):
+            r, g, b = px[x, y]
+            if r > 200 and 120 < g < 215 and b < 120:
+                gold += 1
+            elif r > 170 and g < 90 and b < 90:
+                red += 1
+    white = 0
+    for y in range(70, 112, 2):
+        for x in range(15, 260, 2):
+            if sum(px[x, y]) > 600:
+                white += 1
+    facts = {'gold': gold, 'red': red, 'title': white, 'mean': round(mean, 1), 'sd': round(sd, 1)}
+    if red > 150 and red > gold:
+        return 'login-unreachable', facts
+    if gold > 150:
+        return 'login', facts
+    if white > 60:
+        return 'pair', facts
+    return 'other', facts

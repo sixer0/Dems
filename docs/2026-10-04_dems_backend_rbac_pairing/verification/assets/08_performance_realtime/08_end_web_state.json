@@ -1,0 +1,53 @@
+{
+  "at": "10:19:25.881 (epoch 1791343165.881)",
+  "registry": {
+    "status": 200,
+    "devices": [
+      {
+        "id": "DEV-0005",
+        "state": "PAIRED",
+        "online": true,
+        "signedInOperatorId": null,
+        "revokedAt": null
+      },
+      {
+        "id": "DEV-0004",
+        "state": "PAIRED",
+        "online": true,
+        "signedInOperatorId": null,
+        "revokedAt": null
+      },
+      {
+        "id": "DEV-0003",
+        "state": "PAIRED",
+        "online": true,
+        "signedInOperatorId": null,
+        "revokedAt": null
+      },
+      {
+        "id": "DEV-0002",
+        "state": "REVOKED",
+        "online": false,
+        "signedInOperatorId": null,
+        "revokedAt": "2026-10-07T03:15:38.273Z"
+      },
+      {
+        "id": "DEV-0001",
+        "state": "REVOKED",
+        "online": false,
+        "signedInOperatorId": null,
+        "revokedAt": "2026-10-07T01:54:24.156Z"
+      }
+    ]
+  },
+  "currentSession": {
+    "status": 200,
+    "id": "SES-20261007-0031",
+    "state": "SEALED"
+  },
+  "signOutStatus": 204,
+  "screenshot": "08_end_web_paired_devices.png",
+  "origins": [
+    "http://127.0.0.1:5173"
+  ]
+}

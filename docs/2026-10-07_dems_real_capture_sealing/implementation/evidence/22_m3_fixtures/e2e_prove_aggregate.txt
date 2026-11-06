@@ -1,0 +1,2 @@
+recorded series: 78 checks, aggregate 0
+each of the 78 verdicts flipped in turn: 0 flips leave the aggregate at 0

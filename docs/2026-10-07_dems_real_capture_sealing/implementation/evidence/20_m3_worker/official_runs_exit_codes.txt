@@ -1,0 +1,38 @@
+proto_r1 rc=0
+wi1_zero_r1 rc=0
+wi1_pm80_r1 rc=0
+wi1_drift_r1 rc=0
+wi1_camstop_r1 rc=0
+wi1_fatal_rmdir_r1 rc=0
+optc_planted_r1 rc=0
+optc_exists_r1 rc=0
+bind_udp_r1 rc=0
+sup_run_r1 rc=0
+kc1_r1 rc=0
+kc3_r1 rc=0
+proto_r2 rc=0
+wi1_zero_r2 rc=0
+wi1_pm80_r2 rc=0
+wi1_drift_r2 rc=0
+wi1_camstop_r2 rc=0
+wi1_fatal_rmdir_r2 rc=0
+optc_planted_r2 rc=0
+optc_exists_r2 rc=0
+bind_udp_r2 rc=0
+sup_run_r2 rc=0
+kc1_r2 rc=0
+kc3_r2 rc=0
+--- negative controls (each must FAIL; rc 0 = failed as required)
+neg_h4_reencoded rc=0
+neg_av_forbidden_option rc=0
+neg_bind_skeleton rc=0
+neg_fatal_clean_control rc=0
+neg_sup_forbidden_option rc=0
+--- P4 evaluation
+p4_delay_pm80 rc=0
+p4_shape_pinned rc=0
+p4_shape_delay rc=0
+p4_stall_pinned rc=0
+p4_stall_delay rc=0
+--- leftovers
+(end)

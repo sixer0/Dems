@@ -1,0 +1,40 @@
+## 2026-10-06 00:38:07 WIB  0:38  2 users, load averages: 1.91 2.30 2.91
+## $ npm run test -w @dems/core-web -- --maxWorkers=2
+ Test Files  78 passed (78)
+      Tests  1012 passed (1012)
+   Start at  00:38:07
+   Duration  92.14s (tests 73%, import 13%, environment 9%, setup 3%, transform 2%)
+
+    Isolate  78 workers spawned · ~256ms startup each (spawn + environment, per file)
+             at least ~9.73s faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+## 00:39:50 $ npm run typecheck -w @dems/core-web
+exit=0
+## 00:40:00 $ npm run lint -w @dems/core-web
+exit=0
+## 00:40:00 $ npm run test -w @dems/shared -- --maxWorkers=2
+ Test Files  68 passed (68)
+      Tests  1814 passed (1814)
+   Duration  7.75s (tests 60%, import 30%, transform 8%, worker 1%)
+exit=0
+## 00:40:08 $ npm run typecheck -w @dems/shared && npm run lint -w @dems/shared
+typecheck exit=0
+lint exit=0
+## protected test files (sha256 recorded at 23:43 before any edit)
+apps/core-web/src/test/routes.test.tsx: OK
+apps/core-web/src/test/sim-fetch.test.ts: OK
+apps/core-web/src/features/storage/__tests__/storage-page.test.tsx: OK
+apps/core-web/src/lib/__tests__/core-endpoint.test.tsx: OK
+apps/core-web/src/lib/__tests__/packaged-csp.test.ts: OK
+apps/core-web/src/features/dashboard/__tests__/dashboard.test.tsx: OK
+7a04c97d66fef15ed36f753a87a91c400f7b9500 test/routes.test.tsx
+9e8b97c80da596e0ae6e9b37aa69b64e99e3bbdd test/sim-fetch.test.ts
+71f6f0337f2339d8e8d66ef232d7334dc0b67d1d features/storage/__tests__/storage-page.test.tsx
+89cab371b658f09788a9350da13d118d4b822493 lib/__tests__/core-endpoint.test.tsx
+6d0db39e3b918db65f0faff8b6ad7fbb30403fe0 lib/__tests__/packaged-csp.test.ts
+1ab07579e928b9b545003899ec3265d4b8b6c762 features/dashboard/__tests__/dashboard.test.tsx
+## forbidden paths vs HEAD (git status --porcelain; empty = untouched)
+ M apps/core-server/test/static/scan.ts
+?? apps/core-server/test/static/scan-skips.test.ts
+(end)

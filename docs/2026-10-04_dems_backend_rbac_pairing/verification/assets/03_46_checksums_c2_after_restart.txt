@@ -1,0 +1,63 @@
+== C2 05:33:56 right after restart 3 is ready
+connected as dems_owner to 127.0.0.1/32:4432 (PostgreSQL 18.4)
+active_session              0  d41d8cd98f00b204e9800998ecf8427e
+alerts                      0  d41d8cd98f00b204e9800998ecf8427e
+audit_chain_head            1  89a1fcd6769120828fae869c688fa053
+audit_chain_history         0  d41d8cd98f00b204e9800998ecf8427e
+audit_log                  85  5b4524f6c5fc6a574351c7f2420c5ec7
+auth_sessions               1  b1269d38571f6b0d5f8473da73aaefd1
+biometric_tokens            0  d41d8cd98f00b204e9800998ecf8427e
+console_settings            1  9fcf5e2eff4c084549d662323f63913a
+core_device                 1  e5534f12f323aa290ba110754b0005be
+core_state                  1  9e0a51ea1a24f99aa88ac146b3b87cc0
+device_credentials          0  d41d8cd98f00b204e9800998ecf8427e
+engine_counters             5  88f94b1d40a8d41664c53a2b374ff5f6
+events                     63  d9862dd65df54f4f499347c4d73e3dbd
+evidence_custody           28  fe7196279cec4d13d085ac7e701087c8
+evidence_items             13  7b73aa0ceb7e9b46307da6013cf9ec44
+evidence_tracks            52  481cc8b2969557620bf740c30748ec70
+exports                     1  528d2c98bdc7e02ffe986f5246e317f0
+hardware_snapshot           1  2ce863b61517ed27f4403db4550129c3
+health_snapshots            1  23ff9ec4ed7e723c83ada9333031bee4
+operator_credentials        3  033269258fcbdd1c55ff5a7e2d4edd70
+operators                   3  f5dba102391776c9b9afc03d392e97c9
+paired_devices              0  d41d8cd98f00b204e9800998ecf8427e
+pairing_codes               0  d41d8cd98f00b204e9800998ecf8427e
+permissions                12  aa0e5474ec05c78aa2bf635397ea0676
+registry_counters           2  cad05c9a39dbf023490c9e69bbc9188e
+role_permissions           18  fbf20c640c4b4e039ef64e3be274c4d3
+roles                       3  ae0d751197b14ce00fb4b90bbc159618
+schema_meta                 1  eb888f88187742c42ea325a3ccc64914
+session_history            13  2613502b559fd849e9a2ad6240a8f529
+storage_policy              1  f4b703b717901cb7d293bd14f4a2ebd8
+tables 30; rows 310
+connected as dems_owner to 127.0.0.1/32:4432 (PostgreSQL 18.4)
+core_state.singleton                    boolean                    b326b5062b2f0e69046810717534cb09  value true
+core_state.seed                         bigint                     715dcb7384a57cd37669f5d95ac35bf2  value 20261001
+core_state.sim_schema_version           integer                    c4ca4238a0b923820dcc509a6f75849b  value 1
+core_state.scenario                     text                       ec2f993aec2c27fc750119ab17b16cdb
+core_state.epoch                        bigint                     eccbc87e4b5ce2fe28308fd9f2a7baf3  value 3
+core_state.created_at                   bigint                     be0ec9d05e2706ab0d3357dc0c509d08  value 1791325844943
+core_state.seeded_at                    bigint                     be0ec9d05e2706ab0d3357dc0c509d08  value 1791325844943
+core_state.last_reset_at                bigint                     7df1074bd6f415369eb335bff3ad1781  value null
+core_state.last_sealed_session_id       text                       7df1074bd6f415369eb335bff3ad1781
+core_state.last_sealed_acknowledged     boolean                    b326b5062b2f0e69046810717534cb09  value true
+core_state.updated_at                   bigint                     c32b4f61f17acc3d413eb4d5937fe9a1  value 1791326036299
+hardware_snapshot.singleton                    boolean                    b326b5062b2f0e69046810717534cb09  value true
+hardware_snapshot.sim_schema_version           integer                    c4ca4238a0b923820dcc509a6f75849b  value 1
+hardware_snapshot.tablet_link                  jsonb                      a950924ea7f6ec6bdd6b83f3f2f02f7c
+hardware_snapshot.active_camera_id             text                       d51b044913d26245c0ed7751b2a1a4c1
+hardware_snapshot.cameras                      jsonb                      a6f69d306927518a8c9d4038c255ff3e
+hardware_snapshot.mics                         jsonb                      00a4d72fc7ea2c50788f5d80e14c58c8
+hardware_snapshot.storage                      jsonb                      1bc756f761449b3544bb9e8984289c1d
+hardware_snapshot.time_status                  jsonb                      bdc6b641c68541ce2382b8d1f65e00a4
+hardware_snapshot.network                      jsonb                      8986eba8e909aa8f9d1b7a8bd066ccf3
+hardware_snapshot.security                     jsonb                      406cd79ca3c1f71e9642c3d063ce34cf
+hardware_snapshot.services                     jsonb                      7b8de70361df7add6886ff2ec5579350
+hardware_snapshot.health                       jsonb                      f85e3f46f05c3d63d9e076d390056981
+hardware_snapshot.other_devices                jsonb                      a001859e3ec32d6a4b3c8ce3f9617558
+hardware_snapshot.ports                        jsonb                      64948802b3bc68a3f4d528d8ff943b7c
+hardware_snapshot.faults                       jsonb                      0c23efff702442cc4e0368e55d2358d9
+hardware_snapshot.diagnostics                  jsonb                      7df1074bd6f415369eb335bff3ad1781
+hardware_snapshot.software_update              jsonb                      d68c66905c79a77b0a1f4bc09f7a3ed3
+hardware_snapshot.written_at                   bigint                     80680b64dca7a0c56ce8c09bdee3a5f3  value 1791326036357

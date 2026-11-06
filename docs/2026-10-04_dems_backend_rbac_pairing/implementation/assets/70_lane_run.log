@@ -1,0 +1,83 @@
+
+== 23:06:58 0. the three ports must be free before anything is started (nothing is stopped that this check did not start)
+free: 4423 5178 9373
+2026-10-05 23:06:58 WIB
+23:06  up 4 days,  6:19, 2 users, load averages: 7.82 6.95 5.82
+
+== 23:06:58 1. lane database before the check: npm run db:status -w @dems/core-server -- --database dems_lane_3
+db:status exit 0
+seeded_at        2026-10-04T04:36:43.575Z (1791088603575)
+last_reset_at    2026-10-04T04:36:43.575Z (1791088603575)
+audit head       seq 115; hash 16e5c25f27e2fafc...
+audit triggers   audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A
+  audit_log                115
+  auth_sessions            12
+  operators                3
+
+== 23:06:59 2. start the lane backend: DEMS_CORE_PORT=4423 npm run start -w @dems/core-server (demo flag OFF)
+backend up after 5 quarter seconds, npm pid 89819
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    89840 gsp-budi   17u  IPv4 0x21360431cb064b85      0t0  TCP 127.0.0.1:4423 (LISTEN)
+-- direct health on the backend:
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T16:07:01.315Z","uptimeMs":203,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 23:07:01 3. start Vite for lane 3: DEMS_CORE_PROXY_PORT=4423 VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port 5178 --strictPort
+waited 3 quarter seconds
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    89888 gsp-budi   14u  IPv4 0x6a9af1f972c859e3      0t0  TCP 127.0.0.1:5178 (LISTEN)
+-- health through the dev server: 200
+
+== 23:07:02 4a. Devices & Inputs in a real browser (headless Chromium over CDP): Live as SUPERVISOR and TECHNICIAN (sites B-7, D-5; the drawer row of note G6)
+chrome pid 89903
+Google Chrome for Testing 153.0.8010.12
+cdp-driver (live) exit 0
+  },
+  "elapsedSeconds": 34
+}
+
+== 23:07:36 4b. stop this check's backend (the page stays open): the Core is now unreachable
+backend: npm exit status 0
+port 4423 free
+
+== 23:07:36 4c. the same tab: a command while the Core is unreachable (the presenter), then Simulated mode
+cdp-driver (offline + simulated) exit 0
+  },
+  "elapsedSeconds": 29
+}
+
+== 23:08:05 5. what Vite printed (no page error)
+9:11:07:37 PM [vite] ws proxy error:
+10:Error: connect ECONNREFUSED 127.0.0.1:4423
+12:11:07:37 PM [vite] (client) [console.error] [core-web] live {"level":"error","source":"live.action.deviceCommand","message":"The Core server is unreachable (CORE_OFFLINE).","context":{"action":"deviceCommand","errorName":"LiveTransportError","operationId":"identifyDevice","status":null,"code":null,"reason":"CORE_OFFLINE","requestId":null,"link":"OFFLINE"},"at":1791216457259}
+-- lines in Vite's log:       12
+
+== 23:08:05 6. lane database after the check
+db:status exit 0
+-- row counts that differ (before / after):
+< audit head       seq 115; hash 16e5c25f27e2fafc...
+> audit head       seq 122; hash c0be75227506191d...
+<   audit_log                115
+<   auth_sessions            12
+>   audit_log                122
+>   auth_sessions            14
+<   events                   86
+>   events                   89
+-- the backend's log: lines       53; lines with level error or fatal: 0
+-- sign-in and sign-out lines of the backend's log (route, status; no body is logged):
+   1 "route":"/api/v1/auth/session","status":401
+   2 "route":"/api/v1/auth/sign-in","status":200
+   1 "route":"/api/v1/auth/sign-out","status":204
+   2 "route":"/api/v1/auth/status","status":200
+-- device, clip and pairing lines of the backend's log (route, status; no body is logged):
+   1 "route":"/api/v1/device/:id/identify","status":204
+   1 "route":"/api/v1/device/:id/restart","status":204
+   1 "route":"/api/v1/device/:id/restart","status":403
+   1 "route":"/api/v1/device/:id/test-signal","status":204
+   1 "route":"/api/v1/pairing/devices","status":200
+
+== 23:08:06 stop what this check started
+chrome stopped
+vite: npm exit status 143
+
+== 23:08:07 listeners left on 4423, 5178, 9373 (expect none):
+lsof exit 1 (1 with no output: no listener)

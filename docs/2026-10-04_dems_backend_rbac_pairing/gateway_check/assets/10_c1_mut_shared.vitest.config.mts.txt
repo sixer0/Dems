@@ -1,0 +1,30 @@
+// C1 scratch (rule M15): the shared vitest configuration plus a plugin that changes ONE text of
+// packages/shared/src/api/openapi.ts IN MEMORY, chosen by C1_MUT. No tree file changes.
+// (no import: a config outside the tree cannot resolve vitest; a plain object is enough)
+const MUTATIONS: Record<string, { from: string; to: string }> = {
+  // M-3a: the Core server's example listed after the shared one.
+  order: { from: 'return coreServer ? { ...coreServer, ...shared } : shared;', to: 'return coreServer ? { ...shared, ...coreServer } : shared;' },
+  // M-3b: the Core server's example leaks into the offline scope.
+  leak: { from: 'const coreServer = all ? examples?.coreServerResponses?.[status] : undefined;', to: 'const coreServer = examples?.coreServerResponses?.[status];' },
+  // M-3c: the all scope ignores it (the defect F84-3).
+  drop: { from: 'const coreServer = all ? examples?.coreServerResponses?.[status] : undefined;', to: 'const coreServer = undefined as typeof examples extends unknown ? undefined : never;' },
+};
+const id = process.env.C1_MUT ?? '';
+const m = MUTATIONS[id];
+export default ({
+  root: '/Users/gsp-budi/Documents/DEMS/packages/shared',
+  cacheDir: '/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/c1_mut/vite-cache',
+  plugins: [
+    {
+      name: 'c1-mutation',
+      enforce: 'pre',
+      transform(code, file) {
+        if (!m || !file.endsWith('/packages/shared/src/api/openapi.ts')) return null;
+        const count = code.split(m.from).length - 1;
+        if (count !== 1) throw new Error(`C1 mutation ${id}: the text occurs ${count} times`);
+        return code.replace(m.from, () => m.to);
+      },
+    },
+  ],
+  test: { environment: 'node', include: ['test/**/*.test.ts'] },
+});

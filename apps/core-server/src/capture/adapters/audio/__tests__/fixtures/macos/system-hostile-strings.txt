@@ -1,0 +1,27 @@
+{
+  "SPAudioDataType" : [
+    {
+      "_items" : [
+        {
+          "_name" : "<b>DEMS</b> & <script>x()</script>",
+          "coreaudio_device_input" : 2,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_usb"
+        },
+        {
+          "_name" : "X</string><key>locationID</key><integer>34603008</integer><key>IORegistryEntryLocation</key><string>02100000",
+          "coreaudio_device_input" : 2,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_usb"
+        },
+        {
+          "_name" : "DEMS Hexa 6",
+          "coreaudio_device_input" : 6,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_usb"
+        }
+      ],
+      "_name" : "coreaudio_device"
+    }
+  ]
+}

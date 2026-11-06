@@ -1,0 +1,1378 @@
+/**
+ * The capture supervisor (blueprint row 57 / M3-W1; register NM-03; capture spec §A.3, §B.2).
+ *
+ * WHAT IT DOES. It owns the one capture worker process of the one open session (R-6): it starts
+ * it, shakes hands, sends the commands, watches the heartbeat, restarts it with an exponential
+ * back-off when it goes down, gives up with `CAPTURE_FAULT` when the restarts are exhausted, and
+ * hands the worker's messages to its listeners through a bounded queue.
+ *
+ * ONE PROCESS PER SESSION, NEVER REUSED (S1 G-1, SP-5; D10(b)). The RTSP listen ingest exits when
+ * the client sends TEARDOWN and refuses a second push; restarting only the pusher is not enough.
+ * So `start` always starts a NEW worker process, `stop` always ends it, and a restart inside a
+ * session is a new process too. A new process is started only after the previous one is known to
+ * have exited (it is killed and its exit is awaited): no stale listener holds the RTSP port.
+ *
+ * WHAT IT DOES NOT DO. It names no process, no file, no timer of the runtime and no clock: the
+ * launcher, the timers and `now` are injected (static rule G-R8). Production passes the process
+ * launcher of `ipc.ts`, the system timers of `timers.ts` and the server clock; a test passes an
+ * in-memory worker, manual timers and a manual clock, and waits for nothing in real time.
+ *
+ * HEARTBEAT. The worker sends `HEARTBEAT` with a counter that only grows. A heartbeat whose
+ * counter did not grow is not a sign of life. No valid heartbeat for `heartbeatTimeoutMs` ends the
+ * worker (SIGKILL) and counts as a crash.
+ *
+ * BACK-OFF. Restart number n of a row waits `backoffBaseMs * backoffFactor^n`, at most
+ * `backoffMaxMs`. After `maxRestarts` restarts in a row the supervisor raises the warning
+ * `CAPTURE_FAULT`: a session that never started is refused (`start` rejects, the supervisor is
+ * idle again); a session that was recording stays open in phase `FAULTED` until it is stopped. A
+ * worker that ran `stableAfterMs` without a crash clears the count.
+ *
+ * THE RESTART RULE (blueprint row 58; decision D67, option C per OD-08; spec §B.2). A worker is
+ * restarted inside a session ONLY while the session holds no durable fragment. The first record
+ * of a fragment (`FIRST_DURABLE_FRAGMENT`, `FRAGMENT_CHECKPOINT`) sets `held` - of a camera file or, row 148, of a
+ * channel file, which is never written again either (D61). Row D2C (D150 (2), F-C1D-2): `durable` - what `status()`
+ * says and what the reason of a crash is judged with - is set by a CAMERA file's fragment only: the sealer makes no
+ * package of audio alone (row 153), so a session whose only files are channel files is no durable recording (its end
+ * is the failed start of D72(k) / D84). From the first `held` record on, a worker that goes down is not replaced: the session
+ * goes to `FAULTED` with one `CAPTURE_FAULT` and stays open, so that the durable prefix can be
+ * sealed as interrupted. No restarted worker ever writes into an existing evidence file. The
+ * record is a hint and can be missing (a worker killed between its write and its frame), so the
+ * worker holds the same line from the file: it creates a camera file only at its first complete
+ * fragment and refuses a `START` whose output path already holds a file (`OUTPUT_EXISTS`); that
+ * refusal is not retried and marks the session durable as well. Between sessions every start is a
+ * fresh worker, as before. WHAT MAKES THE RESTART SAFE is that rule of the worker, checked on the
+ * disk (decision D72 on D58-1): the supervisor can hold `durable: false` for a back-off while
+ * bytes are on the disk (a worker killed between its write and its frame), and the worker it then
+ * starts writes nothing and opens nothing at the output paths before it refuses. A durable record
+ * that is still in the pipe of a worker the supervisor itself ended is read for that one fact.
+ * A refusal that another try cannot change (`FINAL_START_REFUSALS`) and a crash a new worker would
+ * repeat (`FINAL_CRASH_CODES`: no camera connected) are not retried either.
+ *
+ * A LATER WORKER OF A SESSION GETS INGEST ADDRESSES OF ITS OWN (task 4 row 179; security requirement
+ * BR-07 (2); design addendum section 5.3). The last element of a camera's ingest address is the
+ * secret a pusher must announce. Until row 179 a restart sent the stored plan again, so the secret
+ * of a worker that had gone down - for a reason nobody knows yet - opened the listener of the next
+ * one. Now `launch` builds, for every worker after the first, a new address per camera with the
+ * ONE function of the capture unit (`captureIngestAddress`), puts them into the plan of that
+ * attempt and tells the session (`CaptureAttemptIngest.renewed`) BEFORE the worker is started: the
+ * session opens the cameras of that attempt with the same strings. The source of chance is handed
+ * in with `start` (this folder may import none, static rule G-R8). No element is used twice inside
+ * a session: one that an earlier plan of the session held starts no worker. A plan that cannot be
+ * renewed (the source failed, the element repeats, the session's receiver threw) starts NO worker
+ * and is not tried again: the capture ends with its fault, never with an address of an earlier
+ * attempt. The addresses are in the plan frame and in that one call, and in no event, report,
+ * status or message of this file. A `start` without that source sends the plan as given, as before.
+ *
+ * A LATER WORKER OF A SESSION WAITS FOR THE SESSION'S AUDIO SOURCES (task 4 row 191; the finding of
+ * row 184: a later worker received 0 samples, because what feeds a microphone's pipe ends with the
+ * worker that read it and starts once). When the session handed in `CaptureAttemptIngest.sources`,
+ * `launch` asks it after the addresses are renewed and starts the worker in the turn that promise
+ * settles (`awaitSources`), with the microphone inputs it resolved with. THE BACK-OFF IS NOT MOVED:
+ * the timer, its delay and the count of restarts are as before, and a session that had its sources
+ * ready inside the back-off (it begins at `RESTARTING`) starts its worker one turn after the timer.
+ * While it waits the phase stays `RESTARTING` (or `STARTING`), no worker exists, a `stop` ends the
+ * session as during a back-off and a late durable record calls the restart off. Sources that are
+ * not ready (the promise rejected; no microphone in the active role) start NO worker and are not
+ * tried again. A `start` without `sources` starts every worker in the turn of its timer, as before.
+ *
+ * THE SUPERVISOR'S OWN FAULT ENDS when a later session reaches `RECORDING`: the `CAPTURE_FAULT`
+ * it raised is then said again with state `CLEARED`, so that the next failure is a new fault.
+ * Each session that fails says its own `ACTIVE` with its own correlation ID, and the fault held is
+ * the newest one's (decision D84 R-3): two sessions that fail in a row are two occurrences.
+ *
+ * ONE SUBJECT FORM PER DEVICE (decision D84 R-1, R-2; protocol 4). A warning of the worker names
+ * the DEVICE ID of a camera or a microphone of the plan, never null and never a mic role (the
+ * protocol's schema refuses both); anything else ends the worker (`WARNING_SUBJECT_UNKNOWN`). Only
+ * the supervisor's own `CAPTURE_FAULT` has no subject and no reason of the protocol: it is about the
+ * capture, and it says WHY in `cause` (below).
+ *
+ * EVERY END OF A WORKER HAS ONE REASON OF A CLOSED ENUMERATION (wave H driver F; gate 64 condition
+ * C4, gate 75 finding G75-05; tidy pass F-Y decision 6). `captureDownReasonOf` maps every code the
+ * supervisor ends a worker with - and every way it finds one ended - to ONE member of
+ * `CaptureDownReason` (`types.ts`). It is `WorkerDown.reason` (so: `workerDown`, `status().lastCrash`,
+ * the outcome of a stop) and the `cause` of the supervisor's own `CAPTURE_FAULT`. What the supervisor
+ * itself refuses of a worker's words is named ONLY through `SupervisorRefusal`: this file writes no
+ * other literal for it (`capture/__tests__/fault-lifecycle.test.ts` reads the source), so a new refusal is a new member, and
+ * a member without a sentence for the operator fails `fault-wording.test.ts`.
+ *
+ * A CAMERA THE WORKER GAVE UP WHILE THE SESSION GOES ON IS KEPT PER CAMERA (wave H driver F; gate 89
+ * section 7, C3). The worker says it with a `CAPTURE_FAULT` warning naming the camera and one of
+ * `CAMERA_END_REASONS` (it never connected, its stream ended, its clock was refused by the clock
+ * floor), and records the others. The supervisor keeps WHICH camera, WHY, WHEN it read the statement
+ * and the last fragment of that camera it had been told durable (`CaptureCameraEnd`), read at the
+ * moment the line arrives - beside the records, never through the queue of levels, so the order is
+ * the worker's. It is `status().cameraEnds` while the session is open and a member of the outcome of
+ * its stop, for a clean stop as well: the unit that seals marks the track from it.
+ *
+ * NO SWITCH (protocol 6, N-31; audit row 149, D28 DQ-2). The operator's audio-source switch of
+ * operation 81 is retired with its command `SWITCH_AUDIO_SOURCE`: the audio of each track is fixed by
+ * its camera-microphone pair. The supervisor sends `START` and `STOP` only, and the one audio-source
+ * interval of a worker is the interval of its start.
+ *
+ * RECORDS (spec §B.2 R-1 to R-3). A `RECORD` is handled the moment its line arrives, beside
+ * `ACK`: its sequence number must be exactly one more than the last of the session (a gap or a
+ * repeat is a `PROTOCOL_VIOLATION`), and it is handed to the `record` listeners at once, in
+ * order, like the supervisor's own events. Records are low-rate by contract: more than
+ * `recordBurstLimit` inside `recordWindowMs`, a second first-fragment, first-video or
+ * keyframe-interval record of a camera, and any record after the seal completion are violations too, so a worker cannot grow
+ * the memory of a record consumer without being ended. It never enters the queue below, so nothing a
+ * listener of levels does, and no flood of levels, can lose or reorder a record.
+ *
+ * THE WORKER'S OUTPUT IS ALWAYS READ. Nothing a listener does stops the supervisor from reading:
+ * `HEARTBEAT` and `ACK` are handled the moment their line arrives, before and apart from any
+ * queue. (Until fix round 1 a full queue paused the pipe; the heartbeats and acknowledgements
+ * behind the pause were not read, and a healthy worker with a slow listener was killed. A pause
+ * cannot be told from a dead worker, so there is none.)
+ *
+ * TWO KINDS OF EVENT, TWO PATHS.
+ *   the supervisor's own   `workerDown`, `phase`, the warning it raises itself (`CAPTURE_FAULT`)
+ *                          and `record` are few and are what the error log is written from. Each
+ *                          is handed to its listeners in order, and no listener is waited for: a
+ *                          listener that never returns holds nobody up. They are handed out
+ *                          AFTER the step that raised them is finished (the phase is set, the
+ *                          timers are armed), never in the middle of it: a listener may call
+ *                          `stop` or `start` from inside one and finds the supervisor consistent
+ *                          (pair-57 re-check N-1).
+ *   the worker's           `telemetry`, `progress` and the worker's warnings go through ONE queue
+ *                          and are delivered one at a time; a listener may return a promise and
+ *                          the next of these events waits for it.
+ *
+ * THE QUEUE HAS A HARD BOUND: never more than `eventQueueLimit` events wait. Since the pipe is
+ * never paused, the bound is kept by what the events are:
+ *   - telemetry is a level, not a record: a frame that still waits is REPLACED by a newer one;
+ *   - progress is a level per step: a waiting value of the SAME step is replaced by the newer;
+ *   - a warning that still waits is not queued a second time (same code, same subject);
+ *   - at the bound, room is made by evicting the oldest telemetry, then the oldest progress; a
+ *     warning is never evicted for a level. New telemetry at the bound is dropped itself. Only a
+ *     queue that is full of distinct warnings drops a new event.
+ * Replaced and dropped telemetry is counted in `droppedTelemetry`, everything else in
+ * `droppedEvents`, and the first loss at the bound of each episode is reported (and so written to
+ * the error log) as `CAPTURE_EVENT_OVERFLOW`. A record that must never be lost therefore does NOT
+ * belong in this queue, and has its own path (above). What still waits in the queue when its
+ * session ends is dropped and counted: an event of a session that is over is never delivered
+ * into the next one (pair-57 re-check N-2).
+ *
+ * A STOP SAYS HOW IT ENDED (review R63-01; ruling D179). Until fix pass F-M3 the exit a `stop` was
+ * waiting for was "not a crash" whatever it was: a worker that said `CRASH` and left with code 70
+ * while it closed its files, or that the supervisor itself killed at the stop grace, ended the
+ * session exactly like a worker that exited 0 - and the recording went to a normal seal with its
+ * last fragment missing. Now `stop` resolves with a `CaptureStopOutcome`: CLEAN only when the
+ * worker acknowledged the `STOP`, ended the audio timeline it had begun and exited 0. Every other
+ * end of a worker that had recorded sets `lastCrash`, is said as `workerDown` (`restartInMs: null`)
+ * BEFORE the phase goes idle, and resolves the stop with `clean: false` and the cause. No worker is
+ * started for it and no `CAPTURE_FAULT` is raised: the session is ending; what the capture-session
+ * unit does with an interrupted recording is its own (the `INTERRUPTED` hand-off).
+ *
+ * ONE VERSION RULE FOR EVERY HELLO (review R63-04, carried question 7; ruling D179). The rule of the
+ * boot check (`workerVersionRefusalOf`: the protocol version, no proof mark, the release form
+ * `capture-worker/<n>.<n>.<n>`, and - gate 64 C7, ruling D194 - THE version this Core was built to
+ * drive, `CAPTURE_WORKER_VERSION`) is applied to the `HELLO` of every worker of every session:
+ * the first start and every restart inside a session go through `launch()` and this one branch, and
+ * RECOVERY starts no worker (`boot()` starts none). A refused version is final (not retried), names
+ * its code (`CAPTURE_WORKER_VERSION_UNKNOWN`; `CAPTURE_WORKER_VERSION_MISMATCH` with the word found
+ * as its detail), and the worker is sent nothing. There is no switch
+ * and no injected exception: a check that must run another binary drives the worker directly.
+ *
+ * WHAT A FRAME NAMES BELONGS TO THE SESSION (review R63-05, carried question 8). The schema holds
+ * every ID to a closed form; the supervisor holds what a schema cannot know: every device a
+ * `TELEMETRY` frame names is a microphone (levels) or a camera (ingest, fragments, clocks) of the
+ * plan, and an interval of a switch (a correlation ID) names a command this worker still awaits the
+ * `ACK` of - since protocol 6 none can (no switch is commanded), so every such interval is refused
+ * `SWITCH_NOT_COMMANDED`. Anything else ends the worker (`PROTOCOL_VIOLATION`) and is handed to nobody.
+ * Row 148 (D5, protocol 6 N-32): the device of a RECORD is read by the protocol's own kind lists -
+ * a camera of the plan for `CAMERA_RECORD_KINDS`, a microphone of the plan for `MIC_RECORD_KINDS`,
+ * and either for `CAMERA_OR_MIC_RECORD_KINDS` (`FRAGMENT_CHECKPOINT`: a camera file or a channel
+ * file). The `fragments` of a telemetry frame stay per CAMERA file (the protocol's own words).
+ *
+ * COMMANDS. A command is written to the worker's input at once (the channel resolves when the
+ * pipe took it; the supervisor does not wait for that before the next command). The bound is the
+ * window of commands that await their `ACK`: at most `commandQueueLimit`, each at most one frame;
+ * one more is refused with `CAPTURE_BACKPRESSURE`, never queued. `STOP` is outside the window: it
+ * is always written, so that a worker can flush and close before the grace ends.
+ */
+import {
+  CAPTURE_INTERNAL_ACTION,
+  CAPTURE_IPC_DEFAULTS,
+  CAPTURE_PROTOCOL_VERSION,
+  CAMERA_OR_MIC_RECORD_KINDS,
+  CapturePlanSchema,
+  CaptureRecordKind,
+  CaptureStopReason,
+  CaptureWarningCode,
+  CaptureWarningState,
+  DURABLE_RECORD_KINDS,
+  FINAL_CRASH_CODES,
+  FINAL_START_REFUSALS,
+  LIBAVFORMAT_VERSION_MISMATCH,
+  MIC_RECORD_KINDS,
+  ONCE_PER_CAMERA_RECORD_KINDS,
+  SupervisorMessageType,
+  WorkerMessageType,
+  backoffDelayMs,
+  type AckMessage,
+  type CaptureIpcLimits,
+  type CapturePlan,
+  type RecordMessage,
+  type SupervisorMessage,
+  type TelemetryMessage,
+  type WorkerMessage,
+} from '@dems/capture-protocol';
+import {
+  CAMERA_END_REASONS,
+  CaptureDownReason,
+  CapturePhase,
+  CaptureRefusal,
+  CaptureSupervisorError,
+  SupervisorRefusal,
+  WorkerDownCode,
+  WorkerLaunchError,
+  type CaptureCameraEnd,
+  type CaptureAttemptIngest,
+  type CaptureCameraEndReason,
+  type CaptureEvent,
+  type CaptureEventName,
+  type CaptureReport,
+  type CaptureStatus,
+  type CaptureStopOutcome,
+  type CaptureSupervisor,
+  type CaptureSupervisorOptions,
+  type WorkerChannel,
+  type WorkerDown,
+} from './types';
+import { CaptureBootRefusal, workerVersionRefusalOf } from './boot/checks';
+import { CAPTURE_INGEST_PORT, captureIngestAddress, type CaptureIngestTrackId } from './ingest-address';
+
+/** Longest session ID the supervisor takes: a correlation ID built from it must fit the protocol's 128 characters. */
+export const MAX_SESSION_ID_CHARS = 80;
+const SESSION_ID = /^[A-Za-z0-9._:-]+$/;
+
+type CommandResult = { readonly ack: AckMessage } | { readonly refusal: CaptureSupervisorError };
+
+interface PendingCommand {
+  settle(result: CommandResult): void;
+  cancelTimer(): void;
+}
+
+interface Worker {
+  readonly attempt: number;
+  /** The session it was started for. */
+  readonly of: Session;
+  /** What it already reported: `kind:deviceId` of the once-only records. */
+  readonly reported: Set<string>;
+  sealed: boolean;
+  /** Arrival times of its newest records, for the rate ceiling. */
+  readonly recordTimes: number[];
+  channel: WorkerChannel | null;
+  hello: boolean;
+  started: boolean;
+  exited: boolean;
+  /** The `STOP` of its session was written to it. */
+  stopSent: boolean;
+  /** It acknowledged that `STOP` with `ok`. */
+  stopAcked: boolean;
+  /** It wrote an `AUDIO_SOURCE_INTERVAL` (an audio timeline began) / the `AUDIO_TIMELINE_END` that ends it. */
+  timelineOpen: boolean;
+  timelineEnded: boolean;
+  lastCounter: number;
+  lastHeartbeatAt: number;
+  cancelHello(): void;
+  cancelWatchdog(): void;
+  cancelStable(): void;
+  readonly pending: Map<string, PendingCommand>;
+}
+
+interface Session {
+  readonly id: string;
+  readonly correlationId: string;
+  plan: CapturePlan;
+  attempt: number;
+  restarts: number;
+  commandSeq: number;
+  /** True once a file of the plan (a camera file or, row 148, a channel file) may hold a fragment on the disk: no worker is started for it again. */
+  held: boolean;
+  /** Row D2C (D150 (2)): true once a CAMERA file of the plan may hold a fragment - the session is durable (`status().durable`). A channel file alone never sets it. */
+  durable: boolean;
+  /** The sequence number of the last record of the session's worker; 0 before the first. */
+  recordSeq: number;
+  /** What a warning of this session may be about: the device IDs of its plan (protocol 4: a mic role is never a subject, D84 R-2). */
+  readonly subjects: ReadonlySet<string>;
+  /** The cameras of its plan: what a fragment record may be about. */
+  readonly cameras: ReadonlySet<string>;
+  /** The microphones of its plan, by device ID: what a microphone record may be about, and (row 148, protocol 6) a checkpoint of a channel file. */
+  readonly mics: ReadonlySet<string>;
+  startWaiter: { resolve(): void; reject(error: CaptureSupervisorError): void } | null;
+  stopping: CaptureStopReason | null;
+  readonly stopWaiters: Array<(outcome: CaptureStopOutcome) => void>;
+  /** A worker of this session acknowledged `START`: from then on it may have recorded. */
+  recorded: boolean;
+  /** The last time a worker of THIS session went down; null while none did. */
+  lastDown: WorkerDown | null;
+  /** How the stop of this session ended, once it is known. */
+  stopOutcome: CaptureStopOutcome | null;
+  /** The last fragment of each file the worker reported durable (`FRAGMENT_CHECKPOINT`), by device: a camera's (what its end is dated with) and, row 148, a channel file's (read by nobody yet). */
+  readonly lastFragment: Map<string, { readonly index: number; readonly mediaEndMs: number }>;
+  /** The cameras the worker gave up while the session went on, by camera, in the order it said so. */
+  readonly cameraEnds: Map<string, CaptureCameraEnd>;
+  /** Row 179: what renews the ingest addresses for a later worker of the session; null: the plan is sent as given. */
+  readonly ingest: CaptureAttemptIngest | null;
+  /** Row 179: the last element of every ingest address a plan of this session held. None is used twice. */
+  readonly ingestElements: Set<string>;
+  /** Row 191: the microphones of the plan the session was started with. A later worker's plan holds those of them that are open for it. */
+  readonly micsOfStart: CapturePlan['mics'];
+}
+
+interface DownCause {
+  readonly code: WorkerDownCode;
+  readonly detail?: string | null;
+  readonly exitCode?: number | null;
+  readonly signal?: string | null;
+  /** False when another try cannot change the outcome. */
+  readonly retryable?: boolean;
+}
+
+/** A listener as the registry holds it. */
+type AnyListener = (event: CaptureEvent) => void | Promise<void>;
+/** The events that come from the worker's messages. */
+type WorkerEvent = Extract<CaptureEvent, { name: 'telemetry' | 'progress' }> | (Extract<CaptureEvent, { name: 'warning' }> & { source: 'worker' });
+/** The events the supervisor raises itself. */
+type OwnEvent = Extract<CaptureEvent, { name: 'workerDown' | 'phase' | 'record' }> | (Extract<CaptureEvent, { name: 'warning' }> & { source: 'supervisor' });
+
+/** What a worker says when a file is already at one of its output paths: it writes nothing there (option C). */
+export const OUTPUT_EXISTS = 'OUTPUT_EXISTS';
+
+const nothing = (): void => {};
+/** A stop that had nothing to interrupt. */
+const CLEAN_STOP: CaptureStopOutcome = Object.freeze({ clean: true, down: null });
+
+/** A stop: the worker left with code 0 and never acknowledged the `STOP` (`WorkerDown.detail`). */
+export const STOP_NOT_ACKNOWLEDGED = 'STOP_NOT_ACKNOWLEDGED';
+/** A stop: the worker left without the record that ends the audio timeline it had begun (`WorkerDown.detail`). */
+export const TIMELINE_END_MISSING = 'TIMELINE_END_MISSING';
+/** Row 179: the code of the report of a later worker that was not started because its plan got no new ingest addresses. */
+export const CAPTURE_INGEST_NOT_RENEWED = 'CAPTURE_INGEST_NOT_RENEWED';
+/** Why (`detail` of that report's error): a closed list, never a text of the failure and never an address. */
+export const IngestRenewalFailure = { TRACK_UNKNOWN: 'TRACK_UNKNOWN', SOURCE_FAILED: 'SOURCE_FAILED', ELEMENT_REPEATED: 'ELEMENT_REPEATED', PLAN_INVALID: 'PLAN_INVALID', RECEIVER_FAILED: 'RECEIVER_FAILED' } as const;
+export type IngestRenewalFailure = (typeof IngestRenewalFailure)[keyof typeof IngestRenewalFailure];
+/**
+ * Row 191: the code of the report of a later worker that was not started because the session's audio sources were not
+ * ready for it. Its `detail` is `RECEIVER_FAILED` (the session's promise rejected) or `PLAN_INVALID` (what it gave makes
+ * no plan of the protocol), of the list above.
+ */
+export const CAPTURE_SOURCES_NOT_READY = 'CAPTURE_SOURCES_NOT_READY';
+
+/**
+ * Row 148 (D5 pairs, D30 K-3; protocol 6): the camera rows of a LATER worker's plan, restated for the channels that
+ * opened again. A camera whose paired channel was in the plan of the start but is not in `micsNow` states
+ * `NOT_OPENED` (its file gets a silent audio track; the recording is not refused); a channel that is there again
+ * clears the statement (`micMissing` is null exactly when the plan holds the row); a camera whose channel was not
+ * in the plan of the start keeps the word it was given then. Pure. The supervisor's renewal and the session's facts
+ * read the same rule, so the seal states what the later worker wrote.
+ */
+export function restatePairedMics(
+  cameras: readonly CapturePlan['cameras'][number][],
+  micsOfStart: readonly Pick<CapturePlan['mics'][number], 'channel'>[],
+  micsNow: readonly Pick<CapturePlan['mics'][number], 'channel'>[],
+): CapturePlan['cameras'][number][] {
+  return cameras.map((camera) => {
+    const heldAtStart = micsOfStart.some((mic) => mic.channel === camera.micChannel);
+    const there = micsNow.some((mic) => mic.channel === camera.micChannel);
+    return { ...camera, micMissing: there ? null : heldAtStart ? 'NOT_OPENED' : camera.micMissing };
+  });
+}
+/** The last path element of an ingest address: what a pusher must announce beyond what anyone can know. Read to compare, never to rebuild. */
+const ingestElementOf = (address: string): string => address.slice(address.lastIndexOf('/') + 1);
+const isIngestTrack = (trackId: string): trackId is CaptureIngestTrackId => Object.hasOwn(CAPTURE_INGEST_PORT, trackId);
+const PROOF_BUILD_DETAIL = 'PROOF_BUILD';
+const VERSION_UNKNOWN_DETAIL = 'VERSION_UNKNOWN';
+
+const SUPERVISOR_REFUSALS: ReadonlySet<string> = new Set(Object.values(SupervisorRefusal));
+const DOWN_REASONS: ReadonlySet<string> = new Set(Object.values(CaptureDownReason));
+const CAMERA_ENDS: ReadonlySet<string> = new Set(CAMERA_END_REASONS);
+
+/** Row D2C (D150 (2), F-C1D-2): a durable-fragment record of a CAMERA of the plan (a channel file's checkpoint names a microphone). */
+function cameraFileRecord(current: Pick<Session, 'cameras'>, record: RecordMessage['record']): boolean {
+  return 'deviceId' in record && current.cameras.has(record.deviceId);
+}
+
+/**
+ * WHY a worker is down, as ONE member of the closed enumeration (see the header). Pure: the code,
+ * the detail and how the process ended in, a member out - for EVERY input, so nothing the
+ * supervisor can say of a worker is without a reason.
+ */
+export function captureDownReasonOf(
+  down: { readonly code: WorkerDownCode; readonly detail: string | null; readonly exitCode: number | null; readonly signal: string | null },
+  /** True when the session may hold a durable fragment: a final crash code that says "nothing was recorded" is then NOT its reason. */
+  durable = false,
+): CaptureDownReason {
+  switch (down.code) {
+    case WorkerDownCode.SPAWN_FAILED:
+      return CaptureDownReason.WORKER_SPAWN_FAILED;
+    case WorkerDownCode.NOT_CONFIGURED:
+      return CaptureDownReason.WORKER_NOT_CONFIGURED;
+    case WorkerDownCode.HELLO_TIMEOUT:
+      return CaptureDownReason.WORKER_HELLO_TIMEOUT;
+    case WorkerDownCode.PROTOCOL_MISMATCH:
+      return CaptureDownReason.WORKER_PROTOCOL_MISMATCH;
+    case WorkerDownCode.PROOF_BUILD:
+      return CaptureDownReason.WORKER_PROOF_BUILD;
+    case WorkerDownCode.VERSION_UNKNOWN:
+      return CaptureDownReason.WORKER_VERSION_UNKNOWN;
+    case WorkerDownCode.VERSION_MISMATCH:
+      return CaptureDownReason.WORKER_VERSION_MISMATCH;
+    case WorkerDownCode.PROTOCOL_VIOLATION:
+      // What the supervisor itself refused has its own name; anything else is the channel's "this line is no frame".
+      return down.detail !== null && SUPERVISOR_REFUSALS.has(down.detail) ? (down.detail as SupervisorRefusal) : CaptureDownReason.WORKER_FRAME_INVALID;
+    case WorkerDownCode.START_REFUSED:
+      return down.detail === OUTPUT_EXISTS ? CaptureDownReason.WORKER_OUTPUT_EXISTS : CaptureDownReason.WORKER_START_REFUSED;
+    case WorkerDownCode.START_TIMEOUT:
+      return CaptureDownReason.WORKER_START_TIMEOUT;
+    case WorkerDownCode.HEARTBEAT_TIMEOUT:
+      return CaptureDownReason.WORKER_HEARTBEAT_TIMEOUT;
+    case WorkerDownCode.STOP_TIMEOUT:
+      return CaptureDownReason.STOP_TIMEOUT;
+    case WorkerDownCode.EXITED:
+      if (down.detail === STOP_NOT_ACKNOWLEDGED) return CaptureDownReason.WORKER_STOP_NOT_ACKNOWLEDGED;
+      if (down.detail === TIMELINE_END_MISSING) return CaptureDownReason.WORKER_TIMELINE_END_MISSING;
+      if (down.detail === LIBAVFORMAT_VERSION_MISMATCH) return CaptureDownReason.WORKER_MEDIA_LIBRARY_MISMATCH;
+      // A final crash code of the protocol is a reason of its own (it has its sentence: `NO_CAMERA_CONNECTED`, "nothing was
+      // recorded") - for a session WITHOUT durable media only: a session that holds a fragment is not worded as an empty one,
+      // whatever its worker says at its end. Any other `CRASH` code is the worker's text and stays in `detail`.
+      if (down.detail !== null) return !durable && FINAL_CRASH_CODES.includes(down.detail) && DOWN_REASONS.has(down.detail) ? (down.detail as CaptureDownReason) : CaptureDownReason.WORKER_CRASHED;
+      if (down.signal !== null) return CaptureDownReason.WORKER_KILLED;
+      return down.exitCode === 0 ? CaptureDownReason.WORKER_EXIT_UNEXPECTED : CaptureDownReason.WORKER_EXIT_NONZERO;
+  }
+}
+
+/** The supervisor's code for a `HELLO` the one version rule refuses (`boot/checks.ts`), or null. */
+function helloRefusalOf(hello: { readonly protocolVersion: number; readonly workerVersion: string }): { readonly code: WorkerDownCode; readonly detail: string } | null {
+  switch (workerVersionRefusalOf(hello)) {
+    case null:
+      return null;
+    case CaptureBootRefusal.WORKER_PROTOCOL_MISMATCH:
+      return { code: WorkerDownCode.PROTOCOL_MISMATCH, detail: `V${hello.protocolVersion}` };
+    case CaptureBootRefusal.WORKER_PROOF_BUILD:
+      // A proof build (a negative control of the capture checks) is never recorded with. The boot
+      // check refuses it once; a program replaced after the boot is seen here (pair-58 F-10).
+      return { code: WorkerDownCode.PROOF_BUILD, detail: PROOF_BUILD_DETAIL };
+    case CaptureBootRefusal.WORKER_VERSION_MISMATCH:
+      // A release word of ANOTHER version than this Core drives (gate 64 C7): the word has the release form, so it is said (found; expected is the constant).
+      return { code: WorkerDownCode.VERSION_MISMATCH, detail: hello.workerVersion };
+    default:
+      // Not a release word: the allowlist, for every HELLO (review R63-04). The word itself is not repeated.
+      return { code: WorkerDownCode.VERSION_UNKNOWN, detail: VERSION_UNKNOWN_DETAIL };
+  }
+}
+
+export function createCaptureSupervisor(options: CaptureSupervisorOptions): CaptureSupervisor {
+  const limits: CaptureIpcLimits = { ...CAPTURE_IPC_DEFAULTS, ...options.limits };
+  const { now, launcher } = options;
+  const reportTo = options.report ?? nothing;
+  /** A report never throws back into the supervisor: the thing it reports already went wrong. */
+  const report = (entry: CaptureReport): void => {
+    try {
+      reportTo(entry);
+    } catch {
+      // Nowhere left to say it.
+    }
+  };
+
+  // ── Steps ───────────────────────────────────────────────────────────────────────────────────
+  // Everything that enters the supervisor from outside (a call of the seam, a message, an exit, a
+  // timer) runs as one STEP. The supervisor's own events are collected while a step runs and are
+  // handed to their listeners when the outermost step is finished: a listener never sees half a
+  // transition, and what it calls from inside an event is a step of its own on a consistent state.
+
+  let depth = 0;
+  const outbox: OwnEvent[] = [];
+  let handingOut = false;
+
+  function handOut(): void {
+    if (handingOut) return;
+    handingOut = true;
+    try {
+      for (let event = outbox.shift(); event !== undefined; event = outbox.shift()) deliverOwn(event);
+    } finally {
+      handingOut = false;
+    }
+  }
+
+  function step<Result>(run: () => Result): Result {
+    depth += 1;
+    try {
+      return run();
+    } finally {
+      depth -= 1;
+      if (depth === 0) handOut();
+    }
+  }
+
+  /** The injected timers, with every callback run as a step. */
+  const timers = {
+    after: (delayMs: number, callback: () => void): (() => void) => options.timers.after(delayMs, () => step(callback)),
+  };
+
+  let phase: CapturePhase = CapturePhase.CLOSED;
+  let session: Session | null = null;
+  let worker: Worker | null = null;
+  /** A worker that was killed and whose exit has not been seen yet. No new worker starts before it. */
+  let reaping: Worker | null = null;
+  const reapWaiters: Array<() => void> = [];
+  let cancelBackoff = nothing;
+  let cancelStopGrace = nothing;
+  let lastCrash: WorkerDown | null = null;
+  let sessionSeq = 0;
+  /** The session whose `CAPTURE_FAULT` of the supervisor has not been cleared yet. */
+  let ownFault: { sessionId: string; correlationId: string } | null = null;
+
+  const listeners = new Map<CaptureEventName, Set<AnyListener>>();
+  const queue: CaptureEvent[] = [];
+  let pumping = false;
+  let droppedTelemetry = 0;
+  let droppedEvents = 0;
+  /** True from the first loss at the bound until the queue is at most half full again. */
+  let overflowing = false;
+
+  // ── Events ──────────────────────────────────────────────────────────────────────────────────
+
+  async function pump(): Promise<void> {
+    if (pumping) return;
+    pumping = true;
+    try {
+      for (let event = queue.shift(); event !== undefined; event = queue.shift()) {
+        if (overflowing && queue.length <= Math.floor(limits.eventQueueLimit / 2)) overflowing = false;
+        for (const listener of listeners.get(event.name) ?? []) {
+          try {
+            const result = listener(event);
+            // Only a listener that is behind makes the others wait.
+            if (result instanceof Promise) await result;
+          } catch (err) {
+            report({ source: 'capture.supervisor.listener', code: 'CAPTURE_LISTENER_FAILED', sessionId: event.sessionId, correlationId: event.correlationId, err });
+          }
+        }
+      }
+    } finally {
+      pumping = false;
+    }
+  }
+
+  /** What makes two waiting events of the worker the same piece of information. */
+  function sameAs(event: WorkerEvent): (queued: CaptureEvent) => boolean {
+    if (event.name === 'telemetry') return (queued) => queued.name === 'telemetry';
+    if (event.name === 'progress') return (queued) => queued.name === 'progress' && queued.frame.step === event.frame.step;
+    return (queued) => queued.name === 'warning' && queued.code === event.code && queued.reason === event.reason && queued.subject === event.subject && queued.state === event.state;
+  }
+
+  /** Makes room at the bound for a progress value or a warning. False when only warnings wait. */
+  function evictALevel(): boolean {
+    const telemetry = queue.findIndex((queued) => queued.name === 'telemetry');
+    if (telemetry !== -1) {
+      queue.splice(telemetry, 1);
+      droppedTelemetry += 1;
+      return true;
+    }
+    const progress = queue.findIndex((queued) => queued.name === 'progress');
+    if (progress === -1) return false;
+    queue.splice(progress, 1);
+    droppedEvents += 1;
+    return true;
+  }
+
+  /** An event that came from the worker: through the bounded queue, one at a time. */
+  function emitFromWorker(event: WorkerEvent): void {
+    const waiting = queue.findIndex(sameAs(event));
+    if (waiting !== -1) {
+      if (event.name === 'telemetry') droppedTelemetry += 1;
+      else droppedEvents += 1;
+      // The same warning is said once; a level is replaced by its newer value.
+      if (event.name === 'warning') return;
+      queue.splice(waiting, 1);
+    } else if (queue.length >= limits.eventQueueLimit) {
+      const first = !overflowing;
+      overflowing = true;
+      let room = false;
+      if (event.name === 'telemetry') droppedTelemetry += 1;
+      else if (evictALevel()) room = true;
+      else droppedEvents += 1;
+      if (first) {
+        report({
+          source: 'capture.supervisor.events',
+          code: 'CAPTURE_EVENT_OVERFLOW',
+          sessionId: event.sessionId,
+          correlationId: event.correlationId,
+          err: new CaptureSupervisorError(CaptureRefusal.BACKPRESSURE, 'the listeners of the capture events are behind: the queue is at its limit and events are dropped'),
+        });
+      }
+      if (!room) return;
+    }
+    queue.push(event);
+    // `pump` catches what a listener throws and `report` does not throw; the catch is the last line of defence.
+    pump().catch(nothing);
+  }
+
+  /** An event of the supervisor itself: to every listener, waiting for none, once the step that raised it is finished. */
+  function emit(event: OwnEvent): void {
+    outbox.push(event);
+    if (depth === 0) handOut();
+  }
+
+  function deliverOwn(event: OwnEvent): void {
+    for (const listener of listeners.get(event.name) ?? []) {
+      const failed = (err: unknown): void => report({ source: 'capture.supervisor.listener', code: 'CAPTURE_LISTENER_FAILED', sessionId: event.sessionId, correlationId: event.correlationId, err });
+      try {
+        const result = listener(event);
+        if (result instanceof Promise) result.catch(failed);
+      } catch (err) {
+        failed(err);
+      }
+    }
+  }
+
+  function setPhase(next: CapturePhase, of: Session | null = session): void {
+    if (phase === next) return;
+    const previous = phase;
+    phase = next;
+    if (of !== null) emit({ name: 'phase', sessionId: of.id, correlationId: of.correlationId, phase: next, previous });
+  }
+
+  // ── Commands ────────────────────────────────────────────────────────────────────────────────
+
+  function sendCommand(
+    current: Session,
+    to: Worker,
+    build: (envelope: { v: typeof CAPTURE_PROTOCOL_VERSION; sessionId: string; correlationId: string }) => SupervisorMessage,
+    done: (result: CommandResult) => void,
+    /** `STOP` only: written even when the window of unacknowledged commands is full. */
+    outsideWindow = false,
+  ): void {
+    const channel = to.channel;
+    if (channel === null || to.exited) {
+      done({ refusal: new CaptureSupervisorError(CaptureRefusal.WORKER_DOWN, 'the capture worker is not running') });
+      return;
+    }
+    if (!outsideWindow && to.pending.size >= limits.commandQueueLimit) {
+      done({ refusal: new CaptureSupervisorError(CaptureRefusal.BACKPRESSURE, 'too many capture commands await their acknowledgement') });
+      return;
+    }
+    current.commandSeq += 1;
+    const correlationId = `${current.correlationId}:${current.commandSeq}`;
+    const settle = (result: CommandResult): void => {
+      const pending = to.pending.get(correlationId);
+      if (pending === undefined) return;
+      to.pending.delete(correlationId);
+      pending.cancelTimer();
+      done(result);
+    };
+    to.pending.set(correlationId, {
+      settle,
+      cancelTimer: timers.after(limits.ackTimeoutMs, () => {
+        settle({ refusal: new CaptureSupervisorError(CaptureRefusal.COMMAND_TIMEOUT, 'the capture worker did not acknowledge a command in time') });
+      }),
+    });
+    channel.send(build({ v: CAPTURE_PROTOCOL_VERSION, sessionId: current.id, correlationId })).catch(() => {
+      step(() => settle({ refusal: new CaptureSupervisorError(CaptureRefusal.WORKER_DOWN, 'the capture worker took no command: its input is closed') }));
+    });
+  }
+
+  // ── A worker goes down ──────────────────────────────────────────────────────────────────────
+
+  function whenReaped(next: () => void): void {
+    if (reaping === null) next();
+    else reapWaiters.push(next);
+  }
+
+  function reaped(dead: Worker): void {
+    if (reaping !== dead) return;
+    reaping = null;
+    for (const next of reapWaiters.splice(0)) next();
+  }
+
+  /** Takes the worker out of service. A process that is not known to have exited is killed and awaited. */
+  function retire(dead: Worker): void {
+    worker = null;
+    dead.cancelHello();
+    dead.cancelWatchdog();
+    dead.cancelStable();
+    for (const pending of dead.pending.values()) {
+      pending.settle({ refusal: new CaptureSupervisorError(CaptureRefusal.WORKER_DOWN, 'the capture worker went down before it acknowledged the command') });
+    }
+    if (!dead.exited && dead.channel !== null) {
+      reaping = dead;
+      dead.channel.kill('SIGKILL');
+    }
+  }
+
+  /** The worker events of a session that is over are dropped, and counted: none reaches the next session. */
+  function dropQueued(ended: Session): void {
+    for (let index = queue.length - 1; index >= 0; index -= 1) {
+      const queued = queue[index];
+      if (queued === undefined || queued.correlationId !== ended.correlationId) continue;
+      queue.splice(index, 1);
+      if (queued.name === 'telemetry') droppedTelemetry += 1;
+      else droppedEvents += 1;
+    }
+    if (queue.length <= Math.floor(limits.eventQueueLimit / 2)) overflowing = false;
+  }
+
+  function finishStop(): void {
+    whenReaped(() => {
+      const ended = session;
+      if (ended === null) return;
+      cancelStopGrace();
+      cancelStopGrace = nothing;
+      session = null;
+      dropQueued(ended);
+      setPhase(CapturePhase.IDLE, ended);
+      const stopped = ended.stopOutcome ?? CLEAN_STOP;
+      // WHICH camera ended inside the session, WHY and WHEN (gate 89 C3): said with the stop, clean or not.
+      const outcome: CaptureStopOutcome = ended.cameraEnds.size === 0 ? stopped : Object.freeze({ ...stopped, cameraEnds: Object.freeze([...ended.cameraEnds.values()]) });
+      for (const resolve of ended.stopWaiters.splice(0)) resolve(outcome);
+    });
+  }
+
+  /**
+   * The exit a `stop` was waiting for (review R63-01). CLEAN: the worker acknowledged the `STOP`,
+   * ended the audio timeline it had begun, and left with code 0 and no signal - or it never
+   * acknowledged a `START`, so it recorded nothing. Everything else is the end of an interrupted
+   * recording: the cause, or null when the stop is clean.
+   */
+  function stopFailureOf(dead: Worker, cause: DownCause): DownCause | null {
+    // Never shook hands: it was sent no plan and recorded nothing, however it ended.
+    if (!dead.hello) return null;
+    if (!dead.started && cause.code !== WorkerDownCode.STOP_TIMEOUT) return null;
+    if (cause.code !== WorkerDownCode.EXITED) return cause;
+    // A `CRASH` frame, a signal, a code other than 0: the worker's own account of a failure.
+    if ((cause.detail ?? null) !== null || (cause.signal ?? null) !== null || (cause.exitCode ?? null) !== 0) return cause;
+    if (!dead.stopAcked) return { ...cause, detail: STOP_NOT_ACKNOWLEDGED };
+    if (dead.timelineOpen && !dead.timelineEnded) return { ...cause, detail: TIMELINE_END_MISSING };
+    return null;
+  }
+
+  function down(dead: Worker, cause: DownCause): void {
+    if (worker !== dead) return;
+    retire(dead);
+    afterDown(dead.attempt, cause, dead);
+  }
+
+  function afterDown(attempt: number, cause: DownCause, dead: Worker | null = null): void {
+    const current = session;
+    if (current === null) return;
+    const crashOf = (of: DownCause): WorkerDown => {
+      const facts = { code: of.code, detail: of.detail ?? null, exitCode: of.exitCode ?? null, signal: of.signal ?? null };
+      return { at: now(), ...facts, attempt, reason: captureDownReasonOf(facts, current.durable) };
+    };
+    if (current.stopping !== null) {
+      // The exit a `stop` was waiting for. Whether it is a clean end or an interrupted recording is
+      // read from HOW the worker ended, never assumed (review R63-01).
+      const failure = dead === null ? cause : stopFailureOf(dead, cause);
+      if (failure !== null) {
+        const crash = crashOf(failure);
+        lastCrash = crash;
+        current.lastDown = crash;
+        current.stopOutcome = { clean: false, down: crash };
+        emit({ name: 'workerDown', sessionId: current.id, correlationId: current.correlationId, down: crash, restartInMs: null });
+      }
+      finishStop();
+      return;
+    }
+    const crash = crashOf(cause);
+    lastCrash = crash;
+    current.lastDown = crash;
+    const base = { sessionId: current.id, correlationId: current.correlationId };
+    // Option C (D67): a session that may hold a fragment on the disk (any file of its plan, `held`) gets no further worker.
+    if (cause.retryable === false || current.held || current.restarts >= limits.maxRestarts) {
+      emit({ name: 'workerDown', ...base, down: crash, restartInMs: null });
+      // WHY, with the fault (wave H driver F): the reason of the down that raised it.
+      emit({ name: 'warning', ...base, action: CAPTURE_INTERNAL_ACTION.WARNING, code: CaptureWarningCode.CAPTURE_FAULT, reason: null, state: CaptureWarningState.ACTIVE, subject: null, source: 'supervisor', ...(crash.reason === undefined ? {} : { cause: crash.reason }) });
+      // The newest failed session holds the fault: each failed session is an occurrence of its own (D84 R-3).
+      ownFault = base;
+      const waiter = current.startWaiter;
+      if (waiter === null) {
+        // A recording that lost its worker for good: the session stays open until it is stopped,
+        // so that the durable prefix can be sealed as interrupted (OD-08).
+        setPhase(CapturePhase.FAULTED);
+        return;
+      }
+      current.startWaiter = null;
+      session = null;
+      dropQueued(current);
+      setPhase(CapturePhase.IDLE, current);
+      waiter.reject(new CaptureSupervisorError(CaptureRefusal.FAULT, 'the capture worker could not be started', cause.code));
+      return;
+    }
+    const delay = backoffDelayMs(current.restarts, limits);
+    current.restarts += 1;
+    emit({ name: 'workerDown', ...base, down: crash, restartInMs: delay });
+    setPhase(current.startWaiter === null ? CapturePhase.RESTARTING : CapturePhase.STARTING);
+    cancelBackoff = timers.after(delay, () => {
+      cancelBackoff = nothing;
+      launch();
+    });
+  }
+
+  // ── A worker starts ─────────────────────────────────────────────────────────────────────────
+
+  function armWatchdog(of: Worker): void {
+    of.cancelWatchdog();
+    of.cancelWatchdog = timers.after(limits.heartbeatTimeoutMs, () => down(of, { code: WorkerDownCode.HEARTBEAT_TIMEOUT }));
+  }
+
+  /**
+   * A line of a worker that is no longer the session's worker (it was ended; its last lines are
+   * still read before its exit). Nothing of it is handed on. ONE fact is taken: a record of a
+   * fragment means bytes are on the disk, so the restart that is waiting is called off.
+   *
+   * TWO GUARDS hold that fact to the session it belongs to (pair-58 re-check R-5; each is pinned
+   * by a test of `records.test.ts`): `from.of !== current` - the dying worker of ANOTHER session
+   * cannot mark this one durable; `!from.started` - a worker whose `START` was never acknowledged
+   * has written nothing, whatever it says.
+   */
+  function onLateMessage(from: Worker, message: WorkerMessage): void {
+    const current = session;
+    if (current === null || from.of !== current || !from.started || current.stopping !== null) return;
+    if (message.type !== WorkerMessageType.RECORD || !DURABLE_RECORD_KINDS.includes(message.record.kind)) return;
+    // Row D2C (D150 (2)): a CAMERA file's record makes the session durable; any file's (a channel file too) calls the restart off.
+    if (cameraFileRecord(current, message.record)) current.durable = true;
+    if (current.held) return;
+    current.held = true;
+    if (worker !== null || phase !== CapturePhase.RESTARTING) return;
+    cancelBackoff();
+    cancelBackoff = nothing;
+    const base = { sessionId: current.id, correlationId: current.correlationId };
+    // The cause is the down that began the back-off this record calls off - judged again with what the session holds now
+    // (row D2C: a late channel-file record alone does not make it durable).
+    const cause = current.lastDown === null ? undefined : captureDownReasonOf(current.lastDown, current.durable);
+    emit({ name: 'warning', ...base, action: CAPTURE_INTERNAL_ACTION.WARNING, code: CaptureWarningCode.CAPTURE_FAULT, reason: null, state: CaptureWarningState.ACTIVE, subject: null, source: 'supervisor', ...(cause === undefined ? {} : { cause }) });
+    ownFault = base;
+    setPhase(CapturePhase.FAULTED);
+  }
+
+  function onMessage(from: Worker, message: WorkerMessage): void {
+    const current = session;
+    if (worker !== from) {
+      onLateMessage(from, message);
+      return;
+    }
+    if (current === null) return;
+    if ('sessionId' in message && message.sessionId !== null && message.sessionId !== current.id) {
+      down(from, { code: WorkerDownCode.PROTOCOL_VIOLATION, detail: SupervisorRefusal.SESSION_MISMATCH });
+      return;
+    }
+    if (message.type === WorkerMessageType.HELLO) {
+      if (from.hello) {
+        down(from, { code: WorkerDownCode.PROTOCOL_VIOLATION, detail: SupervisorRefusal.HELLO_TWICE });
+        return;
+      }
+      // ONE rule for the boot check and for every HELLO of every session (review R63-04): the
+      // protocol version, no proof mark, the release word exactly. Final: another start of the same
+      // program says the same HELLO. The worker is sent nothing.
+      const refusal = helloRefusalOf(message);
+      if (refusal !== null) {
+        down(from, { ...refusal, retryable: false });
+        return;
+      }
+      from.hello = true;
+      from.cancelHello();
+      from.lastHeartbeatAt = now();
+      armWatchdog(from);
+      if (current.stopping !== null) return;
+      sendCommand(
+        current,
+        from,
+        (envelope) => ({ ...envelope, type: SupervisorMessageType.START, attempt: from.attempt, plan: current.plan }),
+        (result) => {
+          if (worker !== from || session !== current || current.stopping !== null) return;
+          if ('refusal' in result) {
+            // A worker that is already down is handled where it went down.
+            if (result.refusal.code === CaptureRefusal.COMMAND_TIMEOUT) down(from, { code: WorkerDownCode.START_TIMEOUT });
+            return;
+          }
+          if (!result.ack.ok) {
+            // A file is already where this worker would write: evidence may be on the disk, whatever
+            // the frames said. Another worker would find the same file (the file is the truth).
+            // Row D2C: the refusal does not say whose file it found (a camera's or a channel's), so it stays durable as before.
+            if (result.ack.code === OUTPUT_EXISTS) {
+              current.held = true;
+              current.durable = true;
+            }
+            // The same plan on the same disk gets the same answer: not asked again (finding A-7).
+            const final = result.ack.code !== undefined && FINAL_START_REFUSALS.includes(result.ack.code);
+            down(from, { code: WorkerDownCode.START_REFUSED, detail: result.ack.code ?? null, ...(final ? { retryable: false } : {}) });
+            return;
+          }
+          from.started = true;
+          current.recorded = true;
+          from.cancelStable = timers.after(limits.stableAfterMs, () => {
+            if (worker === from) current.restarts = 0;
+          });
+          setPhase(CapturePhase.RECORDING);
+          if (ownFault !== null && ownFault.correlationId !== current.correlationId) {
+            // A session records again: the fault the supervisor raised for an earlier one is over.
+            emit({ name: 'warning', ...ownFault, action: CAPTURE_INTERNAL_ACTION.WARNING, code: CaptureWarningCode.CAPTURE_FAULT, reason: null, state: CaptureWarningState.CLEARED, subject: null, source: 'supervisor' });
+            ownFault = null;
+          }
+          const waiter = current.startWaiter;
+          current.startWaiter = null;
+          waiter?.resolve();
+        },
+      );
+      return;
+    }
+    if (!from.hello) {
+      // The ONE frame a worker may write instead of `HELLO`: it refuses to start on a libavformat it
+      // was not verified against (review R63-07). Final: the same program on the same host says it again.
+      if (message.type === WorkerMessageType.CRASH && message.code === LIBAVFORMAT_VERSION_MISMATCH) {
+        down(from, { code: WorkerDownCode.EXITED, detail: message.code, exitCode: message.exitCode, signal: message.signal, retryable: false });
+        return;
+      }
+      down(from, { code: WorkerDownCode.PROTOCOL_VIOLATION, detail: SupervisorRefusal.HELLO_EXPECTED });
+      return;
+    }
+    const base = { sessionId: current.id, correlationId: current.correlationId };
+    switch (message.type) {
+      case WorkerMessageType.ACK:
+        // An acknowledgement nobody waits for (its command timed out) is dropped.
+        from.pending.get(message.correlationId)?.settle({ ack: message });
+        return;
+      case WorkerMessageType.HEARTBEAT:
+        if (message.counter > from.lastCounter) {
+          from.lastCounter = message.counter;
+          from.lastHeartbeatAt = now();
+          if (current.stopping === null) armWatchdog(from);
+        }
+        return;
+      case WorkerMessageType.TELEMETRY:
+        if (!telemetryOfThePlan(current, message)) {
+          // A device that is not of this session's plan: an ID is never free text for the engine, the log or the error log (review R63-05).
+          down(from, { code: WorkerDownCode.PROTOCOL_VIOLATION, detail: SupervisorRefusal.TELEMETRY_SUBJECT_UNKNOWN });
+          return;
+        }
+        if (from.started) emitFromWorker({ name: 'telemetry', ...base, action: CAPTURE_INTERNAL_ACTION.TELEMETRY, frame: message });
+        return;
+      case WorkerMessageType.PROGRESS:
+        if (from.started) emitFromWorker({ name: 'progress', ...base, action: CAPTURE_INTERNAL_ACTION.PROGRESS, frame: message });
+        return;
+      case WorkerMessageType.WARNING:
+        if (!current.subjects.has(message.subject)) {
+          // Not a device or a role of this session: a subject is never free text (pair-57 re-check N-3).
+          down(from, { code: WorkerDownCode.PROTOCOL_VIOLATION, detail: SupervisorRefusal.WARNING_SUBJECT_UNKNOWN });
+          return;
+        }
+        noteCameraEnd(current, message.code, message.reason, message.state, message.subject);
+        emitFromWorker({ name: 'warning', ...base, action: CAPTURE_INTERNAL_ACTION.WARNING, code: message.code, reason: message.reason, state: message.state, subject: message.subject, source: 'worker' });
+        return;
+      case WorkerMessageType.CRASH:
+        down(from, { code: WorkerDownCode.EXITED, detail: message.code, exitCode: message.exitCode, signal: message.signal, ...(FINAL_CRASH_CODES.includes(message.code) ? { retryable: false } : {}) });
+        return;
+      case WorkerMessageType.RECORD:
+        onRecord(from, current, message);
+        return;
+    }
+  }
+
+  /**
+   * The worker gave a camera of the plan up while the session goes on (gate 89 C3; see the header).
+   * Kept ONCE per camera, with the last fragment of its file reported durable until now. Read when
+   * the line arrives, in the worker's own order with its records. A camera condition does not end
+   * inside a session (protocol 4), so nothing takes an end back.
+   */
+  function noteCameraEnd(current: Session, code: string, reason: string, state: string, subject: string): void {
+    if (code !== CaptureWarningCode.CAPTURE_FAULT || state !== CaptureWarningState.ACTIVE || !CAMERA_ENDS.has(reason)) return;
+    if (!current.cameras.has(subject) || current.cameraEnds.has(subject)) return;
+    const last = current.lastFragment.get(subject) ?? null;
+    current.cameraEnds.set(
+      subject,
+      Object.freeze({ deviceId: subject, reason: reason as CaptureCameraEndReason, at: now(), lastDurableFragmentIndex: last?.index ?? null, lastDurableMediaEndMs: last?.mediaEndMs ?? null }),
+    );
+  }
+
+  /** True when every device a telemetry frame names is of the plan: a microphone in a level, a camera everywhere else. */
+  function telemetryOfThePlan(current: Session, frame: TelemetryMessage): boolean {
+    return (
+      frame.levels.every((level) => current.mics.has(level.deviceId)) &&
+      frame.ingest.every((ingest) => current.cameras.has(ingest.deviceId)) &&
+      frame.fragments.every((fragment) => current.cameras.has(fragment.deviceId)) &&
+      frame.clocks.every((clock) => current.cameras.has(clock.deviceId))
+    );
+  }
+
+  /** The devices of the plan a record of this kind may name (row 148; the protocol's kind lists, see the header). */
+  function recordSubjectsOf(current: Session, kind: CaptureRecordKind): ReadonlySet<string> {
+    if (CAMERA_OR_MIC_RECORD_KINDS.includes(kind)) return current.subjects;
+    return MIC_RECORD_KINDS.includes(kind) ? current.mics : current.cameras;
+  }
+
+  /** A record: checked and handed on at once, never through the queue of levels (spec §B.2 R-1, R-2). */
+  function onRecord(from: Worker, current: Session, message: RecordMessage): void {
+    const refuse = (detail: SupervisorRefusal): void => down(from, { code: WorkerDownCode.PROTOCOL_VIOLATION, detail });
+    if (!from.started) return refuse(SupervisorRefusal.RECORD_BEFORE_START);
+    const { record } = message;
+    // Whose device a record names (protocol 4; protocol 6 N-32, row 148): read by the protocol's kind lists - a microphone
+    // of the plan for a microphone record, a camera OR a microphone of the plan for a checkpoint (its camera file or its
+    // channel file), a camera of the plan for the rest. Before row 148 every kind but the interval was held to the cameras,
+    // which also refused the microphone records MIC_SAMPLE_ACCOUNT and AUDIO_INSERTED_RUN (finding F-148-1).
+    if ('deviceId' in record && !recordSubjectsOf(current, record.kind).has(record.deviceId)) return refuse(SupervisorRefusal.RECORD_SUBJECT_UNKNOWN);
+    // A worker that reports a fragment has written: the session is held BEFORE the sequence is
+    // judged, so that a worker ended for a gap is not replaced either.
+    if (DURABLE_RECORD_KINDS.includes(record.kind)) {
+      current.held = true;
+      // Row D2C (D150 (2), F-C1D-2): only a CAMERA file's fragment makes the session durable. A channel file's checkpoint
+      // (row 148) is handed on and stored, and holds the restart off (its file is never written again), but no more.
+      if (cameraFileRecord(current, record)) current.durable = true;
+    }
+    if (message.seq !== current.recordSeq + 1) return refuse(SupervisorRefusal.RECORD_SEQUENCE_GAP);
+    // Content (finding A-10): once-only records are said once per camera, and nothing follows the seal.
+    if (from.sealed) return refuse(SupervisorRefusal.RECORD_AFTER_SEAL);
+    if ('deviceId' in record && ONCE_PER_CAMERA_RECORD_KINDS.includes(record.kind)) {
+      // First video sample, first durable fragment, observed keyframe interval (row 59): once per camera.
+      const once = `${record.kind}:${record.deviceId}`;
+      if (from.reported.has(once)) return refuse(SupervisorRefusal.RECORD_REPEATED);
+      from.reported.add(once);
+    }
+    // The ceiling (finding A-5): records are low-rate by contract; a flood ends the worker.
+    const at = now();
+    while (from.recordTimes.length > 0 && at - (from.recordTimes[0] ?? at) >= limits.recordWindowMs) from.recordTimes.shift();
+    if (from.recordTimes.length >= limits.recordBurstLimit) return refuse(SupervisorRefusal.RECORD_RATE_EXCEEDED);
+    // A switch nobody commanded (review R63-05): the worker never switches by itself (OD-11), so the interval of a
+    // switch must name a command of this worker that awaits its `ACK`. Protocol 6 (N-31; audit row 149): no switch
+    // is ever commanded, so every interval with a correlation ID ends here.
+    if (record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL && record.correlationId !== null && !from.pending.has(record.correlationId)) return refuse(SupervisorRefusal.SWITCH_NOT_COMMANDED);
+    from.recordTimes.push(at);
+    if (record.kind === CaptureRecordKind.SEAL_COMPLETE) from.sealed = true;
+    // The audio timeline of this worker: begun by its first interval, ended by one record (a clean stop needs both or neither).
+    if (record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL) from.timelineOpen = true;
+    if (record.kind === CaptureRecordKind.AUDIO_TIMELINE_END) from.timelineEnded = true;
+    current.recordSeq = message.seq;
+    // The newest durable fragment of each file: what an end of that camera is dated with (gate 89 C3). A channel file's
+    // (row 148) is kept under its microphone's ID, which no camera end reads (`noteCameraEnd` holds the cameras).
+    if (record.kind === CaptureRecordKind.FRAGMENT_CHECKPOINT) current.lastFragment.set(record.deviceId, { index: record.index, mediaEndMs: record.mediaStartMs + record.mediaDurationMs });
+    emit({ name: 'record', sessionId: current.id, correlationId: current.correlationId, attempt: from.attempt, seq: message.seq, record });
+  }
+
+  /**
+   * Row 179 (BR-07 (2)): the plan of a worker AFTER the first of a session. Every camera of the
+   * plan gets a new ingest address from the one function; the session is told; only then is the
+   * plan of the session replaced. Null when all of that held, else why not - and then the plan is
+   * left as it was and the caller starts no worker with it.
+   */
+  function renewIngest(current: Session, source: CaptureAttemptIngest, attempt: number): IngestRenewalFailure | null {
+    const addresses = new Map<string, string>();
+    const elements: string[] = [];
+    for (const camera of current.plan.cameras) {
+      if (!isIngestTrack(camera.trackId)) return IngestRenewalFailure.TRACK_UNKNOWN;
+      let address: string;
+      try {
+        address = captureIngestAddress(current.id, camera.trackId, source.chance);
+      } catch {
+        return IngestRenewalFailure.SOURCE_FAILED;
+      }
+      const element = ingestElementOf(address);
+      if (current.ingestElements.has(element) || elements.includes(element)) return IngestRenewalFailure.ELEMENT_REPEATED;
+      elements.push(element);
+      addresses.set(camera.deviceId, address);
+    }
+    // The same schema as the plan of the start: an address the protocol would refuse is never sent.
+    const renewed = CapturePlanSchema.safeParse({ ...current.plan, cameras: current.plan.cameras.map((camera) => ({ ...camera, ingestUrl: addresses.get(camera.deviceId) })) });
+    if (!renewed.success) return IngestRenewalFailure.PLAN_INVALID;
+    // Drawn is used: an element that was built is never built into a later plan, whatever follows.
+    for (const element of elements) current.ingestElements.add(element);
+    try {
+      source.renewed(attempt, addresses);
+    } catch {
+      return IngestRenewalFailure.RECEIVER_FAILED;
+    }
+    current.plan = renewed.data;
+    return null;
+  }
+
+  function launch(): void {
+    whenReaped(() => {
+      const current = session;
+      if (current === null || current.stopping !== null || worker !== null) return;
+      current.attempt += 1;
+      if (current.attempt > 1 && current.ingest !== null) {
+        const failure = renewIngest(current, current.ingest, current.attempt);
+        if (failure !== null) {
+          // No worker is started with the addresses of an earlier one, and another try has the same source: final.
+          report({ source: 'capture.supervisor.launch', code: CAPTURE_INGEST_NOT_RENEWED, sessionId: current.id, correlationId: current.correlationId, err: new CaptureSupervisorError(CaptureRefusal.FAULT, 'the ingest of a later capture worker could not be renewed: no worker was started', failure) });
+          afterDown(current.attempt, { code: WorkerDownCode.SPAWN_FAILED, retryable: false });
+          return;
+        }
+        // Row 191: the session makes its audio sources ready for this worker; the worker is started when it has.
+        if (current.ingest.sources !== undefined) {
+          awaitSources(current, current.ingest, current.attempt);
+          return;
+        }
+      }
+      startWorker(current);
+    });
+  }
+
+  /**
+   * Row 191: THE LATER WORKER WAITS FOR THE SESSION'S AUDIO SOURCES. The back-off has passed and the
+   * addresses are renewed; the session is asked for the microphones of this attempt and the worker
+   * is started in the turn its promise settles - at once when it was settled already (the session
+   * begins that work when it hears `RESTARTING`, a back-off earlier). Nothing is held meanwhile but
+   * the phase: no worker exists, a stop ends the session as during a back-off, and a record that
+   * makes the session durable calls the restart off - each is seen below before a worker is started.
+   */
+  function awaitSources(current: Session, source: CaptureAttemptIngest, attempt: number): void {
+    let asked: Promise<ReadonlyMap<string, CapturePlan['mics'][number]['input']>>;
+    try {
+      asked = Promise.resolve(source.sources?.(attempt) ?? new Map());
+    } catch (err) {
+      asked = Promise.reject(err);
+    }
+    const settle = (given: ReadonlyMap<string, CapturePlan['mics'][number]['input']> | null): void =>
+      step(() => {
+        // Stopped, ended, held (a file on the disk) or served meanwhile: this attempt starts no worker (what ended it has said so).
+        if (session !== current || current.stopping !== null || worker !== null || current.attempt !== attempt || current.held) return;
+        if (phase !== CapturePhase.RESTARTING && phase !== CapturePhase.STARTING) return;
+        let failure: IngestRenewalFailure | null = given === null ? IngestRenewalFailure.RECEIVER_FAILED : null;
+        if (given !== null) {
+          const mics = current.micsOfStart.flatMap((mic) => {
+            const input = given.get(mic.deviceId);
+            return input === undefined ? [] : [{ ...mic, input }];
+          });
+          // The same schema as the plan of the start (protocol 6, row 148; finding F-1): 0 to 4 channels, each with its
+          // renewed input and the file the start named. A channel that did not open again is NOT a refusal (D30 K-3: the
+          // recording starts anyway): the camera of its pair STATES it (`micMissing: NOT_OPENED`) and gets a silent track;
+          // a channel back again clears the statement; a camera that had no channel at the start keeps its own word. A
+          // plan with a PCM tap still needs channel 1 (the protocol's rule): without it the later plan is PLAN_INVALID.
+          const cameras = restatePairedMics(current.plan.cameras, current.micsOfStart, mics);
+          const next = CapturePlanSchema.safeParse({ ...current.plan, cameras, mics });
+          if (next.success) current.plan = next.data;
+          else failure = IngestRenewalFailure.PLAN_INVALID;
+        }
+        if (failure !== null) {
+          // A worker whose plan names a pipe that is not there refuses it for good: none is started, and another try has the same sources.
+          report({ source: 'capture.supervisor.launch', code: CAPTURE_SOURCES_NOT_READY, sessionId: current.id, correlationId: current.correlationId, err: new CaptureSupervisorError(CaptureRefusal.FAULT, 'the audio sources of a later capture worker were not ready: no worker was started', failure) });
+          afterDown(attempt, { code: WorkerDownCode.SPAWN_FAILED, retryable: false });
+          return;
+        }
+        startWorker(current);
+      });
+    asked.then(
+      (given) => settle(given),
+      () => settle(null),
+    );
+  }
+
+  /** Starts the worker of `current.attempt` (the body of `launch` until row 191, unchanged): the first of a session at once, a later one when its plan and its sources are ready. */
+  function startWorker(current: Session): void {
+    // A worker counts its own records from 1. A session gets a second worker only while it holds
+    // no durable fragment, so every record of a fragment of one session is in ONE sequence.
+    current.recordSeq = 0;
+    // What an earlier worker of this session said of its cameras is over with it: the new worker opens every camera again.
+    current.lastFragment.clear();
+    current.cameraEnds.clear();
+    const next: Worker = {
+      attempt: current.attempt,
+      of: current,
+      reported: new Set(),
+      sealed: false,
+      recordTimes: [],
+      channel: null,
+      hello: false,
+      started: false,
+      exited: false,
+      stopSent: false,
+      stopAcked: false,
+      timelineOpen: false,
+      timelineEnded: false,
+      lastCounter: -1,
+      lastHeartbeatAt: now(),
+      cancelHello: nothing,
+      cancelWatchdog: nothing,
+      cancelStable: nothing,
+      pending: new Map(),
+    };
+    try {
+      next.channel = launcher(
+        { sessionId: current.id, correlationId: current.correlationId, attempt: next.attempt },
+        {
+          message: (message) => step(() => onMessage(next, message)),
+          violation: (violation) => step(() => down(next, { code: WorkerDownCode.PROTOCOL_VIOLATION, detail: violation })),
+          exit: (exit) =>
+            step(() => {
+              next.exited = true;
+              if (reaping === next) {
+                reaped(next);
+                return;
+              }
+              down(next, { code: exit.spawnFailed ? WorkerDownCode.SPAWN_FAILED : WorkerDownCode.EXITED, exitCode: exit.exitCode, signal: exit.signal });
+            }),
+        },
+      );
+    } catch (err) {
+      const known = err instanceof WorkerLaunchError;
+      if (!known) report({ source: 'capture.supervisor.launch', code: WorkerDownCode.SPAWN_FAILED, sessionId: current.id, correlationId: current.correlationId, err });
+      afterDown(next.attempt, { code: known ? err.code : WorkerDownCode.SPAWN_FAILED, retryable: known ? err.retryable : true });
+      return;
+    }
+    worker = next;
+    next.cancelHello = timers.after(limits.helloTimeoutMs, () => down(next, { code: WorkerDownCode.HELLO_TIMEOUT }));
+  }
+
+  // ── The seam ────────────────────────────────────────────────────────────────────────────────
+
+  function openSession(sessionId: string): Session {
+    const current = session;
+    if (current === null || current.id !== sessionId) {
+      throw new CaptureSupervisorError(CaptureRefusal.SESSION_UNKNOWN, 'no capture session with this ID is open');
+    }
+    return current;
+  }
+
+  const supervisor: CaptureSupervisor = {
+    async boot() {
+      if (phase === CapturePhase.CLOSED) phase = CapturePhase.IDLE;
+    },
+
+    async shutdown() {
+      const open = session;
+      if (open !== null) await supervisor.stop(open.id, CaptureStopReason.SHUTDOWN);
+      phase = CapturePhase.CLOSED;
+    },
+
+    start(sessionId, plan, attempts) {
+      return step(() => startSession(sessionId, plan, attempts ?? null));
+    },
+
+    stop(sessionId, reason) {
+      return step(() => stopSession(sessionId, reason));
+    },
+
+    status(): CaptureStatus {
+      const live = worker;
+      return {
+        phase,
+        sessionId: session?.id ?? null,
+        correlationId: session?.correlationId ?? null,
+        workerPid: live?.channel?.pid ?? null,
+        attempt: session?.attempt ?? 0,
+        restarts: session?.restarts ?? 0,
+        heartbeatAgeMs: live !== null && live.hello ? now() - live.lastHeartbeatAt : null,
+        lastCrash,
+        queuedEvents: queue.length,
+        droppedTelemetry,
+        droppedEvents,
+        durable: session?.durable ?? false,
+        lastRecordSeq: session?.recordSeq ?? 0,
+        cameraEnds: session === null ? [] : [...session.cameraEnds.values()],
+      };
+    },
+
+    on(event, listener) {
+      const set = listeners.get(event) ?? new Set<AnyListener>();
+      listeners.set(event, set);
+      // Stored by the event's name, so it is only ever called with events of that name.
+      const entry = listener as unknown as AnyListener;
+      set.add(entry);
+      return () => {
+        set.delete(entry);
+      };
+    },
+  };
+  return supervisor;
+
+  function startSession(sessionId: string, plan: CapturePlan, ingest: CaptureAttemptIngest | null): Promise<void> {
+    if (phase === CapturePhase.CLOSED) {
+      return Promise.reject(new CaptureSupervisorError(CaptureRefusal.CLOSED, 'the capture supervisor is not running'));
+    }
+    if (session !== null) {
+      return Promise.reject(new CaptureSupervisorError(CaptureRefusal.SESSION_OPEN, 'a capture session is already open: one session at a time'));
+    }
+    if (typeof sessionId !== 'string' || sessionId.length > MAX_SESSION_ID_CHARS || !SESSION_ID.test(sessionId)) {
+      return Promise.reject(new CaptureSupervisorError(CaptureRefusal.PLAN_INVALID, 'the session ID is not usable as a capture session ID'));
+    }
+    const parsed = CapturePlanSchema.safeParse(plan);
+    if (!parsed.success) {
+      // The plan itself is never put into the message: it holds paths and addresses.
+      return Promise.reject(new CaptureSupervisorError(CaptureRefusal.PLAN_INVALID, 'the capture plan is not valid', parsed.error.issues[0]?.path.join('.') ?? null));
+    }
+    sessionSeq += 1;
+    return new Promise<void>((resolve, reject) => {
+      session = {
+        id: sessionId,
+        correlationId: `cap:${sessionId}:${sessionSeq}`,
+        plan: parsed.data,
+        attempt: 0,
+        restarts: 0,
+        commandSeq: 0,
+        held: false,
+        durable: false,
+        recordSeq: 0,
+        subjects: new Set([...parsed.data.cameras.map((camera) => camera.deviceId), ...parsed.data.mics.map((mic) => mic.deviceId)]),
+        cameras: new Set(parsed.data.cameras.map((camera) => camera.deviceId)),
+        mics: new Set(parsed.data.mics.map((mic) => mic.deviceId)),
+        startWaiter: { resolve, reject },
+        stopping: null,
+        stopWaiters: [],
+        recorded: false,
+        lastDown: null,
+        stopOutcome: null,
+        lastFragment: new Map(),
+        cameraEnds: new Map(),
+        ingest,
+        ingestElements: new Set(parsed.data.cameras.map((camera) => ingestElementOf(camera.ingestUrl))),
+        micsOfStart: parsed.data.mics,
+      };
+      setPhase(CapturePhase.STARTING);
+      launch();
+    });
+  }
+
+  function stopSession(sessionId: string, reason: CaptureStopReason): Promise<CaptureStopOutcome> {
+    if (session === null) return Promise.resolve(CLEAN_STOP);
+    let current: Session;
+    try {
+      current = openSession(sessionId);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    const done = new Promise<CaptureStopOutcome>((resolve) => current.stopWaiters.push(resolve));
+    if (current.stopping !== null) return done;
+    current.stopping = reason;
+    cancelBackoff();
+    cancelBackoff = nothing;
+    const waiter = current.startWaiter;
+    current.startWaiter = null;
+    setPhase(CapturePhase.STOPPING);
+    waiter?.reject(new CaptureSupervisorError(CaptureRefusal.START_ABORTED, 'the capture session was stopped before its worker started'));
+
+    const live = worker;
+    if (live === null || live.channel === null) {
+      // No worker to stop. A session whose worker had recorded and is down (FAULTED, or between two
+      // workers) is not a clean end: the cause is the one already said when it went down.
+      if (current.recorded && current.lastDown !== null) current.stopOutcome = { clean: false, down: current.lastDown };
+      finishStop();
+      return done;
+    }
+    const channel = live.channel;
+    live.cancelHello();
+    live.cancelWatchdog();
+    cancelStopGrace = timers.after(limits.stopGraceMs, () => {
+      // Past the grace: the worker is KILLED. That is not the exit the stop was waiting for: the
+      // fragment it had open was never flushed (review R63-01). The exit that follows finishes the stop.
+      if (worker === live) down(live, { code: WorkerDownCode.STOP_TIMEOUT, signal: 'SIGKILL' });
+    });
+    if (live.hello) {
+      // The worker flushes, closes its files and exits by itself.
+      live.stopSent = true;
+      sendCommand(
+        current,
+        live,
+        (envelope) => ({ ...envelope, type: SupervisorMessageType.STOP, reason }),
+        (result) => {
+          if ('ack' in result && result.ack.ok) live.stopAcked = true;
+        },
+        true,
+      );
+    } else {
+      // Never shook hands: it has nothing to flush.
+      channel.closeInput();
+      channel.kill('SIGTERM');
+    }
+    return done;
+  }
+}

@@ -1,0 +1,14 @@
+#!/bin/sh
+# Runs mutations against the row's own tests (unit, then db). Prints one line each.
+# Usage: run.sh <scratch dir> [id ...]   (no id: every mutation of mutations.json)
+M="$1"; shift
+ROOT=/Users/gsp-budi/Documents/DEMS
+cd "$ROOT/apps/core-server" || exit 2
+if [ "$#" -eq 0 ]; then set -- $(python3 -c "import json; print(' '.join(x['id'] for x in json.load(open('$M/mutations.json'))))"); fi
+summary() { grep -E "^ +Tests |the text to replace is not in|no mutation " | head -1 | sed -e 's/^ *//' -e 's/  */ /g'; }
+for id in "$@"; do
+  note=$(python3 -c "import json,sys; print([x['note'] for x in json.load(open('$M/mutations.json')) if x['id']=='$id'][0])")
+  u=$(W24_MUTATION="$id" "$ROOT/node_modules/.bin/vitest" run --config "$M/vitest.config.mjs" --project unit src/modules/identity/__tests__ src/plugins/authenticate 2>&1 | summary)
+  d=$(W24_MUTATION="$id" DEMS_TEST_STEP=46 "$ROOT/node_modules/.bin/vitest" run --config "$M/vitest.config.mjs" --project db src/modules/identity src/plugins/authenticate 2>&1 | summary)
+  echo "$id | $note | unit: ${u:-NO-SUMMARY} | db: ${d:-NO-SUMMARY}"
+done

@@ -1,0 +1,633 @@
+[
+ {
+  "run": "F01",
+  "start": {
+   "answer": "200",
+   "device": "10-06 15:44:48.574",
+   "frames": 569,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:44:50.892",
+    0
+   ],
+   "timerLast": [
+    "15:45:09.204",
+    20
+   ],
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "stop": {
+   "core": "202",
+   "coreAt": "15:45:41.678",
+   "webSealed": true,
+   "frames": 206,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:45:35.587",
+    46
+   ],
+   "timerLast": [
+    "15:45:42.535",
+    52
+   ],
+   "timerBackwardSteps": [],
+   "handover": {
+    "lastMonitor": "15:45:42.535",
+    "next": "15:45:43.079",
+    "nextFrame": "f_162.png",
+    "nextBlank": false,
+    "nextMean": 18.0,
+    "nextSd": 28.5
+   }
+  },
+  "debugBannerReadings": [
+   "hidden",
+   "hidden",
+   "hidden"
+  ],
+  "crashLines": 0,
+  "crashSample": []
+ },
+ {
+  "run": "F02",
+  "start": {
+   "answer": "200",
+   "device": "10-06 15:46:44.479",
+   "frames": 317,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:46:45.792",
+    0
+   ],
+   "timerLast": [
+    "15:47:01.772",
+    16
+   ],
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "stop": {
+   "core": "202",
+   "coreAt": "15:47:21.766",
+   "webSealed": true,
+   "frames": 73,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:47:21.067",
+    36
+   ],
+   "timerLast": [
+    "15:47:23.067",
+    36
+   ],
+   "timerBackwardSteps": [],
+   "handover": {
+    "lastMonitor": "15:47:23.067",
+    "next": "15:47:23.466",
+    "nextFrame": "f_036.png",
+    "nextBlank": false,
+    "nextMean": 17.9,
+    "nextSd": 28.1
+   }
+  },
+  "debugBannerReadings": [
+   "hidden"
+  ],
+  "crashLines": 0,
+  "crashSample": []
+ },
+ {
+  "run": "F03",
+  "start": {
+   "answer": "200",
+   "device": "10-06 15:48:26.023",
+   "frames": 241,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:48:28.090",
+    0
+   ],
+   "timerLast": [
+    "15:48:42.531",
+    14
+   ],
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "stop": {
+   "core": "202",
+   "coreAt": "15:48:58.727",
+   "webSealed": true,
+   "frames": 71,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:48:57.925",
+    31
+   ],
+   "timerLast": [
+    "15:49:01.778",
+    32
+   ],
+   "timerBackwardSteps": [],
+   "handover": {
+    "lastMonitor": "15:49:01.778",
+    "next": "15:49:03.118",
+    "nextFrame": "f_048.png",
+    "nextBlank": false,
+    "nextMean": 17.9,
+    "nextSd": 28.2
+   }
+  },
+  "debugBannerReadings": [
+   "hidden"
+  ],
+  "crashLines": 0,
+  "crashSample": []
+ },
+ {
+  "run": "F04",
+  "start": {
+   "answer": "200",
+   "device": "10-06 15:50:07.868",
+   "frames": 365,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:50:10.038",
+    0
+   ],
+   "timerLast": [
+    "15:50:27.917",
+    19
+   ],
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "stop": {
+   "core": "202",
+   "coreAt": "15:50:43.009",
+   "webSealed": true,
+   "frames": 81,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:50:42.142",
+    33
+   ],
+   "timerLast": [
+    "15:50:44.508",
+    34
+   ],
+   "timerBackwardSteps": [],
+   "handover": {
+    "lastMonitor": "15:50:44.508",
+    "next": "15:50:44.755",
+    "nextFrame": "f_041.png",
+    "nextBlank": false,
+    "nextMean": 17.9,
+    "nextSd": 28.4
+   }
+  },
+  "debugBannerReadings": [
+   "hidden",
+   "hidden"
+  ],
+  "crashLines": 0,
+  "crashSample": []
+ },
+ {
+  "run": "F05",
+  "start": {
+   "answer": null,
+   "device": null,
+   "frames": 16,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": null,
+   "timerLast": null,
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "stop": {
+   "core": null,
+   "coreAt": null,
+   "webSealed": false,
+   "frames": 3,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": null,
+   "timerLast": null,
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "debugBannerReadings": [
+   "hidden",
+   "hidden"
+  ],
+  "crashLines": 0,
+  "crashSample": []
+ },
+ {
+  "run": "F06",
+  "start": {
+   "answer": "200",
+   "device": "10-06 15:53:25.484",
+   "frames": 668,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:54:50.706",
+    84
+   ],
+   "timerLast": [
+    "15:54:51.658",
+    85
+   ],
+   "timerBackwardSteps": [],
+   "handover": {
+    "lastMonitor": "15:54:51.658",
+    "next": "15:54:51.743",
+    "nextFrame": "f_033.png",
+    "nextBlank": false,
+    "nextMean": 38.2,
+    "nextSd": 54.4
+   }
+  },
+  "stop": {
+   "core": "202",
+   "coreAt": "15:55:38.889",
+   "webSealed": true,
+   "frames": 77,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": null,
+   "timerLast": null,
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "debugBannerReadings": [
+   "hidden"
+  ],
+  "crashLines": 0,
+  "crashSample": []
+ },
+ {
+  "run": "F07",
+  "start": {
+   "answer": "200",
+   "device": "10-06 15:56:40.542",
+   "frames": 407,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:56:42.062",
+    0
+   ],
+   "timerLast": [
+    "15:57:00.882",
+    19
+   ],
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "stop": {
+   "core": "202",
+   "coreAt": "15:57:25.910",
+   "webSealed": true,
+   "frames": 83,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:57:25.107",
+    44
+   ],
+   "timerLast": [
+    "15:57:28.036",
+    44
+   ],
+   "timerBackwardSteps": [],
+   "handover": {
+    "lastMonitor": "15:57:28.036",
+    "next": "15:57:28.478",
+    "nextFrame": "f_046.png",
+    "nextBlank": false,
+    "nextMean": 17.9,
+    "nextSd": 28.3
+   }
+  },
+  "debugBannerReadings": [
+   "hidden",
+   "hidden"
+  ],
+  "crashLines": 0,
+  "crashSample": []
+ },
+ {
+  "run": "F08",
+  "start": {
+   "answer": "200",
+   "device": "10-06 15:58:30.552",
+   "frames": 347,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:58:32.717",
+    0
+   ],
+   "timerLast": [
+    "15:58:50.811",
+    19
+   ],
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "stop": {
+   "core": "202",
+   "coreAt": "15:59:09.335",
+   "webSealed": true,
+   "frames": 187,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "15:59:03.486",
+    32
+   ],
+   "timerLast": [
+    "15:59:10.150",
+    38
+   ],
+   "timerBackwardSteps": [],
+   "handover": {
+    "lastMonitor": "15:59:10.150",
+    "next": "15:59:10.440",
+    "nextFrame": "f_152.png",
+    "nextBlank": false,
+    "nextMean": 17.9,
+    "nextSd": 28.1
+   }
+  },
+  "debugBannerReadings": [
+   "hidden",
+   "hidden"
+  ],
+  "crashLines": 0,
+  "crashSample": []
+ },
+ {
+  "run": "F09",
+  "start": {
+   "answer": "200",
+   "device": "10-06 16:00:10.654",
+   "frames": 346,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "16:00:13.245",
+    0
+   ],
+   "timerLast": [
+    "16:00:30.826",
+    19
+   ],
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "stop": {
+   "core": "202",
+   "coreAt": "16:00:53.424",
+   "webSealed": true,
+   "frames": 83,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "16:00:52.796",
+    41
+   ],
+   "timerLast": [
+    "16:00:54.768",
+    42
+   ],
+   "timerBackwardSteps": [],
+   "handover": {
+    "lastMonitor": "16:00:54.768",
+    "next": "16:00:55.291",
+    "nextFrame": "f_043.png",
+    "nextBlank": false,
+    "nextMean": 17.9,
+    "nextSd": 28.2
+   }
+  },
+  "debugBannerReadings": [
+   "hidden"
+  ],
+  "crashLines": 0,
+  "crashSample": []
+ },
+ {
+  "run": "F10",
+  "start": {
+   "answer": "200",
+   "device": "10-06 16:01:55.855",
+   "frames": 412,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "16:01:57.209",
+    0
+   ],
+   "timerLast": [
+    "16:02:16.258",
+    20
+   ],
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "stop": {
+   "core": "202",
+   "coreAt": "16:02:37.067",
+   "webSealed": true,
+   "frames": 194,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "16:02:30.749",
+    34
+   ],
+   "timerLast": [
+    "16:02:38.352",
+    40
+   ],
+   "timerBackwardSteps": [],
+   "handover": {
+    "lastMonitor": "16:02:38.352",
+    "next": "16:02:38.577",
+    "nextFrame": "f_157.png",
+    "nextBlank": false,
+    "nextMean": 17.9,
+    "nextSd": 28.2
+   }
+  },
+  "debugBannerReadings": [
+   "hidden",
+   "hidden",
+   "hidden"
+  ],
+  "crashLines": 0,
+  "crashSample": []
+ },
+ {
+  "run": "F11",
+  "start": {
+   "answer": "200",
+   "device": "10-06 16:03:34.861",
+   "frames": 352,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "16:03:36.882",
+    0
+   ],
+   "timerLast": [
+    "16:03:54.802",
+    19
+   ],
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "stop": {
+   "core": "202",
+   "coreAt": "16:04:08.630",
+   "webSealed": true,
+   "frames": 86,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "16:04:07.809",
+    32
+   ],
+   "timerLast": [
+    "16:04:10.227",
+    33
+   ],
+   "timerBackwardSteps": [],
+   "handover": {
+    "lastMonitor": "16:04:10.227",
+    "next": "16:04:10.813",
+    "nextFrame": "f_049.png",
+    "nextBlank": false,
+    "nextMean": 17.9,
+    "nextSd": 28.3
+   }
+  },
+  "debugBannerReadings": [
+   "hidden"
+  ],
+  "crashLines": 0,
+  "crashSample": []
+ },
+ {
+  "run": "F12",
+  "start": {
+   "answer": "200",
+   "device": "10-06 16:05:11.401",
+   "frames": 421,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "16:05:13.963",
+    0
+   ],
+   "timerLast": [
+    "16:05:30.956",
+    19
+   ],
+   "timerBackwardSteps": [],
+   "handover": null
+  },
+  "stop": {
+   "core": "202",
+   "coreAt": "16:05:47.568",
+   "webSealed": true,
+   "frames": 89,
+   "bannerFrames": 0,
+   "bannerFirst": null,
+   "blankFrames": 0,
+   "redFrames": 0,
+   "timerFirst": [
+    "16:05:46.903",
+    35
+   ],
+   "timerLast": [
+    "16:05:48.307",
+    35
+   ],
+   "timerBackwardSteps": [],
+   "handover": {
+    "lastMonitor": "16:05:48.307",
+    "next": "16:05:48.445",
+    "nextFrame": "f_039.png",
+    "nextBlank": false,
+    "nextMean": 17.9,
+    "nextSd": 28.2
+   }
+  },
+  "debugBannerReadings": [
+   "hidden"
+  ],
+  "crashLines": 0,
+  "crashSample": []
+ }
+]

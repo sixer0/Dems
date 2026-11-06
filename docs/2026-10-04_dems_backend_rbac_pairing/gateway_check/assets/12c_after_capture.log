@@ -1,0 +1,64 @@
+2026-10-06T07:18:24.961Z browser pid 43153, CDP port 56254 (OS-assigned), owner verified
+2026-10-06T07:18:25.035Z viewport 1440x900
+2026-10-06T07:18:27.496Z signed in as andi.pratama (SUPERVISOR); landed on /dashboard
+2026-10-06T07:18:30.573Z inventory: 14 items; keys ["items","nextCursor"]
+2026-10-06T07:18:30.573Z   EV-20261006-0014 SEALED media="DEMO_PACKAGE" multiWord=[{"action":"RECORDING_STOPPED","detail":"R-W re-test: interview ended by the supervisor from the web console"}]
+2026-10-06T07:18:30.573Z   EV-20261006-0013 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T07:18:30.573Z   EV-20261006-0012 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T07:18:30.573Z   EV-20261006-0011 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T07:18:30.573Z   EV-20261006-0010 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T07:18:30.573Z   EV-20261006-0009 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T07:18:30.573Z   EV-20261006-0008 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T07:18:30.573Z   EV-20261006-0007 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T07:18:30.573Z   EV-20261005-0006 RECORDED media="DEMO_PACKAGE" multiWord=[{"action":"SESSION_INCOMPLETE","detail":"Power fail; recovered"}]
+2026-10-06T07:18:30.573Z   EV-20261005-0005 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T07:18:30.573Z   EV-20261005-0004 EXPORTED media="DEMO_PACKAGE" multiWord=[{"action":"EXPORTED","detail":"Case file transfer (simulated)"}]
+2026-10-06T07:18:30.573Z   EV-20261005-0003 UNDER_REVIEW media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T07:18:30.573Z   EV-20261004-0002 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T07:18:30.573Z   EV-20261004-0001 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T07:18:30.573Z target EV-20261006-0014
+2026-10-06T07:18:30.590Z viewport 1280x800
+2026-10-06T07:18:34.355Z custody 1280x800: card 407 container 375 table 375 overflow 0 layout fixed cols [100,162,112,1]
+2026-10-06T07:18:34.355Z     SEALED: no Detail; date "6 Oct 2026" 1 box, clock "12:36:38" 1 box; action 1 lines; overflowing cells 0
+2026-10-06T07:18:34.355Z     RECORDING_STOPPED: Detail 275/275 px visible, 2 lines, under action true; date "6 Oct 2026" 1 box, clock "12:36:31" 1 box; action 2 lines; overflowing cells 0
+2026-10-06T07:18:34.355Z     RECORDING_STARTED: no Detail; date "6 Oct 2026" 1 box, clock "12:17:28" 1 box; action 2 lines; overflowing cells 0
+2026-10-06T07:18:34.392Z screenshot 12c_after_rw1_custody_1280x800.png
+2026-10-06T07:18:34.458Z screenshot 12c_after_rw1_integrity_page_1280x800.png
+2026-10-06T07:18:34.469Z viewport 1440x900
+2026-10-06T07:18:37.952Z custody 1440x900: card 473 container 441 table 441 overflow 0 layout fixed cols [100,132,97,112]
+2026-10-06T07:18:37.952Z     SEALED: no Detail; date "6 Oct 2026" 1 box, clock "12:36:38" 1 box; action 1 lines; overflowing cells 0
+2026-10-06T07:18:37.952Z     RECORDING_STOPPED: Detail 112/112 px visible, 7 lines, under action false; date "6 Oct 2026" 1 box, clock "12:36:31" 1 box; action 2 lines; overflowing cells 0
+2026-10-06T07:18:37.952Z     RECORDING_STARTED: no Detail; date "6 Oct 2026" 1 box, clock "12:17:28" 1 box; action 2 lines; overflowing cells 0
+2026-10-06T07:18:37.993Z screenshot 12c_after_rw1_custody_1440x900.png
+2026-10-06T07:18:38.082Z screenshot 12c_after_rw1_integrity_page_1440x900.png
+2026-10-06T07:18:38.095Z viewport 1920x1080
+2026-10-06T07:18:41.638Z custody 1920x1080: card 663 container 631 table 631 overflow 0 layout fixed cols [100,189,139,203]
+2026-10-06T07:18:41.638Z     SEALED: no Detail; date "6 Oct 2026" 1 box, clock "12:36:38" 1 box; action 1 lines; overflowing cells 0
+2026-10-06T07:18:41.638Z     RECORDING_STOPPED: Detail 203/203 px visible, 3 lines, under action false; date "6 Oct 2026" 1 box, clock "12:36:31" 1 box; action 1 lines; overflowing cells 0
+2026-10-06T07:18:41.638Z     RECORDING_STARTED: no Detail; date "6 Oct 2026" 1 box, clock "12:17:28" 1 box; action 1 lines; overflowing cells 0
+2026-10-06T07:18:41.676Z screenshot 12c_after_rw1_custody_1920x1080.png
+2026-10-06T07:18:41.781Z screenshot 12c_after_rw1_integrity_page_1920x1080.png
+2026-10-06T07:18:41.797Z viewport 1024x768
+2026-10-06T07:18:45.424Z custody 1024x768: card 880 container 848 table 848 overflow 0 layout fixed cols [100,254,187,307]
+2026-10-06T07:18:45.424Z     SEALED: no Detail; date "6 Oct 2026" 1 box, clock "12:36:38" 1 box; action 1 lines; overflowing cells 0
+2026-10-06T07:18:45.424Z     RECORDING_STOPPED: Detail 307/307 px visible, 2 lines, under action false; date "6 Oct 2026" 1 box, clock "12:36:31" 1 box; action 1 lines; overflowing cells 0
+2026-10-06T07:18:45.424Z     RECORDING_STARTED: no Detail; date "6 Oct 2026" 1 box, clock "12:17:28" 1 box; action 1 lines; overflowing cells 0
+2026-10-06T07:18:45.450Z screenshot 12c_after_rw1_custody_1024x768.png
+2026-10-06T07:18:45.516Z screenshot 12c_after_rw1_integrity_page_1024x768.png
+2026-10-06T07:18:45.526Z viewport 390x844
+2026-10-06T07:18:48.982Z custody 390x844: card 318 container 286 table 286 overflow 0 layout fixed cols [100,186,1,1]
+2026-10-06T07:18:48.982Z     SEALED: no Detail; date "6 Oct 2026" 1 box, clock "12:36:38" 1 box; action 1 lines; overflowing cells 0
+2026-10-06T07:18:48.982Z     RECORDING_STOPPED: Detail 186/186 px visible, 3 lines, under action true; date "6 Oct 2026" 1 box, clock "12:36:31" 1 box; action 1 lines; overflowing cells 0
+2026-10-06T07:18:48.982Z     RECORDING_STARTED: no Detail; date "6 Oct 2026" 1 box, clock "12:17:28" 1 box; action 1 lines; overflowing cells 0
+2026-10-06T07:18:49.019Z screenshot 12c_after_rw1_custody_390x844.png
+2026-10-06T07:18:49.077Z screenshot 12c_after_rw1_integrity_page_390x844.png
+2026-10-06T07:18:49.087Z viewport 1440x900
+2026-10-06T07:18:51.819Z media: {"mode":null,"empty":true,"source":"core","title":"No DEMO media","body":"No DEMO package for this item: the Core server's record only.","packageChip":"Core record","packageChipKind":"core"}
+2026-10-06T07:18:51.913Z screenshot 12c_after_ort1_media_tab_1440x900.png
+2026-10-06T07:18:51.945Z screenshot 12c_after_ort1_media_empty_1440x900.png
+2026-10-06T07:18:55.068Z media (reference unavailable): {"empty":true,"source":"unavailable","title":"Media reference unavailable","body":null,"packageChip":"Media reference unavailable"}
+2026-10-06T07:18:55.160Z screenshot 12c_after_ort1_media_unavailable_1440x900.png
+2026-10-06T07:18:55.160Z answers rewritten in this browser: [{"mode":"none","url":"/api/v1/evidence/EV-20261006-0014","status":200,"mediaBefore":{"source":"DEMO_PACKAGE","packageSuffix":"0014"},"mediaAfter":{"source":"NONE","packageSuffix":null}},{"mode":"unavailable","url":"/api/v1/evidence/EV-20261006-0014","status":200}]
+2026-10-06T07:18:55.160Z exceptions: 0; blocked requests: 0
+2026-10-06T07:18:55.196Z sign-out POST /api/v1/auth/sign-out -> 204
+2026-10-06T07:18:55.744Z browser closed, profile removed

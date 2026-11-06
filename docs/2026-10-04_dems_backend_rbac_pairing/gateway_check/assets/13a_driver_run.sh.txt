@@ -1,0 +1,8 @@
+#!/bin/bash
+# run.sh: starts the CF2-A queue driver (emulator-5554 only) at the next free batch number.
+S=/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cf2a
+N=""
+for c in $(ls $S/q_phone 2>/dev/null | grep -E '^[0-9]{3}\.cmd$' | sort); do n=${c%.cmd}; if [ ! -f "$S/q_phone/$n.out" ]; then N=$((10#$n)); break; fi; done
+if [ -z "$N" ]; then N=$(ls $S/q_phone 2>/dev/null | grep -E '^[0-9]{3}\.cmd$' | sort | tail -1 | cut -c1-3); N=$((10#${N:-0} + 1)); fi
+cd /Users/gsp-budi/Documents/DEMS
+RT_START=$N exec node --import tsx $S/cfq.mts $S/q_phone $S/assets $S/frames >> $S/driver.log 2>&1

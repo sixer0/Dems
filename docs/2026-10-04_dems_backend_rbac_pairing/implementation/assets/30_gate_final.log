@@ -1,0 +1,56 @@
+== W30 final gate, 2026-10-04 10:23:14 WIB ==
+
+$ npm run test -w @dems/shared -- --maxWorkers=2
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+
+ Test Files  55 passed (55)
+      Tests  1351 passed (1351)
+   Start at  10:23:14
+   Duration  4.44s (tests 48%, import 38%, transform 12%, worker 1%)
+
+    Isolate  55 workers spawned · ~45ms startup each (spawn + environment, per file)
+             at least ~1.19s faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+
+$ npm run typecheck -w @dems/shared
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+
+$ npm run lint -w @dems/shared
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+
+$ npm run typecheck -w @dems/core-web
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+
+$ npm run typecheck -w @dems/mobile
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+
+$ git diff --stat acaff20 -- packages/shared/test/heartbeat-client.test.ts packages/shared/src/realtime/heartbeat-client.ts
+(end of diff stat; exit=0)
+
+$ git status --short packages/shared/src/realtime
+ M packages/shared/src/realtime/index.ts
+?? packages/shared/src/realtime/live-socket-client.ts
+== end 10:23:39 ==

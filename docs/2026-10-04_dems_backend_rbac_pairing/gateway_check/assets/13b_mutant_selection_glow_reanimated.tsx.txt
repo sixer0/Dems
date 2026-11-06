@@ -1,0 +1,16 @@
+// CF2-B mutant R6: the selection glow back on the Reanimated GlowLayer, always mounted, level by selection.
+import { GlowLayer } from '@/motion';
+
+export interface SelectionGlowProps {
+  selected: boolean;
+  radius: number;
+  testID?: string;
+}
+
+export const ROW_CARD_BORDER = { borderWidth: 1, borderColor: 'transparent' } as const;
+
+export const selectionGlowOpacity = (selected: boolean): number => (selected ? 1 : 0);
+
+export function SelectionGlow({ selected, radius, testID }: SelectionGlowProps) {
+  return <GlowLayer level={selected ? 2 : 0} radius={radius} testID={testID} />;
+}

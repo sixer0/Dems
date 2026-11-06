@@ -1,0 +1,14 @@
+# E2E-P: converts raw `screencap` frames (header: width, height, format[, colour space]; then RGBA) to PNG.
+#   python3 raw2png.py <raw> <png> [<raw> <png> ...]   (each raw file is removed after conversion)
+import os, struct, sys
+from PIL import Image
+args = sys.argv[1:]
+for i in range(0, len(args), 2):
+    raw, png = args[i], args[i + 1]
+    with open(raw, 'rb') as f:
+        data = f.read()
+    w, h, fmt = struct.unpack('<III', data[:12])
+    header = len(data) - w * h * 4
+    Image.frombuffer('RGBA', (w, h), data[header:], 'raw', 'RGBA', 0, 1).convert('RGB').save(png, compress_level=3)
+    os.remove(raw)
+    print(f'{os.path.basename(png)} {w}x{h}')

@@ -1,0 +1,15 @@
+09:54:37.331 declared screen evidence
+09:54:37.379 screencap 08_evidence_list.png 09:54:37.379..09:54:38.281
+09:54:38.561 mark a07 at 09:54:38.561
+09:54:38.609 tap 540,1572
+09:54:38.784 slept 2500 ms
+09:54:41.348 declared screen evidence-detail
+09:54:41.401 screencap 09_evidence_detail.png 09:54:41.401..09:54:42.154
+09:54:42.365 ids(9): evidence-detail-screen@540,1173 ; evidence-detail-back@84,216 "Back to Evidence" ; evidence-detail-scroll@540,1156 ; evidence-detail-hero@540,547 ; evidence-detail-status@889,360 "Sealed" ; evidence-detail-id@540,673 "EV-20261005-0014" ; evidence-detail-time@392,745 "5 Oct 2026 23:19:54 – 23:21:34" ; evidence-detail-facts@540,1171 ; evidence-detail-actions@540,2114
+09:54:44.680 tapt Hash & Integrity: not found (or no dump)
+09:54:53.226 slept 1500 ms
+09:54:54.766 screencap 09b_evidence_detail_hash.png 09:54:54.766..09:54:55.452
+09:54:55.680 ids(1): evidence-tab-integrity@703,1603 "Hash &amp; Integrity"
+09:54:57.939 serverlog since a07 (2):
+    09:54:38.797 POST /api/v1/auth/touch 200 operator:OPR-001
+    09:54:39.551 GET /api/v1/evidence/:id 200 operator:OPR-001

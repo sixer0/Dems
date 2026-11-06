@@ -1,0 +1,22 @@
+## 2026-10-05 23:58:08 WIB 23:58  2 users, load averages: 5.04 5.36 6.16
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+exit=0
+Test Suites: 110 passed, 110 total
+Tests:       1396 passed, 1396 total
+Snapshots:   0 total
+Time:        59.929 s
+## 23:59:17 $ npm run typecheck -w @dems/mobile
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 23:59:22 $ npm run lint -w @dems/mobile
+
+> @dems/mobile@0.1.0 lint
+> eslint .
+
+exit=0
+## 23:59:33 $ npm run test -w @dems/mobile -- --maxWorkers=2 src/features/devices
+Test Suites: 4 passed, 4 total
+Tests:       51 passed, 51 total
+exit=0

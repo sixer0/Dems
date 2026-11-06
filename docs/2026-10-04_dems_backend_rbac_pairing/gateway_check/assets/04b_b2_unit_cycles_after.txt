@@ -1,0 +1,10 @@
+CYCLE GROUP: modules/identity, modules/pairing, plugins/authenticate, plugins/permission-guard
+   modules/identity -> modules/pairing   (src/modules/identity/biometric/sign-in.ts:67)
+   modules/identity -> plugins/authenticate   (src/modules/identity/routes.ts:47; src/modules/identity/sign-in.ts:43; src/modules/identity/biometric/routes.ts:41; src/modules/identity/biometric/enrolment.ts:34; src/modules/identity/biometric/sign-in.ts:65)
+   modules/identity -> plugins/permission-guard   (src/modules/identity/routes.ts:48; src/modules/identity/biometric/routes.ts:42)
+   modules/pairing -> modules/identity   (src/modules/pairing/routes.ts:57; src/modules/pairing/devices.ts:35; src/modules/pairing/devices.ts:36; src/modules/pairing/index.ts:48; src/modules/pairing/redeem.ts:51)
+   modules/pairing -> plugins/authenticate   (src/modules/pairing/routes.ts:54; src/modules/pairing/redeem.ts:49)
+   modules/pairing -> plugins/permission-guard   (src/modules/pairing/routes.ts:56)
+   plugins/authenticate -> modules/identity   (src/plugins/authenticate/index.ts:59)
+   plugins/permission-guard -> modules/identity   (src/plugins/permission-guard/denial.ts:30; src/plugins/permission-guard/index.ts:72)
+   plugins/permission-guard -> plugins/authenticate   (src/plugins/permission-guard/denial.ts:31)

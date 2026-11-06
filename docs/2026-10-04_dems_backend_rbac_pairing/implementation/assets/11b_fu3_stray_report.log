@@ -1,0 +1,13 @@
+# Stray evidence report of the dead local variant, found breaking another row's static scan (Oct 5 16:29-16:34).
+path:    apps/core-server/.cache/w11b3-db-whole.json (git-ignored: .gitignore:47 .cache/)
+created: Oct 5 11:06 by the local variant run (--reporter=json --outputFile.json inside apps/core-server/.cache)
+size:    874682 bytes
+sha256:  2ad511cd4bbd79815c92757b3f670cfb1ecd1bd23bea900caec1d46e00f29266
+damage:  test/static/audit-protection.test.ts (another row's file) reads readTree(WORKSPACE=apps/core-server);
+         SKIPPED_DIRECTORIES (apps/core-server/test/static/scan.ts:19) does not skip .cache, and the JSON's line 1
+         carries the words of two forbidden patterns: counts below. Nothing else in the unit project was red.
+counts:  session_replication_role occurrences on the matched line: 2
+         DROP DATABASE occurrences (case-insensitive): 2
+(printed as counts only; the file was moved, not deleted)
+action:  moved out of the tree to $TMPDIR/kilo/w11b3/stray/w11b3-db-whole.json — restore with: mv that path back; delete nothing.
+effect:  audit-protection alone 9 passed exit 0 at 16:33; whole unit repeat 153/3912 exit 0 at 16:34:57 (assets/11b_fu3_whole_unit_2.log).

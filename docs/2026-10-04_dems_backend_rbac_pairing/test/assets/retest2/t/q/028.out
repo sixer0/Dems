@@ -1,0 +1,5 @@
+screenrecord e_run1 pulled at 16:53:34.259; 890 frames extracted to rec/e_run1_frames/, PTS in rec/e_run1_frame_pts.txt
+app pid 12423 at 16:53:34.323
+mCurrentFocus=Window{d3a6e79 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+crash misc/crash_after_run1.txt: 1191 crash-class lines since T0
+screencap E1_05_tablet_after_run1.png (259542 bytes) at 16:53:35.592

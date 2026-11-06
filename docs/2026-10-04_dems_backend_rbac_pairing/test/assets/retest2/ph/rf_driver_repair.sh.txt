@@ -1,0 +1,24 @@
+#!/bin/bash
+# repair.sh <tag>: the pairing hand-off. The code is issued on the web under the injected blur mask (checked before the
+# screenshot), typed digit by digit into the phone by the driver (never printed), the go key pressed; the hand-off
+# recording (14 s) starts only after the redeem's 201. Then the Login capture, the socket lines and the device list.
+TAG=$1
+cat <<B
+mark ho$TAG
+w1 nav /admin/devices 3000
+w1 wait pd-issue-panel present 15000
+p screen pair
+p tapid pairing-code-slot-0
+sleep 1500
+p focus
+load
+p clock
+w1 issueredeem ho${TAG}_web_code_issued_blurred ho$TAG 14
+p rec pull ho$TAG
+p screen login
+p shot ho${TAG}_after
+p jsall SYNC_TIMEOUT|live\.socket|redeem|unreachable|OFFLINE
+serverlog ho$TAG redeem|socket|pairing
+w1 pdfacts
+w1 js (async()=>{const a=await (await fetch('/api/v1/audit?order=DESC&limit=4',{credentials:'same-origin'})).json(); return a.rows.map(r=>[r.id,r.type,r.actorId,r.deviceId,new Date(r.at).toTimeString().slice(0,8)+'.'+String(r.at%1000).padStart(3,'0')])})()
+B

@@ -1,0 +1,42 @@
+// Step 40 (W18): does `@dems/shared/live` resolve and type-check under this client's compiler options?
+import {
+  CoreMode,
+  CoreRefusalError,
+  LiveTransportError,
+  coreActionsOf,
+  coreModeOf,
+  settle,
+  useCoreActions,
+  useCoreMode,
+  useCorePermission,
+  useLive,
+  useLiveLink,
+  type CoreActions,
+  type LiveHandle,
+  type LiveLinkState,
+  type SettleHandlers,
+} from '@dems/shared/live';
+import type { Sim, SignInResult } from '@dems/shared/sim';
+
+export function probe(sim: Sim, onResult: (result: SignInResult) => void): CoreMode {
+  const actions: CoreActions = coreActionsOf(sim);
+  const handlers: SettleHandlers<SignInResult> = {
+    ok: onResult,
+    fail: (error) => {
+      if (error instanceof LiveTransportError && error.status === 429) return;
+      if (error instanceof CoreRefusalError) return;
+    },
+  };
+  settle(() => actions.signIn('u', 'p'), handlers);
+  return coreModeOf(sim);
+}
+
+export type Hooks = [
+  ReturnType<typeof useCoreActions>,
+  ReturnType<typeof useCoreMode>,
+  ReturnType<typeof useLive>,
+  ReturnType<typeof useLiveLink>,
+  ReturnType<typeof useCorePermission>,
+  LiveHandle,
+  LiveLinkState,
+];

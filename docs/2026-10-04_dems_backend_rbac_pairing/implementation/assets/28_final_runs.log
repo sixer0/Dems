@@ -1,0 +1,33 @@
+# typecheck (14:05:48)
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+# exit 0
+
+# lint (14:05:51)
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+# exit 0
+
+# whole unit project (14:05:51)
+ Test Files  77 passed (77)
+      Tests  1992 passed (1992)
+   Start at  14:05:51
+   Duration  13.82s (import 58%, tests 37%, transform 4%, worker 1%)
+# exit 0
+
+# whole db project, DEMS_TEST_STEP=50 (14:06:12); the table of the bulk fixture is left out
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_50_tmdfqcfo_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_50_tmdfqcfo_tpl_schema: built in 110 ms (create 37 ms, hook 71 ms)
+[test:db] template dems_test_step_50_tmdfqcfo_tpl_seed: built in 172 ms (create 56 ms, hook 115 ms)
+ Test Files  48 passed (48)
+      Tests  740 passed (740)
+   Start at  14:06:12
+   Duration  50.04s (tests 90%, import 9%, transform 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 133 ms; 0 remain with the run prefix dems_test_step_50_tmdfqcfo_
+# exit 0

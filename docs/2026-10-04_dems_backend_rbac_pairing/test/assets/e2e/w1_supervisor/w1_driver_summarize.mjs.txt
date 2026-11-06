@@ -1,0 +1,85 @@
+// E2E-W1 summarizer: splits the walk by its markers and, for each step, lists the Core server's request lines
+// (time, method, route, status, principal kind; never a body: the log holds none) and what the page's own
+// browser recorded (console errors/warnings, exceptions, failed requests, request origins).
+// Inputs: .cache/manual/lane3-server.log (read only), w1_markers.jsonl, w1_cdp_events.jsonl.
+// Outputs: w1_core_requests.txt, w1_step_index.json, w1_page_console_network.json (all in the assets folder).
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+const ASSETS = '/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/test/assets/e2e/w1_supervisor'
+const LOG = '/Users/gsp-budi/Documents/DEMS/.cache/manual/lane3-server.log'
+const red = (t) => String(t).replace(/(?<![0-9A-Za-z])\d{6}(?![0-9A-Za-z])/g, '######').replace(/(?<![0-9A-Za-z])\d{3}[\s\u00a0\u2009-]\d{3}(?![0-9A-Za-z])/g, '### ###').replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+const lines = (f) => readFileSync(f, 'utf8').split('\n').filter(Boolean)
+const markers = lines(join(ASSETS, 'w1_markers.jsonl')).map((l) => JSON.parse(l)).sort((a, b) => a.t - b.t)
+const t0 = markers[0].t - 2000
+const events = lines(join(ASSETS, 'w1_cdp_events.jsonl')).map((l) => JSON.parse(l))
+
+// Core request lines
+const core = []
+const otherLevels = []
+for (const l of lines(LOG)) {
+  let j
+  try {
+    j = JSON.parse(l)
+  } catch {
+    continue
+  }
+  if (j.time < t0) continue
+  if (j.level >= 40) otherLevels.push({ t: j.time, level: j.level, msg: red(j.msg ?? '') })
+  if (!j.route || !j.method) continue
+  const principal = typeof j.principal === 'string' ? j.principal : j.principal ? JSON.stringify(j.principal) : 'anonymous'
+  core.push({ t: j.time, method: j.method, route: j.route, status: j.status, principal })
+}
+writeFileSync(
+  join(ASSETS, 'w1_core_requests.txt'),
+  `# Core server request lines for the E2E-W1 walk, from .cache/manual/lane3-server.log (time UTC, method, route, status, principal).\n# Extracted by summarize.mjs; the log holds no request bodies. Lines: ${core.length}. Lines of level warn or higher since the walk start: ${otherLevels.length}.\n` +
+    core.map((c) => `${new Date(c.t).toISOString()}\t${c.method}\t${c.route}\t${c.status}\t${c.principal}`).join('\n') +
+    '\n' +
+    (otherLevels.length ? `\n# warn+ lines\n${otherLevels.map((o) => `${new Date(o.t).toISOString()}\tlevel ${o.level}\t${o.msg}`).join('\n')}\n` : ''),
+)
+
+// Per-step windows
+const statusOf = new Map()
+for (const e of events) if (e.ev === 'res') statusOf.set(e.rid, e.status)
+const failOf = new Map()
+for (const e of events) if (e.ev === 'fail') failOf.set(e.rid, e)
+const steps = markers.map((m, i) => {
+  const end = i + 1 < markers.length ? markers[i + 1].t : Date.now()
+  const inWin = (t) => t >= m.t && t < end
+  const coreReq = core.filter((c) => inWin(c.t)).map((c) => `${c.method} ${c.route} -> ${c.status}`)
+  const ev = events.filter((e) => inWin(e.t))
+  const pageApi = ev.filter((e) => e.ev === 'req' && e.url.includes('/api/v1/')).map((e) => `${e.method} ${e.url.replace('http://127.0.0.1:5178', '')} -> ${statusOf.get(e.rid) ?? (failOf.get(e.rid)?.error ?? '?')}`)
+  const origins = [...new Set(ev.filter((e) => e.ev === 'req' || e.ev === 'ws.created').map((e) => { try { return new URL(e.url).origin } catch { return e.url.slice(0, 20) } }))]
+  const consoleErr = ev.filter((e) => e.ev === 'console' || e.ev === 'exception').map((e) => red(`${e.ev === 'exception' ? 'exception' : e.level}: ${e.text}`))
+  const logErr = ev.filter((e) => e.ev === 'log' && (e.level === 'error' || e.level === 'warning')).map((e) => `${e.level}/${e.source}: ${e.text}${e.url ? ' ' + e.url.replace('http://127.0.0.1:5178', '') : ''}`)
+  const failed = ev.filter((e) => e.ev === 'fail' && !e.canceled).map((e) => `${e.url} ${e.error}`)
+  const sockets = ev.filter((e) => e.ev === 'ws.created').map((e) => e.url)
+  return { label: m.label, start: new Date(m.t).toISOString(), coreRequests: coreReq, pageApi, origins, console: consoleErr, log: logErr, failed, socketsOpened: sockets }
+})
+writeFileSync(join(ASSETS, 'w1_step_index.json'), `${JSON.stringify(steps, null, 1)}\n`)
+
+// Whole-walk origin and console summary
+const allOrigins = {}
+for (const e of events) if (e.ev === 'req' || e.ev === 'ws.created') { let o; try { o = new URL(e.url).origin } catch { o = e.url.slice(0, 30) } allOrigins[o] = (allOrigins[o] ?? 0) + 1 }
+const consoleAll = events.filter((e) => e.ev === 'console' || e.ev === 'exception')
+const logAll = events.filter((e) => e.ev === 'log' && (e.level === 'error' || e.level === 'warning'))
+const frames = {}
+for (const e of events) if (e.ev === 'ws.frames') for (const [k, v] of Object.entries(e.counts)) frames[k] = (frames[k] ?? 0) + v
+const summary = {
+  walkStart: new Date(markers[0].t).toISOString(),
+  lastMarker: new Date(markers.at(-1).t).toISOString(),
+  steps: steps.length,
+  coreRequestLines: core.length,
+  coreWarnOrHigher: otherLevels.length,
+  coreStatusCounts: core.reduce((a, c) => ((a[c.status] = (a[c.status] ?? 0) + 1), a), {}),
+  requestOrigins: allOrigins,
+  socketFrameTypes: frames,
+  consoleErrorsWarnings: consoleAll.length,
+  consoleSamples: [...new Set(consoleAll.map((e) => `${e.level ?? e.ev}: ${e.text}`.slice(0, 220)))].slice(0, 40),
+  logEntriesErrorWarning: logAll.length,
+  logSamples: [...new Set(logAll.map((e) => `${e.level}/${e.source}: ${e.text} ${e.url ?? ''}`.slice(0, 220)))].slice(0, 40),
+  navigations: events.filter((e) => e.ev === 'nav').length,
+  crashes: events.filter((e) => e.ev === 'Inspector.targetCrashed').length,
+}
+writeFileSync(join(ASSETS, 'w1_page_console_network.json'), `${JSON.stringify(summary, null, 1)}\n`)
+console.log(JSON.stringify(summary, null, 1))

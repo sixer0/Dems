@@ -1,0 +1,8 @@
+docs/2026-10-04_dems_backend_rbac_pairing/gateway_check/assets/06_d1_server_attempt1.log: lines=42 bytes=6892 findings=0 (clean)
+docs/2026-10-04_dems_backend_rbac_pairing/gateway_check/assets/06_d2_server.log: lines=42 bytes=6853 findings=0 (clean)
+docs/2026-10-04_dems_backend_rbac_pairing/gateway_check/assets/06_d3_server.log: lines=33 bytes=4491 findings=0 (clean)
+docs/2026-10-04_dems_backend_rbac_pairing/gateway_check/assets/06_d1_smoke_run_attempt1.log: lines=55 bytes=5939 findings=1 [a "?" token parameter=1]
+docs/2026-10-04_dems_backend_rbac_pairing/gateway_check/assets/06_d2_smoke_run.log: lines=55 bytes=6232 findings=1 [a "?" token parameter=1]
+docs/2026-10-04_dems_backend_rbac_pairing/gateway_check/assets/06_d3_probe_run.log: lines=21 bytes=127808 findings=0 (clean)
+.locks/core-server.lane3.log: lines=118 bytes=21948 findings=0 (clean)
+TOTAL findings over 7 file(s): 2

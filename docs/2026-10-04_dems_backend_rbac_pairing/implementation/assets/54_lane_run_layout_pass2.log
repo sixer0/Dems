@@ -1,0 +1,73 @@
+
+== 21:22:27 0. the three ports must be free before anything is started
+free: 4423 5178 9398
+2026-10-04 21:22:27 WIB
+21:22  up 3 days,  4:35, 1 user, load averages: 8.11 5.41 4.51
+db:status exit 0
+
+== 21:22:28 1. the lane backend and Vite
+backend up after 5 quarter seconds
+-- health through the dev server: "service":"dems-core-server"
+-- listeners on mock-core's port 4400 (not started and not used here):
+lsof exit 1
+
+== 21:22:30 2. the layout in a real browser
+live 1280x800 lg LIVE | chip LIVE 46px inside true | date false/false | collision 42 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1280x800 longest label lg LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision 149 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1366x768 lg LIVE | chip LIVE 46px inside true | date false/false | collision -35 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1366x768 longest label lg LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision 71 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1440x900 lg LIVE | chip LIVE 46px inside true | date false/false | collision -109 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1440x900 longest label lg LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision -3 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1519x900 lg LIVE | chip LIVE 46px inside true | date false/false | collision -188 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1519x900 longest label lg LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision -82 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1520x900 lg LIVE | chip LIVE 46px inside true | date false/false | collision -189 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1520x900 longest label lg LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision -83 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1536x864 lg LIVE | chip LIVE 46px inside true | date false/false | collision -205 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1536x864 longest label lg LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision -99 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1600x900 xl LIVE | chip LIVE 46px inside true | date false/false | collision -207 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1600x900 longest label xl LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision -101 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1639x900 xl LIVE | chip LIVE 46px inside true | date false/false | collision -246 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1639x900 longest label xl LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision -140 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1640x900 xl LIVE | chip LIVE 46px inside true | date true/true | collision -90 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1640x900 longest label xl LIVE | chip LIVE · RECONNECTING 152px inside true | date true/true | collision 17 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1680x1050 xl LIVE | chip LIVE 46px inside true | date true/true | collision -130 | items 11 admin true | footer over toggle -7, over last item -47, scrolls false, texture 7px
+live 1680x1050 longest label xl LIVE | chip LIVE · RECONNECTING 152px inside true | date true/true | collision -23 | items 11 admin true | footer over toggle -7, over last item -47, scrolls false, texture 7px
+live 1920x1080 xl LIVE | chip LIVE 46px inside true | date true/true | collision -370 | items 11 admin true | footer over toggle -37, over last item -77, scrolls false, texture 37px
+live 1920x1080 longest label xl LIVE | chip LIVE · RECONNECTING 152px inside true | date true/true | collision -263 | items 11 admin true | footer over toggle -37, over last item -77, scrolls false, texture 37px
+live scrolledEnd lg LIVE | chip LIVE 46px inside true | date false/false | collision -35 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+simulated 1280x800 lg SIMULATED | chip SIMULATED 89px inside true | date false/false | collision 58 | items 9 admin false | footer over toggle -22, over last item -62, scrolls false, texture 22px
+simulated 1366x768 lg SIMULATED | chip SIMULATED 89px inside true | date false/false | collision -19 | items 9 admin false | footer over toggle 10, over last item -30, scrolls false, texture 0px
+simulated 1440x900 lg SIMULATED | chip SIMULATED 89px inside true | date false/false | collision -93 | items 9 admin false | footer over toggle -122, over last item -162, scrolls false, texture 122px
+simulated 1519x900 lg SIMULATED | chip SIMULATED 89px inside true | date false/false | collision -172 | items 9 admin false | footer over toggle -122, over last item -162, scrolls false, texture 122px
+simulated 1520x900 lg SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -15 | items 9 admin false | footer over toggle -122, over last item -162, scrolls false, texture 122px
+simulated 1536x864 lg SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -31 | items 9 admin false | footer over toggle -86, over last item -126, scrolls false, texture 86px
+simulated 1600x900 xl SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -34 | items 9 admin false | footer over toggle -24, over last item -64, scrolls false, texture 24px
+simulated 1639x900 xl SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -73 | items 9 admin false | footer over toggle -24, over last item -64, scrolls false, texture 24px
+simulated 1640x900 xl SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -74 | items 9 admin false | footer over toggle -24, over last item -64, scrolls false, texture 24px
+simulated 1680x1050 xl SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -114 | items 9 admin false | footer over toggle -174, over last item -214, scrolls false, texture 174px
+simulated 1920x1080 xl SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -354 | items 9 admin false | footer over toggle -204, over last item -244, scrolls false, texture 204px
+layout-driver: sign-in 200; console errors or warnings 0; the output held the seeded password before redaction: false
+layout-driver exit 0
+
+== 21:23:13 3. lane database after this pass
+db:status exit 0
+-- row counts that differ (before / after):
+< audit head       seq 97; hash 258785f4ba2359e0...
+> audit head       seq 99; hash 28b2114336243c4a...
+<   audit_log                97
+<   auth_sessions            5
+>   audit_log                99
+>   auth_sessions            6
+<   events                   72
+>   events                   74
+-- the backend's log: lines       37; lines with level error or fatal: 0
+
+== 21:23:14 stop what this check started
+chrome stopped
+vite: npm exit status 143
+backend: npm exit status 0
+
+== 21:23:14 listeners left on 4423, 5178, 9398 (expect none):
+lsof exit 1 (1 with no output: no listener)
+2026-10-04 21:23:14 WIB
+lockf exit=0

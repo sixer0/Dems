@@ -1,0 +1,471 @@
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react'
+import {
+  Button,
+  Card,
+  Description,
+  FieldError,
+  Form,
+  InputGroup,
+  Label,
+  Separator,
+  Spinner,
+  TextField,
+  Tooltip,
+} from '@heroui/react'
+import { animate, AnimatePresence, motion, type Variants } from 'motion/react'
+import { Eye, EyeOff, KeyRound, Lock, ShieldAlert, ShieldCheck, User } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { CoreMode } from '@dems/shared/live'
+import { useSim, type SimState } from '@dems/shared/sim'
+import { palette } from '@dems/shared/tokens'
+import type { ModeSwitch } from '@/components/shell/mode-switch'
+import { BorderBeam } from '@/components/ui/border-beam'
+import { GlowLayer, springTransition, tween, useAmbientLoop, useMotionPolicy } from '@/motion'
+import { cn } from '@/lib/utils'
+import { BORDER_BEAM, HANDOFF, LOGIN_ACCENT_LOOP_GROUP, SHEEN_LOOP_MS, type LoginChoreography } from './login-choreography'
+import { LoginAlert } from './login-alert'
+import { ModeSelector } from './mode-selector'
+import type { CoreLinkView } from './login-model'
+import type { LoginController } from './use-login-controller'
+
+export interface AuthCardProps {
+  controller: LoginController
+  choreography: LoginChoreography
+  /** The hand-off started (M-APP-01): the card plays its exit, then `onExitComplete` navigates. */
+  leaving: boolean
+  onExitComplete: () => void
+  /** The data mode of this page load and its confirmed change; no control unless the build offers the choice (MD-4). */
+  modeSwitch: ModeSwitch
+  /** The M-C-22 shake target (the page owns the shake so the controller can trigger it). */
+  shakeRef: RefObject<HTMLDivElement | null>
+  usernameRef: RefObject<HTMLInputElement | null>
+  passwordRef: RefObject<HTMLInputElement | null>
+}
+
+const selectDeviceId = (s: SimState) => s.device.id
+
+/**
+ * The Login auth card (01_specs §14.8 "Auth card"; research/04 §5.8; mobile Login fields per
+ * DEMS-Mobile.png screen 1: Username with a user icon, Password with a lock icon and an eye
+ * toggle, a gold Sign In with dark text per D28/Q5, and the simulated alternative sign-in).
+ *
+ * Kit only (D6): `Card`, `Form`, `TextField` + `InputGroup`, `FieldError`, `Description`,
+ * `Button` (+ `Spinner`), `Separator`, `Tooltip`, `Alert` (in LoginAlert),
+ * plus MU BorderBeam (one lap) and the motion kit's GlowLayer.
+ *
+ * Credentials: inputs have no `name` and the form posts nowhere (submission is intercepted), so a
+ * password can never reach a URL even if a native submit fired (AC-50).
+ *
+ * No "Demo operators" disclosure (D58, 2026-11-03): the card names no seeded identity and no
+ * password, in either mode. The controller's `operators` and `fill` remain for the demo harness;
+ * the card reads neither (DF-52, audit row 106: the imports the removal left behind are gone).
+ *
+ * Live mode (backend task 04_client_integration_spec §5.5; plan row W55), the same card on the
+ * Core server:
+ * - no security-key button and no "or" divider: the server has no such operation (WS-8, Q11);
+ * - the trust line says what is true: the console signs in to the Core server and does not pair
+ *   (WS-7, Q13);
+ * - the offline Alert offers "Use Simulated mode" in a build that offers the choice (§3.5).
+ * In a build that offers the choice the card also carries the mode selector (§3.2), in both
+ * modes; a console started with `VITE_DEMS_PRODUCTION_LOCK=1` offers none (D25 N3, D29 Q6).
+ */
+export function AuthCard({
+  controller,
+  choreography,
+  leaving,
+  onExitComplete,
+  modeSwitch,
+  shakeRef,
+  usernameRef,
+  passwordRef,
+}: AuthCardProps) {
+  const { t } = useTranslation()
+  const m = useMotionPolicy()
+  const frameRef = useRef<HTMLDivElement>(null)
+  const [showPassword, setShowPassword] = useState(false)
+  const [capsLock, setCapsLock] = useState(false)
+  // Fix wave J round three (note N-01 of `report/judging_b1_web.md`): React mirrors the value of a controlled
+  // input into its `value` ATTRIBUTE (at a commit and again after each input event), so what was typed into the
+  // password field could be read from the markup. An observer on that one attribute takes it off as soon as it
+  // is written (the same task, before the browser paints); the field's own value - what the form reads and
+  // submits - is the property and is untouched.
+  useLayoutEffect(() => {
+    const field = passwordRef.current
+    if (field === null) return undefined
+    const strip = () => {
+      if (field.hasAttribute('value')) field.removeAttribute('value')
+    }
+    strip()
+    if (typeof MutationObserver !== 'function') return undefined
+    const observer = new MutationObserver(strip)
+    observer.observe(field, { attributes: true, attributeFilter: ['value'] })
+    return () => observer.disconnect()
+  }, [passwordRef])
+  const [beamDone, setBeamDone] = useState(false)
+  const {
+    username,
+    password,
+    change,
+    blur,
+    submit,
+    signInWithSecurityKey,
+    pending,
+    accepted,
+    notice,
+    fieldErrors,
+    credentialsFlagged,
+    lockout,
+    unlockPulse,
+    lockKey,
+    coreRetry,
+    submitDisabled,
+    paired,
+  } = controller
+  const formDisabled = pending !== null || accepted !== null || lockout.locked
+  const isLive = controller.mode === CoreMode.LIVE
+
+  // R1 enter at t = 1,200 (`gentle`, rise 12); M-APP-01 exit at t = 150 (300, `exit`). The exit's
+  // completion is the commit point: the page navigates and the emblem flight starts.
+  const cardVariants: Variants = m.reduced
+    ? {
+        hidden: { opacity: 0 },
+        visible: { opacity: 1, transition: tween('fast', 'standard', m.timeScale) },
+        exit: { opacity: 0, transition: tween(HANDOFF.reducedFadeMs, 'exit', m.timeScale) },
+      }
+    : {
+        hidden: { opacity: 0, y: 12, scale: 1 },
+        visible: {
+          opacity: 1,
+          y: 0,
+          scale: 1,
+          transition: { ...springTransition('gentle', m.timeScale), delay: m.seconds(choreography.cardMs) },
+        },
+        exit: {
+          opacity: 0,
+          y: HANDOFF.cardDropPx,
+          scale: HANDOFF.cardScale,
+          transition: { ...tween(HANDOFF.cardMs, 'exit', m.timeScale), delay: m.seconds(HANDOFF.cardDelayMs) },
+        },
+      }
+
+  // M-C-23: BorderBeam runs ONE lap on entry (review 40 R7 / m10): mounted only while its ambient
+  // slot is granted (the accent slot it shares with Particles and the offline dot, so the page stays
+  // at ≤ 4 loops), with `repeat: 0`; it unmounts once the lap is done. Off under reduced motion.
+  const beam = useAmbientLoop('border-beam-lap', {
+    ref: frameRef,
+    group: LOGIN_ACCENT_LOOP_GROUP,
+    enabled: !beamDone && !leaving,
+  })
+  useEffect(() => {
+    if (!beam.running) return undefined
+    const id = setTimeout(() => setBeamDone(true), m.seconds(choreography.beamDelayMs + BORDER_BEAM.durationS * 1000) * 1000)
+    return () => clearTimeout(id)
+  }, [beam.running, m, choreography.beamDelayMs])
+
+  // Username takes focus once the card has settled (M-PG-LOGIN t = 1,200 + spring), unless the
+  // operator already moved focus somewhere.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const active = document.activeElement
+      if (!active || active === document.body) usernameRef.current?.focus()
+    }, m.seconds(choreography.focusAtMs) * 1000)
+    return () => clearTimeout(id)
+  }, [m, choreography.focusAtMs, usernameRef])
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    submit()
+  }
+
+  const onPasswordKey = (event: KeyboardEvent<HTMLInputElement>) => {
+    const state = event.getModifierState?.('CapsLock') ?? false
+    if (state !== capsLock) setCapsLock(state)
+  }
+
+  return (
+    <motion.div
+      className="dems-login-card-wrap"
+      variants={cardVariants}
+      initial="hidden"
+      animate={leaving ? 'exit' : 'visible'}
+      onAnimationComplete={(definition) => {
+        if (definition === 'exit') onExitComplete()
+      }}
+      data-testid="login-card"
+    >
+      <div ref={shakeRef} className="dems-login-card-shake">
+        <div ref={frameRef} className="dems-login-card-frame" {...beam.attrs}>
+          <GlowLayer level={2} pulseKey={unlockPulse} />
+          <Card className="dems-login-card" aria-labelledby="login-title">
+            <Card.Header className="dems-login-card-header">
+              <h1 id="login-title" className="text-foreground">
+                <span className="text-h1">{t('login.title')}</span>
+              </h1>
+              <p className="text-foreground-2">
+                <span className="text-body">{t('login.subtitle')}</span>
+              </p>
+            </Card.Header>
+            <Card.Content className="dems-login-card-content">
+              <LoginAlert
+                notice={notice}
+                lockKey={lockKey}
+                coreRetry={coreRetry}
+                reconnecting={controller.heartbeatState === 'CONNECTING'}
+                arrivalDelayMs={choreography.noticeMs}
+                onUseSimulated={isLive && modeSwitch.selectable ? () => modeSwitch.request(CoreMode.SIMULATED) : undefined}
+              />
+              <Form className="dems-login-form" validationBehavior="aria" method="post" onSubmit={onSubmit} aria-labelledby="login-title">
+                <TextField
+                  className="dems-login-field"
+                  value={username}
+                  onChange={(value) => change('username', value)}
+                  onBlur={() => blur('username')}
+                  isRequired
+                  isInvalid={Boolean(fieldErrors.username) || credentialsFlagged}
+                  isDisabled={formDisabled}
+                  autoComplete="username"
+                  data-testid="login-username-field"
+                >
+                  <Label>{t('login.username.label')}</Label>
+                  <InputGroup fullWidth>
+                    <InputGroup.Prefix>
+                      <User size={18} aria-hidden="true" className="dems-login-field-icon" />
+                    </InputGroup.Prefix>
+                    <InputGroup.Input
+                      ref={usernameRef}
+                      placeholder={t('login.username.placeholder')}
+                      spellCheck={false}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                    />
+                  </InputGroup>
+                  {fieldErrors.username ? <FieldError>{t(fieldErrors.username)}</FieldError> : null}
+                </TextField>
+
+                <TextField
+                  className="dems-login-field"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(value) => change('password', value)}
+                  onBlur={() => blur('password')}
+                  isRequired
+                  isInvalid={Boolean(fieldErrors.password) || credentialsFlagged}
+                  isDisabled={formDisabled}
+                  autoComplete="current-password"
+                  data-testid="login-password-field"
+                >
+                  <Label>{t('login.password.label')}</Label>
+                  <InputGroup fullWidth>
+                    <InputGroup.Prefix>
+                      <Lock size={18} aria-hidden="true" className="dems-login-field-icon" />
+                    </InputGroup.Prefix>
+                    <InputGroup.Input
+                      ref={passwordRef}
+                      placeholder={t('login.password.placeholder')}
+                      spellCheck={false}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      onKeyDown={onPasswordKey}
+                      onKeyUp={onPasswordKey}
+                    />
+                    <InputGroup.Suffix>
+                      <PasswordToggle shown={showPassword} disabled={formDisabled} onToggle={() => setShowPassword((on) => !on)} />
+                    </InputGroup.Suffix>
+                  </InputGroup>
+                  <AnimatePresence initial={false}>
+                    {capsLock ? (
+                      <Description className="dems-login-caps">
+                        <motion.span
+                          className="inline-block"
+                          initial={m.reduced ? { opacity: 0 } : { opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0 }}
+                          transition={tween('fast', 'standard', m.timeScale)}
+                        >
+                          {t('login.password.capsLock')}
+                        </motion.span>
+                      </Description>
+                    ) : null}
+                  </AnimatePresence>
+                  {fieldErrors.password ? <FieldError>{t(fieldErrors.password)}</FieldError> : null}
+                </TextField>
+
+                <SubmitButton pending={pending === 'password'} disabled={submitDisabled} />
+
+                {/* WS-8: the security key is a simulated alternative; the Core server has no such operation. */}
+                {isLive ? null : (
+                  <>
+                    <div className="dems-login-divider" aria-hidden="true">
+                      <Separator className="flex-1" />
+                      <span className="text-muted">
+                        <span className="text-caption">{t('login.divider')}</span>
+                      </span>
+                      <Separator className="flex-1" />
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      fullWidth
+                      className="dems-login-key"
+                      onPress={signInWithSecurityKey}
+                      isDisabled={submitDisabled}
+                      isPending={pending === 'security-key'}
+                      data-testid="login-security-key"
+                    >
+                      {pending === 'security-key' ? <Spinner size="sm" color="current" /> : <KeyRound size={18} aria-hidden="true" />}
+                      {pending === 'security-key' ? t('login.securityKey.prompt') : t('login.securityKey.button')}
+                    </Button>
+                  </>
+                )}
+              </Form>
+
+              {/* D58 (2026-11-03, principal: "lakukan sekarang" atas opsi yang direkomendasikan): the
+                  "Demo operators" disclosure is REMOVED from a shipped unit — it must not advertise
+                  seeded identities or their password. The WS-9/WS-10 live tests now demand absence.
+                  ModeSelector and the offline Use-Simulated escape stay: they are not identity surfaces. */}
+
+              {/* §3.2/§3.3 MD-4 (AC-C-23): restored 2026-11-03 with DemoOperators — the call
+                  site was lost in the same RB-9 WIP checkpoint; the component file never was. */}
+              <ModeSelector modeSwitch={modeSwitch} disabled={pending !== null || accepted !== null} />
+
+              {isLive ? <LiveTrustLine coreLink={controller.coreLink} /> : <SimulatedTrustLine paired={paired} />}
+            </Card.Content>
+          </Card>
+          {beam.running && !beamDone ? (
+            <BorderBeam
+              size={BORDER_BEAM.size}
+              duration={m.seconds(BORDER_BEAM.durationS * 1000)}
+              colorFrom={palette.gold}
+              colorTo={palette.bronze}
+              borderWidth={1.5}
+              transition={{ repeat: 0, delay: m.seconds(choreography.beamDelayMs) }}
+            />
+          ) : null}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+/**
+ * Gold Sign In with dark text (D28/Q5) and a Spinner while pending. M-C-16: a sheen crosses once
+ * on hover (CSS, `sheen` 700 `luxe`); M-C-22: while pending the sheen loops every 1.4 s.
+ */
+function SubmitButton({ pending, disabled }: { pending: boolean; disabled: boolean }) {
+  const { t } = useTranslation()
+  const m = useMotionPolicy()
+  const sheenRef = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    const sheen = sheenRef.current
+    if (!pending || m.reduced || !sheen) return undefined
+    const control = animate(
+      sheen,
+      { transform: ['translateX(-100%)', 'translateX(100%)'] },
+      { duration: m.seconds(SHEEN_LOOP_MS), ease: 'linear', repeat: Infinity },
+    )
+    return () => {
+      control.stop()
+      sheen.style.transform = ''
+    }
+  }, [pending, m])
+
+  return (
+    <Button
+      type="submit"
+      variant="primary"
+      fullWidth
+      className="dems-login-submit"
+      isDisabled={disabled && !pending}
+      isPending={pending}
+      data-testid="login-submit"
+      data-pending={pending ? 'true' : 'false'}
+    >
+      <span ref={sheenRef} className={cn('dems-login-sheen', pending && 'dems-login-sheen-loop')} aria-hidden="true" />
+      {pending ? <Spinner size="sm" color="current" /> : null}
+      <span className="dems-login-submit-label">{pending ? t('login.submitting') : t('login.submit')}</span>
+    </Button>
+  )
+}
+
+/**
+ * The eye toggle (M-C-16 "Password eye": icon cross-fade plus rotate 90°, `fast`). Its name is
+ * visually hidden text rather than `aria-label`, so the password input stays the only element
+ * labelled "Password" (label queries in the route tests, and screen readers' form mode).
+ */
+function PasswordToggle({ shown, disabled, onToggle }: { shown: boolean; disabled: boolean; onToggle: () => void }) {
+  const { t } = useTranslation()
+  const m = useMotionPolicy()
+  const transition = tween('fast', 'standard', m.timeScale)
+  return (
+    <Button
+      isIconOnly
+      size="sm"
+      variant="ghost"
+      className="dems-login-eye"
+      onPress={onToggle}
+      isDisabled={disabled}
+      data-testid="login-password-toggle"
+      data-shown={shown ? 'true' : 'false'}
+    >
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.span
+          key={shown ? 'hide' : 'show'}
+          className="inline-flex"
+          initial={m.reduced ? { opacity: 0 } : { opacity: 0, rotate: -90 }}
+          animate={{ opacity: 1, rotate: 0 }}
+          exit={m.reduced ? { opacity: 0 } : { opacity: 0, rotate: 90 }}
+          transition={transition}
+          aria-hidden="true"
+        >
+          {shown ? <EyeOff size={18} /> : <Eye size={18} />}
+        </motion.span>
+      </AnimatePresence>
+      <span className="sr-only">{shown ? t('login.password.hide') : t('login.password.show')}</span>
+    </Button>
+  )
+}
+
+/** The §20.1 trust line of the simulator: the console's simulated pairing (the line as it always was). */
+function SimulatedTrustLine({ paired }: { paired: boolean }) {
+  const { t } = useTranslation()
+  const deviceId = useSim(selectDeviceId)
+  return (
+    <Tooltip delay={300}>
+      <Tooltip.Trigger className="dems-login-trust" data-testid="login-trust-line">
+        <ShieldCheck size={16} aria-hidden="true" className="text-success" />
+        <span className="text-caption">
+          {paired ? t('login.trustLine', { deviceId }) : t('login.trustLineUnpaired', { deviceId })}
+        </span>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="bottom" offset={8}>
+        {t('login.trustTooltip')}
+      </Tooltip.Content>
+    </Tooltip>
+  )
+}
+
+/**
+ * WS-7 (Q13): the trust line on the Core server. The web console signs in with a session cookie
+ * and does not pair, so the line says so; it reads no pairing state. While the Core server cannot
+ * be reached it says that instead, beside the offline Alert (§3.2).
+ */
+function LiveTrustLine({ coreLink }: { coreLink: CoreLinkView }) {
+  const { t } = useTranslation()
+  const reachable = coreLink !== 'offline'
+  return (
+    <Tooltip delay={300}>
+      <Tooltip.Trigger className="dems-login-trust" data-testid="login-trust-line" data-reachable={reachable ? 'true' : 'false'}>
+        {reachable ? (
+          <ShieldCheck size={16} aria-hidden="true" className="text-success" />
+        ) : (
+          <ShieldAlert size={16} aria-hidden="true" className="text-warning" />
+        )}
+        <span className="text-caption">{reachable ? t('login.live.trustLine') : t('common.coreLink.lostTitle')}</span>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="bottom" offset={8}>
+        {t('login.live.trustTooltip')}
+      </Tooltip.Content>
+    </Tooltip>
+  )
+}

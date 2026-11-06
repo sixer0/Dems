@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+"""Item 9, step 2 (scratch copy only): the hand edits after move_support.py — headers, the splits,
+   the file without a cycle (scratch-routes), the shims at the old paths."""
+import sys
+S = sys.argv[1]
+def read(path): return open(f"{S}/{path}").read()
+def write(path, text): open(f"{S}/{path}", 'w').write(text)
+def sub(path, old, new, count=1):
+    t = read(path)
+    if t.count(old) != count: raise SystemExit(f"{path}: expected {count} occurrence(s) of {old!r}, found {t.count(old)}")
+    write(path, t.replace(old, new))
+def cut(path, start, end):
+    """Removes the text from `start` up to (not including) `end` and returns it."""
+    t = read(path)
+    if t.count(start) != 1 or t.count(end) < 1: raise SystemExit(f"{path}: cut markers not found once: {start!r} / {end!r}")
+    i = t.index(start); j = t.index(end, i)
+    write(path, t[:i] + t[j:])
+    return t[i:j]
+
+NEUTRAL = ("NEUTRAL TEST SUPPORT (fix round B1, review finding CPB1-12). This file lives in\n"
+           " * `apps/core-server/test/support/` because tests of several rows use it; it moved here from\n"
+           " * `{old}`, which re-exports it for one round. No production source imports\n"
+           " * anything under `test/` (static test `test/static/imports.test.ts`).")
+
+# ── tidy the re-based specifiers: a unit is imported by its folder ──
+for name, unit in [('engine', 'engine'), ('identity', 'modules/identity'), ('pairing', 'modules/pairing'), ('guard', 'plugins/permission-guard')]:
+    sub(f'test/support/{name}.ts', f"'../../src/{unit}/index'", f"'../../src/{unit}'")
+
+# ── config ──
+sub('test/support/config.ts', """/**
+ * Test support (not a test file): a configuration, a log capture, a search for credentials in a
+ * captured log and a stand-in pool, for tests that run the app factory in-process, with no
+ * database and no listener. Other rows may import it.
+ */""", """/**
+ * Test support (not a test file): a configuration, a log capture, a search for credentials in a
+ * captured log and a stand-in pool, for tests that run the app factory in-process, with no
+ * database and no listener. Every row imports it.
+ *
+ * """ + NEUTRAL.format(old='src/plugins/config/__tests__/test-config.ts') + """
+ */""")
+
+# ── core: the app builder of the core's own database tests stays with the core ──
+sub('test/support/core.ts', """/**
+ * Test support of the core services (plan row W21; not a test file).
+ *
+ * Two kinds of test use it:""", """/**
+ * Test support of the core services (plan row W21; not a test file): the readers of the stored
+ * trail, the recording error log, the server's logger in memory, and the stand-in for the runtime
+ * pool. The app builder of the core's own database tests (`coreApp`) is not here: it is private to
+ * `src/core/__tests__/support.ts`.
+ *
+ * """ + NEUTRAL.format(old='src/core/__tests__/support.ts') + """
+ *
+ * Two kinds of test use it:""")
+core_private = cut('test/support/core.ts', "// ── Database tests ─", "interface AuditRecord {")
+sub('test/support/core.ts', "interface AuditRecord {", "// ── Database tests: readers of the stored trail (SELECT only) ─────────────────────────────────\n\ninterface AuditRecord {")
+sub('test/support/core.ts', "import type { FastifyBaseLogger, FastifyInstance } from 'fastify';", "import type { FastifyBaseLogger } from 'fastify';")
+sub('test/support/core.ts', "import type { DatabaseConnection, LogLevel } from '../../src/config';", "import type { LogLevel } from '../../src/config';")
+write('src/core/__tests__/support.ts', """/**
+ * Test support of the core services (plan row W21; not a test file).
+ *
+ * What tests of several rows use (the readers of the stored trail, the recording error log, the
+ * server's logger in memory, the stand-in for the runtime pool, `BOOT_CHECKS`, `passedAmong`,
+ * `answersBootStepOne`) moved to the neutral folder `test/support/core.ts` in fix round B1
+ * (review finding CPB1-12) and is RE-EXPORTED at the end of this file, so that every existing
+ * import of this path keeps working. Import `test/support/core` in new code.
+ *
+ * What stays here is private to the core's own database tests: the app builder `coreApp`, an app
+ * built by the real factory on the file's own clone, connected as `dems_app`, on a manual clock.
+ */
+import { createManualClock } from '@dems/shared/sim';
+import type { FastifyInstance } from 'fastify';
+import { CLOCK_START, type ManualClock } from '../../../test/support/core';
+import { captureLog, unitTestConfig, type CapturedLog } from '../../../test/support/config';
+import { buildApp } from '../../app';
+import type { DatabaseConnection, LogLevel } from '../../config';
+
+export * from '../../../test/support/core';
+
+""" + core_private.replace("// ── Database tests ─────────────────────────────────────────────────────────────────────────────\n\n", "").rstrip('\n') + "\n")
+
+# ── seed ──
+sub('test/support/seed.ts', """/**
+ * Support for the tests of plan row W20 (not a test file). Nothing here imports Vitest, so the
+ * pure tests of the mapping and the database tests of the seed can both use it.
+ */""", """/**
+ * Support for the tests of plan row W20 (not a test file). Nothing here imports Vitest, so the
+ * pure tests of the mapping and the database tests of the seed can both use it. Other rows use
+ * its headless host (`createHost`), its dump and its checksums.
+ *
+ * """ + NEUTRAL.format(old='src/db/seed/__tests__/support.ts') + """
+ */""")
+
+# ── engine: what only the engine's own tests use stays with the engine ──
+sub('test/support/engine.ts', """ *   readers         the stored trail and the row counts, as `dems_owner` (SELECT only).
+ */""", """ *   readers         the stored trail and the row counts, as `dems_owner` (SELECT only).
+ *
+ * What only the engine's own tests use (seeding a scenario, the meter frames, the replay of state
+ * changes) is private to `src/engine/__tests__/support.ts`.
+ *
+ * """ + NEUTRAL.format(old='src/engine/__tests__/support.ts') + """
+ */""")
+seed_block = cut('test/support/engine.ts', "// ── Seeding a scenario ─", "/** The state changes among the publications. */")
+meter_block = cut('test/support/engine.ts', "/** The meter frames among the publications. */", "// ── Readers (SELECT only) ─")
+t = read('test/support/engine.ts')
+marker = "/**\n * Applies the operations of state changes to a state, as a client of the realtime channel does"
+assert t.count(marker) == 1
+replay_block = t[t.index(marker):]
+write('test/support/engine.ts', t[:t.index(marker)].rstrip('\n') + '\n')
+sub('test/support/engine.ts', """import {
+  AUDIT_RING_SIZE,
+  EVENT_RING_SIZE,
+  ROLE_PERMISSIONS,
+  createManualClock,
+  type ControllableClock,
+  type OperatorRole,
+  type ScenarioName,
+  type SimOperator,
+} from '@dems/shared/sim';""", """import { ROLE_PERMISSIONS, createManualClock, type ControllableClock, type OperatorRole, type SimOperator } from '@dems/shared/sim';""")
+sub('test/support/engine.ts', "import { seedDatabase } from '../../src/db/seed/seed';\n", "")
+sub('test/support/engine.ts', "import { engineControl, type EngineControl, type EngineHost, type EngineStateChange, type EngineTimer } from '../../src/engine';", "import { engineControl, type EngineControl, type EngineHost, type EngineTimer } from '../../src/engine';")
+write('src/engine/__tests__/support.ts', """/**
+ * Test support of the engine host (plan row W26; not a test file). Nothing here imports Vitest.
+ *
+ * What tests of several rows use (the manual timer, the counting pool, the engine app, the
+ * readers of the stored slices and of the row counts) moved to the neutral folder
+ * `test/support/engine.ts` in fix round B1 (review finding CPB1-12) and is RE-EXPORTED at the end
+ * of the imports below, so that every existing import of this path keeps working. Import
+ * `test/support/engine` in new code.
+ *
+ * What stays here is private to the engine's own tests: seeding a scenario into a schema-only
+ * clone, the meter frames among the publications, and the replay of state changes.
+ */
+import { AUDIT_RING_SIZE, EVENT_RING_SIZE, type ScenarioName } from '@dems/shared/sim';
+import type { Pool } from 'pg';
+import { FIXED_NOW } from '../../../test/support/engine';
+import type { DurableSlices } from '../../db/mapping';
+import { seedDatabase } from '../../db/seed/seed';
+import type { Publication } from '../../realtime';
+import type { EngineStateChange } from '../index';
+
+export * from '../../../test/support/engine';
+
+""" + seed_block + meter_block.rstrip('\n') + "\n\n" + replay_block)
+
+# ── identity ──
+sub('test/support/identity.ts', """/**
+ * Test support of the identity core (plan row W24; not a test file). Other rows may import it.
+ *""", """/**
+ * Test support of the identity core (plan row W24; not a test file). Other rows import it: a
+ * signed-in operator of each role, on the web console or on a device, comes from here.
+ *
+ * """ + NEUTRAL.format(old='src/modules/identity/__tests__/support.ts') + """
+ *""")
+sub('test/support/identity.ts', "import { passScratchRoutes } from './guard';\n", "import { passScratchRoutes } from './scratch-routes';\n")
+
+# ── guard: `passScratchRoutes` gets a file of its own, so that identity -> guard is no edge ──
+header_end = " *                                and no handler of any module runs.\n */"
+sub('test/support/guard.ts', "/**\n * Test support of the permission guard (plan row W28; not a test file). Other rows may import it.\n *",
+    "/**\n * Test support of the permission guard (plan row W28; not a test file). Other rows import it.\n *\n * " + NEUTRAL.format(old='src/plugins/permission-guard/__tests__/support.ts') + "\n * `passScratchRoutes` is in `./scratch-routes` (re-exported below): the identity support needs it,\n * and this file needs the identity support, so it could not stay here without a cycle.\n *")
+pass_block = cut('test/support/guard.ts', "/**\n * Lets every route that is no registry operation pass stage 6 and leaves the real guard on", "/** The registry entry of an operation. Throws for a name the registry does not hold. */")
+sub('test/support/guard.ts', "import type { FastifyInstance, FastifyReply, FastifyRequest, LightMyRequestResponse } from 'fastify';", "import type { FastifyInstance, LightMyRequestResponse } from 'fastify';")
+sub('test/support/guard.ts', "import { isAccessRule, permissionGuard, routeOfOperation } from '../../src/plugins/permission-guard';\n", "import { routeOfOperation } from '../../src/plugins/permission-guard';\n\nexport { passScratchRoutes } from './scratch-routes';\n")
+write('test/support/scratch-routes.ts', """/**
+ * Test support (not a test file): scratch routes behind the real stage 6 (plan row W28).
+ *
+ * FOR A TEST OF ANOTHER STAGE OR MODULE THAT ADDS SCRATCH ROUTES TO THE REAL APP. A scratch
+ * route is no operation of the contract registry, so stage 6 refuses it (deny by default).
+ * `passScratchRoutes(app)`, called after `app.ready()`, lets only the routes that are no registry
+ * operation pass; every registry route (sign-in, the session operations, …) keeps the REAL guard.
+ *
+ * A FILE OF ITS OWN (fix round B1, review finding CPB1-12). The function was part of the guard's
+ * test support, which imports the identity row's support (a signed-in operator), while the
+ * identity row's support imported this one function from the guard's: a cycle between the test
+ * support of two rows. Here it depends on the guard plugin alone, and both import it.
+ */
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { isAccessRule, permissionGuard } from '../../src/plugins/permission-guard';
+
+""" + pass_block.rstrip('\n') + "\n")
+
+# ── pairing ──
+sub('test/support/pairing.ts', """ * Test support of the pairing module (plan row W32; not a test file). Other rows may import it:
+ * `pairDevice` gives a later row a REAL paired device with a credential the server issued.
+ *""", """ * Test support of the pairing module (plan row W32; not a test file). Other rows import it:
+ * `pairDevice` gives a later row a REAL paired device with a credential the server issued.
+ *
+ * """ + NEUTRAL.format(old='src/modules/pairing/__tests__/support.ts') + """
+ *""")
+
+# ── reset ──
+sub('test/support/reset.ts', """ * Support for the tests of the reset routine (plan row W29; not a test file). Nothing here
+ * imports Vitest.
+ *""", """ * Support for the tests of the reset routine (plan row W29; not a test file). Nothing here
+ * imports Vitest. The demo-control row, the engine row and the security-audit row use its
+ * maintenance pool, its checksums and digests of the tables, and its readers of the lineage.
+ *
+ * """ + NEUTRAL.format(old='src/db/reset/__tests__/support.ts') + """
+ *""")
+
+# ── admin: the four URL helpers other rows use ──
+sub('src/modules/admin/__tests__/support.ts', """export const USERS = '/api/v1/admin/users';
+export const roleUrl = (operatorId: string): string => `${USERS}/${operatorId}/role`;
+export const enableUrl = (operatorId: string): string => `${USERS}/${operatorId}/enable`;
+export const disableUrl = (operatorId: string): string => `${USERS}/${operatorId}/disable`;
+""", """// The URLs of the administration operations are used by other rows too: they live in the
+// neutral folder `test/support/admin.ts` (fix round B1, review finding CPB1-12) and are
+// re-exported here, so that every existing import of this path keeps working.
+export { USERS, disableUrl, enableUrl, roleUrl } from '../../../../test/support/admin';
+""")
+write('test/support/admin.ts', """/**
+ * Test support of the administration module (plan row W33; not a test file): the URLs of
+ * operations 11 to 14, which tests of other rows call too (a disable or a role change as a step
+ * of their own scenario).
+ *
+ * NEUTRAL TEST SUPPORT (fix round B1, review finding CPB1-12). These four names moved here from
+ * `src/modules/admin/__tests__/support.ts`, which re-exports them and keeps what only the
+ * administration row's own tests use (its app, its recording pool, its readers of `operators`).
+ */
+export const USERS = '/api/v1/admin/users';
+export const roleUrl = (operatorId: string): string => `${USERS}/${operatorId}/role`;
+export const enableUrl = (operatorId: string): string => `${USERS}/${operatorId}/enable`;
+export const disableUrl = (operatorId: string): string => `${USERS}/${operatorId}/disable`;
+""")
+
+# ── the old paths that hold nothing of their own any more: shims ──
+def shim(old, new_rel, what, new_name):
+    write(old, f"""/**
+ * SHIM (fix round B1, review finding CPB1-12). {what} moved to the neutral folder
+ * `apps/core-server/test/support/{new_name}`, because tests of several rows import it. This
+ * path re-exports it, so that test files written against it (among them files of rows that were
+ * in flight at the move) keep compiling unchanged. Import `test/support/{new_name[:-3]}` in new code;
+ * this file can go when nothing imports it any more (fix round B2).
+ */
+export * from '{new_rel}';
+""")
+shim('src/plugins/config/__tests__/test-config.ts', '../../../../test/support/config', 'The test configuration, the log capture and the stand-in pool', 'config.ts')
+shim('src/db/seed/__tests__/support.ts', '../../../../test/support/seed', 'The test support of the mapping and seed row', 'seed.ts')
+shim('src/modules/identity/__tests__/support.ts', '../../../../test/support/identity', 'The test support of the identity core', 'identity.ts')
+shim('src/plugins/permission-guard/__tests__/support.ts', '../../../../test/support/guard', 'The test support of the permission guard', 'guard.ts')
+shim('src/modules/pairing/__tests__/support.ts', '../../../../test/support/pairing', 'The test support of the pairing module', 'pairing.ts')
+shim('src/db/reset/__tests__/support.ts', '../../../../test/support/reset', 'The test support of the reset routine', 'reset.ts')
+print('done')

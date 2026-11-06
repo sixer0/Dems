@@ -1,0 +1,63 @@
+// W66 device check: sign in on the paired phone by typing into the APP's own Login fields (W60's
+// sign_in_live4.mts, implementation/assets/60_sign_in_live4.mts). Mode `live` waits for the app's
+// sign-in request; mode `simulated` signs in to the in-app simulator (no request).
+//   node --import tsx .cache/w66/sign_in_w66.mts <serial> <live|simulated> <T0> <serverLog|-> "<u x y>" "<p x y>" "<s x y>"
+// Rules (P19): the demo password is read from the shared dataset constant and never printed, logged or
+// written; it is only ever the argument of one `adb shell input text`. Nothing is typed unless the app
+// has the focus and no keyguard shows.
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../packages/shared/src/sim/dataset';
+
+const [serial, mode, t0, serverLog, userAt, passAt, submitAt] = process.argv.slice(2);
+if (!serial || !mode || !t0 || !serverLog || !userAt || !passAt || !submitAt) { console.error('usage: sign_in_w66.mts ...'); process.exit(64); }
+const BIG = { encoding: 'utf8' as const, maxBuffer: 256 * 1024 * 1024 };
+const adb = (...a: string[]): string => execFileSync('adb', ['-s', serial, ...a], BIG);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const jsLog = (): string => adb('logcat', '-d', '-T', t0, '-s', 'ReactNativeJS:V');
+const xy = (at: string): [string, string] => at.trim().split(/\s+/) as [string, string];
+const tap = (at: string): void => { const [x, y] = xy(at); adb('shell', 'input', 'tap', x, y); };
+function focused(): boolean {
+  const w = adb('shell', 'dumpsys', 'window');
+  return /isKeyguardShowing=false/.test(w) && /mCurrentFocus=.*com\.dems\.demo\.tablet/.test(w);
+}
+
+async function main(): Promise<number> {
+  const operator = OPERATORS.find((e) => e.role === 'SUPERVISOR');
+  if (!operator) throw new Error('no SUPERVISOR');
+  if (!focused()) { console.log('-- app not focused / keyguard: nothing typed'); return 77; }
+  tap(userAt); await sleep(1200);
+  adb('shell', 'input', 'tap', '540', '2338'); // the handwriting coach's Cancel (W60 F-2); a no-op on the version line otherwise
+  await sleep(800);
+  tap(userAt); await sleep(600);
+  if (!focused()) return 77;
+  adb('shell', 'input', 'text', operator.username);
+  console.log(`-- typed the operator username (${operator.username}, role ${operator.role})`);
+  await sleep(400);
+  tap(passAt); await sleep(600);
+  if (!focused()) return 77;
+  adb('shell', 'input', 'text', DEMO_OPERATOR_PASSWORD); // never printed
+  console.log('-- typed the demo password (not shown)');
+  await sleep(400);
+  if (!focused()) return 77;
+  adb('shell', 'input', 'keyevent', '66'); // the keypad's go key submits
+  console.log("-- pressed the keypad's go key");
+  if (mode !== 'live') { await sleep(5000); return 0; }
+  let line: string | undefined;
+  for (let waited = 0; waited < 40 && line === undefined; waited += 1) {
+    await sleep(1000);
+    line = jsLog().split('\n').find((e) => e.includes('DEMS-LIVE] POST /api/v1/auth/sign-in'));
+    if (line === undefined && waited === 12) { tap(submitAt); console.log('-- no request yet; tapped Sign In'); }
+  }
+  const status = line === undefined ? null : (/sign-in (\S+) (\S+)/.exec(line) ?? null);
+  console.log(`-- the app's sign-in request: ${status === null ? 'NOT SEEN in 40 s' : `status ${status[1]}, request ID ${status[2]}`}`);
+  await sleep(5000);
+  const logcat = jsLog();
+  const server = serverLog !== '-' && existsSync(serverLog) ? readFileSync(serverLog, 'utf8') : '';
+  const secret = /dvc_|ses_|bio_/;
+  const lines = (t: string): number => t.split('\n').filter((e) => secret.test(e)).length;
+  console.log(`-- credential/token lines: device JS log ${lines(logcat)}; backend log ${lines(server)}`);
+  if (status === null || status[1] !== '200') return 2;
+  return lines(logcat) + lines(server) === 0 ? 0 : 1;
+}
+main().then((s) => process.exit(s), (e: unknown) => { console.error(`-- failed: ${e instanceof Error ? e.message : 'unknown'}`); process.exit(1); });

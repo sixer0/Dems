@@ -1,0 +1,18 @@
+// Signs this browser's own operator out through the user menu (Account menu → Sign out).
+export default async (c, lib) => {
+  const roleSlug = process.env.W2_ROLE_SLUG
+  const n = String(process.env.W2_SHOT_START).padStart(2, '0')
+  await c.navigate(lib.ORIGIN + '/dashboard', 3000)
+  const before = await c.pageFetch('GET', '/api/v1/auth/session')
+  c.takeNet()
+  await c.click('user-menu')
+  await c.waitUntil(`document.querySelector('[role="menu"]') !== null`, 'menu', 5000)
+  await lib.sleep(500)
+  const items = await c.evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map((e) => ({ key: e.getAttribute('data-key'), text: e.textContent.trim().slice(0, 40) }))`)
+  const at = await c.clickSel('[role="menu"] [role="menuitem"][data-key="signOut"]', 'sign out')
+  const back = await c.waitFor('page-login', true, 15000)
+  await lib.sleep(1500)
+  await c.screenshot(`${n}_${roleSlug}_signed_out_login.png`)
+  const after = await c.pageFetch('GET', '/api/v1/auth/session')
+  return { operatorBefore: before.body?.operator?.id, menu: items, pressedAt: at ? new Date(at).toISOString() : null, loginShown: back, sessionAfter: after.status, screenshot: `${n}_${roleSlug}_signed_out_login.png`, net: c.takeNet() }
+}

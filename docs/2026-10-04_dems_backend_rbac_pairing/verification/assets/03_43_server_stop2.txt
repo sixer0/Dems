@@ -1,0 +1,6 @@
+$ lsof -nP -iTCP:4420 -sTCP:LISTEN   # 2026-10-07 05:33:54
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    34613 gsp-budi   17u  IPv4 0x5068b010e365862e      0t0  TCP 127.0.0.1:4420 (LISTEN)
+$ kill -TERM 34613
+exit=0
+4420 after 1s: free

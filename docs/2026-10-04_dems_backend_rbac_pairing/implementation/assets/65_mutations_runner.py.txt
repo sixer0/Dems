@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""W65 mutation check (rule M15: no file of the workspace tree is changed).
+
+W55's pattern (assets/55_mutations_runner.py.txt): each mutation is ONE text replacement in ONE
+module, applied in memory by the transform plugin of vitest.mutation.config.mts. A mutation is
+DETECTED when the tests fail while the mutation was really applied (the plugin leaves a marker
+file under TMPDIR). Every mutation runs against the row's three test files: the two Live files and
+the folder's existing Simulated file. Run from the workspace root:
+
+    python3 .cache/w65/mut/run_mutations.py check
+    python3 .cache/w65/mut/run_mutations.py run [ids]
+"""
+import json, os, subprocess, sys, time
+
+ROOT = os.getcwd()
+HERE = os.path.join(ROOT, '.cache/w65/mut')
+CONFIG = '.cache/w65/mut/vitest.mutation.config.mts'
+APPLIED = os.path.join(os.environ['TMPDIR'], 'w65-mut-applied')
+os.makedirs(APPLIED, exist_ok=True)
+
+L = 'apps/core-web/src/features/session-monitor/'
+ALL = ['src/test/live-session-monitor-actions.test.tsx', 'src/test/live-session-monitor-panels.test.tsx', 'src/features/session-monitor/__tests__/session-monitor.test.tsx']
+
+M = []
+def m(id, file, what, find, replace):
+    M.append({'id': id, 'file': L + file, 'what': what, 'find': find, 'replace': replace, 'tests': ALL})
+
+F = 'index.tsx'
+m('R01', F, 'B-3: the refusal skips the presenter (the page toast for every error)', "        if (presentCoreError(error) !== null) return\n        toast.danger(t('session.recovery.failed'))", "        toast.danger(t('session.recovery.failed'))")
+m('R02', F, 'B-3: the banner button is never marked busy', "recoverBusy={recovery.busy} recoverPending={recovery.revealed} />}", "recoverBusy={false} recoverPending={recovery.revealed} />}")
+
+F = 'action-bar.tsx'
+m('K01', F, 'B-2 marker: the popover stays open after the press', "    if (sent) setOpen(false)", "    if (sent && false) setOpen(false)")
+m('K02', F, 'B-2 marker: no chip waits at the button (LB-4)', "      onWait: () => setPendingChip(text || `Marker ${(sim.store.getState().session?.markerCount ?? 0) + 1}`),", "      onWait: () => undefined,")
+m('K03', F, 'B-2 marker: the refusal skips the presenter', "        logSessionMonitorError('ActionBar.addMarker', error, { length: text.length })\n        if (presentCoreError(error) !== null) return", "        logSessionMonitorError('ActionBar.addMarker', error, { length: text.length })")
+m('K04', F, 'B-2 marker: the chip never leaves', "      done: () => setPendingChip(null),", "      done: () => undefined,")
+m('K05', F, 'B-2 note: the drawer closes on a refusal too', "        logSessionMonitorError('ActionBar.addNote', caught, { length: trimmed.length })\n", "        logSessionMonitorError('ActionBar.addNote', caught, { length: trimmed.length })\n        setOpen(false)\n")
+m('K06', F, 'B-2 note: the refusal skips the presenter', "        if (presentCoreError(caught) !== null) return\n        toast.danger(t('session.actions.failed'))", "        toast.danger(t('session.actions.failed'))")
+m('K07', F, 'B-2 snapshot: no shutter at the press (LB-4)', "      onWait: () => {\n        flashed = true\n        onSnapshot()\n      },", "      onWait: () => undefined,")
+m('K08', F, 'B-2 snapshot: the camera is read before the settle (C-2 broken: a refusal still toasts success)', "        logSessionMonitorError('ActionBar.snapshot', error)\n", "        logSessionMonitorError('ActionBar.snapshot', error)\n        toast.success(t('session.actions.snapshot.captured'))\n")
+m('K09', F, 'B-2 stop: a 422 closes the dialog with the generic toast', "        if (transition?.code === SimErrorCode.REASON_TOO_SHORT) {", "        if (transition?.code === SimErrorCode.REASON_TOO_SHORT && false) {")
+m('K10', F, 'B-2 stop: a 409 of an ended session reads as a failure', "        if (transition !== null && transition.from !== null && ENDED_STATES.has(transition.from)) {", "        if (false) {")
+m('K11', F, 'B-2 stop: an outage closes the dialog (LB-6)', "          if (notice.kind === CoreErrorNoticeKind.PERMISSION || notice.kind === CoreErrorNoticeKind.SIGNED_OUT || notice.kind === CoreErrorNoticeKind.STOPPED) close()", "          close()")
+m('K12', F, 'B-2 stop: a refusal of the role keeps the dialog open', "          if (notice.kind === CoreErrorNoticeKind.PERMISSION || notice.kind === CoreErrorNoticeKind.SIGNED_OUT || notice.kind === CoreErrorNoticeKind.STOPPED) close()", "          if (notice.kind === CoreErrorNoticeKind.SIGNED_OUT || notice.kind === CoreErrorNoticeKind.STOPPED) close()")
+m('K13', F, 'B-2 stop: the confirm never shows the spinner (LB-1)', "<Button type=\"submit\" variant=\"danger\" isPending={press.revealed}", "<Button type=\"submit\" variant=\"danger\" isPending={false}")
+m('K14', F, 'B-2 stop: the dialog closes at the press instead of on the settle', "    const sent = trimmed\n", "    const sent = trimmed\n    close()\n")
+
+F = 'use-pending-press.ts'
+m('P01', F, 'LB-1: a second press while one is out is sent', "      if (inFlight.current) return false\n", "")
+m('P02', F, 'LB-1: busy is never set', "        setBusy(true)\n", "")
+m('P03', F, 'LB-1: the pending state is never revealed', "          setRevealed(true)\n", "")
+m('P04', F, 'onWait is called although the outcome is known (Simulated mode would flash and pend)', "      if (!settled) {\n        waiting = true", "      if (true) {\n        waiting = true")
+
+F = 'live-feed-panel.tsx'
+m('B01', F, 'B-4: the toggle is not optimistic', "  const selectedCamera = pendingCamera ?? feed.activeCameraId", "  const selectedCamera = feed.activeCameraId")
+m('B02', F, 'B-4: no revert on a failure', "      done: () => setPendingCamera(null),", "      ok: () => setPendingCamera(null),")
+m('B03', F, 'B-4: the failure is not shown by the presenter', "        presentCoreError(error)\n      },", "      },")
+
+F = 'integrity-panel.tsx'
+m('A01', F, 'A9: the refusal skips the presenter', "          if (presentCoreError(error) !== null) return\n          toast.danger(t('session.integrity.verifyFailed'))", "          toast.danger(t('session.integrity.verifyFailed'))")
+m('A02', F, 'A9: a failure leaves the button disabled', "          logSessionMonitorError('IntegrityPanel.reverify', error)\n          setVerify({ phase: 'idle' })", "          logSessionMonitorError('IntegrityPanel.reverify', error)")
+m('A03', F, 'A9: the Live result is read as a value (live.misuse)', "      settle(() => actions.verifyAuditChain(), {\n        ok: (result) => {", "      const read = actions.verifyAuditChain() as unknown as { ok?: boolean }\n      void read.ok\n      settle(() => actions.verifyAuditChain(), {\n        ok: (result) => {")
+
+F = 'finalization-modal.tsx'
+m('F01', F, 'Live: the Core digest of the sealed item is labelled SIMULATED ([CS] 3.2)', "{live ? t('common.coreMode.chip.LIVE') : t('common.simulated.chip')}", "{t('common.simulated.chip')}")
+
+F = 'log.ts'
+m('G01', F, 'the page record is not written', "  sink.report({\n", "  void ({\n")
+
+
+def check():
+    bad = 0
+    for mu in M:
+        with open(os.path.join(ROOT, mu['file']), encoding='utf8') as handle:
+            text = handle.read()
+        count = text.count(mu['find'])
+        if count != 1:
+            bad += 1
+            print(f"{mu['id']}: the text occurs {count} times in {mu['file']}")
+    ids = [mu['id'] for mu in M]
+    assert len(ids) == len(set(ids)), 'duplicate id'
+    print(f"{len(M)} mutations; texts that do not occur exactly once: {bad}")
+    return bad
+
+def vitest(mid, tests):
+    env = dict(os.environ)
+    env['W65_APPLIED_DIR'] = APPLIED
+    if mid:
+        env['W65_MUT'] = mid
+    else:
+        env.pop('W65_MUT', None)
+    started = time.time()
+    done = subprocess.run(['npx', 'vitest', 'run', '--config', CONFIG, '--maxWorkers=2', *tests], cwd=ROOT, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    summary = ' | '.join(line.strip() for line in out.splitlines() if line.strip().startswith(('Test Files', 'Tests ')))
+    first = next((line.strip() for line in out.splitlines() if line.strip().startswith(('×', 'FAIL'))), '')
+    return done.returncode, summary, first[:230], time.time() - started
+
+def stamp():
+    return time.strftime('%Y-%m-%d %H:%M:%S WIB')
+
+def run(ids):
+    json.dump(M, open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+    if check():
+        sys.exit(2)
+    code, summary, _first, took = vitest('', ALL)
+    print(f"## {stamp()} baseline: the three test files of the row, no mutation\nbaseline exit={code} {summary} ({took:.1f} s)", flush=True)
+    if code != 0:
+        sys.exit(3)
+    chosen = [mu for mu in M if not ids or mu['id'] in ids]
+    survived, not_applied = [], []
+    for mu in chosen:
+        marker = os.path.join(APPLIED, mu['id'])
+        if os.path.exists(marker):
+            os.remove(marker)
+        code, summary, first, took = vitest(mu['id'], mu['tests'])
+        applied = os.path.exists(marker)
+        if not applied:
+            not_applied.append(mu['id'])
+            verdict = 'NOT APPLIED'
+        elif code != 0:
+            verdict = 'DETECTED   '
+        else:
+            verdict = 'SURVIVED   '
+            survived.append(mu['id'])
+        print(f"{mu['id']} {verdict} exit={code} {mu['file'].split('/')[-1]}: {mu['what']} [{summary}] first: {first}", flush=True)
+    print(f"## {stamp()} {len(chosen)} mutations: {len(chosen) - len(survived) - len(not_applied)} detected, {len(survived)} survived {survived}, {len(not_applied)} not applied {not_applied}", flush=True)
+
+if __name__ == '__main__':
+    mode = sys.argv[1] if len(sys.argv) > 1 else 'check'
+    if mode == 'check':
+        json.dump(M, open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+        sys.exit(1 if check() else 0)
+    else:
+        run(sys.argv[2:])

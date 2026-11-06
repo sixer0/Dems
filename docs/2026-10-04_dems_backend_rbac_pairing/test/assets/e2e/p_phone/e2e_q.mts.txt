@@ -1,0 +1,603 @@
+// E2E-P (D194): one queue-driven driver for the phone (adb, emulator-5554 only) and two headless
+// Chromium profiles (raw CDP, origin http://127.0.0.1:5176 only), so that a web action and the phone's
+// reaction can be timed in ONE batch. Method of W67/W73's drive_q (agent writes NNN.cmd after reading
+// the previous result; the driver writes NNN.out and one ACK line to events.log).
+//
+//   node --import tsx e2e_q.mts <queueDir> <assetsDir>
+//
+// Credential rules (W67/W73, unchanged): the demo password is read from the shared dataset constant and
+// is never printed, logged or written. On the phone it is typed ONLY when the IME reports a password
+// editor as focused; after it, no screencap is taken until the app's sign-in was answered 200 in the
+// same batch, else the app is force-stopped (fields cleared). In a browser it is inserted only into the
+// login form's password input. Every output line is redacted (password, dvc_/ses_/bio_ token shapes).
+// Device security: no PIN, no lock, no fingerprint, no settings, no reverse-rule change; nothing typed or
+// tapped unless the DEMS app has the focus and no keyguard shows.
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset';
+
+const [Q, ASSETS] = process.argv.slice(2);
+if (!Q || !ASSETS) {
+  console.error('usage: e2e_q.mts <queueDir> <assetsDir>');
+  process.exit(64);
+}
+mkdirSync(Q, { recursive: true });
+const SERIAL = 'emulator-5554';
+const APP = 'com.dems.demo.tablet';
+const ORIGIN = 'http://127.0.0.1:5176';
+const SERVER_LOG = '/Users/gsp-budi/Documents/DEMS/.cache/manual/lane1-server.log';
+const CHROME = `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell`;
+const TMP = process.env.TMPDIR ?? '/tmp';
+const BIG = { encoding: 'utf8' as const, maxBuffer: 256 * 1024 * 1024 };
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const hms = (d = new Date()) => `${d.toTimeString().slice(0, 8)}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+const redact = (text: string) =>
+  text.split(DEMO_OPERATOR_PASSWORD).join('***').replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***');
+const event = (line: string) => {
+  const l = redact(line);
+  appendFileSync(`${Q}/events.log`, `${l}\n`);
+  console.log(`-- ${hms()} ${l.slice(0, 600)}`);
+};
+
+// ───────────────────────────── phone ─────────────────────────────
+const adb = (...args: string[]): string => execFileSync('adb', ['-s', SERIAL, ...args], BIG);
+function focused(): boolean {
+  const w = adb('shell', 'dumpsys', 'window');
+  return /isKeyguardShowing=false/.test(w) && /mCurrentFocus=.*com\.dems\.demo\.tablet/.test(w);
+}
+function keyguard(): boolean {
+  return /isKeyguardShowing=true/.test(adb('shell', 'dumpsys', 'window'));
+}
+function editorInputType(): number | null {
+  const dump = adb('shell', 'dumpsys', 'input_method');
+  const types = [...dump.matchAll(/inputType=0x([0-9a-f]+)/g)].map((m) => Number.parseInt(m[1]!, 16));
+  return types.length > 0 ? types[types.length - 1]! : null;
+}
+const isPasswordType = (t: number | null) => t !== null && (t & 0xf) === 0x1 && [0x80, 0x90, 0xe0].includes(t & 0xff0);
+const investigator = OPERATORS.find((o) => o.role === 'INVESTIGATOR')!;
+let passwordPending = false;
+let batchT0 = '';
+const deviceTime = () => adb('shell', "date '+%m-%d %H:%M:%S.000'").trim();
+const jsLog = (): string => adb('logcat', '-d', '-T', batchT0, '-s', 'ReactNativeJS:V');
+const PATTERNS: Record<string, RegExp> = {
+  signin: /DEMS-LIVE\] POST \/api\/v1\/auth\/sign-in (\d{3})/,
+  signout: /DEMS-LIVE\] POST \/api\/v1\/auth\/sign-out (\d{3})/,
+  create: /DEMS-LIVE\] POST \/api\/v1\/session (\d{3})/,
+  precheck: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/precheck (\d{3})/,
+  ack: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/precheck\/acknowledge (\d{3})/,
+  start: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/start (\d{3})/,
+  stop: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/stop (\d{3})/,
+  note: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/notes (\d{3})/,
+  sumack: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/summary\/acknowledge (\d{3})/,
+  any: /DEMS-LIVE\] (\S+ \S+ \d{3})/,
+};
+const seen = new Set<string>();
+async function waitLog(name: string, seconds: number): Promise<string> {
+  const pattern = PATTERNS[name];
+  if (!pattern) return `unknown pattern ${name}`;
+  for (let w = 0; w < seconds * 2; w += 1) {
+    const line = jsLog().split('\n').find((l) => pattern.test(l) && !seen.has(l));
+    if (line !== undefined) {
+      seen.add(line);
+      const status = pattern.exec(line)?.[1] ?? '?';
+      if (name === 'signin') {
+        if (status === '200') passwordPending = false;
+        else return `signin ${status}`;
+      }
+      return `${name} ${status} at device ${line.slice(0, 18)} (${line.replace(/^.*DEMS-LIVE\] /, '').replace(/ [0-9a-f]{8}-[0-9a-f-]{27}\s*$/, '')})`;
+    }
+    await sleep(500);
+  }
+  return `${name} NOT SEEN in ${seconds} s`;
+}
+// A raw frame (no on-device PNG encoding: ~0.7 s instead of 1.4-3 s), converted to PNG on the host.
+const RAW2PNG = '/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/e2e/raw2png.py';
+// From batch 044 on: on-device PNG again (1.7 MB through adb instead of 10.4 MB raw), after a 30 s UI
+// stall and an 8 s request timeout on the phone at 10:13 under host load (see the report, ENV-2).
+function rawFrame(name: string): [string, string] {
+  const t1 = new Date();
+  const png = execFileSync('adb', ['-s', SERIAL, 'exec-out', 'screencap', '-p'], { maxBuffer: BIG.maxBuffer });
+  const t2 = new Date();
+  writeFileSync(`${ASSETS}/${name}.png`, png);
+  return ['', `${name}.png ${hms(t1)}..${hms(t2)}`];
+}
+function convert(_pairs: [string, string][]): void {
+  void RAW2PNG;
+}
+function pshot(name: string): string {
+  if (passwordPending) return 'screencap refused: a password was typed and the sign-in is not answered 200';
+  const [file, label] = rawFrame(name);
+  convert([[file, name]]);
+  return `screencap ${label}`;
+}
+interface Found { id: string; x: number; y: number; text: string; cls: string }
+function dumpNodes(): Found[] | null {
+  try {
+    execFileSync('adb', ['-s', SERIAL, 'shell', 'uiautomator', 'dump', '/sdcard/e2e_p.xml'], { ...BIG, timeout: 15_000 });
+  } catch {
+    return null;
+  }
+  const xml = adb('shell', 'cat', '/sdcard/e2e_p.xml');
+  adb('shell', 'rm', '-f', '/sdcard/e2e_p.xml');
+  return [...xml.matchAll(/<node\b[^>]*>/g)]
+    .map((m) => m[0])
+    .map((n) => {
+      const id = (/ resource-id="([^"]*)"/.exec(n)?.[1] ?? '').replace(/^.*:id\//, '');
+      const b = / bounds="\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]"/.exec(n);
+      const text = (/ text="([^"]*)"/.exec(n)?.[1] ?? '') || (/ content-desc="([^"]*)"/.exec(n)?.[1] ?? '');
+      const cls = (/ class="([^"]*)"/.exec(n)?.[1] ?? '').replace(/^.*\./, '');
+      return b ? { id, x: Math.round((+b[1] + +b[3]) / 2), y: Math.round((+b[2] + +b[4]) / 2), text, cls } : null;
+    })
+    .filter((n): n is Found => n !== null);
+}
+const NO_DUMP = new Set(['login', 'summary', 'home']);
+const recs: Record<string, ChildProcess> = {};
+let screen = 'login';
+
+async function phone(verb: string, rest: string[]): Promise<string> {
+  switch (verb) {
+    case 'screen':
+      screen = rest[0] ?? '';
+      return `declared screen ${screen}`;
+    case 'tap':
+      if (!focused()) return 'NOT FOCUSED: tap skipped';
+      adb('shell', 'input', 'tap', rest[0]!, rest[1]!);
+      return `tap ${rest[0]},${rest[1]}`;
+    case 'swipe':
+      if (!focused()) return 'NOT FOCUSED: swipe skipped';
+      adb('shell', 'input', 'swipe', rest[0]!, rest[1]!, rest[2]!, rest[3]!, rest[4] ?? '400');
+      return `swipe ${rest.slice(0, 4).join(',')} ${rest[4] ?? '400'} ms`;
+    case 'long':
+      if (!focused()) return 'NOT FOCUSED: long skipped';
+      adb('shell', 'input', 'swipe', rest[0]!, rest[1]!, rest[0]!, rest[1]!, rest[2] ?? '2300');
+      return `long ${rest[0]},${rest[1]} ${rest[2] ?? '2300'} ms`;
+    case 'ids':
+    case 'tapid':
+    case 'tapt': {
+      if (NO_DUMP.has(screen)) return `REFUSED: no uiautomator dump on the ${screen} screen`;
+      if (verb !== 'ids' && !focused()) return 'NOT FOCUSED: skipped';
+      for (let a = 0; a < 3; a += 1) {
+        const nodes = dumpNodes();
+        if (nodes === null) { await sleep(600); continue; }
+        if (verb === 'ids') {
+          const re = new RegExp(rest[0] ?? '.');
+          const list = nodes.filter((n) => (n.id && re.test(n.id)) || (rest[1] === 'text' && n.text && re.test(n.text)));
+          return `ids(${list.length}): ${list.map((n) => `${n.id || n.cls}@${n.x},${n.y}${n.text ? ` "${n.text.slice(0, 70)}"` : ''}`).join(' ; ')}`;
+        }
+        const want = rest.join(' ');
+        const node = verb === 'tapid' ? nodes.find((n) => n.id === want && n.y > 0) : nodes.find((n) => n.text === want && n.y > 0);
+        if (node) {
+          if (!focused()) return 'NOT FOCUSED: skipped';
+          adb('shell', 'input', 'tap', String(node.x), String(node.y));
+          return `${verb} ${want} at ${node.x},${node.y}${node.text ? ` "${node.text.slice(0, 60)}"` : ''}`;
+        }
+        await sleep(600);
+      }
+      return `${verb} ${rest.join(' ')}: not found (or no dump)`;
+    }
+    case 'text': {
+      if (!focused()) return 'NOT FOCUSED: text skipped';
+      const t = editorInputType();
+      if (isPasswordType(t)) return 'REFUSED: the focused editor is a password field';
+      adb('shell', 'input', 'text', rest.join('%s'));
+      return `text typed (${rest.join(' ')}); inputType 0x${(t ?? 0).toString(16)}`;
+    }
+    case 'username': {
+      if (!focused()) return 'NOT FOCUSED: username skipped';
+      const t = editorInputType();
+      if (isPasswordType(t)) return 'REFUSED: the focused editor is a password field';
+      adb('shell', 'input', 'text', investigator.username);
+      return `username typed (${investigator.username}); inputType 0x${(t ?? 0).toString(16)}`;
+    }
+    case 'password': {
+      if (!focused()) return 'NOT FOCUSED: password skipped';
+      const t = editorInputType();
+      if (!isPasswordType(t)) return `REFUSED: the focused editor is not a password field (0x${(t ?? 0).toString(16)}); nothing typed`;
+      passwordPending = true;
+      adb('shell', 'input', 'text', DEMO_OPERATOR_PASSWORD); // never printed
+      return `password typed (not shown); inputType 0x${(t ?? 0).toString(16)}`;
+    }
+    case 'key':
+      if (!focused()) return 'NOT FOCUSED: key skipped';
+      adb('shell', 'input', 'keyevent', rest[0]!);
+      return `key ${rest[0]}`;
+    case 'link':
+      adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `'${rest[0]!}'`, APP);
+      return `deep link ${rest[0]}`;
+    case 'forcestop':
+      adb('shell', 'am', 'force-stop', APP);
+      return 'force-stopped the app';
+    case 'waitlog': {
+      const r = await waitLog(rest[0]!, Number(rest[1] ?? '20'));
+      if (rest[0] === 'signin' && passwordPending) {
+        adb('shell', 'am', 'force-stop', APP);
+        passwordPending = false;
+        return `${r}; the app was force-stopped (fields cleared) before any screencap`;
+      }
+      return r;
+    }
+    case 'shot':
+      return pshot(rest[0]!);
+    case 'poll': {
+      // poll <prefix> <count> <gapMs>: timestamped screencaps in a row (for timing a reaction)
+      if (passwordPending) return 'screencap refused: a password was typed and the sign-in is not answered 200';
+      const n = Number(rest[1] ?? '6');
+      const gap = Number(rest[2] ?? '0');
+      const lines: string[] = [];
+      const pairs: [string, string][] = [];
+      for (let i = 0; i < n; i += 1) {
+        const name = `${rest[0]}_${String(i).padStart(2, '0')}`;
+        const [file, label] = rawFrame(name);
+        pairs.push([file, name]);
+        lines.push(label);
+        if (gap) await sleep(gap);
+      }
+      convert(pairs);
+      return `poll: ${lines.join(' ; ')}`;
+    }
+    case 'focus':
+      return `focused ${focused()}; keyguard ${keyguard()}; inputType 0x${(editorInputType() ?? 0).toString(16)}`;
+    case 'corelog': {
+      const lines = jsLog().split('\n').map((l) => { const m = /^(\S+ \S+).*DEMS-LIVE\] (.*)$/.exec(l); return m ? `${m[1]!.slice(6)} ${m[2]!.replace(/ [0-9a-f]{8}-[0-9a-f-]{27}\s*$/, '')}` : ''; }).filter(Boolean);
+      return `corelog (${lines.length}): ${lines.slice(-Number(rest[0] ?? '30')).join(' | ')}`;
+    }
+    case 'jslog': {
+      const re = new RegExp(rest.join(' ') || 'source:');
+      const lines = jsLog().split('\n').filter((l) => re.test(l)).map((l) => l.replace(/^\S+ (\S+)\s+\d+\s+\d+ \w ReactNativeJS: /, '$1 '));
+      return `jslog (${lines.length}): ${lines.slice(-40).join(' | ')}`;
+    }
+    case 'top':
+      return adb('shell', 'dumpsys', 'window').split('\n').filter((l) => /mCurrentFocus|isKeyguardShowing/.test(l)).map((l) => l.trim()).join(' ; ');
+    case 'clock': {
+      // Device clock minus host clock, from 5 bracketed reads (ms); the midpoint of each round trip.
+      const offs: number[] = [];
+      for (let i = 0; i < 5; i += 1) {
+        const a = Date.now();
+        const d = Number(adb('shell', 'date', '+%s%N').trim()) / 1e6;
+        const b = Date.now();
+        offs.push(Math.round(d - (a + b) / 2));
+      }
+      return `device-host clock offset ms: ${offs.join(', ')}`;
+    }
+    case 'rec': {
+      // rec start <name> <seconds>: screenrecord with the device-time overlay (--bugreport), async.
+      // rec pull <name> <fps>: pull, delete on the device, extract frames to <name>_frames/.
+      const name = rest[1]!;
+      if (rest[0] === 'start') {
+        const child = spawn('adb', ['-s', SERIAL, 'shell', 'screenrecord', '--bugreport', '--time-limit', rest[2] ?? '12', `/sdcard/${name}.mp4`], { stdio: 'ignore' });
+        recs[name] = child;
+        await sleep(600);
+        return `screenrecord ${name} started (pid ${child.pid}) at ${hms()}`;
+      }
+      const child = recs[name];
+      if (child && child.exitCode === null) await new Promise((r) => child.once('exit', r));
+      await sleep(800);
+      const mp4 = `${ASSETS}/${name}.mp4`;
+      execFileSync('adb', ['-s', SERIAL, 'pull', `/sdcard/${name}.mp4`, mp4], BIG);
+      adb('shell', 'rm', '-f', `/sdcard/${name}.mp4`);
+      mkdirSync(`${ASSETS}/${name}_frames`, { recursive: true });
+      execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', mp4, '-vf', `fps=${rest[2] ?? '10'},scale=540:-1`, `${ASSETS}/${name}_frames/f_%03d.png`], BIG);
+      return `screenrecord ${name} pulled; frames extracted at ${rest[2] ?? '10'} fps`;
+    }
+    default:
+      return `unknown phone command ${verb}`;
+  }
+}
+
+// ───────────────────────────── web ─────────────────────────────
+interface Ctx {
+  name: string;
+  port: number;
+  proc: ChildProcess;
+  profile: string;
+  ws: WebSocket;
+  id: number;
+  pending: Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>;
+  requests: Map<string, { t: string; method: string; url: string; status: number | string | null }>;
+  netLog: string;
+  console: string[];
+  loadFired: boolean;
+}
+const ctxs: Record<string, Ctx> = {};
+const cleanUrl = (url: string) => String(url).replace(/\?.*$/, (q) => (q.length > 1 ? '?…' : ''));
+
+async function openCtx(name: string, port: number): Promise<string> {
+  const profile = `${TMP.replace(/\/$/, '')}/e2e-p-${name}-profile`;
+  if (existsSync(profile)) rmSync(profile, { recursive: true, force: true });
+  const proc = spawn(CHROME, [
+    `--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1', `--user-data-dir=${profile}`,
+    '--no-first-run', '--disable-background-networking', '--disable-component-update', '--disable-sync',
+    '--disable-default-apps', '--disable-domain-reliability',
+    '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',
+    '--window-size=1440,900', 'about:blank',
+  ], { stdio: 'ignore' });
+  let list: any[] = [];
+  for (let i = 0; i < 60; i += 1) {
+    try { list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); if (list.some((t) => t.type === 'page')) break; } catch { /* not yet */ }
+    await sleep(250);
+  }
+  const target = list.find((t) => t.type === 'page');
+  if (!target) return `${name}: no page target on ${port}`;
+  const ws = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((r) => ws.addEventListener('open', r, { once: true }));
+  const c: Ctx = { name, port, proc, profile, ws, id: 0, pending: new Map(), requests: new Map(), netLog: `${ASSETS}/${name}_network.log`, console: [], loadFired: false };
+  ws.addEventListener('message', (ev: MessageEvent) => {
+    const msg = JSON.parse(String(ev.data));
+    if (msg.id && c.pending.has(msg.id)) {
+      const p = c.pending.get(msg.id)!;
+      c.pending.delete(msg.id);
+      msg.error ? p.reject(new Error(`CDP error ${msg.error.code}`)) : p.resolve(msg.result);
+      return;
+    }
+    const p = msg.params ?? {};
+    switch (msg.method) {
+      case 'Page.loadEventFired': c.loadFired = true; break;
+      case 'Network.requestWillBeSent':
+        // Browser-side wall time of the request (CDP wallTime), and the monotonic base for the answer:
+        // correct even when this process handles the event late (an adb call blocks the loop).
+        c.requests.set(p.requestId, { t: hms(new Date(p.wallTime * 1000)), method: p.request.method, url: cleanUrl(p.request.url), status: null, wall: p.wallTime, mono: p.timestamp } as any);
+        break;
+      case 'Network.responseReceived': {
+        const e: any = c.requests.get(p.requestId);
+        if (e) { e.status = p.response.status; appendFileSync(c.netLog, `${e.t} ${hms(new Date((e.wall + (p.timestamp - e.mono)) * 1000))} ${e.method} ${e.url} ${e.status}\n`); }
+        break;
+      }
+      case 'Network.loadingFailed': {
+        const e = c.requests.get(p.requestId);
+        if (e && e.status === null) { e.status = `failed:${p.errorText}`; appendFileSync(c.netLog, `${e.t} ${hms()} ${e.method} ${e.url} ${e.status}\n`); }
+        break;
+      }
+      case 'Network.webSocketCreated': appendFileSync(c.netLog, `${hms()} WS-CREATED ${cleanUrl(p.url)}\n`); break;
+      case 'Network.webSocketHandshakeResponseReceived': appendFileSync(c.netLog, `${hms()} WS-HANDSHAKE ${p.response.status}\n`); break;
+      case 'Network.webSocketClosed': appendFileSync(c.netLog, `${hms()} WS-CLOSED\n`); break;
+      case 'Runtime.exceptionThrown': c.console.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 200)}`); break;
+      case 'Runtime.consoleAPICalled':
+        if (p.type === 'error' || p.type === 'warning') c.console.push(`${p.type}: ${(p.args ?? []).map((a: any) => String(a.value ?? a.description ?? a.type)).join(' ').slice(0, 300)}`);
+        break;
+    }
+  });
+  ctxs[name] = c;
+  await send(c, 'Network.enable');
+  await send(c, 'Page.enable');
+  await send(c, 'Runtime.enable');
+  await send(c, 'Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  const v = await send(c, 'Browser.getVersion');
+  return `${name}: ${v.product} headless=${/Headless/i.test(v.userAgent)} devtools 127.0.0.1:${port}, fresh profile in TMPDIR`;
+}
+const send = (c: Ctx, method: string, params: any = {}): Promise<any> =>
+  new Promise((resolve, reject) => {
+    const n = ++c.id;
+    c.pending.set(n, { resolve, reject });
+    c.ws.send(JSON.stringify({ id: n, method, params }));
+  });
+async function evaluate(c: Ctx, expression: string): Promise<any> {
+  const r = await send(c, 'Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+  if (r.exceptionDetails) throw new Error('page script failed');
+  return r.result.value;
+}
+const exists = (c: Ctx, sel: string) => evaluate(c, `document.querySelector(${JSON.stringify(sel)}) !== null`);
+const tid = (id: string) => `[data-testid="${id}"]`;
+async function waitSel(c: Ctx, sel: string, present: boolean, ms: number): Promise<number | null> {
+  const t = Date.now();
+  while (Date.now() - t < ms) {
+    if ((await exists(c, sel)) === present) return Date.now() - t;
+    await sleep(50);
+  }
+  return null;
+}
+async function wshot(c: Ctx, name: string): Promise<string> {
+  const t1 = new Date();
+  const { data } = await send(c, 'Page.captureScreenshot', { format: 'png' });
+  writeFileSync(`${ASSETS}/${name}.png`, Buffer.from(data, 'base64'));
+  return `screenshot ${name}.png ${hms(t1)}..${hms()}`;
+}
+async function insertInto(c: Ctx, sel: string, text: string): Promise<boolean> {
+  const ok = await evaluate(c, `(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return false; el.focus(); if (el.select) el.select(); return document.activeElement === el })()`);
+  if (ok) await send(c, 'Input.insertText', { text });
+  return ok;
+}
+async function api(c: Ctx, method: string, path: string, body?: string): Promise<string> {
+  const r = await evaluate(c, `(async () => { const a = await fetch(${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, credentials: 'same-origin', headers: { 'content-type': 'application/json' }${body ? `, body: ${JSON.stringify(body)}` : ''} }); let d = null; try { d = await a.json() } catch {} return { status: a.status, body: d } })()`);
+  return JSON.stringify(r);
+}
+
+async function web(c: Ctx, verb: string, rest: string[], raw: string): Promise<string> {
+  switch (verb) {
+    case 'nav': {
+      c.loadFired = false;
+      await send(c, 'Page.navigate', { url: `${ORIGIN}${rest[0] ?? '/'}` });
+      for (let i = 0; i < 150 && !c.loadFired; i += 1) await sleep(100);
+      await sleep(Number(rest[1] ?? '2500'));
+      return `nav ${rest[0]} load=${c.loadFired}`;
+    }
+    case 'signin': {
+      const op = OPERATORS.find((o) => o.username === rest[0]);
+      if (!op) return `no operator ${rest[0]}`;
+      if ((await waitSel(c, tid('page-login'), true, 15000)) === null) return 'no login page';
+      const u = await insertInto(c, `${tid('login-username-field')} input`, op.username);
+      const p = await insertInto(c, `${tid('login-password-field')} input`, DEMO_OPERATOR_PASSWORD);
+      if (!u || !p) return `fields not found u=${u} p=${p}`;
+      await evaluate(c, `document.querySelector('${tid('login-submit')}')?.click()`);
+      const t = await waitSel(c, tid('page-dashboard'), true, 25000);
+      await sleep(2000);
+      return `signin ${op.username} (${op.role}) dashboard ${t === null ? 'NOT shown' : `after ${t} ms`}`;
+    }
+    case 'shot':
+      return wshot(c, rest[0]!);
+    case 'signout': {
+      const r = await evaluate(c, `(async () => { const a = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return a.status })()`);
+      return `signout status ${r}`;
+    }
+    case 'touch': {
+      const r = await evaluate(c, `(async () => { const a = await fetch('/api/v1/auth/touch', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: '{}' }); return a.status })()`);
+      return `touch status ${r}`;
+    }
+    case 'press': {
+      const r = await evaluate(c, `(() => { const el = document.querySelector('${tid(rest[0]!)}'); if (!el) return false; el.click(); return true })()`);
+      return `press ${rest[0]} ${r ? 'ok' : 'NOT FOUND'} at ${hms()}`;
+    }
+    case 'click': {
+      const sel = raw.replace(/^\S+\s+click\s+/, '');
+      const r = await evaluate(c, `(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return false; el.click(); return true })()`);
+      return `click ${sel} ${r ? 'ok' : 'NOT FOUND'} at ${hms()}`;
+    }
+    case 'clicktext': {
+      const txt = raw.replace(/^\S+\s+clicktext\s+/, '');
+      const r = await evaluate(c, `(() => { const els = [...document.querySelectorAll('button, [role="button"], a, [role="menuitem"], [role="option"], [role="radio"], label, [role="tab"]')]; const el = els.find((e) => (e.textContent ?? '').replace(/\\s+/g, ' ').trim() === ${JSON.stringify(txt)}); if (!el) return false; el.click(); return true })()`);
+      return `clicktext "${txt}" ${r ? 'ok' : 'NOT FOUND'} at ${hms()}`;
+    }
+    case 'type': {
+      const sel = rest[0]!;
+      const text = rest.slice(1).join(' ');
+      const ok = await insertInto(c, sel, text);
+      return `type into ${sel}: ${ok ? `"${text}"` : 'NOT FOCUSED'}`;
+    }
+    case 'key': {
+      const key = rest[0]!;
+      const codes: Record<string, [string, number]> = { Enter: ['Enter', 13], Escape: ['Escape', 27], Tab: ['Tab', 9] };
+      const [code, vk] = codes[key] ?? [key, 0];
+      await send(c, 'Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode: vk });
+      await send(c, 'Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: vk });
+      return `key ${key}`;
+    }
+    case 'wait': {
+      const t = await waitSel(c, tid(rest[0]!), rest[1] !== 'absent', Number(rest[2] ?? '15000'));
+      return `wait ${rest[0]} ${rest[1] === 'absent' ? 'absent' : 'present'}: ${t === null ? 'TIMEOUT' : `${t} ms (at ${hms()})`}`;
+    }
+    case 'waitsel': {
+      const sel = raw.replace(/^\S+\s+waitsel\s+\d+\s+/, '');
+      const t = await waitSel(c, sel, true, Number(rest[0]));
+      return `waitsel ${sel}: ${t === null ? 'TIMEOUT' : `${t} ms (at ${hms()})`}`;
+    }
+    case 'until': {
+      // until <ms> <expr>: polls a page expression every 50 ms until it is truthy; the host time it first was.
+      const expr = raw.replace(/^\S+\s+until\s+\d+\s+/, '');
+      const t0 = Date.now();
+      while (Date.now() - t0 < Number(rest[0])) {
+        const v = await evaluate(c, expr);
+        if (v) return `until true at ${hms()} after ${Date.now() - t0} ms => ${JSON.stringify(v).slice(0, 300)}`;
+        await sleep(50);
+      }
+      return `until TIMEOUT after ${rest[0]} ms`;
+    }
+    case 'js': {
+      const expr = raw.replace(/^\S+\s+js\s+/, '');
+      const v = await evaluate(c, expr);
+      return `js => ${JSON.stringify(v).slice(0, 6000)}`;
+    }
+    case 'api':
+      return `api ${rest[0]} ${rest[1]} => ${(await api(c, rest[0]!, rest[1]!, rest.slice(2).join(' ') || undefined)).slice(0, 8000)}`;
+    case 'ids': {
+      const re = rest[0] ?? '.';
+      const v = await evaluate(c, `[...document.querySelectorAll('[data-testid]')].map((e) => e.getAttribute('data-testid')).filter((t) => new RegExp(${JSON.stringify(re)}).test(t))`);
+      return `ids => ${JSON.stringify([...new Set(v)]).slice(0, 4000)}`;
+    }
+    case 'console': {
+      const l = c.console.splice(0);
+      return `console (${l.length}): ${l.join(' | ').slice(0, 3000)}`;
+    }
+    case 'origins': {
+      const log = existsSync(c.netLog) ? readFileSync(c.netLog, 'utf8') : '';
+      const urls = log.split('\n').map((l) => /(https?|wss?):\/\/[^/\s]+/.exec(l)?.[0]).filter(Boolean);
+      const counts: Record<string, number> = {};
+      for (const u of urls) counts[u!] = (counts[u!] ?? 0) + 1;
+      return `origins in ${c.name}_network.log: ${JSON.stringify(counts)}`;
+    }
+    default:
+      return `unknown web command ${verb}`;
+  }
+}
+
+// ───────────────────────────── server log ─────────────────────────────
+const marks: Record<string, number> = {};
+function serverLines(since: number, filter?: RegExp): string[] {
+  const text = readFileSync(SERVER_LOG, 'utf8');
+  const out: string[] = [];
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('{')) continue;
+    try {
+      const j = JSON.parse(line);
+      if (j.time < since) continue;
+      let s: string;
+      if (j.method) s = `${hms(new Date(j.time))} ${j.method} ${j.route} ${j.status}${j.code ? ` ${j.code}` : ''} ${j.principal ?? 'null'}`;
+      else s = `${hms(new Date(j.time))} [${j.msg}]${j.principal ? ` ${j.principal}` : ''}`;
+      if (!filter || filter.test(s)) out.push(s);
+    } catch { /* partial line */ }
+  }
+  return out;
+}
+
+// ───────────────────────────── loop ─────────────────────────────
+async function runLine(line: string): Promise<string> {
+  const [first, verb, ...rest] = line.trim().split(/\s+/);
+  if (first === 'p') return phone(verb!, rest);
+  if (first === 'w1' || first === 'w2') {
+    if (verb === 'open') return openCtx(first, Number(rest[0]));
+    const c = ctxs[first];
+    if (!c) return `${first} not open`;
+    return web(c, verb!, rest, line.trim());
+  }
+  switch (first) {
+    case 'sleep': await sleep(Number(verb ?? '1000')); return `slept ${verb} ms`;
+    case 'mark': marks[verb!] = Date.now(); return `mark ${verb} at ${hms()}`;
+    case 'serverlog': {
+      const since = marks[verb!] ?? Date.now() - 60_000;
+      const re = rest.length ? new RegExp(rest.join(' ')) : undefined;
+      const lines = serverLines(since, re);
+      return `serverlog since ${verb} (${lines.length}):\n    ${lines.join('\n    ')}`;
+    }
+    case 'par': {
+      const parts = line.trim().replace(/^par\s+/, '').split('||').map((s) => s.trim());
+      const res = await Promise.all(parts.map((p) => runLine(p).catch((e) => `ERROR ${e?.message}`)));
+      return res.map((r, i) => `[${i}] ${r}`).join(' ;; ');
+    }
+    case 'keyguard':
+      return `keyguard ${keyguard()}`;
+    default: return `unknown command: ${line}`;
+  }
+}
+
+async function quit(): Promise<void> {
+  for (const c of Object.values(ctxs)) {
+    try { c.ws.close(); } catch { /* */ }
+    try { c.proc.kill(); } catch { /* */ }
+    await sleep(500);
+    try { rmSync(c.profile, { recursive: true, force: true }); } catch { /* */ }
+  }
+}
+
+async function main(): Promise<number> {
+  let next = Number(process.env.E2E_START ?? '1');
+  for (;;) {
+    const id = String(next).padStart(3, '0');
+    const file = `${Q}/${id}.cmd`;
+    let waited = 0;
+    while (!existsSync(file) && waited < 900_000) { await sleep(200); waited += 200; }
+    if (!existsSync(file)) { event(`EXIT 6 no command ${id} within 15 min`); await quit(); return 6; }
+    await sleep(120);
+    const lines = readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('#'));
+    batchT0 = deviceTime();
+    const results: string[] = [];
+    let code: number | null = null;
+    for (const line of lines) {
+      if (/^done\s+\d+/.test(line)) { code = Number(line.split(/\s+/)[1]); break; }
+      if (keyguard()) { results.push(`${hms()} KEYGUARD SHOWING on ${SERIAL}: batch stopped`); break; }
+      try {
+        results.push(`${hms()} ${await runLine(line)}`);
+      } catch (e) {
+        results.push(`${hms()} ERROR in "${line.slice(0, 40)}": ${e instanceof Error ? e.message.split('\n')[0] : 'unknown'}`);
+      }
+    }
+    if (passwordPending) {
+      adb('shell', 'am', 'force-stop', APP);
+      passwordPending = false;
+      results.push('a password was typed without an answered sign-in in this batch: the app was force-stopped');
+    }
+    const text = redact(results.join('\n'));
+    writeFileSync(`${Q}/${id}.out`, `${text}\n`);
+    event(`ACK ${id} | ${text.replace(/\n/g, ' | ')}`);
+    if (code !== null) { await quit(); return code; }
+    next += 1;
+  }
+}
+main().then((s) => process.exit(s), async (e: unknown) => { event(`EXIT 1 ${e instanceof Error ? e.message : 'unknown'}`); await quit(); process.exit(1); });

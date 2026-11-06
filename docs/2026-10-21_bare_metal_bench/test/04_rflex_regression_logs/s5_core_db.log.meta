@@ -1,0 +1,4 @@
+PRE 18:07:21 uptime: 18:07  up  7:09, 1 user, load averages: 7.76 7.46 7.77
+START 18:07:21 CMD: /usr/bin/lockf -k -t 3600 /Users/gsp-budi/Documents/DEMS/.data/locks/heavy-host.lock /usr/bin/lockf -k -t 3600 /Users/gsp-budi/Documents/DEMS/.data/locks/db-runner.lock npx vitest run --root apps/core-server --project db --maxWorkers=2
+END 18:12:44 rc=1 duration=323s
+POST uptime: 18:12  up  7:14, 1 user, load averages: 6.37 6.45 7.15

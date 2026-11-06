@@ -1,0 +1,207 @@
+{
+ "signedIn": {
+  "ok": true
+ },
+ "ev0012Core": {
+  "status": 200,
+  "body": {
+   "verification": {
+    "status": "NOT_RUN",
+    "at": null
+   },
+   "custody": [
+    "RECORDING_STARTED",
+    "SEALED"
+   ]
+  }
+ },
+ "demoStatus": {
+  "status": 200,
+  "body": {
+   "scenario": "recording",
+   "epoch": 28
+  }
+ },
+ "custody_1440x900": {
+  "asIs": {
+   "viewport": "1440x900",
+   "containerWidth": 441,
+   "tableWidth": 472,
+   "overflowPx": 31,
+   "overflowX": "auto",
+   "columnWidths": {
+    "time": 106,
+    "action": 187,
+    "actor": 87,
+    "detail": 92
+   },
+   "stopDetailVisiblePx": 62,
+   "stopDetailWidthPx": 92
+  },
+  "preFixCssInjected": {
+   "viewport": "1440x900",
+   "containerWidth": 441,
+   "tableWidth": 457,
+   "overflowPx": 16,
+   "overflowX": "auto",
+   "columnWidths": {
+    "time": 91,
+    "action": 187,
+    "actor": 87,
+    "detail": 92
+   },
+   "stopDetailVisiblePx": 77,
+   "stopDetailWidthPx": 92
+  }
+ },
+ "custody_1280x800": {
+  "asIs": {
+   "viewport": "1280x800",
+   "containerWidth": 375,
+   "tableWidth": 472,
+   "overflowPx": 97,
+   "overflowX": "auto",
+   "columnWidths": {
+    "time": 106,
+    "action": 187,
+    "actor": 87,
+    "detail": 92
+   },
+   "stopDetailVisiblePx": 0,
+   "stopDetailWidthPx": 92
+  },
+  "preFixCssInjected": {
+   "viewport": "1280x800",
+   "containerWidth": 375,
+   "tableWidth": 457,
+   "overflowPx": 82,
+   "overflowX": "auto",
+   "columnWidths": {
+    "time": 91,
+    "action": 187,
+    "actor": 87,
+    "detail": 92
+   },
+   "stopDetailVisiblePx": 10,
+   "stopDetailWidthPx": 92
+  }
+ },
+ "custody_1920x1080": {
+  "asIs": {
+   "viewport": "1920x1080",
+   "containerWidth": 631,
+   "tableWidth": 631,
+   "overflowPx": 0,
+   "overflowX": "auto",
+   "columnWidths": {
+    "time": 129,
+    "action": 187,
+    "actor": 109,
+    "detail": 206
+   },
+   "stopDetailVisiblePx": 206,
+   "stopDetailWidthPx": 206
+  },
+  "preFixCssInjected": {
+   "viewport": "1920x1080",
+   "containerWidth": 631,
+   "tableWidth": 631,
+   "overflowPx": 0,
+   "overflowX": "auto",
+   "columnWidths": {
+    "time": 121,
+    "action": 187,
+    "actor": 111,
+    "detail": 213
+   },
+   "stopDetailVisiblePx": 213,
+   "stopDetailWidthPx": 213
+  }
+ },
+ "signOut": {
+  "menu": [
+   {
+    "text": "Profile AKP Andi Pratama",
+    "disabled": true
+   },
+   {
+    "text": "Role: Supervisor",
+    "disabled": true
+   },
+   {
+    "text": "Lock console",
+    "disabled": false
+   },
+   {
+    "text": "Sign out",
+    "disabled": false
+   }
+  ],
+  "clicked": true,
+  "login": true,
+  "state": "signed-out",
+  "alert": "You have been signed out."
+ },
+ "consoleNetwork": {
+  "Login": {
+   "requests": 442,
+   "origins": {
+    "http://127.0.0.1:5178": 441,
+    "blob:": 1
+   },
+   "ws": [
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws",
+    "ws://127.0.0.1:5178/ws"
+   ],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [
+    "error network: Failed to load resource: the server responded with a status of 401 (Unauthorized) (/api/v1/auth/session)"
+   ],
+   "responses4xx": [
+    "401 GET /api/v1/auth/session"
+   ],
+   "blocked": []
+  },
+  "Evidence detail": {
+   "requests": 1857,
+   "origins": {
+    "http://127.0.0.1:5178": 1857
+   },
+   "ws": [
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws",
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws",
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws",
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws"
+   ],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Sign out": {
+   "requests": 25,
+   "origins": {
+    "http://127.0.0.1:5178": 24,
+    "blob:": 1
+   },
+   "ws": [
+    "ws://127.0.0.1:5178/ws"
+   ],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  }
+ }
+}

@@ -1,0 +1,133 @@
+// W54: measures the top bar's horizontal budget in a real headless Chromium (Simulated mode; no backend).
+// Usage: node --import tsx .cache/w54/lane/measure-driver.mjs <devtoolsPort> <vitePort> <outJson> [screenshotDir]
+// For each width it reports how far the lockup's text (wordmark, tagline) reaches into the cluster
+// (a positive number is a collision), for the top bar as built and for variants made by an injected
+// style sheet (measurement only; nothing of the tree is changed).
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, shotDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+let id = 0
+const pending = new Map()
+let loadFired = false
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  if (msg.method === 'Page.loadEventFired') loadFired = true
+})
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
+loadFired = false
+await send('Page.navigate', { url: `${ORIGIN}/login` })
+for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+await sleep(1500)
+await evaluate(`localStorage.setItem('dems.core.mode.v1', 'SIMULATED'); sessionStorage.setItem('dems.auth', JSON.stringify({ operatorId: ${JSON.stringify(supervisor.id)}, issuedAt: Date.now() }))`, 'store')
+loadFired = false
+await send('Page.navigate', { url: `${ORIGIN}/storage` })
+for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+await sleep(5000)
+
+const measure = (label) =>
+  evaluate(
+    `(() => {
+      const q = (selector) => document.querySelector(selector)
+      const shown = (el) => el && getComputedStyle(el).display !== 'none'
+      const naturalRight = (el) => (shown(el) ? Math.round(el.getBoundingClientRect().left + el.scrollWidth) : 0)
+      const cluster = q('.dems-topbar-cluster').getBoundingClientRect()
+      const bar = q('.dems-topbar')
+      const chip = q('[data-testid="shell-mode"]')
+      const reach = Math.max(naturalRight(q('.dems-wordmark')), naturalRight(q('.dems-tagline')))
+      const foot = q('.dems-brand-footer')?.getBoundingClientRect()
+      const toggle = q('.dems-rail-toggle')?.getBoundingClientRect()
+      const lastItem = [...document.querySelectorAll('.dems-sidebar .dems-nav-item')].at(-1)?.getBoundingClientRect()
+      return {
+        tier: q('[data-testid="app-shell"]').getAttribute('data-shell-tier'),
+        collision: Math.round(reach - cluster.left),
+        spare: Math.round(cluster.left - reach),
+        date: shown(q('.dems-topbar-date')),
+        tagline: shown(q('.dems-tagline')),
+        chip: chip && shown(chip) ? chip.textContent.trim() + ' ' + Math.round(chip.getBoundingClientRect().width) + 'px' : null,
+        barOverflow: bar.scrollWidth > bar.clientWidth + 1,
+        footerOverToggle: foot && toggle ? Math.round(toggle.bottom - foot.top) : null,
+        footerOverLastItem: foot && lastItem ? Math.round(lastItem.bottom - foot.top) : null,
+      }
+    })()`,
+    label,
+  )
+
+const setStyle = (css) =>
+  evaluate(
+    `(() => { let s = document.getElementById('w54-measure'); if (!s) { s = document.createElement('style'); s.id = 'w54-measure'; document.head.appendChild(s) } s.textContent = ${JSON.stringify(css)}; })()`,
+    'style',
+  )
+const setChipText = (text) =>
+  evaluate(`(() => { const label = document.querySelector('[data-testid="shell-mode"] [data-slot="chip-label"], [data-testid="shell-mode"] .chip__label') ?? document.querySelector('[data-testid="shell-mode"] span span') ?? document.querySelector('[data-testid="shell-mode"] span'); if (!label.dataset.w54) label.dataset.w54 = label.textContent; label.textContent = ${JSON.stringify(text)} ?? label.dataset.w54; })()`, 'chip text')
+
+const NO_CHIP = `.dems-mode-indicator, .dems-mode-indicator + .dems-topbar-sep { display: none !important; }`
+const NO_DATE = `.dems-topbar-date, .dems-topbar-date + .dems-topbar-sep { display: none !important; }`
+const heights = { 1280: 800, 1366: 768, 1440: 900, 1536: 864, 1600: 900, 1680: 1050, 1920: 1080 }
+const result = { at: new Date().toISOString(), widths: {} }
+for (const width of [1280, 1366, 1400, 1440, 1536, 1599, 1600, 1680, 1760, 1920]) {
+  await send('Emulation.setDeviceMetricsOverride', { width, height: heights[width] ?? 900, deviceScaleFactor: 1, mobile: false })
+  await sleep(700)
+  const row = {}
+  await setStyle(NO_CHIP)
+  await sleep(150)
+  row.before = await measure('before')
+  await setStyle('')
+  await setChipText(null)
+  await sleep(150)
+  row.asBuilt = await measure('as built')
+  await setChipText('LIVE · RECONNECTING')
+  await sleep(150)
+  row.widestChip = await measure('widest')
+  await setStyle(NO_DATE)
+  await sleep(150)
+  row.widestChipNoDate = await measure('widest no date')
+  await setChipText(null)
+  await sleep(150)
+  row.simulatedNoDate = await measure('simulated no date')
+  await setStyle('')
+  result.widths[width] = row
+}
+if (shotDir) {
+  for (const [width, height] of [[1440, 900], [1366, 768], [1280, 800], [1600, 900]]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+    await sleep(800)
+    const { data } = await send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width, height: 110, scale: 1 } })
+    writeFileSync(join(shotDir, `topbar_simulated_${width}.png`), Buffer.from(data, 'base64'))
+  }
+}
+await evaluate(`localStorage.removeItem('dems.core.mode.v1'); sessionStorage.clear()`, 'remove what this check stored')
+writeFileSync(outJson, `${JSON.stringify(result, null, 1)}\n`)
+for (const [width, row] of Object.entries(result.widths)) {
+  console.log(width, row.before.tier, '| before', row.before.collision, '| as built', row.asBuilt.collision, row.asBuilt.chip, '| widest', row.widestChip.collision, '| widest, no date', row.widestChipNoDate.collision, '| SIMULATED, no date', row.simulatedNoDate.collision, '| footer over toggle', row.asBuilt.footerOverToggle, 'over last item', row.asBuilt.footerOverLastItem)
+}
+ws.close()

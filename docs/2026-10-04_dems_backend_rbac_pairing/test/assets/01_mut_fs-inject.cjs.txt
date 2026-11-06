@@ -1,0 +1,22 @@
+// W87 scratch: when W87_FS_INJECT names a mutation of kind "fs", `fs.readFileSync` of THAT file
+// returns its text plus the mutation's `append`. The tree is not changed (rule M15).
+const fs = require('node:fs');
+const path = require('node:path');
+const { syncBuiltinESMExports } = require('node:module');
+const id = process.env.W87_FS_INJECT;
+if (id) {
+  const table = JSON.parse(fs.readFileSync(path.join(__dirname, 'mutations.json'), 'utf8'));
+  const m = table.find((entry) => entry.id === id);
+  if (!m || m.kind !== 'fs') throw new Error(`W87: no fs mutation ${id}`);
+  const target = path.join('/Users/gsp-budi/Documents/DEMS', m.file);
+  const original = fs.readFileSync;
+  fs.readFileSync = function patched(file, ...rest) {
+    const out = original.call(this, file, ...rest);
+    if (typeof file === 'string' && path.resolve(file) === target) {
+      fs.writeFileSync(path.join(__dirname, 'applied', id), 'applied\n');
+      return typeof out === 'string' ? out + m.append : Buffer.concat([out, Buffer.from(m.append)]);
+    }
+    return out;
+  };
+  syncBuiltinESMExports();
+}

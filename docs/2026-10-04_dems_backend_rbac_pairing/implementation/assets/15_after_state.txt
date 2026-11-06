@@ -1,0 +1,34 @@
+== after state (after run 2), read-only queries, 11:33:01
+=== emulator-5554  avd=dems2_phone
+reverse --list: [;]
+isKeyguardShowing=false
+user 0: State: RUNNING_UNLOCKED
+CredentialType: NONE
+fingerprints: "count":0
+app process (pidof; empty = not running): []
+secure-store entries: [0] (count of <string> entries in shared_prefs/SecureStore.xml)
+AsyncStorage keys: [dems.mobile.log.v1|3056 dems.sim.v1|119907 ]
+=== emulator-5556  avd=dems2_tablet
+reverse --list: [;]
+isKeyguardShowing=false
+user 0: State: RUNNING_UNLOCKED
+CredentialType: NONE
+fingerprints: "count":0
+app process (pidof; empty = not running): []
+secure-store entries: [0] (count of <string> entries in shared_prefs/SecureStore.xml)
+AsyncStorage keys: [dems.mobile.log.v1|557 dems.sim.v1|119881 ]
+=== emulator-5558  avd=dems2_phone2
+reverse --list: [;]
+isKeyguardShowing=false
+user 0: State: RUNNING_UNLOCKED
+CredentialType: NONE
+fingerprints: "count":0
+app process (pidof; empty = not running): []
+secure-store entries: [0] (count of <string> entries in shared_prefs/SecureStore.xml)
+AsyncStorage keys: [dems.mobile.log.v1|557 dems.sim.v1|119864 ]
+== host listeners on 8081-8086 (lsof; none = no Metro left):
+lsof exit=1
+== emulator processes (not started, not stopped by this row):
+68181 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-syst
+68876 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-syst
+70102 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-syst

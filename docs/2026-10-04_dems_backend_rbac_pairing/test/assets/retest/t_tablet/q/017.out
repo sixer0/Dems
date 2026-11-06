@@ -1,0 +1,10 @@
+tap 1853,536 at 12:51:40.839
+slept 2500 ms
+screencap J28_tablet_evidence_hash_integrity.png (790917 bytes) at 12:51:44.084
+swipe 1920,1350,1920,450 600 ms
+slept 1500 ms
+screencap J28b_tablet_evidence_hash_scrolled.png (789843 bytes) at 12:51:46.899
+swipe 1920,1350,1920,450 600 ms
+slept 1500 ms
+screencap J29_tablet_evidence_custody.png (762419 bytes) at 12:51:49.658
+ids: 166 nodes -> q/tablet_new_evidence_custody.txt

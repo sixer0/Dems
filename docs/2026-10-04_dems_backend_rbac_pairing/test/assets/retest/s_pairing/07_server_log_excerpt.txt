@@ -1,0 +1,82 @@
+== step 0: relaunch of the app (DEV-0002 paired, signed out)  (12:45:57-12:46:15)
+   12:45:58.640  socket closed code=1006 closedBy=peer  [device:DEV-0002]
+   12:46:04.179  socket opened kind=DEVICE  [device:DEV-0002]
+   12:46:04.187  GET /api/v1/auth/session 401  [device:DEV-0002]
+   12:46:04.190  GET /api/v1/pairing/device 200  [device:DEV-0002]
+   12:46:04.484  GET /api/v1/auth/status 200  [device:DEV-0002]
+   (GET /api/v1/health 200 lines in this window, not listed: 0)
+== web: SUPERVISOR andi.pratama signs in, opens Paired Devices  (12:47:49-12:48:01)
+   12:47:50.101  socket opened kind=ANONYMOUS  [None]
+   12:47:50.102  GET /api/v1/auth/session 401  [None]
+   12:47:50.106  GET /api/v1/auth/status 200  [None]
+   12:47:53.592  POST /api/v1/auth/sign-in 200  [None]
+   12:47:53.596  socket closed code=1000 closedBy=peer  [None]
+   12:47:53.603  socket opened kind=OPERATOR  [operator:OPR-002]
+   12:47:57.352  GET /api/v1/pairing/code 200  [operator:OPR-002]
+   12:47:57.359  GET /api/v1/pairing/devices 200  [operator:OPR-002]
+   12:48:00.204  GET /api/v1/pairing/devices 200  [operator:OPR-002]
+   (GET /api/v1/health 200 lines in this window, not listed: 1)
+== step 1: revoke DEV-0002 and what followed  (12:49:19-12:49:31)
+   12:49:21.196  POST /api/v1/pairing/devices/:id/revoke 200  [operator:OPR-002]
+   12:49:21.206  GET /api/v1/pairing/devices 200  [operator:OPR-002]
+   12:49:21.207  socket closed code=4403 closedBy=server  [device:DEV-0002]
+   12:49:21.225  GET /api/v1/pairing/code 200  [operator:OPR-002]
+   12:49:21.318  GET /api/v1/pairing/devices 200  [operator:OPR-002]
+   12:49:21.381  GET /api/v1/pairing/devices 200  [operator:OPR-002]
+   12:49:23.596  socket opened kind=ANONYMOUS  [None]
+   12:49:23.705  GET /api/v1/auth/status 200  [None]
+   12:49:29.484  GET /api/v1/audit 200  [operator:OPR-002]
+   (GET /api/v1/health 200 lines in this window, not listed: 0)
+== step 2: warm guarded links while unpaired  (12:54:41-12:58:05)
+   (GET /api/v1/health 200 lines in this window, not listed: 22)
+== step 3: issue PCD-000003, redeem, hand-off (DEV-0003)  (13:01:10-13:01:36)
+   13:01:10.957  POST /api/v1/pairing/code 201  [operator:OPR-002]
+   13:01:10.963  GET /api/v1/pairing/code 200  [operator:OPR-002]
+   13:01:11.016  GET /api/v1/pairing/code 200  [operator:OPR-002]
+   13:01:13.203  GET /api/v1/audit 200  [operator:OPR-002]
+   13:01:16.475  POST /api/v1/pairing/redeem 201  [None]
+   13:01:16.479  GET /api/v1/pairing/code 200  [operator:OPR-002]
+   13:01:16.479  GET /api/v1/pairing/devices 200  [operator:OPR-002]
+   13:01:16.482  GET /api/v1/pairing/code 200  [operator:OPR-002]
+   13:01:18.915  GET /api/v1/audit 200  [operator:OPR-002]
+   13:01:19.102  socket closed code=1000 closedBy=peer  [None]
+   13:01:19.178  socket opened kind=DEVICE  [device:DEV-0003]
+   13:01:19.243  GET /api/v1/pairing/devices 200  [operator:OPR-002]
+   13:01:20.413  GET /api/v1/pairing/code 200  [operator:OPR-002]
+   13:01:20.414  GET /api/v1/pairing/devices 200  [operator:OPR-002]
+   13:01:22.630  GET /api/v1/auth/status 200  [device:DEV-0003]
+   13:01:24.742  socket closed code=1000 closedBy=peer  [device:DEV-0003]
+   13:01:25.607  socket opened kind=DEVICE  [device:DEV-0003]
+   13:01:26.691  GET /api/v1/pairing/code 200  [operator:OPR-002]
+   13:01:26.692  GET /api/v1/pairing/devices 200  [operator:OPR-002]
+   (GET /api/v1/health 200 lines in this window, not listed: 1)
+== step 4: phone sign-in as budi.santoso on DEV-0003  (13:06:24-13:06:36)
+   13:06:28.543  POST /api/v1/auth/sign-in 200  [device:DEV-0003]
+   13:06:28.605  socket closed code=1000 closedBy=peer  [device:DEV-0003]
+   13:06:28.618  socket opened kind=OPERATOR  [operator:OPR-001]
+   13:06:29.700  GET /api/v1/pairing/code 200  [operator:OPR-002]
+   13:06:29.700  GET /api/v1/pairing/devices 200  [operator:OPR-002]
+   (GET /api/v1/health 200 lines in this window, not listed: 0)
+== step 5: phone sign-out  (13:08:12-13:08:43)
+   13:08:23.154  POST /api/v1/auth/touch 200  [operator:OPR-001]
+   13:08:23.172  POST /api/v1/auth/sign-out 204  [operator:OPR-001]
+   13:08:23.173  socket closed code=4401 closedBy=server  [operator:OPR-001]
+   13:08:23.641  socket opened kind=DEVICE  [device:DEV-0003]
+   13:08:23.715  GET /api/v1/auth/status 200  [device:DEV-0003]
+   13:08:24.839  GET /api/v1/pairing/devices 200  [operator:OPR-002]
+   13:08:24.841  GET /api/v1/pairing/code 200  [operator:OPR-002]
+   (GET /api/v1/health 200 lines in this window, not listed: 0)
+== end: the web SUPERVISOR session signs out  (13:13:02-13:13:04)
+   13:13:02.317  GET /api/v1/pairing/devices 200  [operator:OPR-002]
+   13:13:02.339  GET /api/v1/audit 200  [operator:OPR-002]
+   13:13:02.345  GET /api/v1/audit 200  [operator:OPR-002]
+   13:13:02.350  GET /api/v1/audit 200  [operator:OPR-002]
+   13:13:02.356  GET /api/v1/audit 200  [operator:OPR-002]
+   13:13:02.362  GET /api/v1/audit 200  [operator:OPR-002]
+   13:13:02.368  GET /api/v1/audit 200  [operator:OPR-002]
+   13:13:02.379  POST /api/v1/auth/sign-out 204  [operator:OPR-002]
+   13:13:02.380  socket closed code=4401 closedBy=server  [operator:OPR-002]
+   13:13:02.415  socket opened kind=ANONYMOUS  [None]
+   13:13:02.432  GET /api/v1/auth/status 200  [None]
+   13:13:03.318  GET /api/v1/auth/session 401  [None]
+   (GET /api/v1/health 200 lines in this window, not listed: 1)

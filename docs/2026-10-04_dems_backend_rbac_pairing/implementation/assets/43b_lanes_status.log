@@ -1,0 +1,24 @@
+database         dems_lane_1 on PostgreSQL 18.4
+seeded_at        2026-10-04T04:36:42.518Z (1791088602518)
+last_reset_at    2026-10-04T04:36:42.518Z (1791088602518)
+audit head       seq 82; hash 6f50ffeaaa8b8173...
+lineage          0 row(s)
+  audit_log                82
+  auth_sessions            0
+db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+database         dems_lane_2 on PostgreSQL 18.4
+seeded_at        2026-10-04T04:36:43.046Z (1791088603046)
+last_reset_at    2026-10-04T04:36:43.046Z (1791088603046)
+audit head       seq 82; hash 49727e3e1ac0b44c...
+lineage          0 row(s)
+  audit_log                82
+  auth_sessions            0
+db:status: OK: dems_lane_2 is at the schema version this code expects and the ledger matches the files.
+database         dems_lane_3 on PostgreSQL 18.4
+seeded_at        2026-10-04T04:36:43.575Z (1791088603575)
+last_reset_at    2026-10-04T04:36:43.575Z (1791088603575)
+audit head       seq 82; hash 777fa372a98d2e42...
+lineage          0 row(s)
+  audit_log                82
+  auth_sessions            0
+db:status: OK: dems_lane_3 is at the schema version this code expects and the ledger matches the files.

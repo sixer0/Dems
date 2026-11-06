@@ -1,0 +1,18 @@
+12:44:31.491 keyguard false
+12:44:31.620 focused true; keyguard false; inputType 0x80001
+12:44:32.716 mCurrentFocus=Window{97dbead u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+12:44:32.830 device-host clock offset ms: -318, -317, -320, -320, -319
+12:44:33.011 mark start at 12:44:33.011
+12:44:33.057 serverlog since start (0):
+    
+12:44:33.099 declared screen login
+12:44:33.140 screencap 00_before_relaunch.png 12:44:33.140..12:44:35.469
+12:44:35.644 force-stopped the app
+12:44:35.980 slept 1500 ms
+12:44:37.714 deep link demsdemo:///login?core=LIVE&motion=off
+12:44:50.147 mark relaunch at 12:44:50.147
+12:44:50.208 slept 20000 ms
+12:45:10.283 declared screen login
+12:45:10.337 focused true; keyguard false; inputType 0x80001
+12:45:10.979 jslog (3): 12:44:50.105   - Check component documentation - Each component page includes a link to the component's style source | 12:44:51.298   source: 'runtime.live.ready', | 12:44:51.298   message: 'Live source ready',
+12:45:11.097 warnlog since 10-06 12:44:31.000 (1): 10-06 12:44:50.079 14767 14797 W ReactNativeJS: [Reanimated] Reduced motion setting is overwritten with mode 'always'.

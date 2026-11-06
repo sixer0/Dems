@@ -1,0 +1,22 @@
+## 2026-10-06 01:49:11 WIB  1:49  2 users, load averages: 3.70 6.41 6.01
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+FAIL src/features/settings/settings-live-static.test.ts
+Test Suites: 1 failed, 137 passed, 138 total
+Tests:       2 failed, 1692 passed, 1694 total
+Time:        122.573 s, estimated 124 s
+exit=1
+## 01:52:16 $ npm run typecheck -w @dems/mobile
+exit=0
+errors in runtime/: 0
+## 01:52:22 $ npm run lint -w @dems/mobile
+exit=0
+eslint json: files 532 errors 0 warnings 0
+baseline 72 vs acaff20: 0
+W60 navigation tests vs b90a3c6: 0
+161 OK, 0 changed of the test files hashed at 01:25:
+## re-check of W82's red file at 01:52:59:
+PASS src/features/settings/settings-live-static.test.ts
+Tests:       14 passed, 14 total
+## runtime folder after both fixes (01:48:22)
+Test Suites: 23 passed, 23 total
+Tests:       309 passed, 309 total

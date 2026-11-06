@@ -1,0 +1,39 @@
+load before the run: 7.84 9.31 8.96
+## 2026-10-04 21:53:50 WIB $ npm run test -w @dems/core-web -- --maxWorkers=2 --reporter=default --reporter=json --outputFile.json=.cache/w55/web_followup.json
+ Test Files  55 passed (55)
+      Tests  758 passed (758)
+exit=0
+## per file, from the JSON report of that run
+   55 files, 758 tests, 758 passed, 0 failed; runner success: true
+   the new files of this row: 4 files, 77 tests, 77 passed
+     src/test/live-login-model.test.tsx: 25 / 25
+     src/test/live-login-page.test.tsx: 30 / 30
+     src/test/live-login-presentation.test.tsx: 5 / 5
+     src/test/live-login-signin.test.tsx: 17 / 17
+   the test files of the folder that existed (CLG a): 2 files, 31 tests, 31 passed
+     src/features/login/__tests__/login-model.test.tsx: 14 / 14
+     src/features/login/__tests__/login-page.test.tsx: 17 / 17
+   every file but the new ones of this row: 51 files, 681 tests, 681 passed
+
+## 2026-10-04 21:54:54 WIB $ npm run typecheck -w @dems/core-web
+exit=0
+## 2026-10-04 21:55:04 WIB $ npm run lint -w @dems/core-web
+(no finding, no warning)
+exit=0
+
+## 2026-10-04 21:55:04 WIB the two granted files: what this follow-up changed in them (against the copies taken before the first edit, 21:47)
+$ diff .cache/rollback/W55/followup/live-runtime-startup.test.tsx.before apps/core-web/src/test/live-runtime-startup.test.tsx
+398c398,399
+<     expect({ ...window.sessionStorage }).toEqual(before.session)
+---
+>     // The Login page hands off a session it did not submit (§5.4, W55), so the shell is really mounted here and writes its own intro marker: nothing about the session.
+>     expect({ ...window.sessionStorage }).toEqual({ ...before.session, 'dems.shell.intro': '1' })
+$ diff .cache/rollback/W55/followup/__root.tsx.before apps/core-web/src/routes/__root.tsx
+25a26
+> import { followServerPresentationMode } from '@/features/login/live-adapter'
+78a80
+>   useEffect(() => (live ? followServerPresentationMode(live) : undefined), [live]) // WS-10 (W55, decision D128): on every route, for the lifetime of the root
+## CLG (a): $ git diff --stat acaff20 -- apps/core-web/src/features/login/__tests__ | wc -c
+       0
+## 2026-10-04 21:55:04 WIB listeners on the lane's ports (no lane run in this follow-up): $ lsof -nP -iTCP:4423 -iTCP:5178 -iTCP:9398 -sTCP:LISTEN
+lsof exit 1 (1 with no output: no listener)

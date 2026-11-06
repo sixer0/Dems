@@ -1,0 +1,157 @@
+# 09 CP-M1 — scope and write-path evidence (blueprint step 84, plan row W62)
+# reviewed read-only on 2026-10-05, ~17:12-17:20 WIB; every command re-run by the reviewer
+
+## 1. git diff --stat acaff20 -- apps/mobile   (the six rows' tracked changes)
+ apps/mobile/jest.setup.ts                          | 191 ++++++-
+ apps/mobile/package.json                           |   3 +-
+ apps/mobile/scripts/device-session.sh              | 185 ++++++-
+ apps/mobile/src/auth/auth-dialogs.tsx              |  19 +-
+ apps/mobile/src/auth/auth-provider.tsx             | 241 ++++-----
+ apps/mobile/src/auth/biometric.ts                  |  62 ++-
+ apps/mobile/src/auth/index.ts                      |  33 +-
+ apps/mobile/src/features/home/home-screen.tsx      |   2 +-
+ apps/mobile/src/features/home/use-health.ts        |  46 +-
+ apps/mobile/src/features/login/i18n.ts             |  17 +
+ apps/mobile/src/features/login/login-card.tsx      | 132 +++--
+ apps/mobile/src/features/login/login-model.ts      |  34 +-
+ apps/mobile/src/features/login/login-screen.tsx    |   8 +-
+ .../src/features/login/use-login-controller.ts     | 103 +++-
+ apps/mobile/src/features/pairing/i18n.ts           |  81 +++
+ .../src/features/pairing/pairing-code-panel.tsx    | 196 ++++++-
+ .../src/features/pairing/pairing-connection.tsx    | 177 +++++--
+ apps/mobile/src/features/pairing/pairing-model.ts  |  22 +-
+ .../mobile/src/features/pairing/pairing-screen.tsx |  53 +-
+ apps/mobile/src/features/pairing/unpair-dialog.tsx |  24 +-
+ .../src/features/pairing/use-pairing-flow.ts       | 255 +++++++--
+ apps/mobile/src/i18n/en.mobile.ts                  |  39 ++
+ apps/mobile/src/navigation/root-navigator.tsx      |  48 +-
+ .../src/navigation/testing/router-harness.tsx      |  14 +-
+ apps/mobile/src/runtime/connection-banner.ts       |  14 +-
+ apps/mobile/src/runtime/contract.ts                |  69 ++-
+ apps/mobile/src/runtime/core-link.ts               |  32 +-
+ apps/mobile/src/runtime/debug.ts                   | 119 ++++-
+ apps/mobile/src/runtime/index.ts                   |  78 ++-
+ apps/mobile/src/runtime/sim-adapters.ts            | 571 ++++++++++++++++++++-
+ apps/mobile/src/runtime/sim-runtime-provider.tsx   | 348 ++++++++++++-
+ 31 files changed, 2784 insertions(+), 432 deletions(-)
+
+## 2. The three trees the plan row names: no write of a mobile row
+packages/shared  :       28
+   (all claimed by contract/backend rows: W03,W12,W16,W18,W19,W22,W22b,W27,W42,W44,W46,W48,W50,W54,W55)
+apps/core-web    :       28
+   (web rows W01,W05,W14,W50,W54,W55 + the CP-W1 fix round)
+apps/mock-core   :        0
+   (P5/P6: read-only in this task)
+release/ + scripts/release/ :        0
+
+## 3. Files changed under apps/mobile (tracked) — 31, all inside apps/mobile
+apps/mobile/jest.setup.ts
+apps/mobile/package.json
+apps/mobile/scripts/device-session.sh
+apps/mobile/src/auth/auth-dialogs.tsx
+apps/mobile/src/auth/auth-provider.tsx
+apps/mobile/src/auth/biometric.ts
+apps/mobile/src/auth/index.ts
+apps/mobile/src/features/home/home-screen.tsx
+apps/mobile/src/features/home/use-health.ts
+apps/mobile/src/features/login/i18n.ts
+apps/mobile/src/features/login/login-card.tsx
+apps/mobile/src/features/login/login-model.ts
+apps/mobile/src/features/login/login-screen.tsx
+apps/mobile/src/features/login/use-login-controller.ts
+apps/mobile/src/features/pairing/i18n.ts
+apps/mobile/src/features/pairing/pairing-code-panel.tsx
+apps/mobile/src/features/pairing/pairing-connection.tsx
+apps/mobile/src/features/pairing/pairing-model.ts
+apps/mobile/src/features/pairing/pairing-screen.tsx
+apps/mobile/src/features/pairing/unpair-dialog.tsx
+apps/mobile/src/features/pairing/use-pairing-flow.ts
+apps/mobile/src/i18n/en.mobile.ts
+apps/mobile/src/navigation/root-navigator.tsx
+apps/mobile/src/navigation/testing/router-harness.tsx
+apps/mobile/src/runtime/connection-banner.ts
+apps/mobile/src/runtime/contract.ts
+apps/mobile/src/runtime/core-link.ts
+apps/mobile/src/runtime/debug.ts
+apps/mobile/src/runtime/index.ts
+apps/mobile/src/runtime/sim-adapters.ts
+apps/mobile/src/runtime/sim-runtime-provider.tsx
+
+## 4. New files under apps/mobile (untracked) — every one inside apps/mobile
+apps/mobile/scripts/emulator-user-lock.sh
+apps/mobile/src/auth/auth-notice.tsx
+apps/mobile/src/auth/auth-session.tsx
+apps/mobile/src/auth/i18n-bundle.ts
+apps/mobile/src/auth/i18n.ts
+apps/mobile/src/auth/live-auth-model.test.ts
+apps/mobile/src/auth/live-auth-model.ts
+apps/mobile/src/auth/live-auth-provider.tsx
+apps/mobile/src/auth/live-auth-static.test.ts
+apps/mobile/src/auth/live-auth.test.tsx
+apps/mobile/src/auth/live-biometric.test.ts
+apps/mobile/src/auth/live-biometric.ts
+apps/mobile/src/features/login/live-login.test.tsx
+apps/mobile/src/features/login/login-live-model.test.ts
+apps/mobile/src/features/login/login-live-model.ts
+apps/mobile/src/features/pairing/pairing-live-model.test.ts
+apps/mobile/src/features/pairing/pairing-live-model.ts
+apps/mobile/src/features/pairing/pairing-live-static.test.ts
+apps/mobile/src/features/pairing/pairing-live.test.tsx
+apps/mobile/src/features/pairing/stack-check-service-name.test.tsx
+apps/mobile/src/navigation/__tests__/pairing-gate-live.test.tsx
+apps/mobile/src/navigation/__tests__/pairing-gate.test.tsx
+apps/mobile/src/runtime/core-errors.ts
+apps/mobile/src/runtime/dev-probes.ts
+apps/mobile/src/runtime/live-core-errors.test.tsx
+apps/mobile/src/runtime/live-core-link.test.tsx
+apps/mobile/src/runtime/live-device.test.tsx
+apps/mobile/src/runtime/live-health.test.tsx
+apps/mobile/src/runtime/live-no-raw-fetch.test.tsx
+apps/mobile/src/runtime/live-runtime.test.tsx
+apps/mobile/src/runtime/live-screens.test.tsx
+apps/mobile/src/runtime/live-settings.test.tsx
+apps/mobile/src/runtime/secure-credentials.test.ts
+apps/mobile/src/runtime/secure-credentials.ts
+apps/mobile/src/runtime/secure-store-import.test.ts
+
+## 5. AC-C-101 / CLG (a): the 72 baseline mobile test files vs acaff20
+baseline mobile test files:       72
+changed baseline test files (intersection):        0
+protected files, git hash-object now == acaff20 (the last one is a production file, listed for W57):
+  SAME    features/settings/heartbeat-release-gate.test.tsx  6aa6db7ef1cc666b03be489a23e2146b3e28f9ac
+  SAME    navigation/__tests__/guard.test.tsx  df66f10183c9adc27395f44a7a5294913ae33df2
+  SAME    auth/auth-provider.test.tsx  72e04bf0cb03b725070bf9ece75873a5cc75c1af
+  SAME    auth/biometric.test.ts  64206281d4dee87fedd6e6be3a3de2b1fa5768fb
+  SAME    features/pairing/pairing-screen.test.tsx  6d14036c098f1c4f626c201b2b52e2ccd3e45705
+  SAME    features/pairing/pairing-model.test.ts  c882a126fef98eb34dc1165052af5cc328057111
+  SAME    features/login/login.test.tsx  cc0f5a03376ed1f1512d312f74b537a2b250693c
+  SAME    features/login/login-model.test.ts  4e7b478b4897a0e3998b1bc26cb8ea7106461441
+  SAME    runtime/runtime.test.tsx  6a609d17881a3377ba2cb539a00ad7d7f4a7bf2d
+  SAME    runtime/sim-adapters.test.ts  7b2b83b76338e6b2134896140c869812177a818d
+  SAME    providers/app-providers.test.tsx  9633c4c4fef9cbfbafeeee66ce80772b55e219d6
+  SAME    providers/runtime-contract.test.tsx  fd65283880362ff3be0d666ca667dab146cea84a
+  DIFF    features/pairing/use-pairing-flow.ts  7daa4b06fd222fcdd6ce3a898e6a7cf48e25aeba
+
+## 6. New test files added by the six rows (22)
+apps/mobile/src/auth/live-auth-model.test.ts
+apps/mobile/src/auth/live-auth-static.test.ts
+apps/mobile/src/auth/live-auth.test.tsx
+apps/mobile/src/auth/live-biometric.test.ts
+apps/mobile/src/features/login/live-login.test.tsx
+apps/mobile/src/features/login/login-live-model.test.ts
+apps/mobile/src/features/pairing/pairing-live-model.test.ts
+apps/mobile/src/features/pairing/pairing-live-static.test.ts
+apps/mobile/src/features/pairing/pairing-live.test.tsx
+apps/mobile/src/features/pairing/stack-check-service-name.test.tsx
+apps/mobile/src/navigation/__tests__/pairing-gate-live.test.tsx
+apps/mobile/src/navigation/__tests__/pairing-gate.test.tsx
+apps/mobile/src/runtime/live-core-errors.test.tsx
+apps/mobile/src/runtime/live-core-link.test.tsx
+apps/mobile/src/runtime/live-device.test.tsx
+apps/mobile/src/runtime/live-health.test.tsx
+apps/mobile/src/runtime/live-no-raw-fetch.test.tsx
+apps/mobile/src/runtime/live-runtime.test.tsx
+apps/mobile/src/runtime/live-screens.test.tsx
+apps/mobile/src/runtime/live-settings.test.tsx
+apps/mobile/src/runtime/secure-credentials.test.ts
+apps/mobile/src/runtime/secure-store-import.test.ts

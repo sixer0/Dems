@@ -1,0 +1,21 @@
+CP-W1 fix round — one production build of the tree after the round (npm run build -w @dems/core-web), 2026-10-05
+BUILD_EXIT=0 (see 08_fix_build.log). No env set: this is the Simulated/dev-default build, as in section 4 of the review.
+
+Files in the bundle: 529
+Assets containing 'unsafe-eval': 0
+Assets containing 'new Function(': 0
+Assets containing 'eval(': 0
+
+Markers of the Live layer that must stay out of a production build (each must be 0):
+  createLiveSim            0 files
+  browser-cookie           0 files
+  dems.live.owedSignOut    0 files
+  live-start               0 files
+
+The packaged CSP itself was not rebuilt with VITE_DEMS_CORE_ORIGIN=same-origin (the checkpoint did not either); its source is byte-identical to acaff20:
+  78c8898ecb89206beda222030c918958143316c3  apps/core-web/src/lib/packaged-csp.ts
+  policy names no unsafe-eval (read directly): script-src 'self'
+54:    ['script-src', "'self'"],
+
+git status of the build output (M12: nothing removed from the tree):
+  (no lines above = the git-ignored dist holds no tracked change)

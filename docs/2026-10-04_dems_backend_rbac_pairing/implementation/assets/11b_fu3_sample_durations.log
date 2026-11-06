@@ -1,0 +1,57 @@
+# W11b follow-up 3 (decision D114): a sample of OTHER rows' database test files, before and after the helper sets the limits.
+# 'before' and 'after' are two full copies of apps/core-server (src, test) outside the repository, taken from one snapshot at 20:25:23; they differ in test/helpers/db only.
+# Sample: src/db/fixtures, src/modules/sessions, src/realtime, test/acceptance (17 files, 284 tests). Run alternately against the project's PostgreSQL, one worker, label 33d.
+# The host was not quiet: other rows were running tests (load average 2.7 to 5.7). Runs 1 to 3 in the order before, after; runs 4 and 5 in the order after, before.
+#   before 1: 20:31:56 load 2.99 2.80 2.40 |  Tests 284 passed (284) |  Duration 37.71s ( | 0 remain | exit=0
+#   after 1: 20:32:34 load 3.18 2.86 2.44 |  Tests 284 passed (284) |  Duration 37.64s ( | 0 remain | exit=0
+#   before 2: 20:33:12 load 2.66 2.77 2.42 |  Tests 284 passed (284) |  Duration 41.64s ( | 0 remain | exit=0
+#   after 2: 20:33:53 load 4.40 3.19 2.59 |  Tests 284 passed (284) |  Duration 46.46s ( | 0 remain | exit=0
+#   before 3: 20:34:40 load 5.74 3.72 2.82 |  Tests 284 passed (284) |  Duration 50.21s ( | 0 remain | exit=0
+#   after 3: 20:35:31 load 5.44 3.97 2.96 |  Tests 284 passed (284) |  Duration 36.07s ( | 0 remain | exit=0
+#   after 4: 20:36:27 load 3.58 3.72 2.93 |  Tests 284 passed (284) |  Duration 36.40s ( | 0 remain | exit=0
+#   before 4: 20:37:04 load 3.88 3.78 2.99 |  Tests 284 passed (284) |  Duration 35.94s ( | 0 remain | exit=0
+#   after 5: 20:37:40 load 3.58 3.71 3.00 |  Tests 284 passed (284) |  Duration 36.17s ( | 0 remain | exit=0
+#   before 5: 20:38:16 load 3.28 3.63 3.00 |  Tests 284 passed (284) |  Duration 36.74s ( | 0 remain | exit=0
+
+## five runs each: sum of the test durations per file (ms)
+  file                                                   before (ms, each run)    after (ms, each run)         median before -> after
+  src/db/fixtures/__tests__/bulk-fixture.db.test.ts      [5799, 6885, 9577, 5383, 5508] [5589, 7254, 5478, 5551, 5518]      5799 ->    5551  (  -248)
+  src/modules/sessions/__tests__/concurrency.db.test.ts  [367, 390, 512, 339, 356] [352, 699, 337, 347, 337]       367 ->     347  (   -20)
+  src/modules/sessions/__tests__/history.db.test.ts      [492, 522, 699, 472, 477] [548, 784, 471, 471, 471]       492 ->     471  (   -21)
+  src/modules/sessions/__tests__/journey.db.test.ts      [365, 484, 487, 365, 360] [383, 516, 364, 364, 364]       365 ->     364  (    -1)
+  src/modules/sessions/__tests__/operations.db.test.ts   [1318, 1417, 1567, 1271, 1266] [1452, 1577, 1264, 1245, 1256]      1318 ->    1264  (   -54)
+  src/realtime/__tests__/backpressure.db.test.ts         [88, 106, 80, 88, 84]    [87, 108, 80, 82, 82]           88 ->      82  (    -6)
+  src/realtime/__tests__/control.db.test.ts              [458, 489, 584, 452, 453] [512, 608, 451, 462, 451]       458 ->     462  (    +4)
+  src/realtime/__tests__/first-contact.db.test.ts        [341, 445, 455, 344, 345] [403, 510, 350, 349, 346]       345 ->     350  (    +5)
+  src/realtime/__tests__/shutdown.db.test.ts             [68, 86, 67, 67, 67]     [74, 86, 67, 71, 68]            67 ->      71  (    +4)
+  src/realtime/__tests__/state.db.test.ts                [239, 330, 341, 237, 237] [241, 392, 237, 237, 244]       239 ->     241  (    +2)
+  src/realtime/__tests__/support.db.test.ts              [18, 25, 17, 17, 17]     [18, 22, 17, 17, 17]            17 ->      17  (    +0)
+  src/realtime/__tests__/upgrade.db.test.ts              [335, 303, 294, 289, 299] [297, 342, 303, 292, 285]       299 ->     297  (    -2)
+  test/acceptance/contract.test.ts                       [4831, 3410, 4317, 3267, 3281] [3331, 4718, 3261, 3262, 3259]      3410 ->    3262  (  -148)
+  test/acceptance/pairing-lifecycle.test.ts              [445, 453, 592, 445, 449] [451, 619, 439, 435, 439]       449 ->     439  (   -10)
+  test/acceptance/rbac-matrix.test.ts                    [2960, 3670, 3724, 2895, 2886] [3062, 3362, 2911, 2954, 2917]      2960 ->    2954  (    -6)
+  test/acceptance/restart.test.ts                        [2621, 2962, 3238, 2531, 2548] [2625, 2840, 2552, 2555, 2568]      2621 ->    2568  (   -53)
+  test/acceptance/shared-state.test.ts                   [4431, 4423, 5487, 4215, 4566] [4402, 5071, 4205, 4442, 4313]      4431 ->    4402  (   -29)
+  sum of the medians                                                                                           23725 ->   23142  (  -583, -2.5 %)
+  all test time, each run                                [25175, 26399, 32037, 22676, 23200] [23827, 29508, 22786, 23135, 22935]
+  tests (total, passed, failed, pending) before: [(284, 284, 0, 0), (284, 284, 0, 0), (284, 284, 0, 0), (284, 284, 0, 0), (284, 284, 0, 0)]
+  tests (total, passed, failed, pending) after:  [(284, 284, 0, 0), (284, 284, 0, 0), (284, 284, 0, 0), (284, 284, 0, 0), (284, 284, 0, 0)]
+
+## limits in the sample: 9 of the 17 files set their own (sessions 4, acceptance 5: 120 s and 180 s); 8 set none and get the helper's (fixtures 1, realtime 7)
+  src/db/fixtures/__tests__/bulk-fixture.db.test.ts          
+  src/modules/sessions/__tests__/concurrency.db.test.ts      vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 })
+  src/modules/sessions/__tests__/history.db.test.ts          vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 })
+  src/modules/sessions/__tests__/journey.db.test.ts          vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 })
+  src/modules/sessions/__tests__/operations.db.test.ts       vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 })
+  src/realtime/__tests__/backpressure.db.test.ts             
+  src/realtime/__tests__/control.db.test.ts                  
+  src/realtime/__tests__/first-contact.db.test.ts            
+  src/realtime/__tests__/shutdown.db.test.ts                 
+  src/realtime/__tests__/state.db.test.ts                    
+  src/realtime/__tests__/support.db.test.ts                  
+  src/realtime/__tests__/upgrade.db.test.ts                  
+  test/acceptance/contract.test.ts                           vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 })
+  test/acceptance/pairing-lifecycle.test.ts                  vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 })
+  test/acceptance/rbac-matrix.test.ts                        vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 })
+  test/acceptance/restart.test.ts                            vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 })
+  test/acceptance/shared-state.test.ts                       vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 })

@@ -1,0 +1,18 @@
+09:47:50.157 w1: HeadlessChrome/153.0.8010.12 headless=true devtools 127.0.0.1:9561, fresh profile in TMPDIR
+09:47:50.518 w2: HeadlessChrome/153.0.8010.12 headless=true devtools 127.0.0.1:9562, fresh profile in TMPDIR
+09:47:50.839 nav /login load=true
+09:47:53.902 signin andi.pratama (SUPERVISOR) dashboard after 862 ms
+09:47:57.818 declared screen login
+09:47:57.949 focused true; keyguard false; inputType 0x80001
+09:48:00.450 username typed (budi.santoso); inputType 0x80001
+09:48:02.130 slept 500 ms
+09:48:02.717 screencap 02_login_username_typed.png 09:48:02.718..09:48:04.393
+09:48:05.016 tap 539,1342
+09:48:05.384 slept 800 ms
+09:48:06.293 password typed (not shown); inputType 0x80081
+09:48:08.796 slept 300 ms
+09:48:09.183 key 66
+09:48:10.530 signin 200 at device 10-06 09:48:10.671 (POST /api/v1/auth/sign-in 200)
+09:48:11.412 slept 2500 ms
+09:48:14.120 screencap 03_after_signin.png 09:48:14.120..09:48:16.812
+09:48:17.582 corelog (1): 09:48:10.671 POST /api/v1/auth/sign-in 200

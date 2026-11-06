@@ -1,0 +1,26 @@
+// R-S: one look at the open Paired Devices page (NO navigation, NO reload): facts, a screenshot (blur mask
+// applied first, harmless when no code shows), the registry, and the newest audit rows (of given types, or of
+// any type with '*'). Adapted from round 1's drv_web_snap.mjs.txt.
+//   node --import tsx web_snap.mjs <screenshot.png> [TYPE:limit,...|*:limit]
+import { applyMask, auditRows, connect, fmtAudit, log, pdFacts, registry, stamp, writeJson } from './lib.mjs'
+
+const [shotName, types = ''] = process.argv.slice(2)
+const page = await connect()
+await applyMask(page)
+const facts = await pdFacts(page)
+const shot = await page.screenshot(shotName)
+const reg = await registry(page)
+const origin = await page.evaluate('performance.timeOrigin', 'time origin')
+log(`page ${facts.href}; document time origin ${new Date(Math.round(origin)).toLocaleTimeString('en-GB', { hour12: false })}; issue ${facts.issueState}; digits shown ${facts.codeDigitCount}; rows ${JSON.stringify(facts.rows)}; summary ${JSON.stringify(facts.summary)}; toasts ${JSON.stringify(facts.toasts)}`)
+log(`registry (GET /api/v1/pairing/devices ${reg.status}): ${JSON.stringify(reg.devices)}`)
+const audit = {}
+for (const spec of types.split(',').filter(Boolean)) {
+  const [type, limit = '3'] = spec.split(':')
+  const rows = type === '*'
+    ? await page.evaluate(`(async () => { const r = await fetch('/api/v1/audit?order=DESC&limit=${Number(limit)}', { credentials: 'same-origin' }); if (r.status !== 200) return { status: r.status, rows: [] }; const b = await r.json(); return { status: r.status, rows: b.rows.map((x) => ({ id: x.id, atMs: x.at, type: x.type, severity: x.severity, actorId: x.actorId, deviceId: x.deviceId, message: x.message, details: x.details })) } })()`, 'audit any')
+    : await auditRows(page, type, Number(limit))
+  audit[type] = rows
+  for (const row of rows.rows) log(`audit (${type}) ${fmtAudit(row)}`)
+}
+writeJson(shotName.replace(/\.png$/, '.json'), { at: stamp(), facts, registry: reg, documentTimeOrigin: origin, screenshot: shot, audit, network: page.takeNetwork() })
+page.close()

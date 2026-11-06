@@ -1,0 +1,19 @@
+## 2026-10-04 19:24:22 WIB end state of blueprint row 71 (W49), after the last run of this row (the row command of 19:23:51, ended 19:24:02)
+session: role=dems_owner database=postgres server=18.4 port=4432 postmaster started 2026-10-04 07:14:26.046351+07
+databases with this row's prefix (dems_test_step_71_*): 0
+test databases of all rows at this moment: 11
+project databases: dems_demo, dems_lane_1, dems_lane_2, dems_lane_3
+sessions on this row's databases still open: 0
+## .locks/postgres.pid: 19121
+## process 19121: 19121 Sun Oct  4 07:14:26 2026     /Users/gsp-budi/Documents/DEMS/node_modules/@embedded-postgres/darwin-arm64/native/bin/postgres -D /Users
+## listeners on loopback held by node or postgres processes (lsof -nP -iTCP -sTCP:LISTEN), with the process that holds each:
+postgres 19121 127.0.0.1:4432 :: Sun Oct  4 07:14:26 2026     /Users/gsp-budi/Documents/DEMS/node_modules/@embedded-postgres/darwin-arm64/native/bin/postgres -D /Users/gsp-budi/Documents/DEMS/.data/postgres -c listen_addres
+## test runners of this row still alive (pgrep -f 'shared-state'): 0
+## files of this row in the tree:
+-rw-r--r--@ 1 gsp-budi  staff  55139 Oct  4 19:05 /Users/gsp-budi/Documents/DEMS/apps/core-server/test/acceptance/shared-state.support.ts
+-rw-r--r--@ 1 gsp-budi  staff  61247 Oct  4 19:14 /Users/gsp-budi/Documents/DEMS/apps/core-server/test/acceptance/shared-state.test.ts
+bf629ad229c281a4c2d9830f10b48fd084406f1273fd26c0d807a7dec65a2160  /Users/gsp-budi/Documents/DEMS/apps/core-server/test/acceptance/shared-state.test.ts
+887a3c9b7c5fdf57120232b182e66de3be6cc54793b4ecb3d7d610f2a62a0e34  /Users/gsp-budi/Documents/DEMS/apps/core-server/test/acceptance/shared-state.support.ts
+     884 /Users/gsp-budi/Documents/DEMS/apps/core-server/test/acceptance/shared-state.test.ts
+    1217 /Users/gsp-budi/Documents/DEMS/apps/core-server/test/acceptance/shared-state.support.ts
+    2101 total

@@ -1,0 +1,5 @@
+mark R2 tablet Start Recording at 10:53:57.639
+tap 1178,1455 at 10:53:57.809
+start 200 (10-06 10:54:00.739 POST /api/v1/session/{id}/start 200)
+slept 2500 ms
+screencap R2_05_tablet_live.png (788824 bytes) at 10:54:05.398

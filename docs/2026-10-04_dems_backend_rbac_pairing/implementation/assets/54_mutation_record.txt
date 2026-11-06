@@ -1,0 +1,60 @@
+W54 mutation check (rule M15) — the record, copied out of git-ignored scratch into the row's assets.
+
+Provenance
+  Source of the four runs below : .cache/w54/mut/mutations_run1b.log (mtime 21:51:11),
+                                  mutations_run1c.log (22:01:15), mutations_run1d.log (22:02:50),
+                                  mutations_run1e.log (22:05:15) — all WIB on 2026-10-04.
+                                  mutations_run1.log (21:31:38) is an earlier partial pass.
+  Runner                        : .cache/w54/mut/run_mutations.py with
+                                  .cache/w54/mut/vitest.mutation.config.mts — the mutation is ONE text
+                                  replacement applied IN MEMORY by a Vite transform plugin (M15: no file
+                                  of apps/** or packages/** is ever written; the plugin leaves a marker
+                                  under $TMPDIR and the runner checks it, so "detected" means "the tests
+                                  named for that module failed while the mutation was really applied").
+  Table                         : .cache/w54/mut/mutations.json, md5 98b88e1b2fa51d849bf8623bbfc3ff2f
+                                  (137 entries in 18 modules; every find-text occurs exactly once).
+  Copied by                     : coder-execution-local, 2026-10-05, during the W54 documentation repair
+                                  requested after gateway_check/06a_w54_w57_gate_evidence.md claims 12
+                                  and 13. No source, test or document file outside this row's own
+                                  document, its assets/54_* and its progress file was written.
+  Secret scan                   : this file holds no credential, token, cookie value or password. The
+                                  seeded demo password is named by its constant only.
+
+1. The recorded runs, verbatim summary lines
+--------------------------------------------------------------------------------
+## 2026-10-04 21:51:11 WIB 57 mutations: 55 detected, 2 survived ['T02', 'G05'], 0 not applied []
+## 2026-10-04 22:01:15 WIB 59 mutations: 55 detected, 4 survived ['W11', 'N36', 'N39', 'N40'], 0 not applied []
+## 2026-10-04 22:02:50 WIB 2 mutations: 2 detected, 0 survived [], 0 not applied []
+## 2026-10-04 22:05:15 WIB 9 mutations: 9 detected, 0 survived [], 0 not applied []
+
+  Reading: the table grew between the runs (57 entries at 21:51, 59 at 22:01, 137 by 22:02 — the
+  header line of run1d and run1e reads "137 mutations in 18 modules"). A survival was followed by
+  tests and a re-run of the survivors only: run 1d re-tested T02 and N36 (both then DETECTED),
+  run 1e re-tested nine indicator/switch mutations (all DETECTED). The session break (D130) came at
+  22:05:15. No recorded run covers all 137 entries of the final table.
+
+2. The six survivors as they were recorded
+--------------------------------------------------------------------------------
+T02 SURVIVED    exit=0 components/shell/app-shell.tsx: the notices stay active while the shell leaves   [21:51]
+G05 SURVIVED    exit=0 routes/_app/admin/-guard.ts: the redirect leaves a history entry                 [21:51]
+W11 SURVIVED    exit=0 components/shell/mode-switch.tsx: a second press while switching sends a second switch [22:01]
+N36 SURVIVED    exit=0 components/shell/live-notices.tsx: a page is "left" although the role still opens it [22:01]
+N39 SURVIVED    exit=0 components/shell/live-notices.tsx: the first comparison after a sign-in reports a change [22:01]
+N40 SURVIVED    exit=0 components/shell/live-notices.tsx: the notices are rendered in Simulated mode     [22:01]
+
+  T02 and N36 were re-tested at 22:02:50 and are DETECTED (section 1, run 1d). G05, W11, N39 and N40
+  had no re-test on the record: these are the four this repair re-tested.
+
+3. Fresh re-test of the four untested survivors — 2026-10-05, same runner, same table, current tree
+--------------------------------------------------------------------------------
+137 mutations in 18 modules; texts that do not occur exactly once: 0
+## 2026-10-05 11:36:23 WIB baseline: the three test files of the row, no mutation
+baseline exit=0 Test Files  3 passed (3) | Tests  84 passed (84) (21.9 s)
+W11 SURVIVED    exit=0 components/shell/mode-switch.tsx: a second press while switching sends a second switch [Test Files  2 passed (2) | Tests  62 passed (62)] failed tests: 0; first: - (9.8 s)
+N39 SURVIVED    exit=0 components/shell/live-notices.tsx: the first comparison after a sign-in reports a change [Test Files  2 passed (2) | Tests  62 passed (62)] failed tests: 0; first: - (15.9 s)
+N40 SURVIVED    exit=0 components/shell/live-notices.tsx: the notices are rendered in Simulated mode [Test Files  2 passed (2) | Tests  62 passed (62)] failed tests: 0; first: - (18.9 s)
+G05 SURVIVED    exit=0 routes/_app/admin/-guard.ts: the redirect leaves a history entry [Test Files  1 passed (1) | Tests  40 passed (40)] failed tests: 0; first: - (8.5 s)
+## 2026-10-05 11:37:38 WIB 4 mutations: 0 detected, 4 survived ['W11', 'N39', 'N40', 'G05'], 0 not applied []
+
+  The four still survive the current tree. Each is closed as an EQUIVALENT MUTANT with a measurement,
+  not with an argument: see assets/54_mut_probe_evidence.log and section 17.4 of the document.

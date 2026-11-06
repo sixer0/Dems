@@ -1,0 +1,15 @@
+# Strict classification of mutation result lines: a survivor is a line whose test summary is
+# exactly "Tests N passed (N)". Anything else that has no "failed" is listed apart.
+import re, sys
+path, mode = sys.argv[1], sys.argv[2]
+rows = [l.rstrip('\n') for l in open(path) if l.startswith('M')]
+surv, det, other = [], [], []
+for l in rows:
+    part = l.split(f'{mode}: ')[1].split(' | db:')[0] if mode == 'unit' else l.split('db: ')[1]
+    m = re.fullmatch(r'Tests (\d+) passed \((\d+)\)', part.strip())
+    if m and m.group(1) == m.group(2): surv.append(l)
+    elif 'failed' in part: det.append(l)
+    else: other.append(l)
+print(f'{path.split("/")[-1]} [{mode}]: {len(rows)} lines; detected (tests failed) {len(det)}; survived (all passed) {len(surv)}; neither {len(other)}')
+for l in surv: print('  SURVIVED ' + l[:150])
+for l in other: print('  NEITHER  ' + l[:200])

@@ -1,0 +1,67 @@
+// R-W follow-up probe (read-only): the chain-of-custody table of EV-20261006-0014 (a RECORDING_STOPPED row with a
+// multi-word reason) at 1440x900, 1280x800 and 1920x1080: table width vs its scroll container, the Detail column
+// reachable by horizontal scroll, and the same table with the pre-E2E-W1-7 CSS re-applied IN THIS BROWSER ONLY
+// (an injected <style>, removed afterwards) to test whether the nowrap date token is what widens the table.
+// Also reads the Core's verification of EV-20261006-0012 after the scenario rebuilt the dataset.
+// Commands sent: sign-in, reads, sign-out.
+import { launch, openPage, signIn, signOutMenu, makeRun, writeEvents, sleep } from './rt_lib.mjs'
+
+const R = makeRun('r3_custody_probe')
+process.on('unhandledRejection', (e) => R.log(`unhandled: ${e?.message ?? e}`))
+const browser = await launch(R.log)
+let page
+const MEASURE = `(() => {
+  const custody = document.querySelector('[data-testid="evidence-custody"]')
+  const table = custody.querySelector('table')
+  const sc = custody.querySelector('.table__scroll-container') ?? table.parentElement
+  const ths = [...table.querySelectorAll('thead th')].map((th) => Math.round(th.getBoundingClientRect().width))
+  const stop = [...table.querySelectorAll('tbody tr')].find((tr) => /RECORDING_STOPPED/.test(tr.innerText))
+  const detail = stop ? stop.querySelectorAll('td')[3] : null
+  const dr = detail?.getBoundingClientRect()
+  const sr = sc.getBoundingClientRect()
+  return { viewport: innerWidth + 'x' + innerHeight, containerWidth: sc.clientWidth, tableWidth: sc.scrollWidth, overflowPx: sc.scrollWidth - sc.clientWidth, overflowX: getComputedStyle(sc).overflowX, columnWidths: { time: ths[0], action: ths[1], actor: ths[2], detail: ths[3] }, stopDetailVisiblePx: dr ? Math.max(0, Math.round(Math.min(dr.right, sr.right) - dr.left)) : null, stopDetailWidthPx: dr ? Math.round(dr.width) : null }
+})()`
+const PREFIX_CSS = `.evi-mono.evi-custody-time { word-break: break-all !important; overflow-wrap: normal !important } .evi-custody-date, .evi-custody-clock { white-space: normal !important }`
+try {
+  page = await openPage(browser.cdp, R.log)
+  await page.viewport(1440, 900)
+  page.setLabel('Login')
+  await page.goto('/login', 2000)
+  R.record('signedIn', { ok: await signIn(page, 'andi.pratama', R.log) })
+  page.setLabel('Evidence detail')
+  R.record('ev0012Core', await page.fetchJson('/api/v1/evidence/EV-20261006-0012', `(b) => ({ verification: b?.evidence?.verification ?? null, custody: (b?.evidence?.custody ?? []).map((c) => c.action) })`))
+  R.record('demoStatus', await page.fetchJson('/api/v1/demo/status', `(b) => ({ scenario: b?.scenario, epoch: b?.epoch })`))
+  for (const [w, h] of [[1440, 900], [1280, 800], [1920, 1080]]) {
+    await page.viewport(w, h)
+    await page.goto('/evidence/EV-20261006-0014?tab=integrity', 1500)
+    await page.waitFor('evidence-custody', true, 15000)
+    await sleep(2500)
+    await page.eval(`document.querySelector('[data-testid="evidence-custody"]').scrollIntoView({ block: 'center', behavior: 'instant' })`)
+    await sleep(700)
+    const asIs = await page.eval(MEASURE, 'measure')
+    await page.eval(`(() => { const s = document.createElement('style'); s.id = 'rw-prefix-css'; s.textContent = ${JSON.stringify(PREFIX_CSS)}; document.head.appendChild(s) })()`)
+    await sleep(400)
+    const preFixCss = await page.eval(MEASURE, 'measure2')
+    await page.eval(`document.getElementById('rw-prefix-css')?.remove()`)
+    await sleep(400)
+    R.record(`custody_${w}x${h}`, { asIs, preFixCssInjected: preFixCss })
+    if (w === 1440) {
+      await page.eval(`(() => { const sc = document.querySelector('[data-testid="evidence-custody"] .table__scroll-container'); if (sc) sc.scrollLeft = sc.scrollWidth })()`)
+      await sleep(500)
+      await page.shot('p3_custody_ev0014_1440x900_scrolled_right.png', await page.elementClip('evidence-custody', 8, 880))
+      await page.eval(`(() => { const sc = document.querySelector('[data-testid="evidence-custody"] .table__scroll-container'); if (sc) sc.scrollLeft = 0 })()`)
+    }
+    if (w === 1920) await page.shot('p3_custody_ev0014_1920x1080.png', await page.elementClip('evidence-custody', 8, 1000))
+  }
+  await page.viewport(1440, 900)
+  await page.goto('/dashboard', 2000)
+  page.setLabel('Sign out')
+  R.record('signOut', await signOutMenu(page, R.log))
+} catch (error) {
+  R.log(`FAILED: ${error.message}`)
+  R.obs.error = error.message
+} finally {
+  if (page) R.record('consoleNetwork', writeEvents(R.run, page.events))
+  await browser.close()
+  R.flush()
+}

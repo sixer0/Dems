@@ -1,0 +1,35 @@
+src/core/boot-checks.ts:36 -> src/db/schema/boot-checks.ts
+src/core/payload-rules.ts:41 -> src/db/schema/value-sets.ts
+src/db/commands/migrations.ts:27 -> src/db/schema/meta.ts
+src/db/commands/status.ts:25 -> src/db/schema/meta.ts
+src/db/fixtures/identity.ts:46 -> src/modules/identity/password-hash/index.ts
+src/db/fixtures/load.ts:36 -> src/db/commands/migrations.ts
+src/db/fixtures/load.ts:37 -> src/db/commands/owner-connection.ts
+src/db/fixtures/load.ts:40 -> src/db/schema/meta.ts
+src/db/fixtures/target.ts:18 -> src/db/commands/database-names.ts
+src/db/reset/cli.ts:35 -> src/db/commands/cli.ts
+src/db/reset/cli.ts:36 -> src/db/commands/database-names.ts
+src/db/reset/names.ts:33 -> src/db/commands/database-names.ts
+src/db/reset/names.ts:34 -> src/db/commands/owner-connection.ts
+src/db/reset/routine.ts:47 -> src/db/commands/migrations.ts
+src/db/reset/routine.ts:56 -> src/db/commands/owner-connection.ts
+src/db/reset/routine.ts:65 -> src/db/schema/boot-checks.ts
+src/db/reset/routine.ts:66 -> src/db/schema/meta.ts
+src/db/seed/cli.ts:23 -> src/db/commands/cli.ts
+src/db/seed/cli.ts:24 -> src/db/commands/database-names.ts
+src/db/seed/cli.ts:25 -> src/db/commands/owner-connection.ts
+src/db/seed/seed.ts:41 -> src/db/commands/database-names.ts
+src/db/seed/seed.ts:42 -> src/db/commands/migrations.ts
+src/db/seed/seed.ts:43 -> src/db/commands/owner-connection.ts
+src/db/seed/seed.ts:44 -> src/modules/identity/password-hash/index.ts
+src/db/seed/seed.ts:55 -> src/db/schema/meta.ts
+src/modules/admin/changes.ts:42 -> src/modules/identity/biometric/index.ts
+src/modules/demo/host.ts:33 -> src/db/schema/boot-checks.ts
+src/modules/identity/activity.ts:25 -> src/db/schema/value-sets.ts (type)
+src/modules/identity/biometric/store.ts:35 -> src/db/schema/value-sets.ts (type)
+src/modules/identity/session-store.ts:20 -> src/db/schema/value-sets.ts (type)
+src/modules/identity/sessions.ts:24 -> src/db/schema/value-sets.ts (type)
+src/modules/pairing/devices.ts:36 -> src/modules/identity/biometric/index.ts
+src/modules/security-audit/stored-chain.ts:58 -> src/db/schema/boot-checks.ts
+src/plugins/authenticate/index.ts:59 -> src/modules/identity/limits.ts
+src/plugins/authenticate/index.ts:60 -> src/modules/identity/sessions.ts (type)

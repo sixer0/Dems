@@ -1,0 +1,27 @@
+# W11b follow-up: end state. 2026-10-04 18:15:32 WIB
+PostgreSQL process: 19121 Sun Oct 4 07:14:26 2026 
+postgres.pid file: 19121
+
+## pg_database and the test runs in it, as the owner role
+read at 18:15:32 WIB as dems_owner on 127.0.0.1:4432, PostgreSQL 18.4
+pg_database: 9 row(s); outside the test prefix: dems_demo (dems_owner), dems_lane_1 (dems_owner), dems_lane_2 (dems_owner), dems_lane_3 (dems_owner), postgres (dems_admin), template0 (dems_admin), template1 (dems_admin)
+test runs with a database: 1
+  dems_test_step_74_tmdr9w5x_*  started 18:15:32 (0 min ago; the stale sweep takes a dead run after 6 h, at 00:15:32)  databases 2  ALIVE (its liveness lock is held)
+      lock (442002, 587619691) held by backend pid 68199, role dems_owner, application "dems-test-run"
+      client sessions on its databases: 1 of dems_owner "dems-test-template" on tpl_seed; backends without a role: 0
+clone lock (442002, 0): free; liveness locks held in all: 1
+
+## databases, backends and roles (this row's read-only script; prefix 33c)
+session         dems_owner (superuser false) on 127.0.0.1:4432, PostgreSQL 18.4, postmaster started 2026-10-04 07:14:26 WIB
+pg_database     9 row(s): dems_demo (dems_owner), dems_lane_1 (dems_owner), dems_lane_2 (dems_owner), dems_lane_3 (dems_owner), dems_test_step_74_tmdr9w5x_tpl_schema (dems_owner), dems_test_step_74_tmdr9w5x_tpl_seed (dems_owner), postgres (dems_admin), template0 (dems_admin), template1 (dems_admin)
+databases with the prefix dems_test_step_33c: 0
+role            {"role":"dems_app","rolsuper":false,"rolcreatedb":false,"rolcreaterole":false,"signal_backend":false,"read_all_stats":false}
+role            {"role":"dems_owner","rolsuper":false,"rolcreatedb":true,"rolcreaterole":false,"signal_backend":false,"read_all_stats":false}
+pg_roles        3 role(s) outside pg_*
+autovacuum      autovacuum=on, autovacuum_naptime=60
+backends on databases with the prefix dems_test_step_33c: 0
+advisory locks  1 (442002, 587619691)
+
+## settings: the reset row's read-only script, for a digest that compares with implementation/assets/29_final_state.log
+pg_roles       3 role(s) outside pg_*
+pg_settings    375 visible setting(s), digest 6373391cbc111bce33dc5cf487c0c1e8; pg_db_role_setting 0 row(s)

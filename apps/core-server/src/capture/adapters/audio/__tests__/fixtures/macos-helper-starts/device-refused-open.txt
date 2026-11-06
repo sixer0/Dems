@@ -1,0 +1,9 @@
+FIXTURE  device-refused-open
+BASIS    DEVICE_VERBATIM
+SOURCE   row MM2, capture 13 (test/mm2_macos_microphone_48k.md s3; kept whole in .cache/task4-mm/session2.log, 193 bytes, 4 lines): the user's USB interface, device index 0, an open 0.68 s after the previous helper ended, exit status 251. The same four lines in MM capture 3 and MM3 capture 2
+CHANGED  the pointer (the record prints 0x<ptr>) is a synthetic number. No device name stands in these lines
+--- helper standard error ---
+[in#0 @ 0x600000f10000] audio format is not supported
+[in#0 @ 0x600000f10000] Error opening input: Input/output error
+Error opening input file none:0.
+Error opening input files: Input/output error

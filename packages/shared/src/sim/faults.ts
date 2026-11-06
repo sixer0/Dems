@@ -1,0 +1,647 @@
+/**
+ * Fault injection (masterplan/01_specs.md §14.7 `faults.ts`; EVT and FMEA keyed; §6.4).
+ *
+ * `inject(kind, target?)`:
+ * - records the fault in `faults.active` (idempotent per kind and target);
+ * - applies the device effect (derive.ts recomputes the device, time, security and service
+ *   fields from the active faults; MIC_CLIP latches at once, AUDIT_TAMPER rewrites one row);
+ * - raises an alert **and** writes an audit row (§6.4, SYS-014), plus an operational event;
+ * - adds a FAULT node to the session timeline while recording;
+ * - critical kinds (STORAGE_FULL, TPM_FAILURE, POWER_FAIL, SECURITY_FAULT) move PRECHECK,
+ *   ARMED, RECORDING, STOPPING or FINALIZING to FAULT. Recording is never silently masked.
+ *
+ * `clearFault(kind, target?)` undoes the effect (the CLIP latch stays until `resetClip`),
+ * resolves the matching alerts and writes FAULT_CLEARED. A session in FAULT stays there
+ * until `recover()`.
+ */
+import { AuditEventKind, SessionState, type AudioTrackId, type TrackId } from '../domain';
+import { activeMeterChannel, captureMicLines, meterInputOfChannel } from './audio';
+import { cameraStreamStateAfterFaults } from './camera-stream-fault';
+import { DEMO_CAPTURE_FAULT_REASON, captureFaultSentence } from './capture-fault-wording';
+import { CORE_NOT_RUNNING_CLEARED_SENTENCE, CORE_NOT_RUNNING_SENTENCE } from './core-not-running';
+import { ALERT_RING_SIZE, AUDIO_CLIP_BURST_DBFS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from './constants';
+import { DEVICE_ID } from './dataset';
+import { deriveDeviceState, EVIDENCE_TAMPER_PREFIX, isFaultActive } from './derive';
+import { SimNotFoundError } from './errors';
+import { nextItemId, pushRing, recordActivity, tamperAuditRow } from './events';
+import { DEFAULT_TAMPER_TRACK, restoreEvidenceItem, tamperEvidenceItem } from './evidence';
+import { noSignalFrame } from './initial-state';
+import { SEAL_UNSEALABLE_REASON, UNSEALABLE_ACKNOWLEDGE_OPERATION, canResolveUnsealable, isUnsealableAlert, unsealableAcknowledgedSentence } from './seal-unsealable';
+import { addTimelineItem, enterFault, isCriticalFault, signedInOperatorId } from './session-machine';
+import type { AuditLogSlice, AudioFrame, CaptureFaultFacts, EpochMs, FaultTarget, SimAlert, SimState } from './types';
+import { FaultEvt, FaultKind, type Severity } from './vocabulary';
+
+/** Book audit-event kind (§21.3, 01 L665) each fault is reported as (AC-65 "audit AUDIO_CLIP"). */
+export const FAULT_EVENT_KIND = {
+  CAMERA_LOSS: AuditEventKind.SOURCE_FAULT,
+  MIC_NO_SIGNAL: AuditEventKind.SOURCE_FAULT,
+  MIC_CLIP: AuditEventKind.AUDIO_CLIP,
+  STORAGE_LOW: AuditEventKind.TRACK_HEALTH,
+  STORAGE_FULL: AuditEventKind.TRACK_HEALTH,
+  GNSS_LOSS: AuditEventKind.SOURCE_FAULT,
+  TAMPER: AuditEventKind.TAMPER,
+  FAN_STALL: AuditEventKind.TRACK_HEALTH,
+  POWER_FAIL: AuditEventKind.POWER_FAIL,
+  TPM_FAILURE: AuditEventKind.SOURCE_FAULT,
+  SECURITY_FAULT: AuditEventKind.SOURCE_FAULT,
+  AUDIT_TAMPER: AuditEventKind.AUDIT_CHAIN_DISCONTINUITY,
+  // Schema v2 (register SH-03): both are source faults of the capture path (§21.3 SOURCE_FAULT).
+  MIC_SILENT: AuditEventKind.SOURCE_FAULT,
+  CAPTURE_FAULT: AuditEventKind.SOURCE_FAULT,
+} as const satisfies Record<FaultKind, AuditEventKind>;
+
+/** Alert severity per fault (camera loss is critical, matching the GlowRing flags). */
+export const FAULT_SEVERITY = {
+  CAMERA_LOSS: 'CRITICAL',
+  MIC_NO_SIGNAL: 'WARNING',
+  MIC_CLIP: 'WARNING',
+  STORAGE_LOW: 'WARNING',
+  STORAGE_FULL: 'CRITICAL',
+  GNSS_LOSS: 'WARNING',
+  TAMPER: 'WARNING',
+  FAN_STALL: 'WARNING',
+  POWER_FAIL: 'CRITICAL',
+  TPM_FAILURE: 'CRITICAL',
+  SECURITY_FAULT: 'CRITICAL',
+  AUDIT_TAMPER: 'CRITICAL',
+  // `dbc-3 §C.2` fixes both: the silence warning never blocks (OD-11), a stalled file is critical.
+  // Neither joins `CRITICAL_FAULTS` here: whether CAPTURE_FAULT moves the session machine to FAULT
+  // is SH-06 behaviour (blueprint row 51), not a vocabulary decision.
+  MIC_SILENT: 'WARNING',
+  CAPTURE_FAULT: 'CRITICAL',
+} as const satisfies Record<FaultKind, Severity>;
+
+const ALTERED_SUFFIX = ' [altered]';
+
+/** How many rows from the end AUDIT_TAMPER alters by default (inside the "last N blocks" strip). */
+const AUDIT_TAMPER_DEFAULT_FROM_END = 5;
+
+function auditTamperIndex(log: AuditLogSlice, target?: FaultTarget): number | null {
+  if (log.rows.length === 0) return null;
+  const wanted = target?.auditIndex ?? log.rows.length - AUDIT_TAMPER_DEFAULT_FROM_END;
+  return Math.min(log.rows.length - 1, Math.max(0, Math.floor(wanted)));
+}
+
+/**
+ * The `faults.active[].target` key for a fault: camera or channel ID, time fallback tier,
+ * `seq:<n>` for AUDIT_TAMPER, `evidence:<id>:<track>` for the evidence tamper hook, or null.
+ */
+export function faultTargetKey(state: SimState, kind: FaultKind, target?: FaultTarget): string | null {
+  switch (kind) {
+    case FaultKind.CAMERA_LOSS:
+      return target?.cameraId ?? state.activeCameraId;
+    case FaultKind.MIC_NO_SIGNAL:
+      return target?.channel ?? 'AUDIO-01';
+    case FaultKind.MIC_CLIP:
+      return target?.channel ?? 'AUDIO-02';
+    // Schema v2 (SH-08): the silence warning is keyed to the channel that feeds AUDIO-01 right now,
+    // so `describeFault` finds the active microphone and clearing it resolves exactly that alert.
+    case FaultKind.MIC_SILENT:
+      return target?.channel ?? activeMeterChannel(state);
+    case FaultKind.GNSS_LOSS:
+      return target?.fallback ?? 'NTP';
+    case FaultKind.TAMPER:
+      return target?.evidenceId
+        ? `${EVIDENCE_TAMPER_PREFIX}${target.evidenceId}:${target.trackId ?? DEFAULT_TAMPER_TRACK}`
+        : null;
+    case FaultKind.AUDIT_TAMPER: {
+      const index = auditTamperIndex(state.audit, target);
+      const row = index === null ? undefined : state.audit.rows[index];
+      return row ? `seq:${row.seq}` : null;
+    }
+    default:
+      return null;
+  }
+}
+
+function parseEvidenceTamper(key: string | null): { evidenceId: string; trackId: TrackId } | null {
+  if (!key?.startsWith(EVIDENCE_TAMPER_PREFIX)) return null;
+  const rest = key.slice(EVIDENCE_TAMPER_PREFIX.length);
+  const split = rest.lastIndexOf(':');
+  if (split < 0) return null;
+  return { evidenceId: rest.slice(0, split), trackId: rest.slice(split + 1) as TrackId };
+}
+
+/** "Camera 2 (CAM-02)": the name the simulator holds for a capture device and its id; the id alone when it holds none. */
+export function captureDeviceLabel(state: Pick<SimState, 'cameras' | 'mics'>, deviceId: string): string {
+  const name = state.cameras.find((camera) => camera.deviceId === deviceId)?.name ?? state.mics.find((mic) => mic.deviceId === deviceId)?.name ?? null;
+  return name === null || name === deviceId ? deviceId : `${name} (${deviceId})`;
+}
+
+function describeFault(state: SimState, kind: FaultKind, key: string | null, reason: string | null = null): { message: string; deviceId: string } {
+  const camera = state.cameras.find((c) => c.id === key);
+  const mic = state.mics.find((m) => m.id === key);
+  switch (kind) {
+    case FaultKind.CAMERA_LOSS:
+      return { message: `${camera?.name ?? 'Camera'} signal lost (${key ?? '?'})`, deviceId: camera?.deviceId ?? DEVICE_ID };
+    case FaultKind.MIC_NO_SIGNAL:
+      return { message: `${mic?.name ?? 'Microphone'}: no signal`, deviceId: mic?.deviceId ?? DEVICE_ID };
+    case FaultKind.MIC_CLIP:
+      return { message: `${mic?.name ?? 'Microphone'}: audio clipping`, deviceId: mic?.deviceId ?? DEVICE_ID };
+    case FaultKind.STORAGE_LOW:
+      return { message: 'Evidence storage low', deviceId: 'HDD-EVIDENCE' };
+    case FaultKind.STORAGE_FULL:
+      return { message: 'Evidence storage full — recording cannot continue', deviceId: 'HDD-EVIDENCE' };
+    case FaultKind.GNSS_LOSS:
+      return {
+        message: key === 'RTC' ? 'GNSS and NTP lost — time from the RTC' : 'GNSS signal lost — time from NTP',
+        deviceId: DEVICE_ID,
+      };
+    case FaultKind.TAMPER: {
+      const evidence = parseEvidenceTamper(key);
+      return evidence
+        ? { message: `Evidence ${evidence.evidenceId} media altered (${evidence.trackId}; demo tamper)`, deviceId: DEVICE_ID }
+        : { message: 'Enclosure tamper detected', deviceId: DEVICE_ID };
+    }
+    case FaultKind.FAN_STALL:
+      return { message: 'Cooling fan stalled', deviceId: DEVICE_ID };
+    case FaultKind.POWER_FAIL:
+      return { message: 'Power fail detected — recovery marker written', deviceId: DEVICE_ID };
+    case FaultKind.TPM_FAILURE:
+      return { message: 'TPM failure — sealing and export blocked', deviceId: DEVICE_ID };
+    case FaultKind.SECURITY_FAULT:
+      return { message: 'Critical security fault', deviceId: DEVICE_ID };
+    case FaultKind.AUDIT_TAMPER: {
+      const seq = key?.startsWith('seq:') ? Number(key.slice(4)) : Number.NaN;
+      const row = state.audit.rows.find((r) => r.seq === seq);
+      return { message: `Audit chain discontinuity at ${row?.id ?? 'unknown row'}`, deviceId: DEVICE_ID };
+    }
+    // Schema v2 (register SH-03/SH-08; OD-11): the active microphone fell silent. A warning, never a
+    // switch — the operator decides (D220). Keyed by the mic channel that feeds AUDIO-01.
+    case FaultKind.MIC_SILENT:
+      return {
+        message: `${mic?.name ?? 'Microphone'}: silent below ${MIC_SILENCE_DBFS} dBFS for ${MIC_SILENCE_DURATION_MS / 1000} s`,
+        deviceId: mic?.deviceId ?? DEVICE_ID,
+      };
+    // A fault of the capture side (`dbc-3 §C.2`: critical). WORDED BY ITS REASON (review R74-03): the
+    // one sentence of that cause from `capture-fault-wording.ts`, naming the device by name and id;
+    // an unknown reason gets the neutral sentence with its code.
+    case FaultKind.CAPTURE_FAULT: {
+      const device = key === null ? null : captureDeviceLabel(state, key);
+      return { message: captureFaultSentence(reason, device), deviceId: key ?? DEVICE_ID };
+    }
+    default:
+      return { message: 'Fault', deviceId: DEVICE_ID };
+  }
+}
+
+function raiseAlert(
+  state: SimState,
+  at: EpochMs,
+  kind: FaultKind,
+  target: string | null,
+  message: string,
+  facts?: CaptureFaultFacts,
+): SimState {
+  const { id, meta } = nextItemId(state.meta, 'ALR');
+  const alert: SimAlert = {
+    id,
+    at,
+    severity: FAULT_SEVERITY[kind],
+    kind,
+    message,
+    active: true,
+    acknowledged: false,
+    resolvedAt: null,
+    target,
+    // Step 54 (review 40 m4): values for the alert copy, so no UI parses `message`.
+    // `facts` (pass D6 item 14): the checked reason code and file count of a capture fault, written at the raise only.
+    params: { kind, target, evt: FaultEvt[kind], eventKind: FAULT_EVENT_KIND[kind], ...facts },
+  };
+  return { ...state, meta, alerts: pushRing(state.alerts, [alert], ALERT_RING_SIZE) };
+}
+
+/** The cause an alert of a fault was raised with (`params.reason`, written at the raise only), or null. */
+function alertReason(alert: SimAlert): string | null {
+  const reason = alert.params?.['reason'];
+  return typeof reason === 'string' ? reason : null;
+}
+
+/** `reason` undefined: the alerts of every cause; null: the alert without a cause; a code: that one (ruling D146). */
+function resolveAlerts(state: SimState, at: EpochMs, kind: FaultKind, target: string | null | undefined, reason?: string | null): SimState {
+  let changed = false;
+  const alerts = state.alerts.map((alert) => {
+    if (!alert.active || alert.kind !== kind) return alert;
+    if (target !== undefined && (alert.target ?? null) !== target) return alert;
+    if (reason !== undefined && alertReason(alert) !== reason) return alert;
+    changed = true;
+    return { ...alert, active: false, resolvedAt: at };
+  });
+  return changed ? { ...state, alerts } : state;
+}
+
+/**
+ * Writes one frame of the meters slice. The fault target is still a **channel** (the demo control
+ * panel and `FaultTarget.channel` name one); the slice itself is keyed by mic input (SH-17), so the
+ * write goes through `meterInputOfChannel` (the input that channel is in the capture configuration).
+ * A channel WITHOUT an input (task 4 row 165; site C17: the selector in force holds no complete
+ * microphone pair) has no frame to write: the same state, and no frame under a built-in input.
+ */
+function setAudioFrame(state: SimState, channel: AudioTrackId, patch: Partial<AudioFrame>): SimState {
+  const input = meterInputOfChannel(captureMicLines(state), channel);
+  if (input === null) return state;
+  const frame = state.audio.inputs[input] ?? noSignalFrame(patch.at ?? 0);
+  return {
+    ...state,
+    audio: {
+      inputs: { ...state.audio.inputs, [input]: { ...frame, ...patch } },
+      activeInputId: state.audio.activeInputId,
+    },
+  };
+}
+
+/** Restores the message the AUDIT_TAMPER hook altered (the chain verifies again). */
+export function untamperAuditRow(log: AuditLogSlice, seq: number): AuditLogSlice {
+  const index = log.rows.findIndex((row) => row.seq === seq);
+  const row = log.rows[index];
+  if (!row || !row.message.endsWith(ALTERED_SUFFIX)) return log;
+  const rows = log.rows.slice();
+  rows[index] = { ...row, message: row.message.slice(0, -ALTERED_SUFFIX.length) };
+  return { ...log, rows };
+}
+
+/** `inject(kind, target?)`. Idempotent for the same kind and target. */
+export function injectFaultTransition(state: SimState, now: EpochMs, kind: FaultKind, target?: FaultTarget): SimState {
+  // An untargeted AUDIT_TAMPER while one is active is a repeat, not a second tamper (the default
+  // row "5 from the end" moves as rows are appended).
+  if (kind === FaultKind.AUDIT_TAMPER && target?.auditIndex === undefined && isFaultActive(state.faults, kind)) {
+    return state;
+  }
+  const key = faultTargetKey(state, kind, target);
+  if (kind === FaultKind.AUDIT_TAMPER && key === null) return state; // nothing to tamper with
+  // Wave H driver B (G75-09): the DEMO control's capture fault says who raised it. The simulator's session
+  // keeps recording, so the sentence of a capture that ENDED ("the recording was interrupted") is not its.
+  if (kind === FaultKind.CAPTURE_FAULT) return raiseFaultAtKey(state, now, kind, key, target, { reason: DEMO_CAPTURE_FAULT_REASON });
+  return raiseFaultAtKey(state, now, kind, key, target);
+}
+
+/** What a raise may state beside its kind: the facts of a capture fault, or the one fact of the restart fault of a Core in its own capture. */
+export type FaultRaiseFacts = CaptureFaultFacts & { coreNotRunning?: true };
+
+/**
+ * THE RESTART FAULT OF A CORE IN ITS OWN CAPTURE (closing pass J; ruling D217 (5)): the same fault
+ * as `injectFaultTransition(state, now, POWER_FAIL)` - same kind, same key, same session move, same
+ * `fromState` - whose alert, `FAULT_RAISED` row and event say "the Core was not running while this
+ * session was active" and carry `coreNotRunning: true`. Idempotent like every raise.
+ */
+export function coreNotRunningFaultTransition(state: SimState, now: EpochMs): SimState {
+  return raiseFaultAtKey(state, now, FaultKind.POWER_FAIL, null, undefined, { coreNotRunning: true });
+}
+
+/**
+ * Raises `kind` under the target key `key`: the body of `inject`, for a caller that already knows
+ * the key. `raiseCaptureWarning` uses it for `CAPTURE_FAULT`, whose key is a capture-device ID that
+ * `FaultTarget` has no member for. Returns the same state while that fault is active for that key.
+ *
+ * THE KEY IS (kind, reason, device) (ruling D146): `facts.reason` is the cause. The same kind on
+ * the same DEVICE with another cause is another fault - its own entry, alert and audit row; a
+ * raise without a cause is keyed by kind and target, as it always was.
+ *
+ * WITHOUT A DEVICE (key null: the capture as a whole) THERE IS ONE FAULT OF A KIND AT A TIME. Its
+ * cause is a fact of the alert and of the audit row (`params.reason`, the column `alerts.reason`),
+ * not a second key: the end of a capture is told by two raisers that cannot agree on a code (the
+ * forwarder, from the supervisor's own warning, and the failed start of the session), and it must
+ * stay one alert and one FAULT_RAISED row whichever of them comes first.
+ */
+export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, key: string | null, target?: FaultTarget, facts?: FaultRaiseFacts): SimState {
+  const reason = key === null ? null : (facts?.reason ?? null);
+  // Closing pass J (D217 (5)): only the restart fault carries the member; it never rides on another kind.
+  const notRunning = kind === FaultKind.POWER_FAIL && facts?.coreNotRunning === true;
+  if (facts?.coreNotRunning === true && !notRunning) throw new TypeError('coreNotRunning is a fact of the restart fault (POWER_FAIL) only.');
+  if (isFaultActive(state.faults, kind, key, key === null ? undefined : reason)) return state;
+
+  let next: SimState = state;
+  if (kind === FaultKind.GNSS_LOSS && isFaultActive(state.faults, kind)) {
+    // One time-source fallback at a time: escalating NTP → RTC (or back) replaces the entry.
+    next = resolveAlerts(
+      { ...next, faults: { active: next.faults.active.filter((f) => f.kind !== FaultKind.GNSS_LOSS) } },
+      now,
+      FaultKind.GNSS_LOSS,
+      undefined,
+    );
+  }
+
+  const evidenceTamper = kind === FaultKind.TAMPER ? parseEvidenceTamper(key) : null;
+  if (evidenceTamper && !next.evidence.some((item) => item.id === evidenceTamper.evidenceId)) {
+    throw new SimNotFoundError('evidence', evidenceTamper.evidenceId);
+  }
+  const described = describeFault(next, kind, key, facts?.reason ?? null);
+  const deviceId = described.deviceId;
+  // The words of a Core that was not running: what it knows, never a power failure (`core-not-running.ts`).
+  const message = notRunning ? CORE_NOT_RUNNING_SENTENCE : described.message;
+  next = { ...next, faults: { active: [...next.faults.active, { kind, since: now, target: key, ...(reason === null ? {} : { reason }), ...(notRunning ? { coreNotRunning: true as const } : {}) }] } };
+
+  // Immediate effects that are not pure derivations.
+  let auditIndex: number | null = null;
+  let auditSeq: number | null = null;
+  if (kind === FaultKind.MIC_CLIP && key) {
+    const channel = key as AudioTrackId;
+    next = {
+      ...next,
+      mics: next.mics.map((mic) => (mic.id === channel ? { ...mic, clipLatched: true } : mic)),
+    };
+    next = setAudioFrame(next, channel, {
+      at: now,
+      dbfs: AUDIO_CLIP_BURST_DBFS,
+      peak: AUDIO_CLIP_BURST_DBFS,
+      clip: true,
+      noSignal: false,
+    });
+  } else if (kind === FaultKind.MIC_NO_SIGNAL && key) {
+    const channel = key as AudioTrackId;
+    // The input of the channel, or none: then no frame is read and `setAudioFrame` writes none.
+    const input = meterInputOfChannel(captureMicLines(next), channel);
+    next = setAudioFrame(next, channel, noSignalFrame(now, (input === null ? undefined : next.audio.inputs[input])?.seq ?? 0));
+  } else if (kind === FaultKind.AUDIT_TAMPER) {
+    auditIndex = auditTamperIndex(next.audit, target);
+    auditSeq = auditIndex === null ? null : (next.audit.rows[auditIndex]?.seq ?? null);
+    if (auditIndex !== null) next = { ...next, audit: tamperAuditRow(next.audit, auditIndex) };
+  } else if (evidenceTamper) {
+    next = {
+      ...next,
+      evidence: next.evidence.map((item) =>
+        item.id === evidenceTamper.evidenceId ? tamperEvidenceItem(item, evidenceTamper.trackId) : item,
+      ),
+    };
+  }
+
+  next = deriveDeviceState(next);
+  // Task 4 row V7 (finding E-01; decisions C113, C115): a fault of a camera's stream family says LOST on that camera's lines.
+  next = cameraStreamStateAfterFaults(state, next);
+  next = raiseAlert(next, now, kind, key, message, facts);
+  const sessionId = next.session?.id ?? null;
+  const fromState = next.session?.state ?? null;
+  next = {
+    ...next,
+    ...recordActivity(
+      next,
+      now,
+      kind === FaultKind.AUDIT_TAMPER
+        ? {
+            audit: {
+              type: 'AUDIT_CHAIN_DISCONTINUITY',
+              message,
+              severity: 'CRITICAL',
+              deviceId,
+              details: {
+                kind,
+                evt: FaultEvt[kind],
+                eventKind: FAULT_EVENT_KIND[kind],
+                index: auditIndex,
+                seq: auditSeq,
+              },
+            },
+            event: {
+              type: 'AUDIT_CHAIN_BROKEN',
+              message,
+              severity: 'CRITICAL',
+              params: { index: auditIndex, seq: auditSeq },
+            },
+          }
+        : {
+            audit: {
+              type: 'FAULT_RAISED',
+              message,
+              severity: FAULT_SEVERITY[kind],
+              sessionId,
+              deviceId,
+              ...(evidenceTamper ? { evidenceId: evidenceTamper.evidenceId } : {}),
+              details: {
+                kind,
+                evt: FaultEvt[kind],
+                eventKind: FAULT_EVENT_KIND[kind],
+                target: key,
+                fromState,
+                ...facts,
+              },
+            },
+            event: {
+              type: 'FAULT_RAISED',
+              message,
+              severity: FAULT_SEVERITY[kind],
+              sessionId,
+              deviceId,
+              params: { kind, target: key, ...(notRunning ? { coreNotRunning: true } : {}) },
+            },
+          },
+    ),
+  };
+
+  if (isCriticalFault(kind)) return enterFault(next, now, kind);
+  if (next.session?.state === 'RECORDING') {
+    next = addTimelineItem(next, {
+      at: now,
+      kind: 'FAULT',
+      label: message,
+      detail: FaultEvt[kind],
+      channel: kind === FaultKind.MIC_CLIP || kind === FaultKind.MIC_NO_SIGNAL ? (key as AudioTrackId) : null,
+      // Fix wave K (G75c-06): the CAUSE the fault names rides on its timeline row (`params.reason`, a code of
+      // `CAPTURE_FAULT_SENTENCES`), so that a surface words the row per fault - "The demo control raised a capture
+      // fault. The recording is not affected." - and never with the sentence of a capture that ended. Absent: no cause.
+      params: { kind, evt: FaultEvt[kind], target: key, critical: false, ...(typeof facts?.reason === 'string' && facts.reason !== '' ? { reason: facts.reason } : {}) },
+    });
+  }
+  return next;
+}
+
+/** The open session is a failed start: nothing recorded, faulted by the capture (the rule of `isFailedCaptureStart`, kept here to stay clear of an import cycle). */
+const isFailedStartSession = (session: SimState['session']): boolean => session !== null && session.captureDurable === false && session.startedAt === null && session.fault?.kind === FaultKind.CAPTURE_FAULT;
+
+/**
+ * The cause of the CAPTURE-WIDE fault of `kind` that is active (key null): a fact of its alert
+ * (`params.reason`, see `raiseFaultAtKey`), not of the fault entry. Null when it names none.
+ */
+function captureWideReason(state: SimState, kind: FaultKind): string | null {
+  const alert = state.alerts.findLast((candidate) => candidate.active && candidate.kind === kind && (candidate.target ?? null) === null);
+  return alert === undefined ? null : alertReason(alert);
+}
+
+/**
+ * True when the active capture-wide `CAPTURE_FAULT` was raised BY A CAPTURE (a failed start, a
+ * capture that ended): it names a cause that is not the demo control's own. Decision D72(h) /
+ * finding G75-06: such a fault is ended by the capture side (the next start, the seal of its
+ * recording), never by demo operation 74 - whether its session is open or closed.
+ */
+function isCaptureOriginatedFault(state: SimState): boolean {
+  if (!state.faults.active.some((fault) => fault.kind === FaultKind.CAPTURE_FAULT && fault.target === null)) return false;
+  const reason = captureWideReason(state, FaultKind.CAPTURE_FAULT);
+  return reason !== null && reason !== DEMO_CAPTURE_FAULT_REASON;
+}
+
+/**
+ * Audit fix row 110 (DF-19; register B2, B3; ruling D56). A fault that is cleared while the open
+ * session is in FAULT does not end that FAULT: the session stays there until `recover()` (operation
+ * 33). On the Core this is the boot of D84 R-4 (`clearCaptureFaultsTransition`: the capture fault of
+ * an earlier run is over because no worker runs) while a failed start is still open - the dashboard
+ * read "Fault cleared SES-..." beside a session card that still said FAULT (UI finding U-07). The
+ * FAULT_CLEARED event and audit row then say that the session still needs recovery, in this sentence
+ * (the i18n label `common.faultCleared.sessionStillInFault` is the same text with the kind filled in).
+ */
+export const FAULT_SESSION_RECOVERY_NEEDED_SENTENCE = 'The session is still in FAULT and needs recovery.';
+
+/** `clearFault(kind, target?)`: without a target, every active fault of that kind clears. */
+export function clearFaultTransition(state: SimState, now: EpochMs, kind: FaultKind, target?: FaultTarget): SimState {
+  let key: string | null | undefined;
+  if (target === undefined) key = undefined;
+  else if (kind === FaultKind.AUDIT_TAMPER && target.auditIndex === undefined) key = undefined;
+  else key = faultTargetKey(state, kind, target);
+  // Review R74-11: the capture-wide fault of a FAILED START is the cause its session shows while it
+  // is in FAULT (or being closed). It is ended by the next start (D84 R-3 / R-4), never by this demo
+  // control while that session is open: a clear here would leave a FAULT session with no cause.
+  if (kind === FaultKind.CAPTURE_FAULT && (isFailedStartSession(state.session) || isCaptureOriginatedFault(state))) {
+    const others = state.faults.active.filter((fault) => fault.kind === kind && fault.target !== null && (key === undefined || fault.target === key));
+    let next = state;
+    for (const fault of others) next = clearFaultAtKey(next, now, kind, fault.target);
+    return next;
+  }
+  return clearFaultAtKey(state, now, kind, key);
+}
+
+/**
+ * Clears `kind` under the target key `key` (`undefined`: every active fault of that kind): the body
+ * of `clearFault`, for a caller that already knows the key. `clearCaptureWarning` uses it, as
+ * `raiseCaptureWarning` uses `raiseFaultAtKey`. Returns the same state when no such fault is active.
+ *
+ * `reason` (ruling D146): undefined - the faults of every cause under that key, as before; null -
+ * only the fault without a cause; a code - only the fault of that cause, so the other causes of
+ * the same kind on the same device stay raised with their alerts. A fault WITHOUT a device (key
+ * null) has no cause in its key (see `raiseFaultAtKey`): a clear of it is never narrowed by one.
+ */
+export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, key: string | null | undefined, reason?: string | null): SimState {
+  const wanted = key === null ? undefined : reason;
+  const matches = state.faults.active.filter(
+    (fault) => fault.kind === kind && (key === undefined || fault.target === key) && (wanted === undefined || fault.target === null || (fault.reason ?? null) === wanted),
+  );
+  if (matches.length === 0) return state;
+  // Wave H driver B (G75-05): the cause of each fault, read BEFORE its alert is resolved. A fault of a
+  // device carries it in its key; the capture-wide one in its alert - without this its clear row read the
+  // sentence of a capture that ended unexpectedly, whatever had really happened (no camera connected).
+  const causes = new Map(matches.map((fault) => [fault, fault.reason ?? (fault.target === null ? captureWideReason(state, kind) : null)] as const));
+
+  let next: SimState = {
+    ...state,
+    faults: { active: state.faults.active.filter((fault) => !matches.includes(fault)) },
+  };
+  for (const fault of matches) {
+    if (kind === FaultKind.AUDIT_TAMPER && fault.target?.startsWith('seq:')) {
+      next = { ...next, audit: untamperAuditRow(next.audit, Number(fault.target.slice(4))) };
+    }
+    const evidenceTamper = kind === FaultKind.TAMPER ? parseEvidenceTamper(fault.target) : null;
+    if (evidenceTamper) {
+      next = {
+        ...next,
+        evidence: next.evidence.map((item) => (item.id === evidenceTamper.evidenceId ? restoreEvidenceItem(item) : item)),
+      };
+    }
+    // The alert of a fault about a device is the one of its cause; a fault without a device has one alert, whatever cause it names.
+    next = resolveAlerts(next, now, kind, fault.target, fault.target === null ? undefined : (fault.reason ?? null));
+  }
+  next = deriveDeviceState(next);
+  // Task 4 row V7 (finding E-01): the last fault of a camera's stream family is cleared - its lines say LIVE again.
+  next = cameraStreamStateAfterFaults(state, next);
+  const sessionId = next.session?.id ?? null;
+  // Audit fix row 110 (DF-19, register B3): the clear does not end the FAULT of the open session; its rows say so.
+  const stillInFault = next.session?.state === SessionState.FAULT;
+  return {
+    ...next,
+    ...recordActivity(
+      next,
+      now,
+      matches.map((fault) => ({
+        audit: {
+          type: 'FAULT_CLEARED' as const,
+          // Closing pass J (D217 (5)): the restart fault of a Core in its own capture is cleared in its own words too.
+          message:
+            fault.coreNotRunning === true
+              ? CORE_NOT_RUNNING_CLEARED_SENTENCE
+              : `${describeFault(state, kind, fault.target, causes.get(fault) ?? null).message} — cleared${stillInFault ? `. ${FAULT_SESSION_RECOVERY_NEEDED_SENTENCE}` : ''}`,
+          sessionId,
+          details: { kind, evt: FaultEvt[kind], target: fault.target, ...((causes.get(fault) ?? null) === null ? {} : { reason: causes.get(fault) }), ...(fault.coreNotRunning === true ? { coreNotRunning: true } : {}) },
+        },
+        event: {
+          type: 'FAULT_CLEARED' as const,
+          message: fault.coreNotRunning === true ? CORE_NOT_RUNNING_CLEARED_SENTENCE : stillInFault ? `Fault cleared · ${kind}. ${FAULT_SESSION_RECOVERY_NEEDED_SENTENCE}` : `Fault cleared · ${kind}`,
+          severity: 'SUCCESS' as const,
+          sessionId,
+          params: { kind, target: fault.target, ...(fault.coreNotRunning === true ? { coreNotRunning: true } : {}) },
+        },
+      })),
+    ),
+  };
+}
+
+/** Clears the CLIP latch of one channel. The latch returns on the next burst while MIC_CLIP is active. */
+export function resetClipTransition(state: SimState, channel: AudioTrackId): SimState {
+  const mic = state.mics.find((m) => m.id === channel);
+  if (!mic || !mic.clipLatched) return state;
+  const next: SimState = {
+    ...state,
+    mics: state.mics.map((m) => (m.id === channel ? { ...m, clipLatched: false } : m)),
+  };
+  return setAudioFrame(next, channel, { clip: false });
+}
+
+/**
+ * Operation 70. An alert is marked acknowledged; the fault behind it is not cleared.
+ *
+ * ONE ALERT IS ENDED BY ITS ACKNOWLEDGEMENT (fix wave L, driver L-S; re-check 75 finding G75d-01;
+ * ruling D228 (2)): the open notice of a session that could not be sealed (`seal-unsealable.ts`).
+ * Nothing else ever ended it. When the signed-in operator's role holds
+ * `UNSEALABLE_ACKNOWLEDGE_PERMISSION` and `now` is given, the acknowledgement RESOLVES the notice -
+ * also one that somebody without the permission acknowledged before - and writes ONE audit row
+ * `FAULT_CLEARED` that names the session of the NOTICE (never the session that is open now), the
+ * operator and, by the rule of `events.ts`, the paired device that sent it. No timeline event: the
+ * session it is about is over, and a later session's timeline must not draw it. Another role's
+ * acknowledgement is what it always was: `acknowledged`, still active, no row.
+ */
+export function acknowledgeAlertTransition(state: SimState, alertId: string, now?: EpochMs): SimState {
+  const alert = state.alerts.find((a) => a.id === alertId);
+  if (!alert) return state;
+  // Who acknowledges is read for the ONE alert whose acknowledgement means more than the mark; every other alert asks nobody.
+  const closable = now !== undefined && alert.active && isUnsealableAlert(alert);
+  const operatorId = closable ? signedInOperatorId(state) : null;
+  const role = operatorId === null ? null : (state.operators.find((operator) => operator.id === operatorId)?.role ?? null);
+  if (now !== undefined && closable && canResolveUnsealable(role)) {
+    const sessionId = typeof alert.params?.['sessionId'] === 'string' ? alert.params['sessionId'] : (alert.target ?? null);
+    const cause = typeof alert.params?.['cause'] === 'string' ? alert.params['cause'] : null;
+    const next: SimState = { ...state, alerts: state.alerts.map((a) => (a.id === alertId ? { ...a, acknowledged: true, active: false, resolvedAt: now } : a)) };
+    return {
+      ...next,
+      ...recordActivity(next, now, {
+        audit: {
+          type: 'FAULT_CLEARED',
+          message: unsealableAcknowledgedSentence(sessionId ?? '-'),
+          actorId: operatorId,
+          sessionId,
+          details: { reason: SEAL_UNSEALABLE_REASON, ...(cause === null ? {} : { cause }), alertId, operationId: UNSEALABLE_ACKNOWLEDGE_OPERATION },
+        },
+      }),
+    };
+  }
+  if (alert.acknowledged) return state;
+  return { ...state, alerts: state.alerts.map((a) => (a.id === alertId ? { ...a, acknowledged: true } : a)) };
+}
+
+/**
+ * The OD-11 microphone-silence warning (schema v2, register SH-08). When the ACTIVE mic input inside
+ * `AUDIO-01` has been silent (its frame reads `noSignal`, i.e. a dead or disconnected input) since
+ * `activeSilentSince` for at least `MIC_SILENCE_DURATION_MS` while a session is RECORDING, raise one
+ * `MIC_SILENT` warning. It NEVER switches the active input and never moves the session to FAULT
+ * (`MIC_SILENT` is a WARNING, not in `CRITICAL_FAULTS`; D220/OD-11 — the Core never auto-switches, the
+ * operator decides). Idempotent: once raised it stays until cleared, so repeated calls are no-ops.
+ *
+ * The raiser keys on `noSignal` rather than a raw dBFS dip because the demo's conversational noise
+ * floor (-52 dBFS) sits just under the -50 dBFS threshold; a genuine silence warning means a DEAD
+ * input (e.g. after a `MIC_NO_SIGNAL` fault on the active channel), not a pause between sentences.
+ */
+export function maybeRaiseMicSilentWarning(state: SimState, now: EpochMs, activeSilentSince: EpochMs): SimState {
+  if (state.session?.state !== SessionState.RECORDING) return state;
+  const activeChannel: AudioTrackId = activeMeterChannel(state);
+  // A channel without an input has no frame: nothing reads silent, no warning is raised.
+  const activeInput = meterInputOfChannel(captureMicLines(state), activeChannel);
+  const activeFrame = activeInput === null ? undefined : state.audio.inputs[activeInput];
+  if (!activeFrame?.noSignal) return state;
+  if (now - activeSilentSince < MIC_SILENCE_DURATION_MS) return state;
+  // Never switch: assert the active input is unchanged before and after the inject below.
+  return injectFaultTransition(state, now, FaultKind.MIC_SILENT, { channel: activeChannel });
+}

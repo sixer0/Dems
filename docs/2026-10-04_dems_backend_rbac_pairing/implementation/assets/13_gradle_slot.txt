@@ -1,0 +1,74 @@
+== gradle.lock acquired 07:03:19
+JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+openjdk version "17.0.20.1" 2026-08-18
+ANDROID_HOME=/Users/gsp-budi/Library/Android/sdk
+node=/usr/local/bin/node v26.8.2
+load: 4.83 6.08 5.02
+== before prebuild
+-rw-r--r--@ 1 gsp-budi  staff  324503614 Oct  1 10:41 /Users/gsp-budi/Documents/DEMS/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+-rw-r--r--@ 1 gsp-budi  staff       2257 Oct  1 11:34 /Users/gsp-budi/Documents/DEMS/apps/mobile/android/app/debug.keystore
+keystore cert SHA256 (before prebuild): FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C
+keystore file sha256 (before prebuild): 221e0a3106aa4c3ccc154e0a418b55020b3f9ea6e84f92e8749cd9e2f39f5e58
+drwxr-xr-x@ 14 gsp-budi  staff  448 Oct  4 00:29 /Users/gsp-budi/Documents/DEMS/apps/mobile/android
+drwxr-xr-x@  8 gsp-budi  staff  256 Oct  1 11:40 /Users/gsp-budi/Documents/DEMS/apps/mobile/android/app/build
+== PREBUILD_START 07:03:19
+
+> @dems/mobile@0.1.0 prebuild
+> EXPO_NO_TELEMETRY=1 expo prebuild --platform android --no-install
+
+- Clearing android
+✔ Cleared android code
+- Creating native directory (./android)
+✔ Created native directory
+- Updating package.json
+✔ Updated package.json | no changes
+- Running prebuild
+✔ Finished prebuild
+== PREBUILD_END 07:03:20 exit=0
+tracked files outside apps/mobile/src: unchanged by prebuild
+ M apps/mobile/package.json
+ M apps/mobile/scripts/device-session.sh
+ M package-lock.json
+ M package.json
+a6cf2fe11dc3ac5267348bf31afc5dc3db1c973fbc10c83e25bd9df897520be2  -
+git status of the generated folders (expect nothing: both are git-ignored):
+(end)
+== after prebuild (KI-21)
+drwxr-xr-x@ 10 gsp-budi  staff  320 Oct  4 07:03 /Users/gsp-budi/Documents/DEMS/apps/mobile/android
+old app-debug.apk: GONE (android/ was cleared; the backup holds it)
+== KEYSTORE GUARD (F28, D26)
+keystore after prebuild: present, file sha256 221e0a3106aa4c3ccc154e0a418b55020b3f9ea6e84f92e8749cd9e2f39f5e58
+keystore cert SHA256 (after prebuild):  FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C
+GUARD: digest equals the backed-up one; no restore needed
+102:            storeFile file('debug.keystore')
+104:            keyAlias 'androiddebugkey'
+110:            signingConfig signingConfigs.debug
+115:            signingConfig signingConfigs.debug
+190:        storeFile new File(projectRoot, demsSigning.getProperty("storeFile"))
+193:        keyAlias demsSigning.getProperty("keyAlias")
+196:    android.buildTypes.release.signingConfig android.signingConfigs.demsRelease
+95:        versionCode 100
+96:        versionName "0.1.0"
+== BUILD_START 07:03:20 (assembleDebug only)
+== BUILD_END 07:07:40 exit=0 duration=260s
+BUILD SUCCESSFUL in 4m 19s
+600 actionable tasks: 572 executed, 28 up-to-date
+load: 35.62 24.38 13.49
+== APK
+-rw-r--r--@ 1 gsp-budi  staff  324537405 Oct  4 07:07 /Users/gsp-budi/Documents/DEMS/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+sha256: d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec
+apksigner: /Users/gsp-budi/Library/Android/sdk/build-tools/36.0.0/apksigner
+Signer #1 certificate DN: CN=Android Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US
+Signer #1 certificate SHA-256 digest: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+APK CERT: MATCH (fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c)
+== stop the Gradle daemon this build started (P7)
+Stopping Daemon(s)
+1 Daemon stopped
+== gradle.lock released 07:07:44
+lockf exit=0

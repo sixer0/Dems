@@ -1,0 +1,12 @@
+ ✓ src/test/live-strict-mode-starts.test.tsx > the helper: `deferEffectStart` starts one task later and its clean-up cancels > nothing runs in the call; the start runs after one task 2ms
+ ✓ src/test/live-strict-mode-starts.test.tsx > the helper: `deferEffectStart` starts one task later and its clean-up cancels > set-up, clean-up, set-up (what StrictMode does on mount): ONE start 0ms
+ ✓ src/test/live-strict-mode-starts.test.tsx > the helper: `deferEffectStart` starts one task later and its clean-up cancels > under StrictMode a mount effect that returns the helper starts once; the same effect calling directly starts twice (the control) 26ms
+ ✓ src/test/live-strict-mode-starts.test.tsx > Session New resume, Simulated: the B-6 resume effect starts ONE pre-check under StrictMode > a session left in CREATE, the page opened at step 2: one `beginPrecheck`, no failure toast, the gate runs 447ms
+ ✓ src/test/live-strict-mode-starts.test.tsx > safe cases: a query started on mount is fetched once under StrictMode (TanStack Query shares one fetch) > Evidence detail: operation 40 (`getEvidence`) is requested ONCE 396ms
+ ✓ src/test/live-strict-mode-starts.test.tsx > safe cases: a query started on mount is fetched once under StrictMode (TanStack Query shares one fetch) > the device drawer: operation 19 (`listPairedDevices`) is requested ONCE when the drawer mounts; the ref-guarded refresh sends nothing on mount 313ms
+ ✓ src/test/live-strict-mode-starts.test.tsx > the static guard: a file under `features/` starts a Core call from an effect only by returning `deferEffectStart` > reads every page folder 0ms
+ ✓ src/test/live-strict-mode-starts.test.tsx > the static guard: a file under `features/` starts a Core call from an effect only by returning `deferEffectStart` > positive controls: each shape that sends twice under StrictMode, or hides how, is found 1ms
+ ✓ src/test/live-strict-mode-starts.test.tsx > the static guard: a file under `features/` starts a Core call from an effect only by returning `deferEffectStart` > negative controls: the helper returned, and effects that start no Core call, are not found 0ms
+ ✓ src/test/live-strict-mode-starts.test.tsx > the static guard: a file under `features/` starts a Core call from an effect only by returning `deferEffectStart` > every production file of `features/` holds the rule (the allowed list names each exception and why) 6ms
+ Test Files  1 passed (1)
+      Tests  10 passed (10)

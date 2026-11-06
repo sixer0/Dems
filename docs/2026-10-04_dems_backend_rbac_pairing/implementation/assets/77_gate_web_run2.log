@@ -1,0 +1,477 @@
+## 2026-10-06 01:43:42 WIB  1:43  2 users, load averages: 5.45 5.49 5.25
+## $ npm run test -w @dems/core-web -- --maxWorkers=2
+
+> @dems/core-web@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-web
+
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+ ❯ src/test/live-devices-drawer.test.tsx (13 tests | 1 failed) 3582ms
+   ❯ G6 with PAIRING_MANAGE (the SUPERVISOR) (5)
+     × the link opens the Paired Devices page 489ms
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+ ❯ src/test/live-pending-control.test.tsx (20 tests | 1 failed) 142ms
+   ❯ one copy: no page folder holds its own "busy at once, spinner late" (2)
+     × the hooks of W64, W65, W69 are gone or point at the shared one; every caller imports `@/lib/pending-control` 24ms
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+ ❯ src/test/live-shell-admin.test.tsx (40 tests | 17 failed) 6009ms
+   ❯ the two routes (PG-1, PG-2, PG-3) (11)
+     × Live mode with the permission: /admin/users renders page-users-roles inside the shell, and its entry is the active one 188ms
+     × Live mode with the permission: /admin/devices renders page-paired-devices inside the shell, and its entry is the active one 95ms
+     × each permission opens its own page only: /admin/devices without PAIRING_MANAGE 93ms
+     × each permission opens its own page only: /admin/users without USER_ADMIN 82ms
+     × Simulated mode: /admin/users is not redirected and shows its "Live mode only" state 34ms
+     × Simulated mode: /admin/devices is not redirected and shows its "Live mode only" state 32ms
+     × Simulated mode, where the build offers the choice: "Switch to Live mode" asks first, then hands over to the runtime 44ms
+   ❯ leaving the page whose permission was taken away (§6.3; RC-1, RC-3; CA-03; AC-C-50) (12)
+     × /admin/users: `session.updated` without the permission leaves for /dashboard, and the notice says why 105ms
+     × /admin/devices: `session.updated` without the permission leaves for /dashboard, and the notice says why 188ms
+     × /admin/users stays when the permission that was lost is the other page's 91ms
+     × a permission that goes without a role change (a permission refresh) leaves the page too, without a role notice 135ms
+     × every other route stays: /security-audit 1001ms
+     × CA-03: the leave is the guard's, run again by `router.invalidate()`; the shell names no destination 122ms
+     × another operator takes the session of this browser (a sign-in in another tab): the guards run for them, without a role notice 151ms
+   ❯ the shell's call sites (CLG (c); AC-C-53; brief list row 18) (3)
+     × reads the shell's production files 0ms
+     × no file takes the actions from `useSimActions` or reads `.actions` from a `Sim` 1ms
+     × the two call sites take them from `useCoreActions()` and consume the result through `settle` 1ms
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: Window's scrollTo() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: Window's scrollTo() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 19 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/test/live-devices-drawer.test.tsx > G6 with PAIRING_MANAGE (the SUPERVISOR) > the link opens the Paired Devices page
+ FAIL  src/test/live-shell-admin.test.tsx > the two routes (PG-1, PG-2, PG-3) > Live mode with the permission: /admin/devices renders page-paired-devices inside the shell, and its entry is the active one
+FakeTransportUnscriptedError: Fake transport: no answer is scripted for GET /api/v1/pairing/code (getPairingCodeStatus) [NO_ANSWER_SCRIPTED]
+ ❯ fetch ../../packages/shared/src/live/testing/http.ts:541:47
+    539|       call.outcome = 'unscripted';
+    540|       checkWaiters();
+    541|       return Promise.reject(context.violation(new FakeTransportUnscrip…
+       |                                               ^
+    542|     }
+    543|     const signal = abortSignalOf(init.signal);
+ ❯ exchange ../../packages/shared/src/client/core-client.ts:586:28
+ ❯ ../../packages/shared/src/client/core-client.ts:701:49
+ ❯ Object.call ../../packages/shared/src/client/core-client.ts:706:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/19]⎯
+
+ FAIL  src/test/live-pending-control.test.tsx > one copy: no page folder holds its own "busy at once, spinner late" > the hooks of W64, W65, W69 are gone or point at the shared one; every caller imports `@/lib/pending-control`
+AssertionError: expected [ Array(22) ] to deeply equal [ 'dashboard/devices-panel.tsx', …(9) ]
+
+- Expected
++ Received
+
+@@ -2,11 +2,23 @@
+    "dashboard/devices-panel.tsx",
+    "devices/audio-input-card.tsx",
+    "devices/device-menu.tsx",
+    "evidence/export-wizard.tsx",
+    "evidence/use-archive.ts",
++   "paired-devices/issue-panel.tsx",
++   "paired-devices/revoke-dialog.tsx",
++   "security-audit/chain-panel.tsx",
++   "security-audit/export-audit-dialog.tsx",
+    "session-monitor/action-bar.tsx",
+    "session-monitor/index.tsx",
+    "session-monitor/live-feed-panel.tsx",
+    "session-new/index.tsx",
+    "storage/manage-drawer.tsx",
++   "system/demo-panel.tsx",
++   "system/diagnostics.tsx",
++   "system/export-logs-dialog.tsx",
++   "system/settings-panel.tsx",
++   "system/update-panel.tsx",
++   "system/use-sim-command.ts",
++   "users-roles/role-dialog.tsx",
++   "users-roles/status-dialogs.tsx",
+  ]
+
+ ❯ src/test/live-pending-control.test.tsx:421:21
+    419|     )
+    420|     const callers = all.filter(({ text }) => /\busePendingControl\(\)|…
+    421|     expect(callers).toEqual([
+       |                     ^
+    422|       'dashboard/devices-panel.tsx',
+    423|       'devices/audio-input-card.tsx',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/19]⎯
+
+ FAIL  src/test/live-shell-admin.test.tsx > the two routes (PG-1, PG-2, PG-3) > Live mode with the permission: /admin/users renders page-users-roles inside the shell, and its entry is the active one
+FakeTransportUnscriptedError: Fake transport: no answer is scripted for GET /api/v1/rbac/matrix (getRoleMatrix) [NO_ANSWER_SCRIPTED]
+ ❯ fetch ../../packages/shared/src/live/testing/http.ts:541:47
+    539|       call.outcome = 'unscripted';
+    540|       checkWaiters();
+    541|       return Promise.reject(context.violation(new FakeTransportUnscrip…
+       |                                               ^
+    542|     }
+    543|     const signal = abortSignalOf(init.signal);
+ ❯ exchange ../../packages/shared/src/client/core-client.ts:586:28
+ ❯ ../../packages/shared/src/client/core-client.ts:701:49
+ ❯ Object.call ../../packages/shared/src/client/core-client.ts:706:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/19]⎯
+
+ FAIL  src/test/live-shell-admin.test.tsx > the two routes (PG-1, PG-2, PG-3) > each permission opens its own page only: /admin/devices without PAIRING_MANAGE
+ FAIL  src/test/live-shell-admin.test.tsx > leaving the page whose permission was taken away (§6.3; RC-1, RC-3; CA-03; AC-C-50) > /admin/users: `session.updated` without the permission leaves for /dashboard, and the notice says why
+ FAIL  src/test/live-shell-admin.test.tsx > leaving the page whose permission was taken away (§6.3; RC-1, RC-3; CA-03; AC-C-50) > /admin/users stays when the permission that was lost is the other page's
+ FAIL  src/test/live-shell-admin.test.tsx > leaving the page whose permission was taken away (§6.3; RC-1, RC-3; CA-03; AC-C-50) > a permission that goes without a role change (a permission refresh) leaves the page too, without a role notice
+ FAIL  src/test/live-shell-admin.test.tsx > leaving the page whose permission was taken away (§6.3; RC-1, RC-3; CA-03; AC-C-50) > every other route stays: /security-audit
+ FAIL  src/test/live-shell-admin.test.tsx > leaving the page whose permission was taken away (§6.3; RC-1, RC-3; CA-03; AC-C-50) > CA-03: the leave is the guard's, run again by `router.invalidate()`; the shell names no destination
+ FAIL  src/test/live-shell-admin.test.tsx > leaving the page whose permission was taken away (§6.3; RC-1, RC-3; CA-03; AC-C-50) > another operator takes the session of this browser (a sign-in in another tab): the guards run for them, without a role notice
+ FAIL  src/test/live-shell-admin.test.tsx > the shell's call sites (CLG (c); AC-C-53; brief list row 18) > reads the shell's production files
+ FAIL  src/test/live-shell-admin.test.tsx > the shell's call sites (CLG (c); AC-C-53; brief list row 18) > no file takes the actions from `useSimActions` or reads `.actions` from a `Sim`
+ FAIL  src/test/live-shell-admin.test.tsx > the shell's call sites (CLG (c); AC-C-53; brief list row 18) > the two call sites take them from `useCoreActions()` and consume the result through `settle`
+FakeTransportUnscriptedError: Fake transport: no answer is scripted for GET /api/v1/rbac/matrix (getRoleMatrix) [NO_ANSWER_SCRIPTED]
+ ❯ fetch ../../packages/shared/src/live/testing/http.ts:541:47
+    539|       call.outcome = 'unscripted';
+    540|       checkWaiters();
+    541|       return Promise.reject(context.violation(new FakeTransportUnscrip…
+       |                                               ^
+    542|     }
+    543|     const signal = abortSignalOf(init.signal);
+ ❯ exchange ../../packages/shared/src/client/core-client.ts:586:28
+ ❯ ../../packages/shared/src/client/core-client.ts:701:49
+ ❯ Object.call ../../packages/shared/src/client/core-client.ts:706:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/19]⎯
+
+ FAIL  src/test/live-shell-admin.test.tsx > the two routes (PG-1, PG-2, PG-3) > each permission opens its own page only: /admin/users without USER_ADMIN
+ FAIL  src/test/live-shell-admin.test.tsx > the two routes (PG-1, PG-2, PG-3) > Simulated mode: /admin/users is not redirected and shows its "Live mode only" state
+ FAIL  src/test/live-shell-admin.test.tsx > the two routes (PG-1, PG-2, PG-3) > Simulated mode: /admin/devices is not redirected and shows its "Live mode only" state
+ FAIL  src/test/live-shell-admin.test.tsx > the two routes (PG-1, PG-2, PG-3) > Simulated mode, where the build offers the choice: "Switch to Live mode" asks first, then hands over to the runtime
+ FAIL  src/test/live-shell-admin.test.tsx > leaving the page whose permission was taken away (§6.3; RC-1, RC-3; CA-03; AC-C-50) > /admin/devices: `session.updated` without the permission leaves for /dashboard, and the notice says why
+FakeTransportUnscriptedError: Fake transport: no answer is scripted for GET /api/v1/pairing/code (getPairingCodeStatus) [NO_ANSWER_SCRIPTED]
+ ❯ fetch ../../packages/shared/src/live/testing/http.ts:541:47
+    539|       call.outcome = 'unscripted';
+    540|       checkWaiters();
+    541|       return Promise.reject(context.violation(new FakeTransportUnscrip…
+       |                                               ^
+    542|     }
+    543|     const signal = abortSignalOf(init.signal);
+ ❯ exchange ../../packages/shared/src/client/core-client.ts:586:28
+ ❯ ../../packages/shared/src/client/core-client.ts:701:49
+ ❯ Object.call ../../packages/shared/src/client/core-client.ts:706:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/19]⎯
+
+
+ Test Files  3 failed | 88 passed (91)
+      Tests  19 failed | 1184 passed (1203)
+   Start at  01:43:42
+   Duration  191.55s (tests 70%, import 15%, environment 10%, setup 4%, transform 2%)
+
+    Isolate  91 workers spawned · ~476ms startup each (spawn + environment, per file)
+             at least ~21.20s faster with isolate: false — reuses workers across files instead of one per file
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-web
+npm error workspace @dems/core-web@0.1.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-web
+npm error command failed
+npm error command sh -c vitest run --maxWorkers=2
+exit=1

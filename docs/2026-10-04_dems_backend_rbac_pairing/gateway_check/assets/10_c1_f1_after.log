@@ -1,0 +1,30 @@
+## after (unref in the tree), run 1 at 08:53:49: the two baseline suites, two workers
+PASS src/features/session-finalizing/session-finalizing-screen.test.tsx
+    > 137 |     act(() => h.sim.actions.inject('POWER_FAIL'));
+    > 137 |     act(() => h.sim.actions.inject('POWER_FAIL'));
+PASS src/features/session-summary/session-summary-screen.test.tsx
+Test Suites: 2 passed, 2 total
+Tests:       17 passed, 17 total
+exit 0
+## after (unref in the tree), run 2 at 08:53:53: the two baseline suites, two workers
+PASS src/features/session-finalizing/session-finalizing-screen.test.tsx
+    > 137 |     act(() => h.sim.actions.inject('POWER_FAIL'));
+    > 137 |     act(() => h.sim.actions.inject('POWER_FAIL'));
+PASS src/features/session-summary/session-summary-screen.test.tsx
+Test Suites: 2 passed, 2 total
+Tests:       17 passed, 17 total
+exit 0
+## after (unref in the tree), run 3 at 08:53:56: the two baseline suites, two workers
+PASS src/features/session-finalizing/session-finalizing-screen.test.tsx
+    > 137 |     act(() => h.sim.actions.inject('POWER_FAIL'));
+    > 137 |     act(() => h.sim.actions.inject('POWER_FAIL'));
+PASS src/features/session-summary/session-summary-screen.test.tsx
+Test Suites: 2 passed, 2 total
+Tests:       17 passed, 17 total
+exit 0
+## after: src/features/session-summary/session-summary-screen.test.tsx alone, in band
+Tests:       9 passed, 9 total
+exit 0
+## after: src/features/session-finalizing/session-finalizing-screen.test.tsx alone, in band
+Tests:       8 passed, 8 total
+exit 0

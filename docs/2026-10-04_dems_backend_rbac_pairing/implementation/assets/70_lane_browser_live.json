@@ -1,0 +1,489 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+    "headless": true
+  },
+  "viewport": "1920x1080",
+  "phase": "live",
+  "steps": {
+    "liveSupervisor": {
+      "loginCoreMode": "LIVE",
+      "dashboardShown": true,
+      "devicesShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/devices",
+        "onDevices": true,
+        "panels": [
+          "cameras",
+          "summary",
+          "audio",
+          "other",
+          "front",
+          "ports"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: AKP Andi Pratama",
+        "status": {
+          "VIDEO-01": "READY",
+          "VIDEO-02": "READY",
+          "AUDIO-01": "READY",
+          "AUDIO-02": "READY",
+          "TABLET": "OFFLINE"
+        },
+        "lcdLabel": "Local status display, page STATUS",
+        "saysSimulated": false,
+        "busyHeads": 0,
+        "pendingTriggers": 0,
+        "identifyRings": [],
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/70_devices_live_supervisor.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 165,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "drawerSupervisor": {
+      "clicked": true,
+      "open": true,
+      "row": "drawer-paired-summary",
+      "facts": {
+        "open": true,
+        "device": "TABLET",
+        "rows": [
+          {
+            "label": "Status",
+            "value": "OFFLINE"
+          },
+          {
+            "label": "Since",
+            "value": "4 Oct 2026 18:52:51"
+          },
+          {
+            "label": "Link",
+            "value": "MGMT LAN · HTTPS / WSS"
+          },
+          {
+            "label": "Address",
+            "value": "192.168.10.21"
+          },
+          {
+            "label": "Paired devices",
+            "value": "0 paired, 0 onlineOpen Paired Devices"
+          }
+        ],
+        "pairedRowState": [
+          "drawer-paired-summary"
+        ],
+        "link": {
+          "href": "/admin/devices",
+          "text": "Open Paired Devices"
+        },
+        "saysSimulated": false
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/70_drawer_paired_devices_supervisor.png",
+      "network": {
+        "api": [
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/pairing/devices",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "identify": {
+      "menu": {
+        "opened": true,
+        "items": [
+          {
+            "text": "Details",
+            "disabled": false
+          },
+          {
+            "text": "Test signal",
+            "disabled": false
+          },
+          {
+            "text": "Identify (blink)",
+            "disabled": false
+          },
+          {
+            "text": "RestartRequires the Technician role",
+            "disabled": true
+          }
+        ]
+      },
+      "pressed": true,
+      "toastShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/devices",
+        "onDevices": true,
+        "panels": [
+          "cameras",
+          "summary",
+          "audio",
+          "other",
+          "front",
+          "ports"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: AKP Andi Pratama",
+        "status": {
+          "VIDEO-01": "READY",
+          "VIDEO-02": "READY",
+          "AUDIO-01": "READY",
+          "AUDIO-02": "READY",
+          "TABLET": "OFFLINE"
+        },
+        "lcdLabel": "Local status display, page STATUS",
+        "saysSimulated": false,
+        "busyHeads": 0,
+        "pendingTriggers": 0,
+        "identifyRings": [
+          "identify-CAM-01"
+        ],
+        "toasts": [
+          "Camera 1 is blinking its indicator"
+        ]
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/70_devices_live_identify.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/device/CAM-01/identify",
+            "status": 204
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "restartAsSupervisor": {
+      "answer": {
+        "status": 403,
+        "code": "NOT_PERMITTED",
+        "permission": "DEVICE_MANAGE"
+      },
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/device/CAM-01/restart",
+            "status": 403
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "liveTechnician": {
+      "signOut": {
+        "status": 204,
+        "loginShown": true
+      },
+      "dashboardShown": true,
+      "devicesShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/devices",
+        "onDevices": true,
+        "panels": [
+          "cameras",
+          "summary",
+          "audio",
+          "other",
+          "front",
+          "ports"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: Rina Wijaya",
+        "status": {
+          "VIDEO-01": "READY",
+          "VIDEO-02": "READY",
+          "AUDIO-01": "READY",
+          "AUDIO-02": "READY",
+          "TABLET": "OFFLINE"
+        },
+        "lcdLabel": "Local status display, page STATUS",
+        "saysSimulated": false,
+        "busyHeads": 0,
+        "pendingTriggers": 0,
+        "identifyRings": [],
+        "toasts": []
+      },
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 162,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "testSignal": {
+      "menu": {
+        "opened": true,
+        "items": [
+          {
+            "text": "Details",
+            "disabled": false
+          },
+          {
+            "text": "Test signal",
+            "disabled": false
+          },
+          {
+            "text": "Identify (blink)",
+            "disabled": false
+          },
+          {
+            "text": "Restart",
+            "disabled": false
+          }
+        ]
+      },
+      "pressed": true,
+      "toastShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/devices",
+        "onDevices": true,
+        "panels": [
+          "cameras",
+          "summary",
+          "audio",
+          "other",
+          "front",
+          "ports"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: Rina Wijaya",
+        "status": {
+          "VIDEO-01": "READY",
+          "VIDEO-02": "READY",
+          "AUDIO-01": "READY",
+          "AUDIO-02": "READY",
+          "TABLET": "OFFLINE"
+        },
+        "lcdLabel": "Local status display, page STATUS",
+        "saysSimulated": false,
+        "busyHeads": 0,
+        "pendingTriggers": 0,
+        "identifyRings": [],
+        "toasts": [
+          "Test signal sent to MIC 1"
+        ]
+      },
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/device/MIC-01/test-signal",
+            "status": 204
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "restart": {
+      "menu": {
+        "opened": true,
+        "items": [
+          {
+            "text": "Details",
+            "disabled": false
+          },
+          {
+            "text": "Test signal",
+            "disabled": false
+          },
+          {
+            "text": "Identify (blink)",
+            "disabled": false
+          },
+          {
+            "text": "Restart",
+            "disabled": false
+          }
+        ]
+      },
+      "pressed": true,
+      "toastShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/devices",
+        "onDevices": true,
+        "panels": [
+          "cameras",
+          "summary",
+          "audio",
+          "other",
+          "front",
+          "ports"
+        ],
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: Rina Wijaya",
+        "status": {
+          "VIDEO-01": "READY",
+          "VIDEO-02": "READY",
+          "AUDIO-01": "READY",
+          "AUDIO-02": "READY",
+          "TABLET": "OFFLINE"
+        },
+        "lcdLabel": "Local status display, page STATUS",
+        "saysSimulated": false,
+        "busyHeads": 0,
+        "pendingTriggers": 0,
+        "identifyRings": [],
+        "toasts": [
+          "Camera 2 restarted",
+          "Test signal sent to MIC 1"
+        ]
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/70_devices_live_technician_restart.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/device/CAM-02/restart",
+            "status": 204
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      },
+      "statusFourSecondsLater": {
+        "VIDEO-01": "READY",
+        "VIDEO-02": "READY",
+        "AUDIO-01": "READY",
+        "AUDIO-02": "READY",
+        "TABLET": "OFFLINE"
+      }
+    },
+    "drawerTechnician": {
+      "clicked": true,
+      "open": true,
+      "row": "drawer-paired-link",
+      "facts": {
+        "open": true,
+        "device": "TABLET",
+        "rows": [
+          {
+            "label": "Status",
+            "value": "OFFLINE"
+          },
+          {
+            "label": "Since",
+            "value": "4 Oct 2026 18:52:51"
+          },
+          {
+            "label": "Link",
+            "value": "MGMT LAN · HTTPS / WSS"
+          },
+          {
+            "label": "Address",
+            "value": "192.168.10.21"
+          },
+          {
+            "label": "Paired devices",
+            "value": "No paired device is connected"
+          }
+        ],
+        "pairedRowState": [
+          "drawer-paired-link"
+        ],
+        "link": null,
+        "saysSimulated": false
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/70_drawer_paired_devices_technician.png",
+      "network": {
+        "api": [],
+        "origins": [],
+        "sockets": [],
+        "console": []
+      }
+    }
+  },
+  "elapsedSeconds": 34
+}

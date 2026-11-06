@@ -1,0 +1,171 @@
+# D170: the banner after an outage
+## on W68's bed (scratch probe, W68's bed imported read-only), BEFORE the fix (01:41:22)
+    PROBE wait=false ONLINE/LIVE banner=resynced
+      next(offline,OFFLINE/CONNECTING)=offline | resync(offline)=offline | next(offline,ONLINE/LIVE)=resynced | for(resynced)
+    PROBE wait=true ONLINE/LIVE banner=offline
+      next(offline,OFFLINE/CONNECTING)=offline | resync(offline)=offline | next(offline,ONLINE/LIVE)=resynced | for(resynced) | for(offline)
+
+## the same probe AFTER the fix (01:43:51)
+    PROBE wait=false ONLINE/LIVE banner=resynced
+      next(offline,OFFLINE/CONNECTING)=offline | next(offline,ONLINE/LIVE)=resynced | resync(resynced)=resynced | for(resynced)
+    PROBE wait=true ONLINE/LIVE banner=resynced
+      next(offline,OFFLINE/CONNECTING)=offline | next(offline,ONLINE/LIVE)=resynced | resync(resynced)=resynced | for(resynced)
+
+## W66's bed + the runtime's 1 Hz interval, variants (01:42:17): none reproduces
+    VARIANT base: resynced ONLINE/LIVE
+    VARIANT rec2: resynced ONLINE/LIVE
+    VARIANT rec2frames: resynced ONLINE/LIVE
+    VARIANT frames1: resynced ONLINE/LIVE
+
+## the mechanism in isolation: a copy of the OLD hook, the link through useSyncExternalStore, the bus updater (01:42-01:43)
+    CASE same act: link ONLINE then emit: resynced
+    CASE emit in a transition-like lane, link sync: offline
+    CASE pending low-lane update elsewhere, then link+emit: resynced
+    CASE emit outside act then link in act: resynced
+    CASE async act: link then emit then await: resynced
+    CASE emit queued in transition before the link: offline
+
+## the committed test after the fix
+    ✓ with the 1 Hz meter interval running and wall-clock time passing during the outage: "Resynced" when the link is back, never "offline" again while ONLINE (1553 ms)
+    ✓ the same outage without the wall-clock wait: "Resynced" (the case that always worked) (125 ms)
+    ✓ "Resynced" hides after RESYNCED_BANNER_MS of real time; an outage while it shows turns it "offline" at once (3296 ms)
+    ✓ the signal in a LOWER lane than the link change (the case that undid "Resynced"): "resynced", never "offline" after it (4 ms)
+    ✓ the signal queued in a lower lane BEFORE the link change: "resynced" (1 ms)
+    ✓ both in one lane, either order, and with an unrelated update pending elsewhere: "resynced" (5 ms)
+    ✓ a resync never hides an outage: the signal while the link is still down keeps "offline" (2 ms)
+Tests:       7 passed, 7 total
+
+## the scratch probe files
+### zz-m1c-banner-probe.test.tsx
+// SCRATCH PROBE (D170 diagnosis; moved out of the tree after use). W68's wait-only probe on W68's monitor bed, imported read-only.
+import '@/features/session-live/testing/monitor-test-setup';
+import '@/navigation/testing/router-harness';
+import { afterEach, beforeEach, expect, it, jest } from '@jest/globals';
+import { act, screen } from '@testing-library/react-native';
+import * as bannerModule from './connection-banner';
+import { renderLiveMonitor, resetLiveMonitorBed, type LiveMonitorBed } from '@/features/session-live/testing/live-monitor-bed';
+
+let bed: LiveMonitorBed | null = null;
+beforeEach(async () => { await resetLiveMonitorBed(); });
+afterEach(() => { bed?.stop(); bed = null; jest.restoreAllMocks(); });
+const rt = () => (globalThis as unknown as { __DEMS_DEBUG__?: { runtime?: () => { coreLink?: { state: string; heartbeat?: string }; banner?: string } } }).__DEMS_DEBUG__?.runtime?.();
+
+for (const wait of [false, true]) {
+  it(`wait=${wait}`, async () => {
+    const b = await renderLiveMonitor();
+    bed = b;
+    await b.openMonitor();
+    b.setReachable(false);
+    await b.flush();
+    await b.elapse(1_000, 250);
+    if (wait) await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+    const log: string[] = [];
+    const real1 = bannerModule.nextBannerKind;
+    const real2 = bannerModule.bannerKindAfterResync;
+    const real3 = bannerModule.connectionBannerFor;
+    jest.spyOn(bannerModule, 'nextBannerKind').mockImplementation((c, l) => { const r = real1(c, l); log.push(`next(${c},${l.state}/${l.heartbeat})=${r}`); return r; });
+    jest.spyOn(bannerModule, 'bannerKindAfterResync').mockImplementation((c) => { const r = real2(c); log.push(`resync(${c})=${r}`); return r; });
+    jest.spyOn(bannerModule, 'connectionBannerFor').mockImplementation((k) => { log.push(`for(${k})`); return real3(k); });
+    b.setReachable(true);
+    await b.elapse(4_000, 250);
+    const r = rt();
+    console.log(`PROBE wait=${wait} ${r?.coreLink?.state}/${r?.coreLink?.heartbeat} banner=${r?.banner}\n  ${log.join(' | ')}`);
+    expect(true).toBe(true);
+  });
+}
+### zz-m1c-banner-probe2.test.tsx
+// SCRATCH PROBE 2 (D170): which ingredient W66's bed lacks. Moved out of the tree after use.
+import 'react-native-gesture-handler/jestSetup';
+import { afterEach, beforeAll, beforeEach, expect, it, jest } from '@jest/globals';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { act, cleanup } from '@testing-library/react-native';
+import { Text } from 'react-native';
+import { createHomeBed, flush, type HomeBed } from '@/features/dashboard/testing/live-home-bed';
+import { resetLoopRegistryForTests, resetMotionStateForTests } from '@/motion';
+import { useConnectionBanner } from './connection-banner';
+import { useCoreLink } from './contract';
+import { resetCoreErrorPresenterForTests, resetCoreLinkPrefsForTests, resetDebugLaunchForTests } from './index';
+import { createTestSim } from './testing/test-sim';
+import { useAudioAccessibilityValue } from './use-audio-shared-values';
+jest.mock('@shopify/react-native-skia', () => jest.requireActual<typeof import('@/components/media/testing/skia-mock')>('@/components/media/testing/skia-mock').createSkiaMock());
+jest.mock('expo-keep-awake', () => ({ useKeepAwake: () => undefined, activateKeepAwakeAsync: jest.fn(async () => undefined), deactivateKeepAwake: jest.fn(async () => undefined) }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn(), navigate: jest.fn(), canGoBack: () => true }), useIsFocused: () => true }));
+let seen = '';
+function BannerProbe() { const banner = useConnectionBanner(); const link = useCoreLink(); seen = `${banner.kind} ${link.state}/${link.heartbeat}`; return <Text>{seen}</Text>; }
+function MeterProbe({ ch }: { ch: 'AUDIO-01' | 'AUDIO-02' }) { const v = useAudioAccessibilityValue(ch, { noSignalText: 'NO SIGNAL' }); return <Text>{v.text}</Text>; }
+let bed: HomeBed | null = null;
+beforeAll(async () => { await new Promise((r) => setTimeout(r, 50)); });
+beforeEach(async () => { await AsyncStorage.clear(); resetCoreLinkPrefsForTests(); resetDebugLaunchForTests(); resetCoreErrorPresenterForTests(); resetMotionStateForTests(); resetLoopRegistryForTests(); });
+afterEach(() => { bed?.stop(); bed = null; cleanup(); });
+const variants: Record<string, { recording: boolean; meters: number; frames: boolean }> = {
+  base: { recording: false, meters: 1, frames: false },
+  rec2: { recording: true, meters: 2, frames: false },
+  rec2frames: { recording: true, meters: 2, frames: true },
+  frames1: { recording: false, meters: 1, frames: true },
+};
+for (const [name, v] of Object.entries(variants)) {
+  it(name, async () => {
+    bed = createHomeBed();
+    if (v.recording) bed.state = createTestSim({ scenario: 'recording' }).sim.store.getState();
+    bed.mount(<><BannerProbe />{v.meters >= 1 ? <MeterProbe ch="AUDIO-01" /> : null}{v.meters >= 2 ? <MeterProbe ch="AUDIO-02" /> : null}</>);
+    await bed.signIn(); await flush();
+    if (v.frames) { const at = bed.fake.clock.now(); const f = (dbfs: number) => ({ seq: 1, at, dbfs, peak: dbfs, clip: false, noSignal: false }); act(() => { bed!.operatorSocket().meters({ channels: { 'AUDIO-01': f(-18), 'AUDIO-02': f(-24) } } as never); }); await flush(); }
+    bed.goDown(); await flush(); await bed.elapse(1_000, 250);
+    await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+    bed.comeBack(); for (let i = 0; i < 16; i += 1) await bed.elapse(250, 250);
+    console.log(`VARIANT ${name}: ${seen}`);
+    expect(true).toBe(true);
+  });
+}
+### zz-m1c-banner-probe3.test.tsx
+// SCRATCH PROBE 3 (D170): the scheduling pattern of the banner hook, outside the app. Moved out of the tree after use.
+import { expect, it } from '@jest/globals';
+import { act, render } from '@testing-library/react-native';
+import { startTransition, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { Text } from 'react-native';
+import { bannerKindAfterResync, connectionBannerFor, nextBannerKind, type ConnectionBannerKind } from './connection-banner';
+import type { CoreLinkInfo } from './contract';
+import { createResyncBus, type ResyncBus } from './resync-bus';
+
+// The hook as it is in sim-runtime-provider.tsx:517-533 (copied for the probe).
+function useOld(link: CoreLinkInfo, bus: ResyncBus) {
+  const [kind, setKind] = useState<ConnectionBannerKind>(() => nextBannerKind('hidden', link));
+  const [seenLink, setSeenLink] = useState(link);
+  if (seenLink !== link) { setSeenLink(link); setKind(nextBannerKind(kind, link)); }
+  useEffect(() => bus.subscribe(() => setKind(bannerKindAfterResync)), [bus]);
+  return useMemo(() => connectionBannerFor(kind), [kind]);
+}
+const OFF: CoreLinkInfo = { source: 'LIVE', state: 'OFFLINE', heartbeat: 'OFFLINE' };
+const CONN: CoreLinkInfo = { source: 'LIVE', state: 'OFFLINE', heartbeat: 'CONNECTING' };
+const ON: CoreLinkInfo = { source: 'LIVE', state: 'ONLINE', heartbeat: 'LIVE' };
+function store(initial: CoreLinkInfo) { let v = initial; const ls = new Set<() => void>(); return { get: () => v, set: (n: CoreLinkInfo) => { v = n; ls.forEach((l) => l()); }, sub: (l: () => void) => { ls.add(l); return () => ls.delete(l); } }; }
+let out = '';
+function Host({ s, bus }: { s: ReturnType<typeof store>; bus: ResyncBus }) {
+  const link = useSyncExternalStore(s.sub, s.get, s.get);
+  const banner = useOld(link, bus);
+  out = banner.kind;
+  return <Text>{banner.kind}</Text>;
+}
+let bump: (() => void) | null = null;
+function Other() { const [, set] = useState(0); bump = () => set((n) => n + 1); return null; }
+
+const cases: Record<string, (s: ReturnType<typeof store>, bus: ResyncBus) => Promise<void>> = {
+  'same act: link ONLINE then emit': async (s, bus) => { act(() => { s.set(ON); bus.emit(); }); },
+  'emit in a transition-like lane, link sync': async (s, bus) => { act(() => { s.set(ON); startTransition(() => bus.emit()); }); },
+  'pending low-lane update elsewhere, then link+emit': async (s, bus) => { act(() => { startTransition(() => bump?.()); s.set(ON); bus.emit(); }); },
+  'emit outside act then link in act': async (s, bus) => { bus.emit(); await act(async () => { s.set(ON); }); },
+  'async act: link then emit then await': async (s, bus) => { await act(async () => { s.set(ON); bus.emit(); await Promise.resolve(); }); },
+  'emit queued in transition before the link': async (s, bus) => { act(() => { startTransition(() => bus.emit()); s.set(ON); }); },
+};
+for (const [name, run] of Object.entries(cases)) {
+  it(name, async () => {
+    const s = store(OFF); const bus = createResyncBus();
+    render(<><Host s={s} bus={bus} /><Other /></>);
+    act(() => s.set(CONN)); act(() => s.set(OFF));
+    expect(out).toBe('offline');
+    await run(s, bus);
+    await act(async () => { await Promise.resolve(); });
+    console.log(`CASE ${name}: ${out}`);
+    expect(true).toBe(true);
+  });
+}

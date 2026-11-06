@@ -1,0 +1,26 @@
+13:02:48.902 mark e01 at 13:02:48.902
+13:02:48.955 declared screen home
+13:02:49.003 tap 300,1240
+13:02:49.133 slept 3000 ms
+13:02:52.222 declared screen live
+13:02:52.276 screencap 60_p4_phone_monitor_before_web_stop.png 13:02:52.276..13:02:52.906
+13:02:53.034 nav /session load=true
+13:02:56.206 wait page-session-monitor present: TIMEOUT
+13:03:11.334 ERROR in "w1 js document.querySelector('[data-test": Cannot read properties of undefined (reading 'slice')
+13:03:11.396 screenshot 61_p4_web_session_monitor_before_stop.png 13:03:11.396..13:03:11.752
+13:03:11.843 press sm-action-end NOT FOUND at 13:03:11.844
+13:03:11.931 wait sm-end-dialog present: TIMEOUT
+13:03:17.063 slept 600 ms
+13:03:17.714 type into [data-testid="sm-end-reason"]: NOT FOCUSED
+13:03:17.771 slept 500 ms
+13:03:18.355 screenshot 62_p4_web_end_dialog.png 13:03:18.355..13:03:18.700
+13:03:18.757 warnlog since 10-06 13:02:48.000 (0): 
+13:03:18.876 serverlog since e01 (8):
+    13:02:50.494 POST /api/v1/auth/touch 200
+    13:02:53.057 [socket closed]
+    13:02:53.260 [socket opened]
+    13:02:53.265 GET /api/v1/auth/status 200
+    13:02:53.274 GET /api/v1/auth/session 401 NOT_SIGNED_IN
+    13:02:53.394 GET /api/v1/health 200
+    13:03:03.551 GET /api/v1/health 200
+    13:03:13.558 GET /api/v1/health 200

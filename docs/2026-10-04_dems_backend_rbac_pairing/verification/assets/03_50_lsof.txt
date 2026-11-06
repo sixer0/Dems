@@ -1,0 +1,24 @@
+# 2026-10-07 05:34:22
+$ lsof -nP -iTCP:4432 -iTCP:4420 -sTCP:LISTEN
+COMMAND    PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+postgres 32434 gsp-budi    6u  IPv4 0xf25ac70720754e03      0t0  TCP 127.0.0.1:4432 (LISTEN)
+node     35020 gsp-budi   17u  IPv4 0xfa3f51735b0428fd      0t0  TCP 127.0.0.1:4420 (LISTEN)
+exit=0
+$ lsof -nP -a -p 35020,32434 -i   (every socket of the server and of postgres)
+COMMAND    PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+postgres 32434 gsp-budi    6u  IPv4 0xf25ac70720754e03      0t0  TCP 127.0.0.1:4432 (LISTEN)
+node     35020 gsp-budi   16u  IPv4 0xe2ba6476ff579435      0t0  TCP 127.0.0.1:57090->127.0.0.1:4432 (ESTABLISHED)
+node     35020 gsp-budi   17u  IPv4 0xfa3f51735b0428fd      0t0  TCP 127.0.0.1:4420 (LISTEN)
+node     35020 gsp-budi   18u  IPv4 0x75e5a8d6b6459966      0t0  TCP 127.0.0.1:4420->127.0.0.1:57102 (ESTABLISHED)
+node     35020 gsp-budi   19u  IPv4 0x3cce0c42c733343f      0t0  TCP 127.0.0.1:57120->127.0.0.1:4432 (ESTABLISHED)
+exit=0
+== every TCP listener on 44xx (other interfaces?)
+COMMAND     PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+postgres  32434 gsp-budi    6u  IPv4 0xf25ac70720754e03      0t0  TCP 127.0.0.1:4432 (LISTEN)
+node      35020 gsp-budi   17u  IPv4 0xfa3f51735b0428fd      0t0  TCP 127.0.0.1:4420 (LISTEN)
+== client ports 4421-4423 and 5173/8081
+4421: free
+4422: free
+4423: free
+5173: free
+8081: free

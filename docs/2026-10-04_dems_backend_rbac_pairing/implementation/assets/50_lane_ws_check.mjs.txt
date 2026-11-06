@@ -1,0 +1,33 @@
+// W50 lane check: the socket THROUGH the dev server, with Node's global WebSocket.
+// Usage: node .cache/w50/lane/ws-check.mjs <url> [origin]
+// Prints the type of every message for 3.5 s (hello first, then heartbeats), cut to 220 characters.
+const [url, origin] = process.argv.slice(2)
+const seen = []
+const socket = origin ? new WebSocket(url, { headers: { Origin: origin } }) : new WebSocket(url)
+const started = Date.now()
+const done = (code) => {
+  const types = seen.map((m) => m.type)
+  console.log(`ws-check: ${seen.length} messages in ${Date.now() - started} ms; types in order: ${types.join(', ') || '(none)'}`)
+  console.log(`ws-check: hello received: ${types[0] === 'hello'}; heartbeat received: ${types.includes('heartbeat')}`)
+  process.exit(types[0] === 'hello' && types.includes('heartbeat') ? 0 : code)
+}
+socket.addEventListener('open', () => console.log(`ws-check: open ${url}${origin ? ` (Origin: ${origin})` : ' (no Origin header)'}`))
+socket.addEventListener('message', (event) => {
+  let message
+  try {
+    message = JSON.parse(String(event.data))
+  } catch {
+    message = { type: '(not JSON)' }
+  }
+  seen.push(message)
+  if (seen.length <= 4) console.log(`ws-check: message ${String(event.data).slice(0, 220)}`)
+})
+socket.addEventListener('close', (event) => {
+  console.log(`ws-check: closed with code ${event.code}`)
+  done(2)
+})
+socket.addEventListener('error', () => console.log('ws-check: error event (the handshake was refused or the connection failed)'))
+setTimeout(() => {
+  socket.close(1000)
+  setTimeout(() => done(3), 300)
+}, 3500)

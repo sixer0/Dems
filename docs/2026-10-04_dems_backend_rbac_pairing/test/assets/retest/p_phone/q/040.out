@@ -1,0 +1,41 @@
+13:12:08.693 mark h01 at 13:12:08.693
+13:12:08.737 touch status 200
+13:12:08.792 declared screen evidence-detail
+13:12:08.842 tap 108,2283
+13:12:08.971 slept 2500 ms
+13:12:11.510 declared screen home
+13:12:11.534 screencap 74_home_before_repeat.png 13:12:11.534..13:12:11.802
+13:12:11.863 tap 302,1239
+13:12:11.935 slept 3000 ms
+13:12:14.988 declared screen session-new
+13:12:15.034 tap 913,748
+13:12:15.111 slept 900 ms
+13:12:16.069 tap 229,994
+13:12:16.145 slept 700 ms
+13:12:16.874 tap 540,1309
+13:12:16.968 slept 900 ms
+13:12:17.898 text typed (RP Phone Repeat); inputType 0x2001
+13:12:18.306 slept 800 ms
+13:12:19.134 key 111
+13:12:19.225 slept 800 ms
+13:12:20.058 tap 540,2257
+13:12:20.134 create 201 at device 10-06 13:12:19.838 (POST /api/v1/session 201)
+13:12:20.877 precheck 202 at device 10-06 13:12:19.930 (POST /api/v1/session/{id}/precheck 202)
+13:12:20.965 slept 7000 ms
+13:12:28.030 tap 540,2257
+13:12:28.171 slept 2500 ms
+13:12:30.704 screencap 75_repeat_step3_ready.png 13:12:30.704..13:12:30.953
+13:12:31.011 device-host clock offset ms: -336, -336, -335, -335, -335
+13:12:31.116 screenrecord p4b_start_handoff started (pid 95765) at 13:12:31.720
+13:12:31.752 tap 540,2257
+13:12:31.847 start 200 at device 10-06 13:12:34.739 (POST /api/v1/session/{id}/start 200)
+13:12:35.161 slept 20000 ms
+13:12:55.225 screenrecord p4b_start_handoff pulled; every frame extracted (passthrough)
+13:13:02.670 declared screen live
+13:13:02.703 screencap 76_repeat_monitor_settled.png 13:13:02.703..13:13:03.232
+13:13:03.335 serverlog since h01 (5):
+    13:12:08.744 POST /api/v1/auth/touch 200
+    13:12:17.605 POST /api/v1/auth/touch 200
+    13:12:20.133 POST /api/v1/session 201
+    13:12:20.270 POST /api/v1/session/:id/precheck 202
+    13:12:35.062 POST /api/v1/session/:id/start 200

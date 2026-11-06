@@ -1,0 +1,17 @@
+## 2026-10-06 02:29:20 WIB  2:29  2 users, load averages: 2.32 3.23 5.16
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+Test Suites: 139 passed, 139 total
+Tests:       1709 passed, 1709 total
+Time:        82.974 s, estimated 106 s
+exit=0
+## 02:30:52 $ npm run typecheck -w @dems/mobile
+exit=0
+TS errors: 0
+## 02:30:56 $ npm run lint -w @dems/mobile
+exit=0
+eslint json: files 534 errors 0 warnings 0
+baseline 72 vs acaff20 (lines of git diff --stat): 0
+W60 navigation tests + harness vs b90a3c6 (lines of git diff --stat): 0
+61 test files hashed at 02:19: 59 OK; changed: apps/mobile/src/features/dashboard/home-more-live-static.test.ts: FAILED
+apps/mobile/src/features/session-recovery/recovery-live-static.test.ts: FAILED
+files changed in apps/mobile/src + packages/shared/src since 02:19: 9 (all this row's)

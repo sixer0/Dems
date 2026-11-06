@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Mutation check of plan row W70 on a SCRATCH copy only (rule M15): each mutation changes one file
+of the scratch copy under $TMPDIR, runs the tests named for it, counts the failed tests against the
+baseline of the same file set, and puts the file back. The workspace tree at
+/Users/gsp-budi/Documents/DEMS is never written. A mutation is DETECTED when more tests fail than in
+the baseline. Usage: mutate_w70.py <scratch root> [ids...]"""
+import json
+import pathlib
+import re
+import subprocess
+import sys
+
+ROOT = pathlib.Path(sys.argv[1]).resolve()
+WEB = ROOT / 'apps' / 'core-web'
+assert str(ROOT).startswith('/private/tmp/claude-501/') or str(ROOT).startswith('/tmp/claude-501/'), ROOT
+assert not str(ROOT).startswith('/Users/'), ROOT
+
+CMD = 'src/test/live-devices-commands.test.tsx'
+CLIP = 'src/test/live-devices-clip.test.tsx'
+DRAWER = 'src/test/live-devices-drawer.test.tsx'
+FOLDER = 'src/features/devices/__tests__/devices-page.test.tsx'
+DEV = 'src/features/devices/'
+
+# id, file (relative to apps/core-web), old, new, tests
+MUTATIONS = [
+    ('D1 Identify blinks before the answer (D-5 undone)', DEV + 'index.tsx',
+     "      let settled = false\n      settle(() => actions.deviceCommand(deviceId, command), {",
+     "      let settled = false\n      if (command === DeviceCommand.IDENTIFY) setIdentify((current) => ({ deviceId, key: current.key + 1 }))\n      settle(() => actions.deviceCommand(deviceId, command), {",
+     [CMD]),
+    ('P1 the page command skips the presenter (rule 2 undone)', DEV + 'index.tsx',
+     "          if (presentCoreError(error) !== null) return\n          // Layer 1",
+     "          // Layer 1",
+     [CMD]),
+    ('G1 the in-flight guard of the page is gone (LB-1)', DEV + 'index.tsx',
+     "      if (inFlight.current.has(deviceId)) return\n",
+     "",
+     [CMD]),
+    ('T1 the success toast runs at the press, before the answer', DEV + 'index.tsx',
+     "            case DeviceCommand.RESTART:\n              toast.success(t(words.restarted, { name }))\n              break\n          }\n        },",
+     "            case DeviceCommand.RESTART:\n              break\n          }\n        },",
+     [CMD]),
+    ('B1 a Live command never marks its device pending', DEV + 'index.tsx',
+     "      if (!settled) setPending((current) => withDevice(current, deviceId))",
+     "      void withDevice",
+     [CMD]),
+    ('R1 the page writes no record of its own on a 409', DEV + 'index.tsx',
+     "          reportDevicesError('features/devices.run', error, COMMAND_FAILED_RECORD, { deviceId, command })\n",
+     "",
+     [CMD]),
+    ('M1 the menu keeps the commands enabled while one is out', DEV + 'device-menu.tsx',
+     "  const disabledKeys = busy ? ['testSignal', 'identify', 'restart'] : restartReason ? ['restart'] : []",
+     "  const disabledKeys = restartReason ? ['restart'] : []",
+     [CMD]),
+    ('M2 the spinner shows at once (spinner late undone)', DEV + 'device-menu.tsx',
+     "  const showPending = usePendingReveal(busy)",
+     "  const showPending = busy",
+     [CMD]),
+    ('W1 the Live menu keeps the simulated words (§3.2 undone)', DEV + 'live.ts',
+     "    testSignal: 'devices.live.menu.testSignal',",
+     "    testSignal: 'common.deviceMenu.testSignal',",
+     [CMD]),
+    ('A1 the tile head is never busy (F63-2 container mark gone)', DEV + 'camera-tile.tsx',
+     '<header className="dev-tile-head" aria-busy={busy || undefined}>',
+     '<header className="dev-tile-head">',
+     [CMD]),
+    ('C1 the clip reset has no in-flight guard', DEV + 'audio-input-card.tsx',
+     "    if (resetting.current) return\n",
+     "",
+     [CLIP]),
+    ('C2 the clip toast runs at the press, before the delta', DEV + 'audio-input-card.tsx',
+     "    let settled = false\n    settle(() => actions.resetClip(channel), {\n      ok: () => {\n        toast.success(t('devices.actions.clipReset', { name }))\n      },",
+     "    let settled = false\n    toast.success(t('devices.actions.clipReset', { name }))\n    settle(() => actions.resetClip(channel), {\n      ok: () => {\n      },",
+     [CLIP]),
+    ('C3 the clip reset skips the presenter', DEV + 'audio-input-card.tsx',
+     "        if (presentCoreError(error) !== null) return\n        reportDevicesError('features/devices.resetClip'",
+     "        reportDevicesError('features/devices.resetClip'",
+     [CLIP]),
+    ('C4 the clip fact is never busy', DEV + 'audio-input-card.tsx',
+     '<div className="dev-fact" data-fact="clip" aria-busy={resetBusy || undefined}>',
+     '<div className="dev-fact" data-fact="clip">',
+     [CLIP]),
+    ('G6a every role gets the registry summary (the permission gate gone)', DEV + 'device-drawer.tsx',
+     "  return canList ? <PairedDevicesSummary /> : <TabletLinkSentence />",
+     "  return canList || true ? <PairedDevicesSummary /> : <TabletLinkSentence />",
+     [DRAWER]),
+    ('G6b the registry is read with the link down (rule 6)', DEV + 'device-drawer.tsx',
+     "    enabled: live !== null && linkUp,",
+     "    enabled: live !== null,",
+     [DRAWER]),
+    ('G6c every device of the registry counts as paired', DEV + 'device-drawer.tsx',
+     "    const paired = query.data.devices.filter((device) => device.state === 'PAIRED')",
+     "    const paired = query.data.devices",
+     [DRAWER]),
+    ('G6d the tablet-link change no longer refreshes the count (CONTRACT-GAP-W70-1 remedy gone)', DEV + 'device-drawer.tsx',
+     "    void queryClient.invalidateQueries({ queryKey: CORE_QUERY_KEYS.pairedDevices })",
+     "    void queryClient",
+     [DRAWER]),
+    ('G6e the registry read skips the presenter', DEV + 'device-drawer.tsx',
+     "      if (presentCoreError(answer, { permission: Permission.PAIRING_MANAGE }) === null) {",
+     "      if (true) {",
+     [DRAWER]),
+    ('G6f the Live row keeps the Simulated "Pairing" row', DEV + 'device-drawer.tsx',
+     "        live\n          ? [t('devices.live.pairedDevices.label'), <PairedDevicesFact key=\"paired\" />]",
+     "        false\n          ? [t('devices.live.pairedDevices.label'), <PairedDevicesFact key=\"paired\" />]",
+     [DRAWER]),
+    ('W2 the Health caption keeps "Simulated" in Live mode', DEV + 'live.ts',
+     "    samples: 'devices.live.samples',",
+     "    samples: 'devices.drawer.health.samples',",
+     [DRAWER]),
+    ('W3 the display label keeps "simulated" in Live mode', DEV + 'live.ts',
+     "    lcdLabel: 'devices.live.lcdLabel',",
+     "    lcdLabel: 'devices.front.lcdLabel',",
+     [DRAWER]),
+    ('S1 Simulated mode: the Live words leak into Simulated mode', DEV + 'live.ts',
+     "    testSignal: 'common.deviceMenu.testSignal',\n    restart: 'common.deviceMenu.restart',",
+     "    testSignal: 'devices.live.menu.testSignal',\n    restart: 'devices.live.menu.restart',",
+     [CMD, FOLDER]),
+    ('S2 Simulated mode: the Pairing row disappears (Live row in both modes)', DEV + 'device-drawer.tsx',
+     "  const live = useCoreMode() === CoreMode.LIVE\n  const link = useSim((s) => s.tabletLink)",
+     "  const live = useCoreMode() === CoreMode.LIVE || true\n  const link = useSim((s) => s.tabletLink)",
+     [DRAWER]),
+    ('K1 the record quotes the error text (M14 undone)', DEV + 'report.ts',
+     "    message,\n    at: Date.now(),",
+     "    message: error instanceof Error ? error.message : message,\n    at: Date.now(),",
+     [CMD, CLIP]),
+]
+
+
+def run(tests):
+    proc = subprocess.run(
+        ['npx', 'vitest', 'run', *tests, '--maxWorkers=2', '--reporter=json', '--outputFile=.cache-mut-result.json'],
+        cwd=WEB, capture_output=True, text=True, timeout=420,
+    )
+    out = WEB / '.cache-mut-result.json'
+    if not out.exists():
+        return None, proc.returncode, (proc.stdout + proc.stderr)[-1500:]
+    data = json.loads(out.read_text())
+    out.unlink()
+    return (data.get('numFailedTests', 0), data.get('numTotalTests', 0), data.get('numFailedTestSuites', 0)), proc.returncode, ''
+
+
+def main():
+    wanted = set(sys.argv[2:])
+    sets = {}
+    print(f'scratch root: {ROOT}', flush=True)
+    for mid, rel, old, new, tests in MUTATIONS:
+        if wanted and mid.split()[0] not in wanted:
+            continue
+        key = tuple(tests)
+        if key not in sets:
+            base, code, tail = run(list(tests))
+            sets[key] = base
+            print(f'BASELINE {list(tests)}: failed/total/failedSuites = {base} (exit {code}) {tail}', flush=True)
+        path = WEB / rel
+        text = path.read_text()
+        if text.count(old) != 1:
+            print(f'{mid}: NOT APPLIED (pattern count {text.count(old)})', flush=True)
+            continue
+        path.write_text(text.replace(old, new))
+        try:
+            res, code, tail = run(list(tests))
+        finally:
+            path.write_text(text)
+        base = sets[key]
+        if res is None or base is None:
+            verdict = f'NO RESULT (exit {code}) {tail}'
+        else:
+            delta = res[0] - base[0]
+            suites = res[2] - base[2]
+            verdict = 'DETECTED' if (delta > 0 or suites > 0) else 'SURVIVED'
+            verdict = f'{verdict} (failed {res[0]} vs baseline {base[0]}, +{delta}; failed suites +{suites})'
+        print(f'{mid}: {verdict}', flush=True)
+
+
+main()

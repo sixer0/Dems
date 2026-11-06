@@ -1,0 +1,135 @@
+[
+ {
+  "id": "P01",
+  "file": "apps/core-server/src/plugins/permission-guard/decision.ts",
+  "note": "AUTHENTICATED lets a paired DEVICE through (any principal instead of an OPERATOR)",
+  "from": "      return principal.kind === 'OPERATOR' ? ALLOW : refuse({ kind: AccessRefusalKind.NOT_SIGNED_IN, needs: 'OPERATOR' });",
+  "to": "      return principal.kind !== 'ANONYMOUS' ? ALLOW : refuse({ kind: AccessRefusalKind.NOT_SIGNED_IN, needs: 'OPERATOR' });"
+ },
+ {
+  "id": "P02",
+  "file": "apps/core-server/src/plugins/permission-guard/decision.ts",
+  "note": "the permission is not checked: every OPERATOR passes a rule that names one",
+  "from": "      if (rule.permissions.some((permission) => principal.permissions.includes(permission))) return ALLOW;",
+  "to": "      if (rule.permissions.length > 0) return ALLOW;"
+ },
+ {
+  "id": "P03",
+  "file": "apps/core-server/src/plugins/permission-guard/decision.ts",
+  "note": "a retired device is not refused: it is treated as an anonymous caller everywhere",
+  "from": "  if (principal.kind === 'ANONYMOUS' && principal.retiredDeviceId !== null && rule.refusesRetiredDevice) {",
+  "to": "  if (principal.kind === 'ANONYMOUS' && principal.retiredDeviceId === 'no such device' && rule.refusesRetiredDevice) {"
+ },
+ {
+  "id": "P04",
+  "file": "apps/core-server/src/plugins/permission-guard/index.ts",
+  "note": "the denial row is not written (the refusal is still answered)",
+  "from": "        await unit.audit.append(record.audit);\n",
+  "to": ""
+ },
+ {
+  "id": "P05",
+  "file": "apps/core-server/src/plugins/permission-guard/index.ts",
+  "note": "an audited refusal takes no place in the denial budget",
+  "from": "      await app.denialBudget.consume(request);\n",
+  "to": ""
+ },
+ {
+  "id": "P06",
+  "file": "apps/core-server/src/plugins/authenticate/index.ts",
+  "note": "two credentials in one request are not refused at stage 4 (the request goes on as anonymous)",
+  "from": "        throw credentialConflict();\n",
+  "to": "        return;\n"
+ },
+ {
+  "id": "P07",
+  "file": "apps/core-server/src/plugins/permission-guard/decision.ts",
+  "note": "the demo flag is not checked for an operator",
+  "from": "        if (!caller.demoControls) return refuse({ kind: AccessRefusalKind.DEMO_DISABLED });",
+  "to": "        if (!caller.demoControls && caller.principal.kind === 'ANONYMOUS') return refuse({ kind: AccessRefusalKind.DEMO_DISABLED });"
+ },
+ {
+  "id": "P08",
+  "file": "apps/core-server/src/plugins/permission-guard/denial.ts",
+  "note": "the ACCESS_DENIED row of a missing permission names no actor",
+  "from": "        actorId: operatorId,\n        deviceId,\n        details: named,\n",
+  "to": "        actorId: null,\n        deviceId,\n        details: named,\n"
+ },
+ {
+  "id": "P09",
+  "file": "apps/core-server/src/plugins/permission-guard/denial.ts",
+  "note": "the refusal of exportAudit writes ACCESS_DENIED instead of EXPORT_DENIED (and no event)",
+  "from": "  if (denial.export === null) {",
+  "to": "  if (denial.export === null || rule.operationId === 'exportAudit') {"
+ },
+ {
+  "id": "P10",
+  "file": "apps/core-server/src/plugins/origin-guard/origin-decision.ts",
+  "note": "a bearer request with a web console origin passes the Origin guard",
+  "from": "  if (hasBearer) return category === OriginCategory.WEB_CONSOLE ? OriginVerdict.REFUSE : OriginVerdict.ALLOW;",
+  "to": "  if (hasBearer) return OriginVerdict.ALLOW;"
+ },
+ {
+  "id": "P11",
+  "file": "apps/core-server/src/modules/identity/session-store.ts",
+  "note": "ID-13 broken: the cookie also resolves a session that is bound to a device",
+  "from": "  COOKIE: `${FIND_SESSION}s.device_id IS NULL`,",
+  "to": "  COOKIE: `${FIND_SESSION}true`,"
+ },
+ {
+  "id": "P12",
+  "file": "apps/core-server/src/plugins/permission-guard/decision.ts",
+  "note": "a DEVICE operation is open to a web console session",
+  "from": "        return principal.deviceId === null ? refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: 'DEVICE_OPERATION' }) : ALLOW;",
+  "to": "        return ALLOW;"
+ },
+ {
+  "id": "P13",
+  "file": "apps/core-server/src/plugins/throttle/limits.ts",
+  "note": "the denial budget is 19, not 20: the test, which moves the clock at 20, must meet a 429",
+  "from": "export const DENIAL_BUDGET_MAX = 20;",
+  "to": "export const DENIAL_BUDGET_MAX = 19;"
+ },
+ {
+  "id": "P14",
+  "file": "apps/core-server/src/plugins/permission-guard/decision.ts",
+  "note": "the condition DEVICE_SESSION is not held: a web session passes stage 6 on setBiometricEnrollment",
+  "from": "        if (principal.kind !== 'OPERATOR' || principal.deviceId === null) {",
+  "to": "        if (principal.kind !== 'OPERATOR') {"
+ },
+ {
+  "id": "P15",
+  "file": "apps/core-server/src/plugins/permission-guard/decision.ts",
+  "note": "the condition CONSOLE_IDENTITY is not held at stage 6 (the sign-in route still checks it itself: same status, same code)",
+  "from": "        if (!caller.consoleIdentity) return refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: condition });",
+  "to": "        if (!caller.consoleIdentity && caller.principal.kind === 'DEVICE') return refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: condition });"
+ },
+ {
+  "id": "P16",
+  "file": "apps/core-server/src/plugins/permission-guard/denial.ts",
+  "note": "the row and the answer of a missing permission name another permission",
+  "from": "  const named = { operationId: rule.operationId, permission: denial.permission, role };",
+  "to": "  const named = { operationId: rule.operationId, permission: 'SESSION_START', role };"
+ },
+ {
+  "id": "P17",
+  "file": "apps/core-server/src/plugins/permission-guard/access-rules.ts",
+  "note": "a retired device may also call getSignInStatus",
+  "from": "export const RETIRED_DEVICE_OPERATIONS: readonly string[] = ['getServiceHealth', 'redeemPairingCode'];",
+  "to": "export const RETIRED_DEVICE_OPERATIONS: readonly string[] = ['getServiceHealth', 'redeemPairingCode', 'getSignInStatus'];"
+ },
+ {
+  "id": "P18",
+  "file": "apps/core-server/src/plugins/throttle/limits.ts",
+  "note": "the strict limit of a class key is 29, not 30",
+  "from": "export const THROTTLE_STRICT_MAX = 30;",
+  "to": "export const THROTTLE_STRICT_MAX = 29;"
+ },
+ {
+  "id": "P19",
+  "file": "packages/shared/src/api/administration.ts",
+  "note": "THE REGISTRY is changed: operations 11 to 14 name PAIRING_MANAGE instead of USER_ADMIN (the same role holds both, so no caller is answered differently)",
+  "from": "const USER_ADMIN = permissionAccess(Permission.USER_ADMIN);",
+  "to": "const USER_ADMIN = permissionAccess(Permission.PAIRING_MANAGE);"
+ }
+]

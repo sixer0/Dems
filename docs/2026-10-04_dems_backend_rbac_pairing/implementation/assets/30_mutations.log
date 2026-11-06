@@ -1,0 +1,46 @@
+M00 no change | exit 0 | 130 passed (130)
+M01 4401 is not an end (reconnects) | KILLED | 3 failed | 127 passed (130) | first: reads the backoff and the limits from the existing constants and repeats none of their values
+M02 4403 is not an end (reconnects) | KILLED | 3 failed | 127 passed (130) | first: reads the backoff and the limits from the existing constants and repeats none of their values
+M03 backoff does not grow | KILLED | 7 failed | 123 passed (130) | first: reads the backoff and the limits from the existing constants and repeats none of their values
+M04 no jitter | KILLED | 2 failed | 128 passed (130) | first: reads the backoff and the limits from the existing constants and repeats none of their values
+M05 no spacing between resyncs | KILLED | 2 failed | 128 passed (130) | first: at most one resync in 2 s: a second gap inside the interval waits, and no two resyncs are closer than 2 s
+M06 resync spacing 1.4 s | KILLED | 1 failed | 129 passed (130) | first: at most one resync in 2 s: a second gap inside the interval waits, and no two resyncs are closer than 2 s
+M07 a gap is applied | KILLED | 7 failed | 123 passed (130) | first: a gap sends one resync, drops deltas until the snapshot, and reports RESYNCING then RESYNCED
+M08 a delta is applied before the snapshot of its connection | KILLED | 1 failed | 129 passed (130) | first: ordering: after a reconnect no delta is handed on before the snapshot of the new connection
+M09 a newer epoch is ignored | KILLED | 1 failed | 129 passed (130) | first: a delta of a newer epoch sends resync; the snapshot of that epoch replaces the replica
+M10 deltas are not dropped while a resync is pending | KILLED | 3 failed | 127 passed (130) | first: a gap sends one resync, drops deltas until the snapshot, and reports RESYNCING then RESYNCED
+M11 stop() leaves the housekeeping interval | KILLED | 27 failed | 103 passed (130) | first: the clock, the random source and the timer functions are injected: each global is named once, as a default
+M12 stop() leaves the reconnect timer | KILLED | 8 failed | 122 passed (130) | first: without a global WebSocket and without a factory the client reports it and keeps retrying; nothing is thrown
+M13 the reported path is the raw path | KILLED | 1 failed | 129 passed (130) | first: a schema report names the message type, the issue and the place, with member names only
+M14 a handler exception is not caught by emit | KILLED | 1 failed | 129 passed (130) | first: a handler that throws never escapes a socket callback: it is reported, and the client goes on
+M15 the socket and timer callbacks are not guarded | KILLED | 1 failed | 129 passed (130) | first: a failure inside the client itself does not escape a socket callback or a timer callback either
+M16 an older meter frame is handed on | KILLED | 1 failed | 129 passed (130) | first: each frame goes to onMeters at once; the client keeps one frame, the newest
+M17 meter frames are handed on when not wanted | KILLED | 1 failed | 129 passed (130) | first: meters: false sends no subscribe; setMetersWanted sends subscribe and unsubscribe once each
+M18 a connection that is not OPERATOR sends | SURVIVED | 130 passed (130) | first: 
+M19 a heartbeat does not end the backoff | KILLED | 2 failed | 128 passed (130) | first: gives the same snapshots as the heartbeat client, step by step, for the same messages
+M20 a close without its code after an announced end reconnects | KILLED | 1 failed | 129 passed (130) | first: a close whose code the runtime did not hand on is still the end the server announced
+M21 a web SESSION_INVALID hello makes every close an end | KILLED | 1 failed | 129 passed (130) | first: web: a cookie that no longer resolves stays connected as ANONYMOUS, and an ordinary close reconnects
+M22 no sync deadline | KILLED | 3 failed | 127 passed (130) | first: no answer to a resync within the deadline: the socket is given up, and the new connection resynchronises
+M23 the headers are not handed to the factory | KILLED | 4 failed | 126 passed (130) | first: never builds a URL and never puts a header value into a message: the URL is passed on as it was given
+M24 no send budget | KILLED | 1 failed | 129 passed (130) | first: never sends more than LIVE_SOCKET_SEND_BUDGET client messages in the period of the server limit
+M25 ONLINE before the snapshot | KILLED | 16 failed | 114 passed (130) | first: OPERATOR: hello, then subscribe, then the snapshot, then deltas in order; ONLINE only at the snapshot
+M26 no URL guard | KILLED | 7 failed | 123 passed (130) | first: refuses the URL "http://127.0.0.1:4420/ws": a credential never travels in a URL (SR-38)
+M27 the link never turns STALE | KILLED | 3 failed | 127 passed (130) | first: the link turns STALE after HEARTBEAT_STALE_AFTER_MS without a heartbeat, and back on the next one
+M28 the heartbeat view never turns STALE | KILLED | 2 failed | 128 passed (130) | first: gives the same snapshots as the heartbeat client, step by step, for the same messages
+M29 reconnect() keeps the old socket | KILLED | 1 failed | 129 passed (130) | first: reconnect(reason) on an open socket closes it with 1000 and holds exactly one socket
+M30 a second hello is accepted | KILLED | 1 failed | 129 passed (130) | first: a message before hello, and a second hello, are dropped and reported; a heartbeat before hello feeds the view
+M31 no principal check on received messages | KILLED | 1 failed | 129 passed (130) | first: a state message or a meter frame sent to a connection that is not OPERATOR is dropped and reported
+M32 the client writes to the console | KILLED | 2 failed | 128 passed (130) | first: writes nothing to the console: every report goes to the injected onError
+M33 RESYNCED is never reported | KILLED | 13 failed | 117 passed (130) | first: ordering: after a reconnect no delta is handed on before the snapshot of the new connection
+M34 a delta the replica holds sends resync | KILLED | 2 failed | 128 passed (130) | first: a snapshot of a new epoch that the server sends by itself is applied without a resync (RT-7)
+M35 the ISO time of a heartbeat is not read | KILLED | 1 failed | 129 passed (130) | first: reads both forms of the server time: epoch milliseconds in hello, ISO-8601 in heartbeat
+M36 start() keeps the old attempt | KILLED | 1 failed | 129 passed (130) | first: start() after stop() begins a new run: a new socket, attempt 0, CONNECT as the cause
+M37 the 2 s rule is per connection | KILLED | 1 failed | 129 passed (130) | first: the 2 s rule holds across a reconnect
+M38 stop() does not close the socket | KILLED | 7 failed | 123 passed (130) | first: gives the same snapshots as the heartbeat client, step by step, for the same messages
+M39 an end is followed by a reconnect timer | KILLED | 17 failed | 113 passed (130) | first: 4401 after session.ended SIGNED_OUT: reported as SESSION_ENDED with the reason, and nothing reconnects
+M40 the frame text is put into the report | KILLED | 1 failed | 129 passed (130) | first: an invalid frame is dropped, counted and reported with a code, and the report never holds the frame
+M41 subscribe is sent before hello (at connect) | KILLED | 10 failed | 120 passed (130) | first: opens one socket at the injected URL, without headers on the web, and sends nothing before hello
+M42 a socket error does not reconnect | KILLED | 2 failed | 128 passed (130) | first: a socket error reconnects with the backoff; the late close of that socket is ignored
+M43 the kept meter frame survives a lost link | KILLED | 1 failed | 129 passed (130) | first: the wish survives a reconnect, and the kept frame does not
+M44 the deadline after hello is not armed for the snapshot | KILLED | 1 failed | 129 passed (130) | first: no snapshot within the deadline: the socket is given up and the backoff starts
+mutations: 44, killed: 43, survived: 1 ['M18 a connection that is not OPERATOR sends']

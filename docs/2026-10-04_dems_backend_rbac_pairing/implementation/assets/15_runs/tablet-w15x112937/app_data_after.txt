@@ -1,0 +1,18 @@
+-- app data (after the probe): files of shared_prefs and databases; AsyncStorage keys with the length of each value; names of the secure-store entries
+   databases:
+   total 184
+   -rw-rw---- 1 u0_a213 u0_a213 139264 2026-10-04 11:29 RKStorage
+   -rw-rw---- 1 u0_a213 u0_a213      0 2026-10-04 11:29 RKStorage-journal
+   -rw-rw---- 1 u0_a213 u0_a213  32768 2026-10-04 10:45 exoplayer_internal.db
+   -rw-rw---- 1 u0_a213 u0_a213      0 2026-10-04 10:45 exoplayer_internal.db-journal
+   
+   shared_prefs:
+   total 40
+   -rw-rw---- 1 u0_a213 u0_a213 144 2026-10-04 10:45 ExpoVideoCache.xml
+   -rw-rw---- 1 u0_a213 u0_a213  65 2026-10-04 11:29 SecureStore.xml
+   -rw-rw---- 1 u0_a213 u0_a213 127 2026-10-04 10:45 WebViewChromiumPrefs.xml
+   -rw-rw-rw- 1 u0_a213 u0_a213 129 2026-10-04 11:29 com.dems.demo.tablet_preferences.xml
+   -rw-rw---- 1 u0_a213 u0_a213  65 2026-10-04 10:45 expo.modules.kotlin.PersistentDataManager.xml
+   key: dems.mobile.log.v1|372
+   key: dems.sim.v1|119859
+   secure-store entries (entry names of shared_prefs/SecureStore.xml, read on the device; none listed = none stored):

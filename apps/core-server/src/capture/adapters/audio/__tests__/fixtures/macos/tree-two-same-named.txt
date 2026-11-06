@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>bInterfaceClass</key>
+				<integer>1</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>2</integer>
+			</dict>
+		</array>
+		<key>IORegistryEntryLocation</key>
+		<string>01120000</string>
+		<key>USB Product Name</key>
+		<string>USB Audio Device</string>
+		<key>USB Serial Number</key>
+		<string>SN-SYN-AAA-0007</string>
+		<key>idProduct</key>
+		<integer>16</integer>
+		<key>idVendor</key>
+		<integer>6699</integer>
+		<key>locationID</key>
+		<integer>17956864</integer>
+	</dict>
+	<dict>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>bInterfaceClass</key>
+				<integer>1</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>2</integer>
+			</dict>
+		</array>
+		<key>IORegistryEntryLocation</key>
+		<string>01140000</string>
+		<key>USB Product Name</key>
+		<string>USB Audio Device</string>
+		<key>USB Serial Number</key>
+		<string>SN-SYN-BBB-0009</string>
+		<key>idProduct</key>
+		<integer>805</integer>
+		<key>idVendor</key>
+		<integer>6700</integer>
+		<key>locationID</key>
+		<integer>18087936</integer>
+	</dict>
+	<dict>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>bInterfaceClass</key>
+				<integer>1</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>2</integer>
+			</dict>
+		</array>
+		<key>IORegistryEntryLocation</key>
+		<string>02100000</string>
+		<key>USB Product Name</key>
+		<string>DEMS Solo 1</string>
+		<key>idProduct</key>
+		<integer>1</integer>
+		<key>idVendor</key>
+		<integer>6699</integer>
+		<key>locationID</key>
+		<integer>34603008</integer>
+	</dict>
+</array>
+</plist>

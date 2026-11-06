@@ -1,0 +1,74 @@
+
+== 16:56:40 0. before (no reset): listeners free?; dems_lane_1 as session A left it
+   audit_log                100
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 16:56:41 1. start the lane backend (demo flag off)
+npm PID 64209, listener PID 64253
+   "port":4421,"database":"dems_lane_1","demoControls":false
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T09:56:42.374Z","uptimeMs":143,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 16:56:42 2. device session: phone, Metro 8083, tcp:4420 -> tcp:4421
+[device-session phone 16:56:42] lock held; hard cap 480 s, until 17:04:42 (watchdog PID 64312)
+[device-session phone 16:56:42] session serial: emulator-5554 (dems2_phone)
+[device-session phone 16:56:42] emulator-5554: screen awake, no keyguard
+[device-session phone 16:56:42] Metro PID 64349 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session phone 16:56:45] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 16:56:45] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 16:56:45] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), lane port 4421, run w60fx165640 (session F)
+-- lock: isKeyguardShowing=false; fps "count":1
+== D1. boot route in LIVE mode on the PAIRED phone → /login ==
+-- am start -W -d 'demsdemo:///?core=LIVE'
+   Status: ok
+   LaunchState: COLD
+   TotalTime: 10413
+-- waited 0 s for: runtime.live.ready
+-- waited 1 s for: DEMS-LIVE\] GET /api/v1/pairing/device 200
+-- screencap: 60_phone_login.png (1720192 bytes), focus: mCurrentFocus=Window{6540faf u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+== D2. sign in on the paired phone in LIVE mode (the D138 evidence) ==
+-- typed the operator username (andi.pratama)
+-- typed the demo password (not shown)
+-- pressed the keypad's go key (KEYCODE_ENTER)
+-- the app's sign-in request: status 200, request ID e8753cbf-65be-4a0f-aa8b-23a8b1dee7a9
+-- credential/token lines: device JS log 0; backend log 0
+-- session probe 200 after sign-in: 0
+-- sign-in step exit: 0 (0 = Core answered 200 and no credential leaked)
+-- screencap: 60_phone_signed_in_home.png (363955 bytes), focus: mCurrentFocus=Window{6540faf u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- Core request lines this session:
+      1 DEMS-LIVE] POST /api/v1/auth/sign-in 200
+      1 DEMS-LIVE] GET /api/v1/pairing/device 200
+      1 DEMS-LIVE] GET /api/v1/auth/status 200
+      1 DEMS-LIVE] GET /api/v1/auth/session 401
+-- live.misuse (must be 0): 0; credential/token lines (must be 0): 0
+== D3. leave the app in SIMULATED mode as found ==
+-- am start -W -d 'demsdemo:///?core=SIMULATED'
+   Status: ok
+   LaunchState: COLD
+   TotalTime: 10671
+-- waited 0 s for runtime.sim.hydrated; Core requests after (must be 0): 0
+-- prefs after: {"coreLinkSource":"SIMULATED"}
+
+-- lock at end: isKeyguardShowing=false; fps "count":1
+[device-session phone 16:57:38] Metro 64349 stopped
+[device-session phone 16:57:38] session ended with status 0
+device session exit=0
+
+== 16:57:38 3. backend request log during the session
+      1 GET /api/v1/auth/session 401 principal=device
+      1 GET /api/v1/auth/status 200 principal=device
+      1 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/device 200 principal=device
+      1 POST /api/v1/auth/sign-in 200 principal=device
+-- bearer/cookie/credential lines in the server log this run (must be 0): 0
+
+== 16:57:38 4. stop the backend and check nothing is left
+lsof exit 1 (1 = none)
+   audit_log                103
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 16:57:39 end of run w60fx165640

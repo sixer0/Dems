@@ -1,0 +1,127 @@
+
+== 00:19:02 0. before (no reset): ports free?; dems_lane_1 counts
+   audit_log                161
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 00:19:03 1. start the lane-1 backend
+npm PID 43382, listener PID 43438
+   "port":4421,"database":"dems_lane_1","demoControls":false
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T17:19:04.498Z","uptimeMs":156,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 00:19:04 2. device session: phone, Metro 8083, tcp:4420 -> tcp:4421 (cap 600 s)
+[device-session phone 00:19:04] lock held; hard cap 600 s, until 00:29:04 (watchdog PID 43482)
+[device-session phone 00:19:04] session serial: emulator-5554 (dems2_phone)
+[device-session phone 00:19:04] emulator-5554: screen awake, no keyguard
+[device-session phone 00:19:04] Metro PID 43518 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session phone 00:19:07] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 00:19:07] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 00:19:07] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), Metro 8083
+== L. LIVE mode ==
+-- am start -W -d 'demsdemo:///?core=LIVE'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 2 s for runtime.live.ready
+-- 00:19:29 screencap 74_rerun_live_login.png (1728278 bytes)
+-- 00:19:30 tapped the username field at 540,1105
+-- 00:19:31 tapped the handwriting coach's Cancel (empty space when none) at 540,2338
+-- 00:19:32 tapped the username field at 540,1105
+-- 00:19:33 typed the operator username (budi.santoso)
+-- 00:19:33 tapped the password field at 540,1265
+-- 00:19:34 typed the demo password (not shown)
+-- 00:19:35 pressed the keypad's go key
+-- 00:19:36 the app's sign-in: POST /api/v1/auth/sign-in 200
+-- 00:19:42 screencap 74_rerun_live_after_signin.png (225728 bytes)
+-- 00:19:42 tapped the biometric offer's "Not now" (Summary) at 540,1443
+-- 00:19:45 screencap 74_rerun_live_summary.png (205032 bytes)
+-- 00:19:45 tapped the Summary's "Done" at 246,2254
+-- 00:19:46 acknowledge: POST /api/v1/session/{id}/summary/acknowledge 204
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+-- 00:19:49 deep link demsdemo:///evidence/EV-20261005-0014
+-- 00:20:05 media reference: NOT SEEN
+-- 00:20:12 screencap 74_rerun_live_detail.png (783041 bytes)
+-- 00:20:15 tapped evidence-tab-integrity at 703,1524
+-- 00:20:19 tapped evidence-verify at 914,1709
+-- 00:20:35 verify: NOT SEEN
+-- 00:20:40 on screen: evidence-integrity-label, evidence-verdict-PASS
+-- 00:20:41 screencap 74_rerun_live_verdict.png (836307 bytes)
+-- 00:20:44 tapped evidence-action-export at 582,2110
+-- 00:21:01 export probe: NOT SEEN
+-- 00:21:05 on screen: evidence-export-denied
+-- 00:21:07 screencap 74_rerun_live_export_denied.png (815425 bytes)
+-- 00:21:07 credential/token lines in the JS log (must be 0): 0
+-- 00:21:07 demo operations (must be 0): 0; biometric enrolment requests (must be 0): 0
+-- LIVE flow exit: 0
+-- Core request lines of the LIVE part:
+      1 DEMS-LIVE] POST /api/v1/session/{id}/summary/acknowledge 204
+      1 DEMS-LIVE] POST /api/v1/evidence/{id}/verify 200
+      1 DEMS-LIVE] POST /api/v1/evidence/{id}/export 403
+      1 DEMS-LIVE] POST /api/v1/auth/touch 200
+      1 DEMS-LIVE] POST /api/v1/auth/sign-in 200
+      1 DEMS-LIVE] GET /api/v1/pairing/device 200
+      1 DEMS-LIVE] GET /api/v1/evidence/{id} 200
+      1 DEMS-LIVE] GET /api/v1/auth/status 200
+      1 DEMS-LIVE] GET /api/v1/auth/session 401
+      1 DEMS-LIVE] GET /api/v1/auth/session 200
+== S. SIMULATED mode (the last launch, D124) ==
+-- am start -W -d 'demsdemo:///?core=SIMULATED'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 3 s for runtime.sim.hydrated
+-- 00:21:32 screencap 74_rerun_simulated_login.png (1726691 bytes)
+-- 00:21:32 tapped the username field at 540,1105
+-- 00:21:33 tapped the handwriting coach's Cancel (empty space when none) at 540,2338
+-- 00:21:34 tapped the username field at 540,1105
+-- 00:21:35 typed the operator username (budi.santoso)
+-- 00:21:36 tapped the password field at 540,1265
+-- 00:21:36 typed the demo password (not shown)
+-- 00:21:37 pressed the keypad's go key
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+-- 00:21:43 deep link demsdemo:///evidence
+-- 00:21:52 tapped biometric-offer-decline at 541,1413
+-- 00:21:54 evidence rows on screen: 6
+-- 00:21:54 screencap 74_rerun_simulated_list.png (583850 bytes)
+-- 00:21:56 tapped evidence-row-EV-20261004-0013 at 540,608
+-- 00:22:01 tapped evidence-tab-integrity at 703,1524
+-- 00:22:05 tapped evidence-verify at 914,1709
+-- 00:22:10 on screen: evidence-integrity-label, evidence-verdict-PASS
+-- 00:22:11 screencap 74_rerun_simulated_verdict.png (611416 bytes)
+-- 00:22:11 Core requests in SIMULATED mode (must be 0): 0
+-- SIMULATED flow exit: 0
+-- prefs after: {"coreLinkSource":"SIMULATED"}
+
+-- remove this row's dump file only: adb shell rm /sdcard/w74.xml
+   ls: /sdcard/w74.xml: No such file or directory
+-- lock at end: isKeyguardShowing=false
+[device-session phone 00:22:12] Metro 43518 stopped
+[device-session phone 00:22:12] session ended with status 0
+device session exit=0
+
+== 00:22:12 3. backend requests during the session
+      1 GET /api/v1/auth/session 200 principal=operator
+      1 GET /api/v1/auth/session 401 principal=device
+      1 GET /api/v1/auth/status 200 principal=device
+      1 GET /api/v1/evidence/:id 200 principal=operator
+      1 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/device 200 principal=device
+      1 POST /api/v1/auth/sign-in 200 principal=device
+      1 POST /api/v1/auth/touch 200 principal=operator
+      1 POST /api/v1/evidence/:id/export 403 principal=operator
+      1 POST /api/v1/evidence/:id/verify 200 principal=operator
+      1 POST /api/v1/session/:id/summary/acknowledge 204 principal=operator
+-- bearer/cookie/credential lines in the server log (must be 0): 0
+
+== 00:22:12 4. stop the backend; nothing left
+lsof exit 1 (1 = none)
+
+reverse rules listed above (none expected)
+   audit_log                169
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 00:22:12 end
+run exit=0
+(0 lines 'could not get idle state' removed from this copy)

@@ -1,0 +1,6 @@
+# The FFmpeg libraries the capture worker was verified against (blueprint row 61; decision D85).
+# libavformat of FFmpeg 9.0.2 attaches the reference time (PRFT) to EVERY packet: the anchor logic of
+# ingest.c rests on that. Another version is refused at build (check.sh). A new line here is a decision:
+# re-run the whole capture e2e series (make e2e) on the new version first.
+# library<TAB>pkg-config version<TAB>FFmpeg release
+libavformat	63.1.102	9.0.2

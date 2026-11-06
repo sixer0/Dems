@@ -1,0 +1,318 @@
+--- a/packages/shared/src/api/contract-model.ts
++++ b/packages/shared/src/api/contract-model.ts
+@@ -90,11 +90,29 @@
+   CONSOLE_IDENTITY: 'CONSOLE_IDENTITY',
+   /** The caller's session must be bound to a device. Otherwise `DEVICE_NOT_PAIRED`. */
+   DEVICE_SESSION: 'DEVICE_SESSION',
++  /**
++   * The request presented the device credential itself: the caller is the DEVICE principal.
++   * On the marker `DEVICE` it takes away the second half of that marker: the session of an
++   * operator who is signed in on the device does not hold it. It belongs on an operation whose
++   * effect outlives the session that would call it (decision D113, finding CPS1-3): a session
++   * token ends when it is idle and at its absolute limit, and such a token must not be able to
++   * leave behind something that does not end.
++   *
++   * Otherwise `DEVICE_NOT_PAIRED` with `details.reason` `DEVICE_CREDENTIAL_REQUIRED`
++   * (`DEVICE_CREDENTIAL_REQUIRED_REASON`). No new error code: it is the code a web console
++   * session already gets from the marker `DEVICE` itself, before any condition is looked at,
++   * and like that refusal it writes no audit row. The reason tells the two apart, because the
++   * device of this caller IS paired.
++   */
++  DEVICE_CREDENTIAL: 'DEVICE_CREDENTIAL',
+   /** The server-side demo flag must be on (DC-2). Otherwise `DEMO_DISABLED`, after the permission check. */
+   DEMO_FLAG: 'DEMO_FLAG',
+ } as const;
+ export type CoreApiAccessCondition = (typeof CoreApiAccessCondition)[keyof typeof CoreApiAccessCondition];
+ 
++/** `details.reason` of the `403 DEVICE_NOT_PAIRED` that the condition `DEVICE_CREDENTIAL` answers. */
++export const DEVICE_CREDENTIAL_REQUIRED_REASON = 'DEVICE_CREDENTIAL_REQUIRED';
++
+ export type CoreApiAccess = { readonly conditions?: readonly CoreApiAccessCondition[] } & (
+   | { readonly kind: typeof CoreApiAccessKind.PUBLIC }
+   | { readonly kind: typeof CoreApiAccessKind.DEVICE }
+--- a/packages/shared/src/api/example-parts.ts
++++ b/packages/shared/src/api/example-parts.ts
+@@ -11,6 +11,7 @@
+  *   (`apps/core-server/src/plugins/error-envelope/api-failure.ts`). The other messages are
+  *   examples: the server rows word their own.
+  */
++import { DEVICE_CREDENTIAL_REQUIRED_REASON } from './contract-model';
+ import type { ApiError } from './core-api';
+ import type { OpenApiExample } from './examples';
+ 
+@@ -90,6 +91,14 @@
+     'No console identity',
+     apiErrorExample('DEVICE_NOT_PAIRED', 'Pair this device with the Core before signing in.'),
+   ),
++  /** The condition `DEVICE_CREDENTIAL` does not hold: the caller is a session of the device, not the device. */
++  deviceCredentialRequired: {
++    summary: 'A session token of the device instead of the device credential',
++    description: 'The caller is the session of an operator who is signed in on this device. No audit row is written.',
++    value: apiErrorExample('DEVICE_NOT_PAIRED', "This operation needs the device's own credential.", {
++      reason: DEVICE_CREDENTIAL_REQUIRED_REASON,
++    }),
++  },
+   demoDisabled: named('The demo flag is off', apiErrorExample('DEMO_DISABLED', 'Demo controls are not enabled on this server.')),
+ } as const;
+ 
+--- a/packages/shared/src/api/pairing.ts
++++ b/packages/shared/src/api/pairing.ts
+@@ -16,7 +16,7 @@
+  * | 20 | `revokeDevice` | PAIRING_MANAGE | DEVICE_REVOKED |
+  * | 21 | `getDeviceRegistration` | DEVICE | NONE-R |
+  * | 22 | `unpairDevice` | DEVICE | UNPAIRED |
+- * | 23 | `rotateDeviceCredential` | DEVICE | DEVICE_CREDENTIAL_ROTATED |
++ * | 23 | `rotateDeviceCredential` | DEVICE, and the device credential itself (`DEVICE_CREDENTIAL`) | DEVICE_CREDENTIAL_ROTATED |
+  *
+  * `{id}` in operation 20 is a device ID (`DEV-NNNN`).
+  *
+@@ -29,10 +29,12 @@
+ import { API_BASE_PATH } from './constants';
+ import {
+   CORE_SERVER_ONLY,
++  CoreApiAccessCondition,
+   CoreApiAuditNone,
+   CoreApiMode,
+   CoreApiTag,
+   DEVICE_ACCESS,
++  DEVICE_CREDENTIAL_REQUIRED_REASON,
+   PUBLIC_ACCESS,
+   permissionAccess,
+   type CoreApiRegistryOperation,
+@@ -451,6 +453,7 @@
+     summary: 'Rotate the device credential',
+     description: [
+       'Gives the calling device a new credential, in two phases: the new one is stored as "next" and promoted at its first use; only then is the old one refused. An answer that is lost leaves the old credential valid.',
++      `The request must present the device credential itself. The session token of an operator who is signed in on this device is refused with \`403 DEVICE_NOT_PAIRED\` (\`details.reason: ${DEVICE_CREDENTIAL_REQUIRED_REASON}\`): a session ends by itself, and it must not be able to leave behind a credential that never expires.`,
+       'Writes DEVICE_CREDENTIAL_ROTATED with the device ID. No client of this release calls it, so such a row outside the server\'s own tests deserves a look: revoking the device ends it.',
+       SECRET_NOTE,
+       CORE_SERVER_NOTE,
+@@ -459,9 +462,11 @@
+     responses: {
+       200: { description: 'The next credential, once.', schema: 'DeviceCredentialRotated' },
+       401: NO_DEVICE_CREDENTIAL,
+-      403: forbidden(),
++      403: forbidden(
++        `the request presented the session token of an operator who is signed in on this device, not the device credential itself (DEVICE_NOT_PAIRED, \`details.reason: ${DEVICE_CREDENTIAL_REQUIRED_REASON}\`; no audit row)`,
++      ),
+     },
+-    access: DEVICE_ACCESS,
++    access: { ...DEVICE_ACCESS, conditions: [CoreApiAccessCondition.DEVICE_CREDENTIAL] },
+     audit: { success: AuditType.DEVICE_CREDENTIAL_ROTATED, denial: AuditType.ACCESS_DENIED },
+     services: CORE_SERVER_ONLY,
+   },
+@@ -673,7 +678,7 @@
+         },
+       },
+       401: { noDeviceCredential: ERROR_EXAMPLES.noDeviceCredential },
+-      403: BASIC_403,
++      403: { deviceCredentialRequired: ERROR_EXAMPLES.deviceCredentialRequired, ...BASIC_403 },
+     },
+   },
+ };
+--- a/packages/shared/test/api-registry.test.ts
++++ b/packages/shared/test/api-registry.test.ts
+@@ -9,6 +9,10 @@
+ // count that contract A pinned at 37 operations is now pinned at 75, and the ten existing
+ // operations are compared with their baseline for the statuses a client gets without the Core
+ // server, with the statuses only the Core server sends pinned beside them.
++//
++// Changed by design with decision D113 (finding CPS1-3; implementation/27_contract_c.md,
++// "Follow-up: a condition for operation 23"): the vocabulary of conditions has a fourth member,
++// `DEVICE_CREDENTIAL`, and the test of the conditions pins it on operation 23 and on no other.
+ import { describe, expect, expectTypeOf, it } from 'vitest';
+ import {
+   ApiErrorSchema,
+@@ -23,6 +27,7 @@
+   CoreApiScope,
+   CoreApiService,
+   CoreApiTag,
++  DEVICE_CREDENTIAL_REQUIRED_REASON,
+   REALTIME_SCHEMAS,
+   STATE_SCHEMAS,
+   coreApiAccessPermissions,
+@@ -463,12 +468,18 @@
+     }
+   });
+ 
+-  it('the conditions on top of a marker: the console rule, a device session, the demo flag', () => {
++  it('the conditions on top of a marker: the console rule, a device session, the device credential itself, the demo flag', () => {
+     const withCondition = (condition: string) =>
+       CORE_API_OPERATIONS.filter((operation) => (operation.access.conditions ?? []).includes(condition as never)).map((operation) => operation.operationId);
+     expect(withCondition('CONSOLE_IDENTITY')).toEqual(['signIn']);
+     expect(withCondition('DEVICE_SESSION')).toEqual(['setBiometricEnrollment']);
++    // Decision D113: operation 23 only.
++    expect(withCondition('DEVICE_CREDENTIAL')).toEqual(['rotateDeviceCredential']);
+     expect(withCondition('DEMO_FLAG')).toEqual(['getDemoStatus', 'loadScenario', 'injectFault', 'clearFault', 'resetDemo']);
++    // Eight operations carry a condition, each exactly one; the other 67 carry none.
++    const conditioned = CORE_API_OPERATIONS.filter((operation) => operation.access.conditions !== undefined);
++    expect(conditioned).toHaveLength(8);
++    for (const operation of conditioned) expect(operation.access.conditions, operation.operationId).toHaveLength(1);
+   });
+ 
+   it('the marker text is the one of 01_specs §4.2, the any-of included', () => {
+@@ -504,7 +515,83 @@
+     ]);
+   });
+ });
++
++describe('decision D113 (finding CPS1-3): operation 23 needs the device credential itself', () => {
++  const DEVICE_OPERATIONS = CORE_API_OPERATIONS.filter((operation) => operation.access.kind === CoreApiAccessKind.DEVICE);
++  const rotate = findCoreApiOperation('rotateDeviceCredential')!;
++
++  it('the vocabulary of conditions has four members, DEVICE_CREDENTIAL among them', () => {
++    expect(Object.values(CoreApiAccessCondition)).toEqual(['CONSOLE_IDENTITY', 'DEVICE_SESSION', 'DEVICE_CREDENTIAL', 'DEMO_FLAG']);
++    expect(Object.keys(CoreApiAccessCondition)).toEqual(Object.values(CoreApiAccessCondition));
++    expect(CoreApiAccessCondition.DEVICE_CREDENTIAL).toBe('DEVICE_CREDENTIAL');
++    expect(DEVICE_CREDENTIAL_REQUIRED_REASON).toBe('DEVICE_CREDENTIAL_REQUIRED');
++  });
+ 
++  it('operation 23 keeps the marker DEVICE and carries the condition; its audit rule is unchanged', () => {
++    expect(rotate.access).toEqual({ kind: 'DEVICE', conditions: ['DEVICE_CREDENTIAL'] });
++    expect(describeCoreApiAccess(rotate.access)).toBe('DEVICE');
++    expect([rotate.method, rotate.path]).toEqual(['post', '/api/v1/pairing/device/credential']);
++    expect(rotate.audit).toEqual({ success: AuditType.DEVICE_CREDENTIAL_ROTATED, denial: AuditType.ACCESS_DENIED });
++    expect(isOfflineCoreApiOperation(rotate)).toBe(false);
++  });
++
++  it('the condition stands on the marker DEVICE only: on any other marker no caller could hold it', () => {
++    // AUTHENTICATED, a permission and the any-of need an OPERATOR; the condition needs the DEVICE.
++    for (const operation of CORE_API_OPERATIONS) {
++      if (!(operation.access.conditions ?? []).includes(CoreApiAccessCondition.DEVICE_CREDENTIAL)) continue;
++      expect(operation.access.kind, operation.operationId).toBe(CoreApiAccessKind.DEVICE);
++    }
++  });
++
++  it('the other four DEVICE operations take a session of the device too: they carry no condition', () => {
++    // The judgment on each is in implementation/27_contract_c.md ("Follow-up", table F-2).
++    expect(DEVICE_OPERATIONS.map((operation) => operation.operationId)).toEqual([
++      'signInWithBiometric',
++      'reportBiometricFailure',
++      'getDeviceRegistration',
++      'unpairDevice',
++      'rotateDeviceCredential',
++    ]);
++    for (const operation of DEVICE_OPERATIONS.filter((entry) => entry !== rotate)) {
++      expect(operation.access, operation.operationId).toEqual({ kind: 'DEVICE' });
++    }
++  });
++
++  it('the document says what the server answers: 403 DEVICE_NOT_PAIRED with the reason, for a session token of the device', () => {
++    for (const text of [rotate.description, rotate.responses[403]?.description]) {
++      expect(text).toContain('DEVICE_NOT_PAIRED');
++      expect(text).toContain(`details.reason: ${DEVICE_CREDENTIAL_REQUIRED_REASON}`);
++      expect(text).toContain('the device credential itself');
++      // The caller of the finding is named: the session of an operator who is signed in on the device.
++      expect(text).toContain('he session token of an operator who is signed in on this device');
++    }
++    // The refusal is not audited, like the other answers DEVICE_NOT_PAIRED; the two audited ones stay named.
++    expect(rotate.responses[403]?.description).toContain('no audit row');
++    expect(rotate.responses[403]?.description).toContain('DEVICE_REVOKED; one ACCESS_DENIED audit row');
++    // No other DEVICE operation names the reason: it is refused on operation 23 only.
++    for (const operation of DEVICE_OPERATIONS.filter((entry) => entry !== rotate)) {
++      expect(operation.description, operation.operationId).not.toContain(DEVICE_CREDENTIAL_REQUIRED_REASON);
++      expect(operation.responses[403]?.description, operation.operationId).not.toContain(DEVICE_CREDENTIAL_REQUIRED_REASON);
++    }
++  });
++
++  it('the example of the refusal is the error envelope with the existing code and the reason', () => {
++    const examples = CORE_API_EXAMPLES['rotateDeviceCredential']?.responses[403] ?? {};
++    expect(Object.keys(examples)).toEqual(['deviceCredentialRequired', 'deviceRevoked', 'originNotAllowed']);
++    const refusal = examples['deviceCredentialRequired']?.value;
++    expect(examples['deviceCredentialRequired']?.summary).toBe('A session token of the device instead of the device credential');
++    expect(ApiErrorSchema.safeParse(refusal).success).toBe(true);
++    expect(refusal).toMatchObject({
++      error: { code: 'DEVICE_NOT_PAIRED', message: "This operation needs the device's own credential.", details: { reason: DEVICE_CREDENTIAL_REQUIRED_REASON } },
++    });
++    // The example of no other operation carries the reason.
++    for (const [operationId, entry] of Object.entries(CORE_API_EXAMPLES)) {
++      if (operationId === 'rotateDeviceCredential') continue;
++      expect(JSON.stringify(entry), operationId).not.toContain(DEVICE_CREDENTIAL_REQUIRED_REASON);
++    }
++  });
++});
++
+ describe('answering services and the two scopes (AR-1)', () => {
+   it('health is answered by mock-core and by the Core server, every other operation by the Core server', () => {
+     for (const operation of CORE_API_OPERATIONS) {
+--- a/packages/shared/test/api-openapi-scope.test.ts
++++ b/packages/shared/test/api-openapi-scope.test.ts
+@@ -298,6 +298,17 @@
+       permissions: ['EVIDENCE_REVIEW', 'MAINTENANCE'],
+       conditions: [],
+     });
++    // Decision D113 (finding CPS1-3): operation 23 needs the device credential itself, and the
++    // document says so in the rule, in the text and in the example of the refusal.
++    const rotate = operations.find((entry) => entry.operation.operationId === 'rotateDeviceCredential')?.operation;
++    expect(rotate?.['x-dems-access']).toEqual({ rule: 'DEVICE', permissions: [], conditions: ['DEVICE_CREDENTIAL'] });
++    expect(rotate?.description).toContain('`403 DEVICE_NOT_PAIRED` (`details.reason: DEVICE_CREDENTIAL_REQUIRED`)');
++    expect(rotate?.responses['403']?.description).toContain('DEVICE_NOT_PAIRED, `details.reason: DEVICE_CREDENTIAL_REQUIRED`');
++    expect(JSON.stringify(rotate?.responses['403'])).toContain('"reason":"DEVICE_CREDENTIAL_REQUIRED"');
++    expect(operations.filter((entry) => (entry.operation['x-dems-access']?.conditions ?? []).includes('DEVICE_CREDENTIAL'))).toHaveLength(1);
++    expect(serializeOpenApiDocument(all).split('DEVICE_CREDENTIAL_REQUIRED')).toHaveLength(4);
++    // The offline document has no operation 23, so nothing of the condition reaches it.
++    expect(serializeOpenApiDocument(createOpenApiDocument())).not.toContain('DEVICE_CREDENTIAL');
+     // 41 operations carry a permission (01_specs §7.19). Only the four simulated commands keep
+     // `x-dems-rbac`, which lists the simulator's role holders; the role holders of the Core server
+     // are data, read with `getRoleMatrix`.
+@@ -339,6 +350,8 @@
+     expect(securityOf('redeemPairingCode')).toEqual([]);
+     expect(securityOf('signIn')).toEqual([{}, { bearerAuth: [] }]);
+     expect(securityOf('unpairDevice')).toEqual(bearer);
++    // D113: the bearer of operation 23 is the device credential; the scheme stays the bearer.
++    expect(securityOf('rotateDeviceCredential')).toEqual(bearer);
+     expect(securityOf('setBiometricEnrollment')).toEqual(bearer);
+     expect(securityOf('getCurrentSession')).toEqual(cookieOrBearer);
+     expect(securityOf('exportAudit')).toEqual(cookieOrBearer);
+--- a/packages/shared/openapi/openapi.json
++++ b/packages/shared/openapi/openapi.json
+@@ -6851,7 +6851,7 @@
+           "Pairing"
+         ],
+         "summary": "Rotate the device credential",
+-        "description": "Gives the calling device a new credential, in two phases: the new one is stored as \"next\" and promoted at its first use; only then is the old one refused. An answer that is lost leaves the old credential valid.\n\nWrites DEVICE_CREDENTIAL_ROTATED with the device ID. No client of this release calls it, so such a row outside the server's own tests deserves a look: revoking the device ends it.\n\nThe body or the answer holds a secret. It is never logged, and the API Reference offers no \"Try it\" for this operation in Live mode.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
++        "description": "Gives the calling device a new credential, in two phases: the new one is stored as \"next\" and promoted at its first use; only then is the old one refused. An answer that is lost leaves the old credential valid.\n\nThe request must present the device credential itself. The session token of an operator who is signed in on this device is refused with `403 DEVICE_NOT_PAIRED` (`details.reason: DEVICE_CREDENTIAL_REQUIRED`): a session ends by itself, and it must not be able to leave behind a credential that never expires.\n\nWrites DEVICE_CREDENTIAL_ROTATED with the device ID. No client of this release calls it, so such a row outside the server's own tests deserves a look: revoking the device ends it.\n\nThe body or the answer holds a secret. It is never logged, and the API Reference offers no \"Try it\" for this operation in Live mode.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+         "responses": {
+           "200": {
+             "description": "The next credential, once.",
+@@ -6912,7 +6912,7 @@
+             }
+           },
+           "403": {
+-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
++            "description": "Refused: the request presented the session token of an operator who is signed in on this device, not the device credential itself (DEVICE_NOT_PAIRED, `details.reason: DEVICE_CREDENTIAL_REQUIRED`; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+             "headers": {
+               "x-request-id": {
+                 "$ref": "#/components/headers/XRequestId"
+@@ -6924,6 +6924,20 @@
+                   "$ref": "#/components/schemas/ApiError"
+                 },
+                 "examples": {
++                  "deviceCredentialRequired": {
++                    "summary": "A session token of the device instead of the device credential",
++                    "description": "The caller is the session of an operator who is signed in on this device. No audit row is written.",
++                    "value": {
++                      "error": {
++                        "code": "DEVICE_NOT_PAIRED",
++                        "message": "This operation needs the device's own credential.",
++                        "details": {
++                          "reason": "DEVICE_CREDENTIAL_REQUIRED"
++                        },
++                        "requestId": "00000000-0000-4000-8000-000000000000"
++                      }
++                    }
++                  },
+                   "deviceRevoked": {
+                     "summary": "The device is no longer paired",
+                     "value": {
+@@ -6969,7 +6983,9 @@
+         "x-dems-access": {
+           "rule": "DEVICE",
+           "permissions": [],
+-          "conditions": []
++          "conditions": [
++            "DEVICE_CREDENTIAL"
++          ]
+         },
+         "x-dems-audit": {
+           "success": "DEVICE_CREDENTIAL_ROTATED",

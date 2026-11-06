@@ -1,0 +1,18 @@
+// W73: the digest of the Simulated copy of features/session-recovery/i18n.ts as it was at acaff20,
+// computed from `git show acaff20:...` without importing the tree's file. Leaves in key order, as the
+// static test computes them.
+const { createHash } = require('node:crypto');
+const { readFileSync } = require('node:fs');
+const src = readFileSync(process.argv[2], 'utf8')
+  .replace(/^import .*$/m, '')
+  .replace(/export const sessionRecoveryEn = /, 'module.exports = ')
+  .replace(/\}\s*as const satisfies ResourceTree;\s*$/, '};');
+const m = { exports: {} };
+new Function('module', 'exports', src)(m, m.exports);
+function leaves(tree, path = []) {
+  if (typeof tree === 'string') return [{ key: path.join('.'), text: tree }];
+  if (typeof tree !== 'object' || tree === null) return [];
+  return Object.entries(tree).flatMap(([name, value]) => leaves(value, [...path, name]));
+}
+const list = leaves(m.exports).filter((leaf) => !leaf.key.startsWith('live.'));
+console.log(list.length, createHash('sha256').update(JSON.stringify(list)).digest('hex'));

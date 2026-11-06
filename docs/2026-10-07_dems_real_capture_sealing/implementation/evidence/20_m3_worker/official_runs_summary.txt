@@ -1,0 +1,192 @@
+bind_udp_r1                  PASS  
+      snapshots 41 udp [] not-loopback 0 seen ['127.0.0.1:8555 (LISTEN)', '127.0.0.1:8557 (LISTEN)', '127.0.0.1:8557->127.0.0.1:49345 (ESTABLISHED)'] udp-client rc 183 refusal ['INGEST_TRANSPORT_REFUSED'] cam2 playable True
+      leftovers none
+bind_udp_r2                  PASS  
+      snapshots 41 udp [] not-loopback 0 seen ['127.0.0.1:8555 (LISTEN)', '127.0.0.1:8557 (LISTEN)', '127.0.0.1:8557->127.0.0.1:49637 (ESTABLISHED)'] udp-client rc 183 refusal ['INGEST_TRANSPORT_REFUSED'] cam2 playable True
+      leftovers none
+kc1_r1                       PASS  
+      s1 killed after durable: phase FAULTED durable True attempt 1 pid None; down [['EXITED', 'SIGKILL', None]]; sizes before/3s-after [117763, 117403]/[117763, 117403]
+      s1 files VIDEO-01.mp4 117763B moof 2 playable, VIDEO-02.mp4 117403B moof 2 playable
+      s2 next session: pid 29539 vs 29518; VIDEO-01.mp4 270707B playable, VIDEO-02.mp4 270707B playable; AV cam1 mean 0.0153 err 0.0153 PASS; cam2 mean 0.0153 err 0.0153 PASS
+      leftovers none
+kc1_r2                       PASS  
+      s1 killed after durable: phase FAULTED durable True attempt 1 pid None; down [['EXITED', 'SIGKILL', None]]; sizes before/3s-after [117188, 117097]/[117188, 117097]
+      s1 files VIDEO-01.mp4 117188B moof 2 playable, VIDEO-02.mp4 117097B moof 2 playable
+      s2 next session: pid 30035 vs 30023; VIDEO-01.mp4 270795B playable, VIDEO-02.mp4 270795B playable; AV cam1 mean 0.0181 err 0.0181 PASS; cam2 mean 0.0181 err 0.0181 PASS
+      leftovers none
+kc3_r1                       PASS  
+      files VIDEO-01.mp4 316179B v600 a1084 playable, VIDEO-02.mp4 316179B v600 a1084 playable
+      AV cam1 mean 0.0292 err 0.0292 PASS; cam2 mean 0.0292 err 0.0292 PASS
+      down [['EXITED', 'SIGKILL', 250]] attempt after kill 2 pids 29595->29596
+      leftovers none
+kc3_r2                       PASS  
+      files VIDEO-01.mp4 314751B v600 a1081 playable, VIDEO-02.mp4 314751B v600 a1081 playable
+      AV cam1 mean 0.0194 err 0.0194 PASS; cam2 mean 0.0194 err 0.0194 PASS
+      down [['EXITED', 'SIGKILL', 250]] attempt after kill 2 pids 30091->30092
+      leftovers none
+neg_av_forbidden_option      FAIL  failed as required
+      files VIDEO-01.mp4 267477B v600 a898 playable, VIDEO-02.mp4 267477B v600 a898 playable
+      growth distinct sizes [5, 5] over 22 samples
+      H-4 packets [898, 898] differing 0 vs-encoder [0, 0] distinct 898
+      AV cam1 mean 2266.6042 err 5519.9375 FAIL; cam2 mean 933.2708 err 3679.9375 FAIL
+      T0 error 15 us
+      first-video records [['VIDEO-01', 494872, 90000], ['VIDEO-02', 509272, 90000]] file-first-packets {'VIDEO-01.mp4': [0, 0, 1800], 'VIDEO-02.mp4': [0, 0, 1800]}
+      leftovers none
+neg_bind_skeleton            FAIL  failed as required
+      snapshots 41 udp ['UDP *:5000', 'UDP *:5001'] not-loopback 2 seen ['127.0.0.1:8555 (LISTEN)', '127.0.0.1:8555->127.0.0.1:49779 (ESTABLISHED)', '127.0.0.1:8557 (LISTEN)', '127.0.0.1:8557->127.0.0.1:49778 (ESTABLISHED)', 'UDP *:5000', 'UDP *:5001'] udp-client rc 0 refusal None cam2 playable None
+      leftovers none
+neg_fatal_clean_control      PASS  
+      mode clean worker rc 0 crash [] start_ack None sha 
+      leftovers none
+neg_h4_reencoded             FAIL  failed as required
+      H-4 packets [900, 901] differing 900 vs-encoder [0, 900] distinct 900
+neg_kc1_option_c_removed     FAIL  failed as required
+      s1 killed after durable: phase FAULTED durable True attempt 2 pid None; down [['EXITED', 'SIGKILL', 250], ['START_REFUSED', None, None]]; sizes before/3s-after [117773, 117413]/[117773, 117413]
+      s1 files VIDEO-01.mp4 117773B moof 2 playable, VIDEO-02.mp4 117413B moof 2 playable
+      s2 next session: pid 30568 vs 30554; VIDEO-01.mp4 271412B playable, VIDEO-02.mp4 271412B playable; AV cam1 mean 0.0194 err 0.0194 PASS; cam2 mean 0.0194 err 0.0194 PASS
+      leftovers none
+neg_kc3_no_restart_allowed   FAIL  failed as required
+      down [['EXITED', 'SIGKILL', None]] attempt after kill None pids 30527->None
+neg_sup_forbidden_option     FAIL  failed as required
+      files VIDEO-01.mp4 271145B v600 a913 playable, VIDEO-02.mp4 271145B v600 a913 playable
+      growth distinct sizes [5, 5] over 23 samples
+      H-4 packets [913, 913] differing 0 vs-encoder [0, 0] distinct 913
+      AV cam1 mean 2618.6042 err 5871.9375 FAIL; cam2 mean 1285.2708 err 4031.9375 FAIL
+      records [[1, 'FIRST_VIDEO_SAMPLE', 'VIDEO-01'], [2, 'FIRST_VIDEO_SAMPLE', 'VIDEO-02'], [3, 'FIRST_DURABLE_FRAGMENT', 'VIDEO-01'], [4, 'FIRST_DURABLE_FRAGMENT', 'VIDEO-02']]
+      leftovers none
+optc_exists_r1               PASS  
+      mode exists worker rc -9 crash [] start_ack OUTPUT_EXISTS sha 68f97e86f714
+      leftovers none
+optc_exists_r2               PASS  
+      mode exists worker rc -9 crash [] start_ack OUTPUT_EXISTS sha 68f97e86f714
+      leftovers none
+optc_planted_r1              PASS  
+      mode planted worker rc 70 crash [('VIDEO_MUX_WRITE_FAILED', 70)] start_ack None sha 68f97e86f714
+      leftovers none
+optc_planted_r2              PASS  
+      mode planted worker rc 70 crash [('VIDEO_MUX_WRITE_FAILED', 70)] start_ack None sha 68f97e86f714
+      leftovers none
+p4_delay_pm80                PASS  
+      files VIDEO-01.mp4 267286B v600 a896 playable, VIDEO-02.mp4 267286B v600 a896 playable
+      growth distinct sizes [5, 5] over 22 samples
+      H-4 packets [897, 897] differing 0 vs-encoder [0, 0] distinct 897
+      AV cam1 mean 80.0333 err 0.0333 PASS; cam2 mean -79.9667 err 0.0333 PASS
+      T0 error 13 us
+      first-video records [['VIDEO-01', 496797, 90000], ['VIDEO-02', 511197, 90000]] file-first-packets {'VIDEO-01.mp4': [496797, 496797, 1800], 'VIDEO-02.mp4': [511197, 511197, 1800]}
+      leftovers none
+p4_shape_delay               PASS  
+      VIDEO-01 head ['ftyp', 'moov', 'moof', 'mdat'] init 1315B frags 6 elst 2 mfra 0 tiles True ends-on-boundary True running-hash-mismatch 0 final==whole True tail-cut: boxwalk-ok False ffprobe rc 0 decoder rc 0 first-video [496797, 496797, 1800]
+      VIDEO-02 head ['ftyp', 'moov', 'moof', 'mdat'] init 1315B frags 6 elst 2 mfra 0 tiles True ends-on-boundary True running-hash-mismatch 0 final==whole True tail-cut: boxwalk-ok False ffprobe rc 0 decoder rc 0 first-video [511197, 511197, 1800]
+      sizes during session {'first_sample_with_a_file': [8.08, 98860, 98500], 'samples_without_file': 16, 'samples': 38}
+p4_shape_pinned              PASS  
+      VIDEO-01 head ['ftyp', 'moov', 'moof', 'mdat'] init 1231B frags 7 elst 0 mfra 0 tiles True ends-on-boundary True running-hash-mismatch 0 final==whole True tail-cut: boxwalk-ok False ffprobe rc 0 decoder rc 0 first-video [0, 0, 529706]
+      VIDEO-02 head ['ftyp', 'moov', 'moof', 'mdat'] init 1231B frags 7 elst 0 mfra 0 tiles True ends-on-boundary True running-hash-mismatch 0 final==whole True tail-cut: boxwalk-ok False ffprobe rc 0 decoder rc 0 first-video [0, 0, 544106]
+      sizes during session {'first_sample_with_a_file': [7.09, 87747, 87747], 'samples_without_file': 14, 'samples': 39}
+p4_stall_delay               FAIL  failed as required
+      files VIDEO-01.mp4 271308B v600 a911 playable, VIDEO-02.mp4 271308B v600 a911 playable
+      growth distinct sizes [5, 5] over 20 samples
+      H-4 packets [912, 912] differing 0 vs-encoder [0, 0] distinct 912
+      AV cam1 mean 2573.6459 err 5826.9792 FAIL; cam2 mean 1240.3125 err 3986.9792 FAIL
+      T0 error 12 us
+      first-video records [['VIDEO-01', 524426, 90000], ['VIDEO-02', 538826, 90000]] file-first-packets {'VIDEO-01.mp4': [0, 0, 1800], 'VIDEO-02.mp4': [0, 0, 1800]}
+      leftovers none
+p4_stall_pinned              PASS  
+      files VIDEO-01.mp4 271311B v600 a914 playable, VIDEO-02.mp4 271311B v600 a914 playable
+      growth distinct sizes [6, 6] over 24 samples
+      H-4 packets [914, 914] differing 0 vs-encoder [0, 0] distinct 914
+      AV cam1 mean 80.0264 err 0.0264 PASS; cam2 mean -79.9736 err 0.0264 PASS
+      T0 error 12 us
+      first-video records [['VIDEO-01', 526597, 90000], ['VIDEO-02', 540997, 90000]] file-first-packets {'VIDEO-01.mp4': [0, 0, 530317], 'VIDEO-02.mp4': [0, 0, 544717]}
+      leftovers none
+proto_r1                     PASS  
+      hello {'v': 2, 'type': 'HELLO', 'protocolVersion': 2, 'workerVersion': 'capture-worker/0.2.0'} heartbeats@100ms 13 refused plans {'port 9000': [False, 'PLAN_INVALID'], 'every interface': [False, 'PLAN_INVALID'], 'trailing slash': [False, 'PLAN_INVALID'], 'credentials': [False, 'PLAN_INVALID'], 'unknown member': [False, 'PLAN_INVALID'], '44.1 kHz': [False, 'PLAN_UNSUPPORTED'], 'relative output': [False, 'PLAN_INVALID'], 'mic input is a regular file': [False, 'MIC_INPUT_NOT_FIFO']} second START SESSION_ALREADY_SERVED violations {'not json': [64, 'PROTOCOL_VIOLATION', 64], 'unknown type': [64, 'PROTOCOL_VIOLATION', 64], 'another version': [64, 'PROTOCOL_VIOLATION', 64], 'too long': [64, 'PROTOCOL_VIOLATION', 64]} eof-exit 0 sigterm-exit 0
+      leftovers none
+proto_r2                     PASS  
+      hello {'v': 2, 'type': 'HELLO', 'protocolVersion': 2, 'workerVersion': 'capture-worker/0.2.0'} heartbeats@100ms 12 refused plans {'port 9000': [False, 'PLAN_INVALID'], 'every interface': [False, 'PLAN_INVALID'], 'trailing slash': [False, 'PLAN_INVALID'], 'credentials': [False, 'PLAN_INVALID'], 'unknown member': [False, 'PLAN_INVALID'], '44.1 kHz': [False, 'PLAN_UNSUPPORTED'], 'relative output': [False, 'PLAN_INVALID'], 'mic input is a regular file': [False, 'MIC_INPUT_NOT_FIFO']} second START SESSION_ALREADY_SERVED violations {'not json': [64, 'PROTOCOL_VIOLATION', 64], 'unknown type': [64, 'PROTOCOL_VIOLATION', 64], 'another version': [64, 'PROTOCOL_VIOLATION', 64], 'too long': [64, 'PROTOCOL_VIOLATION', 64]} eof-exit 0 sigterm-exit 0
+      leftovers none
+sup_run_r1                   PASS  
+      files VIDEO-01.mp4 270128B v600 a909 playable, VIDEO-02.mp4 270128B v600 a909 playable
+      growth distinct sizes [6, 6] over 25 samples
+      H-4 packets [909, 909] differing 0 vs-encoder [0, 0] distinct 907
+      AV cam1 mean 80.0167 err 0.0167 PASS; cam2 mean -79.9833 err 0.0167 PASS
+      records [[1, 'FIRST_VIDEO_SAMPLE', 'VIDEO-02'], [2, 'FIRST_VIDEO_SAMPLE', 'VIDEO-01'], [3, 'FIRST_DURABLE_FRAGMENT', 'VIDEO-01'], [4, 'FIRST_DURABLE_FRAGMENT', 'VIDEO-02']]
+      leftovers none
+sup_run_r2                   PASS  
+      files VIDEO-01.mp4 270611B v600 a911 playable, VIDEO-02.mp4 270611B v600 a911 playable
+      growth distinct sizes [6, 6] over 25 samples
+      H-4 packets [911, 911] differing 0 vs-encoder [0, 0] distinct 911
+      AV cam1 mean 80.0194 err 0.0194 PASS; cam2 mean -79.9806 err 0.0194 PASS
+      records [[1, 'FIRST_VIDEO_SAMPLE', 'VIDEO-02'], [2, 'FIRST_VIDEO_SAMPLE', 'VIDEO-01'], [3, 'FIRST_DURABLE_FRAGMENT', 'VIDEO-02'], [4, 'FIRST_DURABLE_FRAGMENT', 'VIDEO-01']]
+      leftovers none
+wi1_camstop_r1               PASS  
+      after cam2 ended: 19 samples, 5 distinct sizes; audio-only fragments 4 longest 2.112 s
+      leftovers none
+wi1_camstop_r2               PASS  
+      after cam2 ended: 19 samples, 5 distinct sizes; audio-only fragments 5 longest 2.112 s
+      leftovers none
+wi1_drift_r1                 PASS  
+      files VIDEO-01.mp4 569574B v1600 a1852 playable, VIDEO-02.mp4 569578B v1600 a1852 playable
+      growth distinct sizes [16, 16] over 65 samples
+      H-4 packets [1852, 1852] differing 0 vs-encoder [0, 0] distinct 1849
+      AV cam1 mean 3.2208 err 0.0292 PASS slope 199.78 ppm; cam2 mean -3.5786 err 0.0292 PASS slope -200.09 ppm
+      T0 error 10 us
+      first-video records [['VIDEO-01', 533382, 90000], ['VIDEO-02', 533382, 90000]] file-first-packets {'VIDEO-01.mp4': [0, 0, 537102], 'VIDEO-02.mp4': [0, 0, 537102]}
+      leftovers none
+wi1_drift_r2                 PASS  
+      files VIDEO-01.mp4 568946B v1600 a1849 playable, VIDEO-02.mp4 568950B v1600 a1849 playable
+      growth distinct sizes [16, 16] over 65 samples
+      H-4 packets [1849, 1849] differing 0 vs-encoder [0, 0] distinct 1848
+      AV cam1 mean 3.22 err 0.0278 PASS slope 200.09 ppm; cam2 mean -3.5795 err 0.0278 PASS slope -200.03 ppm
+      T0 error 13 us
+      first-video records [['VIDEO-01', 530012, 90000], ['VIDEO-02', 530012, 90000]] file-first-packets {'VIDEO-01.mp4': [0, 0, 533732], 'VIDEO-02.mp4': [0, 0, 533732]}
+      leftovers none
+wi1_fatal_rmdir_r1           PASS  
+      mode rmdir worker rc 70 crash [('VIDEO_MUX_WRITE_FAILED', 70)] start_ack None sha 
+      leftovers none
+wi1_fatal_rmdir_r2           PASS  
+      mode rmdir worker rc 70 crash [('VIDEO_MUX_WRITE_FAILED', 70)] start_ack None sha 
+      leftovers none
+wi1_pm80_r1                  PASS  
+      files VIDEO-01.mp4 270911B v600 a912 playable, VIDEO-02.mp4 270911B v600 a912 playable
+      growth distinct sizes [6, 6] over 25 samples
+      H-4 packets [912, 912] differing 0 vs-encoder [0, 0] distinct 911
+      AV cam1 mean 80.0236 err 0.0236 PASS; cam2 mean -79.9764 err 0.0236 PASS
+      T0 error 9 us
+      first-video records [['VIDEO-01', 525986, 90000], ['VIDEO-02', 540386, 90000]] file-first-packets {'VIDEO-01.mp4': [0, 0, 529706], 'VIDEO-02.mp4': [0, 0, 544106]}
+      leftovers none
+wi1_pm80_r2                  PASS  
+      files VIDEO-01.mp4 270860B v600 a912 playable, VIDEO-02.mp4 270860B v600 a912 playable
+      growth distinct sizes [6, 6] over 25 samples
+      H-4 packets [912, 912] differing 0 vs-encoder [0, 0] distinct 911
+      AV cam1 mean 80.0194 err 0.0194 PASS; cam2 mean -79.9806 err 0.0194 PASS
+      T0 error 12 us
+      first-video records [['VIDEO-01', 526322, 90000], ['VIDEO-02', 540722, 90000]] file-first-packets {'VIDEO-01.mp4': [0, 0, 530042], 'VIDEO-02.mp4': [0, 0, 544442]}
+      leftovers none
+wi1_zero_r1                  PASS  
+      files VIDEO-01.mp4 268539B v600 a900 playable, VIDEO-02.mp4 268539B v600 a900 playable
+      growth distinct sizes [6, 6] over 25 samples
+      H-4 packets [900, 900] differing 0 vs-encoder [0, 0] distinct 900
+      AV cam1 mean 0.0347 err 0.0347 PASS; cam2 mean 0.0347 err 0.0347 PASS
+      T0 error 13 us
+      tap samples 920160 decoded-minus-tap 1440
+      first-video records [['VIDEO-01', 508285, 90000], ['VIDEO-02', 508285, 90000]] file-first-packets {'VIDEO-01.mp4': [0, 0, 512005], 'VIDEO-02.mp4': [0, 0, 512005]}
+      leftovers none
+wi1_zero_r2                  PASS  
+      files VIDEO-01.mp4 271466B v600 a913 playable, VIDEO-02.mp4 271466B v600 a913 playable
+      growth distinct sizes [6, 6] over 25 samples
+      H-4 packets [913, 913] differing 0 vs-encoder [0, 0] distinct 913
+      AV cam1 mean 0.025 err 0.025 PASS; cam2 mean 0.025 err 0.025 PASS
+      T0 error 13 us
+      tap samples 933600 decoded-minus-tap 1312
+      first-video records [['VIDEO-01', 533334, 90000], ['VIDEO-02', 533334, 90000]] file-first-packets {'VIDEO-01.mp4': [0, 0, 537054], 'VIDEO-02.mp4': [0, 0, 537054]}
+      leftovers none
+
+MEASURED TIMING (all official runs)
+  HELLO after spawn, ms             17.76 .. 363.31 (n=33) [17.76, 17.92, 18.29, 18.51, 18.56, 18.64, 18.75, 18.99, 19.01, 19.02, 19.08, 19.12, 19.13, 19.14, 19.2, 19.26, 19.39, 19.45, 19.55, 19.79, 19.84, 20.28, 20.77, 23.59, 24.43, 25.57, 28.63, 34.42, 35.89, 42.24, 42.69, 349.67, 363.31]
+  START acknowledged, ms            0.12 .. 0.65 (n=19)
+  heartbeat interval min, ms        492.93 .. 497.46 (n=28)
+  heartbeat interval median, ms     499.12 .. 501.28 (n=28)
+  heartbeat interval max, ms        502.1 .. 507.18 (n=28)
+  switch acknowledged, ms           4.13 .. 10.41 (n=4)
+  STOP to exit, ms                  7.09 .. 15.52 (n=21)
+  telemetry rate, Hz                20.12 .. 20.79 (n=17)

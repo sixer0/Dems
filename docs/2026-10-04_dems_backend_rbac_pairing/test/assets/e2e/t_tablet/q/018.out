@@ -1,0 +1,9 @@
+tap 2495,1439 at 09:55:58.418
+slept 800 ms
+screencap 10a_evidence_tab_media.png (1270260 bytes) at 09:56:00.701
+tap 1603,1248 at 09:56:00.851
+slept 2000 ms
+screencap 10c_evidence_tab_metadata.png (1275773 bytes) at 09:56:03.629
+swipe 1920,1350,1920,450 600 ms
+slept 1500 ms
+screencap 10d_evidence_tab_metadata_scrolled.png (1025477 bytes) at 09:56:06.802

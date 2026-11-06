@@ -1,0 +1,324 @@
+# M1 changes: every edited file against its pre-image in .cache/rollback/M1 (pre.sha256), then the new files with their SHA-256. 2026-10-06 00:21:38 WIB
+=== apps/mobile/src/runtime/index.ts
+@@ -21,4 +21,6 @@
+  * | `core-errors` | The refusal presenter of Live mode: one wording for a denied call, a dead link, a limit |
+  * | `link-notice` | One view of the Core link (`coreLinkViewOf`) and the one no-flicker rule of the offline notice (`offlineNoticeAfter`, row M0) |
++ * | `use-pending-press` | `usePendingPress`: "busy at once, spinner late" for one control that sends a Core command (LB-1; row M1) |
++ * | `use-core-link-notice` | `useCoreLinkNotice`: the offline notice of a screen in one call, its first render seeded from the connection banner (row M1) |
+  *
+  * Auth (`useAuth().signIn` against the simulator's `auth.ts`, lockout, biometric, idle lock) is
+@@ -30,6 +32,7 @@
+  * |---|---|
+  * | Know the source and the link | `useCoreLink()` (`source`: SIMULATED, HEARTBEAT, LIVE); `useCoreMode()` of `@dems/shared/live` for the data mode |
+- * | Show "Core server unreachable" without flicker | `offlineNoticeAfter(shown, coreLinkViewOf(useCoreLink()))`, re-applied in render when the view changed (`link-notice.ts`); never a rule of your own |
++ * | Show "Core server unreachable" without flicker | `const { view, offline } = useCoreLinkNotice();` (row M1: M0's rule, its first render seeded from the connection banner); never a rule of your own |
+  * | Call a Core action | `useCoreActions()` and `settle` of `@dems/shared/live`, in every mode |
++ * | Mark a control busy while its command is out, the spinner late | `usePendingPress()`: `run((release) => settle(…, { done: release }))`, then `busy` (accessibility state) and `pending` (the kit's `Spinner`); never a copy of the hook, never `setTimeout` |
+  * | Call an operation that is no simulator action | `useMobileLive()?.client.call(operationId, input)` |
+  * | Present a refusal | `useCoreErrorPresenter()`; `describeCoreError(error)` where the refusal is drawn in place |
+@@ -199,3 +202,5 @@ export {
+   type CoreErrorText,
+ } from './core-errors';
+-export { coreLinkViewOf, offlineNoticeAfter, type CoreLinkInput, type CoreLinkView } from './link-notice';
++export { coreLinkViewOf, initialOfflineNotice, offlineNoticeAfter, type CoreLinkInput, type CoreLinkView } from './link-notice';
++export { usePendingPress, type PendingPress } from './use-pending-press';
++export { useCoreLinkNotice, type CoreLinkNotice } from './use-core-link-notice';
+=== apps/mobile/src/runtime/link-notice.ts
+@@ -36,10 +36,13 @@
+  *
+  * For a fixed view the rule is idempotent, so a screen re-applies it whenever its input changed, in
+- * the render-time "adjust state when an input changed" shape (no effect, no ref; React Compiler):
++ * the render-time "adjust state when an input changed" shape (no effect, no ref; React Compiler).
++ * A screen takes all of it in ONE call, `useCoreLinkNotice()` (`use-core-link-notice.ts`, row M1),
++ * which is this shape:
+  *
+  * ```ts
+  * const view = coreLinkViewOf(useCoreLink());
++ * const banner = useConnectionBanner().kind;
+  * const [viewSeen, setViewSeen] = useState(view);
+- * const [offline, setOffline] = useState(() => offlineNoticeAfter(false, view));
++ * const [offline, setOffline] = useState(() => initialOfflineNotice(view, banner));
+  * if (viewSeen !== view) {
+  *   setViewSeen(view);
+@@ -48,4 +51,15 @@
+  * ```
+  *
++ * ## The first render: `initialOfflineNotice(link, banner)` (row M1, W66 F-1)
++ *
++ * A screen first opened while the socket reconnects sees `settling`, which keeps what is shown, and
++ * a new screen has shown nothing yet: starting from "not shown" (`offlineNoticeAfter(false, view)`,
++ * row M0's first snippet) it read "Core Live" until the next failed attempt, up to one reconnect
++ * step. The app's connection banner (`connection-banner.ts`) has followed the same link since the
++ * runtime started, and in LIVE mode its `offline` kind IS this rule's "shown" (`link-notice.test.ts`,
++ * "agree on every heartbeat"). So the first render starts from the banner: what the notice would
++ * show had the screen been mounted all along. Outside LIVE the view is `none` and nothing shows,
++ * whatever the banner says (HEARTBEAT mode has a banner too).
++ *
+  * Never hand it `useCoreLink().state`: that word has two values (ONLINE, OFFLINE) and reads a
+  * CONNECTING link as OFFLINE, so the notice would flash at every start and blink during an outage.
+@@ -57,4 +71,5 @@
+ import type { HeartbeatState } from '@dems/shared/domain';
+ import type { LiveLinkState } from '@dems/shared/live';
++import type { ConnectionBannerKind } from './connection-banner';
+ import type { CoreLinkInfo } from './contract';
+ 
+@@ -121,2 +136,11 @@ export function offlineNoticeAfter(shown: boolean, link: CoreLinkInput): boolean
+   }
+ }
++
++/**
++ * The notice at a screen's FIRST render (row M1): `down` shows it, `up` and `none` hide it, and
++ * `settling` shows it while the app's connection banner says the link is lost (`offline`). Then
++ * `offlineNoticeAfter` takes over. See the header.
++ */
++export function initialOfflineNotice(link: CoreLinkInput, banner: ConnectionBannerKind): boolean {
++  return offlineNoticeAfter(banner === 'offline', link);
++}
+=== apps/mobile/src/features/session-new/use-pending-press.ts
+@@ -1,73 +1 @@
+-/**
+- * "Busy at once, spinner late" for one control of Start Session (backend task
+- * 04_client_integration_spec §8.1 LB-1; AC-C-57, AC-C-58; plan row W67).
+- *
+- * | Phase | From | What the control shows | A press |
+- * |-------|------|------------------------|---------|
+- * | idle | — | its own look | starts the command |
+- * | busy | the press | no visual change; `accessibilityState.busy` is true | is ignored: one command per control |
+- * | pending | `LIVE_PENDING_REVEAL_MS` after the press, on the store's clock | the kit's `Spinner` in place of the control's icon, so nothing moves | is ignored |
+- *
+- * The caller passes `run` a function that starts the command and calls `release` once the command
+- * settled (from the continuation that `settle` runs). In Simulated mode the command settles before
+- * `run` returns (`settle`, CL-25): no state is set, nothing renders again, and the control looks and
+- * behaves exactly as before.
+- *
+- * Time is the store's clock (mobile rule 7, never `setTimeout`): in Live mode the store is the Live
+- * source, whose `clock` slice follows the Core's clock in 100 ms steps. The selector returns a
+- * boolean, so the clock re-renders the control at most once per press (when the spinner is due).
+- * The in-flight flag is a ref written only in the event handler, never read while rendering.
+- */
+-import { useCallback, useRef, useState } from 'react';
+-import { LIVE_PENDING_REVEAL_MS } from '@dems/shared/live';
+-import { useSim, useSimInstance } from '@dems/shared/sim';
+-
+-export interface PendingPress {
+-  /** From the press until the command settled: further presses are ignored. */
+-  readonly busy: boolean;
+-  /** Busy for `LIVE_PENDING_REVEAL_MS` or longer: the control shows the kit's pending state. */
+-  readonly pending: boolean;
+-  /**
+-   * Starts one command unless this control has one in flight. `start` gets `release`, which must run
+-   * once when the command settled. Returns whether the command was started.
+-   */
+-  run(start: (release: () => void) => void): boolean;
+-}
+-
+-export function usePendingPress(): PendingPress {
+-  const sim = useSimInstance();
+-  const inFlight = useRef(false);
+-  /** The store's clock at the press of a command still in flight; null while idle. */
+-  const [pressedAt, setPressedAt] = useState<number | null>(null);
+-  const pending = useSim((s) => pressedAt !== null && s.clock.now - pressedAt >= LIVE_PENDING_REVEAL_MS);
+-
+-  const run = useCallback(
+-    (start: (release: () => void) => void): boolean => {
+-      if (inFlight.current) return false;
+-      inFlight.current = true;
+-      let released = false;
+-      let shown = false;
+-      const release = (): void => {
+-        if (released) return;
+-        released = true;
+-        inFlight.current = false;
+-        if (shown) setPressedAt(null);
+-      };
+-      try {
+-        start(release);
+-      } catch (error) {
+-        release();
+-        throw error;
+-      }
+-      // Settled already (Simulated mode, or a command the Live source refused before sending it).
+-      if (!released) {
+-        shown = true;
+-        setPressedAt(sim.store.getState().clock.now);
+-      }
+-      return true;
+-    },
+-    [sim],
+-  );
+-
+-  return { busy: pressedAt !== null, pending, run };
+-}
++export { usePendingPress, type PendingPress } from '@/runtime'; // The one hook lives in the runtime (row M1, D157 DN-7).
+=== apps/mobile/src/features/session-new/session-new-screen.tsx
+@@ -32,5 +32,5 @@
+  * | The start-recording hand-off (S2-2, CA-02, AC-C-62) | The stack replace to the monitor runs in the `ok` of `startRecording`, in the turn in which the store shows RECORDING (CL-16), so the wizard route never renders RECORDING and its "session busy" guard does not fire, in both arrival orders of the answer and the delta |
+  * | Back while a command is out | Held (hardware Back and the header arrow): a request that left the device cannot be taken back; the answer decides (the Pair screen's rule) |
+- * | The Core link (M0's one rule, `coreLinkViewOf` + `offlineNoticeAfter`) | While the link is down a warning says so and Start Recording is disabled; a running 3-2-1 stops. A recording starts only over a connected link: on the device this is the app's own socket to the Core (decision F69) |
++ * | The Core link (M0's one rule through `useCoreLinkNotice()`, row M1) | While the link is down a warning says so and Start Recording is disabled; a running 3-2-1 stops. A recording starts only over a connected link: on the device this is the app's own socket to the Core (decision F69) |
+  * | A lost `SESSION_START` (§6.3, AC-C-50) | The wizard leaves for `/home`; the runtime's role-change toast says why. A setup session stays on the Core |
+  * | S4-6 (the case-number scan) and S5-6 (the investigator list) | No change: both read the replica |
+@@ -63,5 +63,5 @@ import {
+ } from '@/motion';
+ import { BackGuardDialog, useBackGuard, type SessionStep } from '@/navigation';
+-import { coreLinkViewOf, offlineNoticeAfter, reportRuntimeIssue, useCoreLink } from '@/runtime';
++import { reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress } from '@/runtime';
+ import { DevicesCheckStep } from './devices-check-step';
+ import { LiveDeviceColumn } from './device-previews';
+@@ -91,5 +91,4 @@ import {
+ import { nextCaseNumber } from './sim-adapter';
+ import { StepBoundary } from './step-boundary';
+-import { usePendingPress } from './use-pending-press';
+ import {
+   blankFormValues,
+@@ -148,14 +147,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
+   const sending = createPress.busy || gatePress.busy || retryPress.busy || startPress.busy || cancelPress.busy;
+ 
+-  // ── Live mode: the Core link (M0's one rule; `none` outside LIVE, so nothing shows there) ───
+-  const coreLink = useCoreLink();
+-  const live = coreLink.source === 'LIVE';
+-  const linkView = coreLinkViewOf(coreLink);
+-  const [linkViewSeen, setLinkViewSeen] = useState(linkView);
+-  const [linkDown, setLinkDown] = useState(() => offlineNoticeAfter(false, linkView));
+-  if (linkViewSeen !== linkView) {
+-    setLinkViewSeen(linkView);
+-    setLinkDown(offlineNoticeAfter(linkDown, linkView));
+-  }
++  // ── Live mode: the Core link (M0's one rule in one call, row M1; nothing shows outside LIVE) ──
++  const live = useCoreLink().source === 'LIVE';
++  const { offline: linkDown } = useCoreLinkNotice();
+ 
+   // ── Live mode: losing SESSION_START leaves the wizard (§6.3, AC-C-50) ────────────────────────
+@@ -520,5 +512,5 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
+       {remaining !== null ? <CountdownOverlay seconds={remaining} onCancel={() => setRemaining(null)} /> : null}
+       {flowActive ? (
+-        <BackGuardDialog guard={back.guard} variant="flow" onConfirm={cancelAndLeave} />
++        <BackGuardDialog guard={back.guard} variant="flow" onConfirm={cancelAndLeave} busy={cancelPress.pending} />
+       ) : (
+         <DiscardDialog guard={back.guard} />
+=== apps/mobile/src/features/session-new/device-previews.tsx
+@@ -54,4 +54,6 @@ export function DevicePreviews({ layout, live, paused, testID = 'session-new-pre
+   const testSwitch = useMotionState((s) => s.linkMotion === 'off');
+   const [liveIndex, setLiveIndex] = useState(0);
++  // Live mode says where the levels come from instead of "(simulated)" (row M1, W67 F-2; §3.2).
++  const liveSource = useCoreLink().source === 'LIVE';
+   return (
+     <View testID={testID} style={styles.previews}>
+@@ -81,5 +83,5 @@ export function DevicePreviews({ layout, live, paused, testID = 'session-new-pre
+       </View>
+       <Typography type="body-xs" color="muted" testID={`${testID}-hint`}>
+-        {t('sessionNew.devices.speakToTest')}
++        {t(liveSource ? 'features.session-new.live.speakToTest' : 'sessionNew.devices.speakToTest')}
+       </Typography>
+     </View>
+=== apps/mobile/src/features/session-new/session-info-step.tsx
+@@ -25,4 +25,5 @@ import { SectionCard } from '@/components/kit';
+ import { SubjectTypeCodeTone } from '@/components/kit/subject-type-chip';
+ import { enterRise, triggerHaptic, useMotionSettings } from '@/motion';
++import { useCoreLink } from '@/runtime';
+ import { filterInvestigators, SUBJECT_TYPE_ORDER, type SessionNewArrangement } from './session-new-model';
+ import type { CreateFailure, SessionForm } from './use-session-new';
+@@ -49,4 +50,6 @@ export function SessionInfoStep({ form, investigators, arrangement, onScan, crea
+   const { t } = useTranslation();
+   const settings = useMotionSettings();
++  // Live mode names what the button does instead of "(simulated)" (row M1, W67 F-2; §3.2).
++  const live = useCoreLink().source === 'LIVE';
+   const twoColumns = arrangement === 'phone-landscape';
+   const sheet = arrangement === 'phone' || arrangement === 'phone-landscape';
+@@ -78,5 +81,5 @@ export function SessionInfoStep({ form, investigators, arrangement, onScan, crea
+                 size="sm"
+                 hitSlop={8}
+-                accessibilityLabel={t('sessionNew.info.caseNumber.scan')}
++                accessibilityLabel={t(live ? 'features.session-new.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')}
+                 onPress={onScan}
+               >
+=== apps/mobile/src/features/session-new/i18n.ts
+@@ -85,4 +85,9 @@ export const sessionNewEn = {
+     // Decision F69: in Live mode the Core link of the pre-check is set by a paired device's own connection.
+     coreCheckHint: "In Live mode this check is this device's own connection to the Core server. Run the checks again once it is connected.",
++    // Row M1 (W67 F-2; §3.2, MD-8): in Live mode the screen says what is true and nothing about a
++    // simulation. The step 2 meters are the Core server's `meters` frames (the replica's audio slice).
++    speakToTest: 'Microphone levels from the Core server',
++    // The case-number button fills in the next free number from the replicated session records (S4-6): nothing is scanned.
++    scanCaseNumber: 'Fill in the next case number',
+   },
+ } as const satisfies ResourceTree;
+=== apps/mobile/src/features/more/use-core-link-chip.ts
+@@ -19,5 +19,5 @@
+ import { useState } from 'react';
+ import type { StatusTone } from '@dems/shared/tokens';
+-import { coreLinkViewOf, offlineNoticeAfter, useCoreLink, type CoreLinkSource } from '@/runtime';
++import { coreLinkViewOf, initialOfflineNotice, offlineNoticeAfter, useConnectionBanner, useCoreLink, type CoreLinkSource } from '@/runtime';
+ import { coreLinkTone, coreLinkWordKey, type CoreLinkWordKey } from './more-model';
+ 
+@@ -38,6 +38,9 @@ export function useCoreLinkChip(): CoreLinkChip {
+   const view = coreLinkViewOf(link);
+   // Row M0's snippet (gateway_check/09a §10): the notice state follows the view, adjusted in render.
++  // Its first render starts from the app's connection banner (row M1, F-1): a screen opened while
++  // the socket reconnects after an outage reads "Offline" at once, not "Live" for one reconnect step.
++  const banner = useConnectionBanner().kind;
+   const [viewSeen, setViewSeen] = useState(view);
+-  const [offline, setOffline] = useState(() => offlineNoticeAfter(false, view));
++  const [offline, setOffline] = useState(() => initialOfflineNotice(view, banner));
+   if (viewSeen !== view) {
+     setViewSeen(view);
+=== apps/mobile/src/navigation/back-guard.tsx
+@@ -1,9 +1,9 @@
+ import { useNavigation, useRouter, type Href } from 'expo-router';
+ import { usePreventRemove } from 'expo-router/react-navigation';
+-import { Button, Dialog } from 'heroui-native';
++import { Button, Dialog, Spinner } from 'heroui-native';
+ import { useCallback, useEffect, useState } from 'react';
+ import { useTranslation } from 'react-i18next';
+ import { StyleSheet, View } from 'react-native';
+-import { spacing } from '@dems/shared/tokens';
++import { palette, spacing } from '@dems/shared/tokens';
+ import { reportNavigationIssue } from './log';
+ 
+@@ -106,8 +106,15 @@ export interface BackGuardDialogProps {
+   /** `flow` variant: what "Cancel session" does before leaving. */
+   onConfirm?: () => void;
++  /**
++   * The leave action's command is out (Live mode, LB-1; row M1, W67 F-6): the leave button carries
++   * `accessibilityState.busy` and shows the kit's `Spinner` before its label, and a further press
++   * is ignored (the answer decides). The caller passes its pending state (`usePendingPress().pending`
++   * of `@/runtime`), so a fast answer shows no spinner. Default false: the dialog is as before.
++   */
++  busy?: boolean;
+ }
+ 
+ /** The §3.6 back-guard Dialog (HeroUI Native `Dialog`), with the copy of `mobile.backGuard.*`. */
+-export function BackGuardDialog({ guard, variant, onConfirm }: BackGuardDialogProps) {
++export function BackGuardDialog({ guard, variant, onConfirm, busy = false }: BackGuardDialogProps) {
+   const { t } = useTranslation();
+   const monitor = variant === 'monitor';
+@@ -126,9 +133,12 @@ export function BackGuardDialog({ guard, variant, onConfirm }: BackGuardDialogPr
+               variant={monitor ? 'outline' : 'danger'}
+               onPress={() => {
++                if (busy) return;
+                 if (monitor) guard.leaveTo('/home');
+                 else if (onConfirm) onConfirm();
+                 else guard.leave();
+               }}
++              {...(busy ? { accessibilityState: { busy: true } } : {})}
+             >
++              {busy ? <Spinner size="sm" color={palette.foreground} testID="back-guard-leave-spinner" /> : null}
+               <Button.Label>{t(monitor ? 'mobile.backGuard.goHome' : 'mobile.backGuard.confirmCancel')}</Button.Label>
+             </Button>
+=== new files
+d86d64f9441cb5e4b38e7ac634019ef08e3b5c213627f3db54cd5c81e3609077  apps/mobile/src/runtime/use-pending-press.ts  (84 lines)
+87c7b025a31242e8871ddcd33d86a472528e4faa11dfacc04ac308f574f8cae1  apps/mobile/src/runtime/use-pending-press.test.tsx  (189 lines)
+573e0e6cd799073d7299d38657b5d716778257a13f9fd19331a7680b9e67e60c  apps/mobile/src/runtime/use-core-link-notice.ts  (44 lines)
+4b224f4422867aea05c3ca2e6b2441d97646db4e18f1f9376c979338165fc671  apps/mobile/src/runtime/use-core-link-notice.test.tsx  (335 lines)
+66e4b4015c6c23d326e98ce016f070998ab23b5235cea134ab5fc44bec0f562d  apps/mobile/src/navigation/__tests__/back-guard-busy.test.tsx  (186 lines)
+e2c65a32ac0e9e58f7daa24830062e95cde3eb948e854bb2a398135fcd1bd93b  apps/mobile/src/features/session-new/live-session-new-followups.test.tsx  (213 lines)
+=== post-images of the edited files
+29c2a0bb3a6faec1d704eb01216fb2bb7f2e0db91436dee3831c5641faef8bf8  apps/mobile/src/runtime/index.ts
+94cac0f7a9b157cd2886c5485be5ec1c36b817ca21b95acf00e40c5fc4c7f316  apps/mobile/src/runtime/link-notice.ts
+bdb7cf28551fd2bd90132ab00b21ed6d34e6fa71922fa9df31a1a48e736ed81e  apps/mobile/src/features/session-new/use-pending-press.ts
+658166ead9ecb4d7260f115c791c32f98edf91393e533f903b4d8785a989287d  apps/mobile/src/features/session-new/session-new-screen.tsx
+8ff3dfcccac628e886b30c1005197641f028b722e2dbe2e9dc31b9b4fee7205b  apps/mobile/src/features/session-new/device-previews.tsx
+5a1592fcf234e983ef28222db2bddd074849e6f4e7b36c65ac7fd9626e03ddef  apps/mobile/src/features/session-new/session-info-step.tsx
+4051434f95c30f103028b9d640da2db55038890fb563bc1e13c13ec1d1c691df  apps/mobile/src/features/session-new/i18n.ts
+c9e35226cb491d7c0f0e47258498b3772e68193a2480be1c5b17fdd1c41fd2c9  apps/mobile/src/features/more/use-core-link-chip.ts
+79b406730287b9a59b205c70f4f056422abfd51b025f3c463e3cef5afc23bb9c  apps/mobile/src/navigation/back-guard.tsx

@@ -1,0 +1,114 @@
+## 2026-10-05 22:45:38 WIB CLG (a): the folder's existing test files are absent from the diff against acaff20
+$ git diff --stat acaff20 -- apps/core-web/src/features/session-monitor/__tests__ | wc -c
+       0
+$ git status --short apps/core-web/src/features/session-monitor/__tests__ | wc -l
+       0
+$ git hash-object apps/core-web/src/features/session-monitor/__tests__/session-monitor.test.tsx; git rev-parse acaff20:apps/core-web/src/features/session-monitor/__tests__/session-monitor.test.tsx
+2aeede95fbd403c1be118764aae5b3cf226e664d
+2aeede95fbd403c1be118764aae5b3cf226e664d
+## the folder's existing file in the whole-suite JSON report of 2026-10-05 22:43:57 WIB
+Traceback (most recent call last):
+  File "<string>", line 2, in <module>
+    import json;d=json.load(open('.cache/w65/web.json'))
+                            ~~~~^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '.cache/w65/web.json'
+## CLG (c), AC-C-53: $ grep -rnE 'useSimActions|\.actions' apps/core-web/src/features/session-monitor --include='*.ts' --include='*.tsx' | grep -v __tests__
+apps/core-web/src/features/session-monitor/panel.tsx:113:            ? t('common.actions.retryIn', { seconds: cooldown })
+apps/core-web/src/features/session-monitor/panel.tsx:114:            : t('common.actions.retry')}
+apps/core-web/src/features/session-monitor/status-banner.tsx:97:        {t('common.actions.startNewSession')}
+apps/core-web/src/features/session-monitor/live-feed-panel.tsx:297:            {t('common.actions.startNewSession')}
+apps/core-web/src/features/session-monitor/live-feed-panel.tsx:314:            {t('common.actions.openEvidenceQueue')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:104:      aria-label={t('session.actions.label')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:111:          {t('session.actions.unavailable')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:116:          {t('session.actions.endSession.notPermitted')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:119:      <Toolbar aria-label={t('session.actions.label')} className="sm-actions">
+apps/core-web/src/features/session-monitor/action-bar.tsx:182:    <span className="sm-action-unavailable" title={reason ?? t('session.actions.unavailable')}>
+apps/core-web/src/features/session-monitor/action-bar.tsx:224:            title={t(`session.actions.${key}.title`)}
+apps/core-web/src/features/session-monitor/action-bar.tsx:225:            subtitle={t(`session.actions.${key}.subtitle`)}
+apps/core-web/src/features/session-monitor/action-bar.tsx:263:        toast.success(t('session.actions.addMarker.added', { time: formatClock(at) }))
+apps/core-web/src/features/session-monitor/action-bar.tsx:268:        toast.danger(t('session.actions.failed'))
+apps/core-web/src/features/session-monitor/action-bar.tsx:311:              title={t('session.actions.addMarker.title')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:312:              subtitle={t('session.actions.addMarker.subtitle')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:316:            <Popover.Dialog aria-label={t('session.actions.addMarker.title')}>
+apps/core-web/src/features/session-monitor/action-bar.tsx:317:              <Popover.Heading className="sm-popover-heading">{t('session.actions.addMarker.title')}</Popover.Heading>
+apps/core-web/src/features/session-monitor/action-bar.tsx:326:                  <Label>{t('session.actions.addMarker.field')}</Label>
+apps/core-web/src/features/session-monitor/action-bar.tsx:327:                  <Input placeholder={t('session.actions.addMarker.placeholder')} data-testid="sm-marker-input" />
+apps/core-web/src/features/session-monitor/action-bar.tsx:328:                  <Description>{t('session.actions.addMarker.optional')}</Description>
+apps/core-web/src/features/session-monitor/action-bar.tsx:331:                  {t('session.actions.addMarker.submit')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:352:  const error = !trimmed ? t('session.actions.sessionNote.empty') : trimmed.length > NOTE_MAX ? t('session.actions.sessionNote.tooLong', { max: NOTE_MAX }) : null
+apps/core-web/src/features/session-monitor/action-bar.tsx:363:        toast.success(t('session.actions.sessionNote.saved'))
+apps/core-web/src/features/session-monitor/action-bar.tsx:368:        toast.danger(t('session.actions.failed'))
+apps/core-web/src/features/session-monitor/action-bar.tsx:379:            title={t('session.actions.sessionNote.title')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:380:            subtitle={t('session.actions.sessionNote.subtitle')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:386:          <Drawer.Dialog aria-label={t('session.actions.sessionNote.drawerTitle')} className="sm-note-drawer" data-testid="sm-note-drawer">
+apps/core-web/src/features/session-monitor/action-bar.tsx:388:              <Drawer.Heading>{t('session.actions.sessionNote.drawerTitle')}</Drawer.Heading>
+apps/core-web/src/features/session-monitor/action-bar.tsx:389:              <Drawer.CloseTrigger aria-label={t('common.actions.close')} />
+apps/core-web/src/features/session-monitor/action-bar.tsx:407:                  <Label>{t('session.actions.sessionNote.field')}</Label>
+apps/core-web/src/features/session-monitor/action-bar.tsx:408:                  <TextArea rows={8} placeholder={t('session.actions.sessionNote.placeholder')} data-testid="sm-note-input" />
+apps/core-web/src/features/session-monitor/action-bar.tsx:409:                  <Description>{t('session.actions.sessionNote.counter', { count: trimmed.length, max: NOTE_MAX })}</Description>
+apps/core-web/src/features/session-monitor/action-bar.tsx:414:                    {t('common.actions.cancel')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:418:                    {t('session.actions.sessionNote.submit')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:467:        toast.success(t('session.actions.snapshot.captured'), {
+apps/core-web/src/features/session-monitor/action-bar.tsx:468:          description: t('session.actions.snapshot.capturedDetail', { camera, time: formatClock(state.clock.now) }),
+apps/core-web/src/features/session-monitor/action-bar.tsx:474:        toast.danger(t('session.actions.snapshot.failed'))
+apps/core-web/src/features/session-monitor/action-bar.tsx:494:            title={t('session.actions.snapshot.title')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:495:            subtitle={t('session.actions.snapshot.subtitle')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:517:            ? `${t('session.actions.evidenceQueue.title')}. ${t('session.actions.evidenceQueue.snapshots', { count })}`
+apps/core-web/src/features/session-monitor/action-bar.tsx:523:          title={t('session.actions.evidenceQueue.title')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:524:          subtitle={t('session.actions.evidenceQueue.subtitle')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:552:  const reason = !recording ? undefined : t('session.actions.endSession.notPermitted')
+apps/core-web/src/features/session-monitor/action-bar.tsx:615:            title={t('session.actions.endSession.title')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:616:            subtitle={hint ? t('session.actions.endSession.holdHint') : t('session.actions.endSession.subtitle')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:620:              {t('session.actions.endSession.holdHint')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:642:  const error = tooShort || refusedNow ? t('session.actions.endSession.reasonTooShort', { min: STOP_REASON_MIN_LENGTH }) : null
+apps/core-web/src/features/session-monitor/action-bar.tsx:678:          toast.info(t('session.actions.endSession.alreadyEnded'))
+apps/core-web/src/features/session-monitor/action-bar.tsx:682:        toast.danger(t('session.actions.endSession.failed'))
+apps/core-web/src/features/session-monitor/action-bar.tsx:691:        <AlertDialog.Dialog aria-label={t('session.actions.endSession.dialogTitle')} data-testid="sm-end-dialog">
+apps/core-web/src/features/session-monitor/action-bar.tsx:694:            <AlertDialog.Heading>{t('session.actions.endSession.dialogTitle')}</AlertDialog.Heading>
+apps/core-web/src/features/session-monitor/action-bar.tsx:703:              <p className="text-body text-foreground-2">{t('session.actions.endSession.dialogBody')}</p>
+apps/core-web/src/features/session-monitor/action-bar.tsx:712:                <Label>{t('session.actions.endSession.reasonLabel')}</Label>
+apps/core-web/src/features/session-monitor/action-bar.tsx:713:                <TextArea rows={3} placeholder={t('session.actions.endSession.reasonPlaceholder')} data-testid="sm-end-reason" />
+apps/core-web/src/features/session-monitor/action-bar.tsx:719:                {t('session.actions.endSession.keepRecording')}
+apps/core-web/src/features/session-monitor/action-bar.tsx:723:                {t('session.actions.endSession.confirm')}
+   (the same without the i18n words `session.actions.*` / `common.actions.*`:) lines: 0
+## no useSimInstance read of an action, and no sim.actions: $ grep -rnE 'sim\.actions|useSimInstance\(\)\.actions' apps/core-web/src/features/session-monitor | grep -v __tests__ | wc -l
+       0
+## the shared file of this row is additive: $ git diff acaff20 -- packages/shared/src/i18n/en/session.ts | grep -c '^-[^-]'
+0
+## rule 9, not this row's files (shown unchanged by this row): $ git status --short apps/core-web/src/runtime apps/core-web/src/lib apps/core-web/src/components/shell apps/core-web/src/routes apps/core-web/vite.config.ts | wc -l
+## the six protected test files: git hash-object
+7a04c97d66fef15ed36f753a87a91c400f7b9500 apps/core-web/src/test/routes.test.tsx
+9e8b97c80da596e0ae6e9b37aa69b64e99e3bbdd apps/core-web/src/test/sim-fetch.test.ts
+71f6f0337f2339d8e8d66ef232d7334dc0b67d1d apps/core-web/src/features/storage/__tests__/storage-page.test.tsx
+89cab371b658f09788a9350da13d118d4b822493 apps/core-web/src/lib/__tests__/core-endpoint.test.tsx
+6d0db39e3b918db65f0faff8b6ad7fbb30403fe0 apps/core-web/src/lib/__tests__/packaged-csp.test.ts
+## what this row changed or created, by path
+ M apps/core-web/src/features/session-monitor/action-bar.tsx
+ M apps/core-web/src/features/session-monitor/finalization-modal.tsx
+ M apps/core-web/src/features/session-monitor/index.tsx
+ M apps/core-web/src/features/session-monitor/integrity-panel.tsx
+ M apps/core-web/src/features/session-monitor/live-feed-panel.tsx
+ M apps/core-web/src/features/session-monitor/log.ts
+ M apps/core-web/src/features/session-monitor/panel.tsx
+ M apps/core-web/src/features/session-monitor/session-monitor.css
+ M apps/core-web/src/features/session-monitor/status-banner.tsx
+ M packages/shared/src/i18n/en/session.ts
+?? apps/core-web/src/features/session-monitor/use-pending-press.ts
+?? apps/core-web/src/test/live-session-monitor-actions.test.tsx
+?? apps/core-web/src/test/live-session-monitor-panels.test.tsx
+$ git diff --stat acaff20 -- apps/core-web/src/features/session-monitor packages/shared/src/i18n/en/session.ts
+ .../src/features/session-monitor/action-bar.tsx    | 282 +++++++++++++++------
+ .../session-monitor/finalization-modal.tsx         |   9 +-
+ .../src/features/session-monitor/index.tsx         |  36 ++-
+ .../features/session-monitor/integrity-panel.tsx   |  38 ++-
+ .../features/session-monitor/live-feed-panel.tsx   |  72 +++++-
+ apps/core-web/src/features/session-monitor/log.ts  |  55 +++-
+ .../src/features/session-monitor/panel.tsx         |  10 +-
+ .../features/session-monitor/session-monitor.css   |  21 ++
+ .../src/features/session-monitor/status-banner.tsx |  24 +-
+ packages/shared/src/i18n/en/session.ts             |   2 +
+ 10 files changed, 417 insertions(+), 132 deletions(-)
+src/test/live-session-monitor-actions.test.tsx passed 15 / 15
+src/test/live-session-monitor-panels.test.tsx passed 10 / 10
+src/features/session-monitor/__tests__/session-monitor.test.tsx passed 13 / 13
+whole suite: 321 / 321 files; 849 / 849 tests; success True

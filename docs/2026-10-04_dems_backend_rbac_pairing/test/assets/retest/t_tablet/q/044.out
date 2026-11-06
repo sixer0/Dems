@@ -1,0 +1,7 @@
+tap 2486,791 at 13:08:32.239
+slept 2000 ms
+screencap P14j_profile_closed.png (404533 bytes) at 13:08:34.473
+mark stack check at 13:08:34.473
+deep link demsdemo:///stack-check at 13:08:34.515: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 6000 ms
+screencap P15_stack_check.png (118139 bytes) at 13:08:40.691

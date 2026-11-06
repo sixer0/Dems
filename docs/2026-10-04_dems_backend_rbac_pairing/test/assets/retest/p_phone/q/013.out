@@ -1,0 +1,20 @@
+12:50:24.082 declared screen evidence-detail
+12:50:24.135 swipe 540,1700,540,1000 500 ms
+12:50:24.838 slept 1200 ms
+12:50:26.126 screencap 24b_evidence_detail_media_scrolled.png 12:50:26.126..12:50:27.208
+12:50:27.512 tapid evidence-tab-metadata at 374,1579 "Metadata"
+12:50:31.100 slept 1800 ms
+12:50:33.003 screencap 25_evidence_detail_metadata.png 12:50:33.003..12:50:33.582
+12:50:33.687 swipe 540,1900,540,900 600 ms
+12:50:34.454 slept 1200 ms
+12:50:35.702 screencap 25b_evidence_detail_metadata_scrolled.png 12:50:35.702..12:50:36.219
+12:50:36.330 tapid evidence-tab-integrity at 703,1579 "Hash &amp; Integrity"
+12:50:38.969 slept 1800 ms
+12:50:40.923 screencap 26_evidence_detail_integrity.png 12:50:40.923..12:50:41.869
+12:50:42.033 swipe 540,1900,540,900 600 ms
+12:50:42.849 slept 1200 ms
+12:50:44.101 screencap 26b_evidence_detail_integrity_scrolled.png 12:50:44.101..12:50:44.732
+12:50:44.918 swipe 540,1900,540,900 600 ms
+12:50:45.745 slept 1200 ms
+12:50:47.090 screencap 26c_evidence_detail_integrity_custody.png 12:50:47.090..12:50:47.705
+12:50:47.894 warnlog since 10-06 12:50:23.000 (0): 

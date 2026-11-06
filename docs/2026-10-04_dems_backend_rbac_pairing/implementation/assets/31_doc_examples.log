@@ -1,0 +1,22 @@
+## 2026-10-04 10:36:33 WIB the web example (Vitest, jsdom)
+$ npx vitest run --root .cache/w31/doc-web --environment jsdom --maxWorkers=2
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/.cache/w31/doc-web
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  10:36:33
+   Duration  1.37s (environment 46%, transform 40%, import 13%, tests 1%)
+
+exit=0
+## 10:36:35 WIB the mobile example (jest, the mobile configuration)
+$ npx jest --config apps/mobile/jest.config.js --roots "$PWD/.cache/w31/jest" --maxWorkers=2 snippet-mobile
+PASS .cache/w31/jest/snippet-mobile.test.ts
+  ✓ a paired device signs in (10 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       1 passed, 1 total
+Snapshots:   0 total
+Time:        1.745 s
+Ran all test suites matching /snippet-mobile/i.
+exit=0

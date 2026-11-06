@@ -1,0 +1,8 @@
+#!/bin/sh
+# W97: tab walk on phone2 (Simulated or Heartbeat): Sessions, Evidence, Devices, Home; screencap each. Guard before each tap.
+OUT=$1; TAG=$2; A="adb -s emulator-5558"
+guard() { W=$($A shell dumpsys window | tr -d '\r'); echo "$W" | grep -q 'isKeyguardShowing=false' && echo "$W" | grep -q 'mCurrentFocus=.*com.dems.demo.tablet' || { echo "-- LOCKED or not focused - stop"; exit 77; }; }
+for t in "sessions 323" "evidence 539" "devices 753" "home 107"; do
+  set -- $t; guard; $A shell input tap $2 2275; echo "-- $(date +%T) tapped tab $1 at $2,2275"; sleep 3.5
+  $A exec-out screencap -p > "$OUT/07_mob_${TAG}_$1.png"; echo "-- screencap 07_mob_${TAG}_$1.png"
+done

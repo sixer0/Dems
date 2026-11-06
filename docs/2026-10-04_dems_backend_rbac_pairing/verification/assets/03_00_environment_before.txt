@@ -1,0 +1,72 @@
+== 2026-10-07 05:29:00 WIB
+ 5:29  up 5 days, 12:41, 1 user, load averages: 3.60 4.30 5.00
+ProductName:		macOS ProductVersion:		27.0.1 BuildVersion:		26A434 
+v26.8.2
+11.19.1
+057fc17
+tracked-modified count:      210
+4e6785b2b6372a9cfe852db07c05abd3ec27ab9c394d3b17020e4e9365f7dc92  -
+15688668e99d94298b2a5c1694fbce091f8036c759c3233a0991da868aa9d8f3  -
+== listeners 4400-4432,5173-5178,8081
+4400: free
+4410: free
+4411: free
+4420: free
+4421: free
+4422: free
+4423: free
+4432: postgres 48897 gsp-budi    5u  IPv4 0x4bc550eff7ffaf58      0t0  TCP 127.0.0.1:4432 (LISTEN)
+5173: free
+5176: free
+5177: free
+5178: free
+8081: free
+== .data entries (names, modes)
+drwx------ 700 .data
+-rw------- 600 .data/pg-scripts.log
+-rw------- 600 .data/pg.env
+-rw------- 600 .data/pg.owner.env
+-rw------- 600 .data/pg.pwfile
+drwx------ 700 .data/postgres
+-rw------- 600 .data/postgres.log
+48897
+core-server.lane1.lock
+core-server.lane1.pid
+core-server.lane1.vite.pid
+core-server.lane2.lock
+core-server.lane2.pid
+core-server.lane2.vite.pid
+core-server.lane3.lock
+core-server.lane3.log
+core-server.lane3.pid
+core-server.lane3.vite.log
+core-server.lane3.vite.pid
+core-server.lock
+core-server.pid
+db-migrate.lock
+dems2_phone.emulator.log
+dems2_phone.pid
+dems2_phone2.emulator.log
+dems2_phone2.pid
+dems2_tablet.emulator.log
+dems2_tablet.pid
+dems_phone.emulator.log
+dems_phone.lock
+dems_phone.pid
+dems_phone2.emulator.log
+dems_phone2.lock
+dems_phone2.pid
+dems_tablet.emulator.log
+dems_tablet.lock
+dems_tablet.pid
+gradle.lock
+mock-core.lock
+mock-core.step53.log
+mock-core.users
+npm.lock
+postgres.lock
+postgres.pid
+vite.5178.log
+vite.lock
+vite.pid
+vite.users

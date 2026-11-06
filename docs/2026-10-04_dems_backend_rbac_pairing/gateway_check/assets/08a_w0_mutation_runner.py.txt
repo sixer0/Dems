@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""W0 mutation check (rule M15: no file of the workspace tree is changed).
+
+Each mutation is ONE text replacement in ONE module, applied in memory by the transform plugin of
+vitest.mutation.config.mts (W55's / W64's pattern). A mutation is DETECTED when the named tests fail
+while the mutation was really applied (the plugin leaves a marker file under TMPDIR). The SHA-256 of
+every mutated file is taken before and after each batch.
+    python3 /Users/gsp-budi/Documents/DEMS/.cache/w0/mut/run_mutations.py check | run [ids]
+"""
+import hashlib, json, os, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+HERE = os.path.join(ROOT, '.cache/w0/mut')
+CONFIG = '.cache/w0/mut/vitest.mutation.config.mts'
+APPLIED = os.path.join(os.environ['TMPDIR'], 'w0-mut-applied')
+os.makedirs(APPLIED, exist_ok=True)
+SRC = 'apps/core-web/src/'
+
+STRICT = 'src/test/live-strict-mode-starts.test.tsx'
+PRECHECK = 'src/test/live-session-new-precheck.test.tsx'
+EVIVERIFY = 'src/test/live-evidence-verify.test.tsx'
+HOOK = 'src/test/live-pending-control.test.tsx'
+PEND64 = 'src/test/live-session-new-pending.test.tsx'
+DASHDEV = 'src/test/live-dashboard-devices.test.tsx'
+STORPOL = 'src/test/live-storage-policy.test.tsx'
+SMACT = 'src/test/live-session-monitor-actions.test.tsx'
+DEVCLIP = 'src/test/live-devices-clip.test.tsx'
+DEVCMD = 'src/test/live-devices-commands.test.tsx'
+METER = 'src/test/live-meter-clip-reset.test.tsx'
+LOGS = 'src/test/live-w0-page-logs.test.tsx'
+DEVLOG = 'src/test/live-w0-device-log.test.tsx'
+CAMERA = 'src/test/live-w0-camera-words.test.tsx'
+EVIWORDS = 'src/test/live-w0-evidence-words.test.tsx'
+EVIARCH = 'src/test/live-evidence-archive.test.tsx'
+
+M = []
+def m(mid, file, what, find, replace, tests):
+    M.append({'id': mid, 'file': SRC + file, 'what': what, 'find': find, 'replace': replace, 'tests': tests})
+
+# ── Item 1: the helper, its three sites, the guard ─────────────────────────────────────────────
+F = 'lib/effect-start.ts'
+m('E01', F, 'the helper starts at once (no deferral)', "  const handle = setTimeout(start, 0)\n  return () => clearTimeout(handle)", "  start()\n  return () => undefined", [STRICT, EVIVERIFY])
+m('E02', F, 'the clean-up does not cancel the pending start', "  return () => clearTimeout(handle)", "  return () => void handle", [STRICT, EVIVERIFY])
+m('E03', 'features/session-new/index.tsx', 'the resume effect starts its pre-check in the set-up again (the pre-W0 shape)', "    return deferEffectStart(() => {\n      if (precheckInFlight.current === id) return", "    return ((begin: () => void) => { begin(); return undefined })(() => {\n      if (precheckInFlight.current === id) return", [STRICT, PRECHECK])
+m('E04', 'features/evidence/detail-page.tsx', 'the list hand-off verifies in the set-up', "    return deferEffectStart(() => void runRef.current())", "    void runRef.current()\n    return undefined", [EVIVERIFY])
+m('E05', 'features/evidence/export-wizard.tsx', 'the wizard source check verifies in the set-up', "  useEffect(() => deferEffectStart(() => void runRef.current()), [])", "  useEffect(() => {\n    void runRef.current()\n  }, [])", [EVIVERIFY])
+F = 'test/live-strict-mode-starts.test.tsx'
+m('G01', F, 'guard: useLayoutEffect is not scanned', "/\\buse(?:Layout|Insertion)?Effect\\s*\\(/g", "/\\buseEffect\\s*\\(/g", [STRICT])
+m('G02', F, 'guard: a helper that is not returned passes', "    if (inside && !/(?:\\breturn\\s+|=>\\s*)deferEffectStart\\s*\\(/.test(body)) {", "    if (false && inside) {", [STRICT])
+m('G03', F, 'guard: the helper\'s argument is not set apart (a command inside it counts as outside)', "    const outside = outsideHelper(body).match(CORE_CALL)", "    const outside = body.match(CORE_CALL)", [STRICT])
+m('G04', F, 'guard: comments are not removed', "    .replace(/\\/\\*[\\s\\S]*?\\*\\//g, (comment) => comment.replace(/[^\\n]/g, ' '))\n    .replace(/(^|[^:'\"`\\\\])\\/\\/[^\\n]*/g, '$1')\n", "", [STRICT])
+m('G05', F, 'guard: the dependency list is scanned as part of the callback', "    const body = balanced(text, start).replace(/,\\s*\\[[^[\\]]*\\]\\s*,?\\s*$/, '')", "    const body = balanced(text, start)", [STRICT])
+m('G06', F, 'guard: the allowed list allows any file', "      if (allowed.some((entry) => entry.file === file && entry.token === finding.token)) continue", "      if (allowed.some((entry) => entry.token === finding.token)) continue", [STRICT])
+m('G07', F, 'guard: a call through a ref is not a Core call', "|\\.current\\s*\\(|", "|", [STRICT])
+m('G08', F, 'guard: query refreshes are not Core calls', "|\\b(?:invalidateQueries|refetchQueries|resetQueries|fetchQuery|prefetchQuery|ensureQueryData|refetch|mutate|mutateAsync)\\s*\\(", "", [STRICT])
+
+# ── Item 2: the one pending-control hook ───────────────────────────────────────────────────────
+F = 'lib/pending-control.ts'
+m('H01', F, 'the press guard is gone: a second press sends a second command', "    if (inFlight.current) return false\n", "", [HOOK, PEND64])
+m('H02', F, 'the reveal delay is 0: the spinner shows at once', "  const delayMs = LIVE_PENDING_REVEAL_MS * timeScale", "  const delayMs = 0", [HOOK, PEND64])
+m('H03', F, 'the reveal delay ignores the motion policy\'s time scale', "  const delayMs = LIVE_PENDING_REVEAL_MS * timeScale", "  const delayMs = LIVE_PENDING_REVEAL_MS", [HOOK])
+m('H04', F, 'the busy mark is never written', "    if (busy) element.setAttribute('aria-busy', 'true')", "    if (busy) element.removeAttribute('aria-busy')", [HOOK, PEND64])
+m('H05', F, 'the busy mark is never removed', "    else element.removeAttribute('aria-busy')", "    else void element", [HOOK, PEND64])
+m('H06', F, 'a command settled in the press still marks the control busy (Simulated mode would stick)', "    if (!released) {\n      waiting = true", "    {\n      waiting = true", [HOOK])
+m('H07', F, 'the release does not clear busy', "      if (waiting) {\n        setBusy(false)", "      if (false) {\n        setBusy(false)", [HOOK, PEND64])
+m('H08', F, '`onWait` runs also for a command settled in the press', "      onWait?.()\n    }\n    return true", "    }\n    onWait?.()\n    return true", [HOOK])
+m('H09', F, '`done` runs before the control is released', "              release()\n              handlers.done?.()", "              handlers.done?.()\n              release()", [HOOK])
+m('H10', F, 'the key of the command out is not kept', "      setKey(actionKey ?? null)", "      setKey(null)", [HOOK])
+m('H11', F, 'a start that throws leaves the control busy', "      release()\n      throw error", "      throw error", [HOOK])
+m('H12', F, 'the reveal outlives the busy state by one render', "  return busy && revealed\n}", "  return revealed\n}", [HOOK])
+m('H13', F, 'the reveal timer is not cleared when the command settles early', "      clearTimeout(timer)\n      setRevealed(false)", "      setRevealed(false)", [HOOK, PEND64])
+m('S01', 'features/dashboard/devices-panel.tsx', 'Dashboard: the command never releases its control', "          done: release,\n        })\n      })\n    },\n    [actions, deviceId, name, navigate, presentCoreError, run, t, words],", "          done: () => undefined,\n        })\n      })\n    },\n    [actions, deviceId, name, navigate, presentCoreError, run, t, words],", [DASHDEV])
+m('S02', 'features/storage/manage-drawer.tsx', 'Storage: Apply never releases its control', "          done: release,\n        })\n      })\n    },\n    [actions, applied, onApplied, presentCoreError, run, t],", "          done: () => undefined,\n        })\n      })\n    },\n    [actions, applied, onApplied, presentCoreError, run, t],", [STORPOL])
+m('S03', 'features/devices/audio-input-card.tsx', 'Devices: the clip reset never releases its control', "        done: release,\n      })\n    })\n  }", "        done: () => undefined,\n      })\n    })\n  }", [DEVCLIP])
+m('S04', 'features/session-monitor/action-bar.tsx', 'Session Monitor: the marker chip of LB-4 never shows (`onWait` dropped from the shared hook\'s settle)', "      onWait: () => setPendingChip(text || `Marker ${(sim.store.getState().session?.markerCount ?? 0) + 1}`),\n", "", [SMACT])
+
+# ── Items 4 to 9 ───────────────────────────────────────────────────────────────────────────────
+F = 'components/composed/dbfs-meter.tsx'
+m('M01', F, 'meter: the presenter is skipped', "      if (presentCoreError(error) !== null) return\n      const { code, status }", "      const { code, status }", [METER])
+m('M02', F, 'meter: the reset ignores its result again (pre-W0)', "  settle(() => actions.resetClip(channel), {\n    fail: (error) => {", "  void Promise.resolve(actions.resetClip(channel)).catch(() => undefined)\n  void ({\n    fail: (error: unknown) => {", [METER])
+m('M03', F, 'meter: no record for what the presenter left', "      webErrorSink.report({", "      void ({", [METER])
+m('N01', 'features/network-time/log.ts', 'Network & Time: the message is the error\'s text', "    message: `Network & Time: the step \"${source}\" did not complete.`,", "    message: error instanceof Error ? error.message : String(error),", [LOGS])
+m('N02', 'features/network-time/log.ts', 'Network & Time: the record is not written', "  sink.report({", "  void ({", [LOGS])
+m('L01', 'features/devices/device-drawer.tsx', 'the drawer Log words Identify as Restart again', "      if (row.details.command === DeviceCommand.IDENTIFY) return t('common.deviceMenu.identify')\n", "", [DEVLOG])
+F = 'components/media/camera-feed.math.ts'
+m('C01', F, 'the Live OSD line keeps LIVE', "  return liveData ? `CAM-${n} | ${cameraId} | BUNDLED DEMO` :", "  return false ? `CAM-${n} | ${cameraId} | BUNDLED DEMO` :", [CAMERA])
+m('C02', 'components/media/camera-feed.tsx', 'the Live accessible name calls the picture a live feed', "t(liveData ? 'session.feed.bundledPicture' : 'session.feed.title')", "t('session.feed.title')", [CAMERA])
+m('C03', 'components/media/camera-feed.tsx', 'the feed never sees Live mode', "  const liveData = sim !== null && coreModeOf(sim) === CoreMode.LIVE", "  const liveData = sim === null && coreModeOf(sim as never) === CoreMode.LIVE", [CAMERA])
+m('C04', 'components/media/procedural-feed.ts', 'the painter ignores the mode', "    const lines = [osdTimestamp(now), osdLabel(cameraId, liveData)]", "    const lines = [osdTimestamp(now), osdLabel(cameraId)]", [CAMERA])
+m('C05', 'features/devices/camera-tile.tsx', 'the Devices tile says "Live preview" in Live mode', "          ariaLabel={t(words.feedAria, { name })}", "          ariaLabel={t('devices.cameras.feedAria', { name })}", [CAMERA])
+F = 'lib/page-report.ts'
+m('R01b', F, 'W0b: every page gets one prefix (the helper in lib/)', "    return `${prefix}-${Date.now().toString(36)}-${sequence}`", "    return `dash-${Date.now().toString(36)}-${sequence}`", [LOGS, DEVCMD])
+m('R02b', F, 'W0b: the level is always error', "      level,\n      source,", "      level: 'error' as const,\n      source,", [LOGS])
+m('R03b', F, 'W0b: the cause\'s code and status are dropped', "        ...causeFacts(error),", "", [LOGS, DASHDEV])
+m('V01', 'features/evidence/metadata-tab.tsx', 'the Live Metadata label says simulated', "t(live ? 'evidence.live.coreRecord' : 'evidence.metadata.simulatedRecord')", "t('evidence.metadata.simulatedRecord')", [EVIWORDS])
+m('V02', 'features/evidence/metadata-tab.tsx', 'the Live record body says simulated', "        ...(live\n          ? {", "        ...(false\n          ? {", [EVIWORDS])
+m('V03', 'features/evidence/preview-card.tsx', 'the Live preview line says simulated', "t(live ? 'evidence.live.noPackage' : 'evidence.preview.noPackage')", "t('evidence.preview.noPackage')", [EVIWORDS])
+m('V04', 'features/evidence/metadata-tab.tsx', 'the Simulated record body takes the Live words', "        ...(live\n          ? {", "        ...(true\n          ? {", [EVIWORDS])
+
+def dump():
+    with open(os.path.join(HERE, 'mutations.json'), 'w', encoding='utf8') as handle:
+        json.dump([{k: mu[k] for k in ('id', 'file', 'find', 'replace')} for mu in M], handle, indent=1)
+
+def check():
+    dump()
+    bad = 0
+    for mu in M:
+        text = open(os.path.join(ROOT, mu['file']), encoding='utf8').read()
+        count = text.count(mu['find'])
+        if count != 1:
+            bad += 1
+            print(f"{mu['id']}: the text occurs {count} times in {mu['file']}")
+    ids = [mu['id'] for mu in M]
+    assert len(ids) == len(set(ids)), 'duplicate id'
+    print(f"{len(M)} mutations; texts that do not occur exactly once: {bad}")
+    return bad
+
+def digests(files):
+    return {f: hashlib.sha256(open(os.path.join(ROOT, f), 'rb').read()).hexdigest()[:16] for f in sorted(set(files))}
+
+def vitest(mid, tests):
+    env = dict(os.environ)
+    env['W0_APPLIED_DIR'] = APPLIED
+    if mid: env['W0_MUT'] = mid
+    else: env.pop('W0_MUT', None)
+    started = time.time()
+    done = subprocess.run(['npx', 'vitest', 'run', '--config', CONFIG, '--maxWorkers=2', *tests], cwd=ROOT, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    summary = ' | '.join(line.strip() for line in out.splitlines() if line.strip().startswith(('Test Files', 'Tests ')))
+    first = next((line.strip() for line in out.splitlines() if line.strip().startswith(('×', 'FAIL'))), '')
+    return done.returncode, summary, first[:180], time.time() - started
+
+def run(ids, baseline):
+    if check(): sys.exit(2)
+    chosen = [mu for mu in M if not ids or mu['id'] in ids]
+    log = open(os.path.join(HERE, 'mutations.log'), 'a', encoding='utf8')
+    def say(line):
+        print(line, flush=True); log.write(line + '\n'); log.flush()
+    files = [mu['file'] for mu in chosen]
+    before = digests(files)
+    say(f"## {time.strftime('%Y-%m-%d %H:%M:%S WIB')} batch {[mu['id'] for mu in chosen]}")
+    if baseline:
+        tests = sorted({t for mu in chosen for t in mu['tests']})
+        code, summary, first, secs = vitest(None, tests)
+        say(f"baseline (no mutation) exit {code} {summary} ({secs:.0f} s) over {len(tests)} files")
+        if code != 0: sys.exit(3)
+    detected, survived, missing = [], [], []
+    for mu in chosen:
+        marker = os.path.join(APPLIED, mu['id'])
+        if os.path.exists(marker): os.remove(marker)
+        code, summary, first, secs = vitest(mu['id'], mu['tests'])
+        applied = os.path.exists(marker)
+        if not applied: missing.append(mu['id']); verdict = 'NOT APPLIED'
+        elif code != 0: detected.append(mu['id']); verdict = 'detected'
+        else: survived.append(mu['id']); verdict = 'SURVIVED'
+        say(f"{mu['id']} {verdict:11} {mu['what']} | {summary} | {first} ({secs:.0f} s)")
+        if os.path.exists(marker): os.remove(marker)
+    after = digests(files)
+    say(f"## {time.strftime('%Y-%m-%d %H:%M:%S WIB')} {len(chosen)} mutations: {len(detected)} detected, {len(survived)} survived {survived}, {len(missing)} not applied {missing}")
+    say(f"## the mutated files in the tree, before and after: {'identical' if before == after else 'CHANGED'}")
+    for f, h in after.items(): say(f"   {h}  {f}")
+
+if __name__ == '__main__':
+    if len(sys.argv) > 1 and sys.argv[1] == 'check': sys.exit(1 if check() else 0)
+    args = sys.argv[2:] if len(sys.argv) > 2 else []
+    baseline = '--baseline' in args
+    run([a for a in args if a != '--baseline'], baseline)

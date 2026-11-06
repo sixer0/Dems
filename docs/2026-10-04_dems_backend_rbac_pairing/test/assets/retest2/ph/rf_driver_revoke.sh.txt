@@ -1,0 +1,25 @@
+#!/bin/bash
+# revoke.sh <tag> <DEV>: phone2 revoke timing. A 20 s screen recording (device time on every frame) runs while
+# andi.pratama revokes phone2's OWN device on the web 5173 (the driver refuses any other id); then the Pair capture,
+# the app's JS log and the Core's revoke/socket lines. The host load is printed before the recording.
+TAG=$1; DEV=$2
+cat <<B
+mark rv$TAG
+w1 nav /admin/devices 3000
+w1 wait pd-issue-panel present 15000
+w1 pdfacts
+p shot rv${TAG}_before
+load
+p clock
+p rec start rv$TAG 20
+sleep 2500
+w1 revoke $DEV RF-PH revoke timing $TAG
+load
+sleep 9000
+p rec pull rv$TAG
+p screen pair
+p shot rv${TAG}_after
+p appjs rv${TAG}_js.txt
+serverlog rv$TAG revoke|socket|sign
+w1 js (async()=>{const a=await (await fetch('/api/v1/audit?order=DESC&limit=6',{credentials:'same-origin'})).json(); return a.rows.map(r=>[r.id,r.type,r.actorId,r.deviceId,new Date(r.at).toTimeString().slice(0,8)+'.'+String(r.at%1000).padStart(3,'0'),r.details&&r.details.reason||''])})()
+B

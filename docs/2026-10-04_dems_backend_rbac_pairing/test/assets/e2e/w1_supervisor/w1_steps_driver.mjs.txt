@@ -1,0 +1,2414 @@
+
+// ──── step: 01 login open (2026-10-06T02:44:01.484Z) ────
+mark('01 login: open')
+await viewport(1440, 900)
+const v = await send('Browser.getVersion')
+await navigate(`${ORIGIN}/login`, 3000)
+const shown = await waitFor('page-login', true, 15000)
+await sleep(1500)
+const facts = await pageFacts()
+const mode = await attr('page-login', 'data-core-mode')
+const state = await attr('page-login', 'data-state')
+const selector = await text('login-mode-selector')
+const modes = await evaluate(`[...document.querySelectorAll('[data-testid^="login-mode-"]')].map(e => ({ id: e.getAttribute('data-testid'), checked: e.getAttribute('aria-checked') ?? e.getAttribute('aria-selected') ?? e.getAttribute('data-selected') ?? (e.querySelector('input') ? e.querySelector('input').checked : null) }))`)
+const strip = await text('login-device-strip')
+const trust = await text('login-trust-line')
+const name = await shot('01_login_live_idle.png')
+record('01 login', { product: v.product, shown, mode, state, selector, modes, strip, trust, facts })
+return { product: v.product, shown, mode, state, selector, modes, strip, trust, facts, name }
+
+
+// ──── step: 02 login wrong password (2026-10-06T02:44:18.709Z) ────
+mark('02 login: wrong password')
+await type('login-username-field', USERNAME)
+await type('login-password-field', 'wrong-password-e2e-w1')
+const before = await shot('02_login_wrong_password_before.png')
+await click('login-submit')
+await waitFor('login-alert', true, 10000)
+await sleep(800)
+const alert = await text('login-alert')
+const attempts = await text('login-attempts')
+const state = await attr('page-login', 'data-state')
+const pwLen = await evaluate(`document.querySelector('[data-testid="login-password-field"] input')?.value.length ?? null`)
+const userLen = await evaluate(`document.querySelector('[data-testid="login-username-field"] input')?.value.length ?? null`)
+const after = await shot('02_login_wrong_password_after.png')
+record('02 wrong password', { alert, attempts, state, pwLen, userLen })
+return { alert, attempts, state, pwLen, userLen, before, after }
+
+
+// ──── step: 03 login mode dialog (2026-10-06T02:44:29.740Z) ────
+mark('03 login: data mode selector -> Simulated -> cancel')
+await click('login-mode-SIMULATED')
+const opened = await waitFor('mode-switch-dialog', true, 6000)
+await sleep(700)
+const dialog = await text('mode-switch-dialog')
+const s = await shot('03_login_mode_switch_dialog.png')
+await click('mode-switch-cancel')
+const closed = await waitFor('mode-switch-dialog', false, 6000)
+await sleep(500)
+const stored = await evaluate(`localStorage.getItem('dems.core.mode.v1')`)
+const live = await attr('login-mode-LIVE', 'aria-checked')
+record('03 mode dialog', { opened, dialog, closed, stored, live })
+return { opened, dialog, closed, stored, live, s }
+
+
+// ──── step: 04 sign in (2026-10-06T02:44:38.691Z) ────
+mark('04 login: sign in as SUPERVISOR through the form')
+await type('login-username-field', USERNAME)
+await typePassword('login-password-field')
+const before = await shot('04_login_filled_before_sign_in.png')
+await click('login-submit')
+const arrived = await waitFor('page-dashboard', true, 25000)
+await sleep(3500)
+const facts = await pageFacts()
+const menu = await attr('user-menu', 'aria-label')
+const cookieVisible = await evaluate(`document.cookie.length`)
+const after = await shot('05_dashboard_after_sign_in.png')
+const audit = await auditTail(6)
+record('04 sign in', { arrived, facts, menu, cookieVisible, audit })
+return { arrived, facts, menu, cookieVisible, audit, before, after }
+
+
+// ──── step: 05 stack check (2026-10-06T02:45:00.992Z) ────
+mark('05 stack-check: open')
+await navigate(`${ORIGIN}/stack-check`, 2500)
+const shown = await waitFor('page-stack-check', true, 15000)
+await sleep(3000)
+const facts = await pageFacts()
+const body = await text('page-stack-check', 1500)
+const ctrls = await controls('[data-testid="page-stack-check"]')
+const hb1 = await text('heartbeat-seq')
+await sleep(2500)
+const hb2 = await text('heartbeat-seq')
+const version = await text('health-version')
+const s = await shot('06_stack_check_live.png')
+record('05 stack check', { shown, facts, body, ctrls, hb1, hb2, version })
+return { shown, facts, body, ctrls, hb1, hb2, version, s }
+
+
+// ──── step: 06 stack check toast (2026-10-06T02:45:18.119Z) ────
+mark('06 stack-check: Show test toast')
+const hbAria = async () => evaluate(`(() => { const el = document.querySelector('[data-testid="heartbeat-seq"]'); return el ? (el.getAttribute('aria-label') ?? el.querySelector('.sr-only')?.textContent ?? el.closest('[aria-label]')?.getAttribute('aria-label')) : null })()`)
+const chip = await text('heartbeat-chip')
+const a1 = await hbAria()
+await sleep(2200)
+const a2 = await hbAria()
+await clickByText('[data-testid="page-stack-check"] button', 'Show test toast')
+await sleep(800)
+const facts = await pageFacts()
+const s = await shot('07_stack_check_test_toast.png')
+record('06 stack toast', { chip, a1, a2, facts })
+return { chip, a1, a2, facts, s }
+
+
+// ──── step: 07 dashboard controls (2026-10-06T02:45:37.913Z) ────
+mark('07 dashboard: open via sidebar')
+await clickByText('nav a, aside a, [data-testid="app-shell"] a', 'Dashboard')
+await waitFor('page-dashboard', true, 10000)
+await sleep(2500)
+const facts = await pageFacts()
+const ctrls = await controls('main')
+const top = await controls('[data-testid="top-bar"]')
+return { facts, ctrls, top }
+
+
+// ──── step: 08 dashboard device menus (2026-10-06T02:45:58.218Z) ────
+mark('08 dashboard: Camera 1 actions menu')
+const menuItems = async () => evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"], [role="menu"] [role="menuitemradio"]')].map(e => ({ text: e.innerText.replace(/\\s+/g,' ').trim().slice(0,90), disabled: e.getAttribute('aria-disabled') === 'true' || e.hasAttribute('data-disabled'), testid: e.getAttribute('data-testid') }))`)
+await click('[aria-label="Camera 1 actions"]')
+await sleep(700)
+const cam = await menuItems()
+const s1 = await shot('08_dashboard_camera1_menu.png')
+// Details
+const det = await clickByText('[role="menu"] [role="menuitem"]', 'Details')
+await sleep(1500)
+const afterDetails = await pageFacts()
+const drawer = await exists('device-drawer')
+const s2 = await shot('09_dashboard_camera1_details.png')
+record('08 cam menu', { cam, det, afterDetails, drawer })
+return { cam, det, afterDetails, drawer, s1, s2 }
+
+
+// ──── step: 09 dashboard menus 2 (2026-10-06T02:46:22.450Z) ────
+const menuItems = async () => evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"], [role="listbox"] [role="option"]')].map(e => ({ text: e.innerText.replace(/\\s+/g,' ').trim().slice(0,90), disabled: e.getAttribute('aria-disabled') === 'true' || e.hasAttribute('data-disabled') }))`)
+const popText = async () => evaluate(`[...document.querySelectorAll('[role="dialog"], [data-slot="popover"], [role="menu"], [data-slot="dropdown"]')].filter(e => e.getClientRects().length).map(e => e.innerText.replace(/\\s+/g,' ').trim().slice(0,500))`)
+const out = {}
+await clickByText('nav a, aside a', 'Dashboard'); await waitFor('page-dashboard', true, 10000); await sleep(2000)
+mark('09a dashboard: MIC 1 actions menu')
+await click('[aria-label="MIC 1 actions"]'); await sleep(700)
+out.mic = await menuItems(); out.s_mic = await shot('10_dashboard_mic1_menu.png'); await key('Escape'); await sleep(400)
+mark('09b dashboard: More start options')
+await click('[aria-label="More start options"]'); await sleep(700)
+out.more = await menuItems(); out.morePop = await popText(); out.s_more = await shot('11_dashboard_more_start_options.png'); await key('Escape'); await sleep(400)
+mark('09c dashboard: notifications bell')
+await click('notifications-bell'); await sleep(900)
+out.bell = await popText(); out.s_bell = await shot('12_dashboard_notifications.png'); await key('Escape'); await sleep(400)
+mark('09d dashboard: secure pill (ATTENTION)')
+await click('secure-pill'); await sleep(900)
+out.pill = await popText(); out.pillFacts = await pageFacts(); out.s_pill = await shot('13_dashboard_attention_pill.png'); await key('Escape'); await sleep(400)
+out.after = await pageFacts()
+record('09 dashboard menus', out)
+return out
+
+
+// ──── step: 10 dashboard top bar and tiles (2026-10-06T02:46:48.199Z) ────
+const popText = async () => evaluate(`[...document.querySelectorAll('[role="dialog"], [role="alertdialog"], [data-slot="popover"], [role="menu"], [role="tooltip"]')].filter(e => e.getClientRects().length).map(e => (e.getAttribute('data-testid') ?? '') + ' ' + e.innerText.replace(/\\s+/g,' ').trim().slice(0,400))`)
+const out = {}
+mark('10a dashboard: device ID button')
+await clickByText('[data-testid="top-bar"] [role="button"]', 'Device ID'); await sleep(900)
+out.device = await popText(); out.deviceHref = location ? null : null; out.deviceFacts = await pageFacts(); out.s_dev = await shot('14_dashboard_device_id.png'); await key('Escape'); await sleep(400)
+if (!(await exists('page-dashboard'))) { await clickByText('nav a, aside a', 'Dashboard'); await waitFor('page-dashboard', true, 10000); await sleep(1500) }
+mark('10b dashboard: LIVE mode indicator -> dialog -> cancel')
+await click('shell-mode'); await sleep(900)
+out.mode = await popText(); out.s_mode = await shot('15_dashboard_mode_indicator_dialog.png')
+if (await exists('mode-switch-cancel')) { await click('mode-switch-cancel'); await sleep(500) } else { await key('Escape'); await sleep(400) }
+out.modeStored = await evaluate(`localStorage.getItem('dems.core.mode.v1')`)
+out.modeAfter = await text('shell-mode')
+mark('10c dashboard: security tile TPM')
+await click('stn-tpm'); await sleep(1200)
+out.tpm = await pageFacts(); out.tpmPop = await popText(); out.s_tpm = await shot('16_dashboard_tile_tpm.png')
+record('10 dashboard top', out)
+return out
+
+
+// ──── step: 10 dashboard top bar and tiles (rerun) (2026-10-06T02:47:00.664Z) ────
+const popText = async () => evaluate(`[...document.querySelectorAll('[role="dialog"], [role="alertdialog"], [data-slot="popover"], [role="menu"], [role="tooltip"]')].filter(e => e.getClientRects().length).map(e => (e.getAttribute('data-testid') ?? '') + ' ' + e.innerText.replace(/\\s+/g,' ').trim().slice(0,400))`)
+const out = {}
+await key('Escape'); await sleep(300)
+if (!(await exists('page-dashboard'))) { await clickByText('nav a, aside a', 'Dashboard'); await waitFor('page-dashboard', true, 10000); await sleep(1500) }
+mark('10a dashboard: device ID button (rerun)')
+await clickByText('[data-testid="top-bar"] [role="button"]', 'Device ID'); await sleep(900)
+out.device = await popText(); out.deviceFacts = await pageFacts(); out.s_dev = await shot('14_dashboard_device_id.png'); await key('Escape'); await sleep(400)
+if (!(await exists('page-dashboard'))) { await clickByText('nav a, aside a', 'Dashboard'); await waitFor('page-dashboard', true, 10000); await sleep(1500) }
+mark('10b dashboard: LIVE mode indicator -> dialog -> cancel')
+await click('shell-mode'); await sleep(900)
+out.mode = await popText(); out.s_mode = await shot('15_dashboard_mode_indicator_dialog.png')
+if (await exists('mode-switch-cancel')) { await click('mode-switch-cancel'); await sleep(500) } else { await key('Escape'); await sleep(400) }
+out.modeStored = await evaluate(`localStorage.getItem('dems.core.mode.v1')`)
+out.modeAfter = await text('shell-mode')
+mark('10c dashboard: security tile TPM')
+await click('stn-tpm'); await sleep(1200)
+out.tpm = await pageFacts(); out.tpmPop = await popText(); out.s_tpm = await shot('16_dashboard_tile_tpm.png')
+record('10 dashboard top', out)
+return out
+
+
+// ──── step: 11 dashboard hovers (2026-10-06T02:47:41.749Z) ────
+const hover = async (sel) => {
+  const box = await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(q(sel))}); if (!el) return null; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`)
+  if (!box) return false
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 }); await sleep(200)
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y }); await sleep(1200)
+  return true
+}
+const tip = async () => evaluate(`[...document.querySelectorAll('[role="tooltip"], [data-slot="tooltip"], [data-slot="tooltip-content"]')].filter(e => e.getClientRects().length).map(e => e.innerText.replace(/\\s+/g,' ').trim().slice(0,300))`)
+const out = {}
+mark('11a dashboard: hover TPM tile')
+out.h1 = await hover('stn-tpm'); out.tpmTip = await tip(); out.s1 = await shot('17_dashboard_tooltip_tpm.png')
+mark('11b dashboard: hover Device ID')
+out.h2 = await hover('.dems-device-block'); out.devTip = await tip(); out.s2 = await shot('18_dashboard_tooltip_device_id.png')
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 700, y: 450 })
+record('11 hovers', out)
+return out
+
+
+// ──── step: 12 dashboard navigation commands (2026-10-06T02:48:00.323Z) ────
+const toDash = async () => { await clickByText('nav a, aside a', 'Dashboard'); await waitFor('page-dashboard', true, 10000); await sleep(1800) }
+const out = {}
+const go = async (label, doClick, shotName) => {
+  mark(`12 dashboard: ${label}`)
+  await toDash()
+  await doClick()
+  await sleep(2200)
+  const f = await pageFacts()
+  const s = await shot(shotName)
+  return { href: f.href, page: f.page, s }
+}
+out.queue = await go('Open Evidence Queue', () => clickByText('main button', 'Open Evidence Queue'), '19_dashboard_open_evidence_queue.png')
+out.strip = await go('strip GNSS / Time', () => click('strip-time'), '20_dashboard_strip_time.png')
+out.events = await go('View All Events', () => clickByText('main a', 'View All Events'), '21_dashboard_view_all_events.png')
+out.diag = await go('quick action Run Diagnostics', () => click('quick-action-runDiagnostics'), '22_dashboard_quick_run_diagnostics.png')
+out.sealed = await go('Sealed evidence View All', () => click('[data-testid="panel-h"] a'), '23_dashboard_sealed_view_all.png')
+record('12 dashboard nav', out)
+return out
+
+
+// ──── step: 13 dashboard narrow + reload (2026-10-06T02:48:44.051Z) ────
+const out = {}
+mark('13a dashboard: narrow 390x844')
+await clickByText('nav a, aside a', 'Dashboard'); await waitFor('page-dashboard', true, 10000); await sleep(1500)
+await viewport(390, 844, true)
+await sleep(2500)
+out.narrow = await pageFacts()
+out.narrowLayout = await evaluate(`({ w: innerWidth, h: innerHeight, bottomTabs: document.querySelector('[data-testid="bottom-tabs"]') !== null && document.querySelector('[data-testid="bottom-tabs"]').getClientRects().length > 0, sidebarVisible: [...document.querySelectorAll('aside, nav')].some(e => e.getBoundingClientRect().width > 150 && e.getBoundingClientRect().left >= 0 && getComputedStyle(e).visibility !== 'hidden'), horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 1, scrollWidth: document.documentElement.scrollWidth })`)
+out.s1 = await shot('24_dashboard_narrow_390x844.png')
+await viewport(1440, 900, false)
+await sleep(1500)
+mark('13b dashboard: reload of the deep link /devices while signed in')
+await navigate(`${ORIGIN}/devices`, 2000)
+await waitFor('page-devices', true, 15000)
+await sleep(1500)
+await send('Page.reload', { ignoreCache: false })
+await sleep(1000)
+const back = await waitFor('page-devices', true, 20000)
+await sleep(2500)
+out.reload = { back, facts: await pageFacts(), loginShown: await exists('page-login') }
+out.s2 = await shot('25_reload_deep_link_devices.png')
+record('13 narrow+reload', out)
+return out
+
+
+// ──── step: 14 session new open (2026-10-06T02:50:05.381Z) ────
+mark('14 session-new: open from the Dashboard button')
+await clickByText('nav a, aside a', 'Dashboard'); await waitFor('page-dashboard', true, 10000); await sleep(1500)
+await click('start-new-session')
+const shown = await waitFor('page-session-new', true, 15000)
+await sleep(2500)
+const facts = await pageFacts()
+const ctrls = await controls('[data-testid="page-session-new"]')
+const fields = await evaluate(`[...document.querySelectorAll('[data-testid="page-session-new"] input, [data-testid="page-session-new"] textarea')].map(e => ({ testid: e.closest('[data-testid]')?.getAttribute('data-testid'), type: e.type, value: e.value.slice(0,40), maxLength: e.maxLength, required: e.required, placeholder: e.placeholder }))`)
+const next = await evaluate(`(() => { const b = document.querySelector('[data-testid="sn-next"]'); return b ? { disabled: b.disabled || b.getAttribute('aria-disabled') === 'true' || b.hasAttribute('data-disabled'), text: b.innerText } : null })()`)
+const s = await shot('26_session_new_info_step_empty.png')
+record('14 session new open', { shown, facts, ctrls, fields, next })
+return { shown, facts, ctrls, fields, next, s }
+
+
+// ──── step: 15 session new info fields (2026-10-06T02:50:33.188Z) ────
+const out = {}
+const nextState = async () => evaluate(`(() => { const b = document.querySelector('[data-testid="sn-next"]'); return b ? (b.disabled || b.getAttribute('aria-disabled') === 'true' || b.hasAttribute('data-disabled')) : null })()`)
+const listOpts = async () => evaluate(`[...document.querySelectorAll('[role="listbox"] [role="option"]')].filter(e => e.getClientRects().length).map(e => e.innerText.replace(/\\s+/g,' ').trim().slice(0,80))`)
+mark('15a session-new: invalid case number (client bound)')
+await type('sn-case-number', 'ABC-123')
+await key('Tab'); await sleep(500)
+out.invalid = { fieldText: await text('sn-field-case'), nextDisabled: await nextState() }
+out.s1 = await shot('27_session_new_case_number_invalid.png')
+mark('15b session-new: Fill in the next case number (scan)')
+await click('sn-scan'); await sleep(1800)
+out.scan = { value: await evaluate(`document.querySelector('[data-testid="sn-case-number"]')?.value ?? document.querySelector('[data-testid="sn-case-number"] input')?.value`), fieldText: await text('sn-field-case') }
+mark('15c session-new: subject type Saksi, name, investigator suggestions')
+await click('sn-subject-SAKSI'); await sleep(300)
+await type('sn-subject-name', 'Ahmad Fauzi (E2E-W1 walk)')
+await click('sn-investigator'); await sleep(800)
+out.investigatorOptions = await listOpts()
+out.s2 = await shot('28_session_new_investigator_suggestions.png')
+const picked = await clickByText('[role="listbox"] [role="option"]', 'Andi Pratama')
+await sleep(500)
+out.investigator = await evaluate(`document.querySelector('[data-testid="sn-investigator-input"] input, input[data-testid="sn-investigator-input"]')?.value ?? null`)
+mark('15d session-new: room and profile selects')
+await click('sn-room'); await sleep(700)
+out.roomOptions = await listOpts()
+out.s3 = await shot('29_session_new_room_select.png')
+await key('Escape'); await sleep(300)
+await click('sn-profile'); await sleep(700)
+out.profileOptions = await listOpts()
+out.s4 = await shot('30_session_new_profile_select.png')
+const prof = out.profileOptions.find(o => !o.startsWith('Standard')) 
+if (prof) await clickByText('[role="listbox"] [role="option"]', prof.split(' (')[0]); else await key('Escape')
+await sleep(500)
+out.profile = await text('sn-profile')
+await type('sn-notes', 'E2E-W1 end-to-end walk on lane 3 (supervisor). Synthetic data.')
+await sleep(400)
+out.nextDisabled = await nextState()
+out.summary = await text('sn-step-info', 900)
+out.s5 = await shot('31_session_new_info_step_filled.png')
+record('15 session new info', out)
+return out
+
+
+// ──── step: 16 session new devices step (2026-10-06T02:51:07.760Z) ────
+const out = {}
+mark('16a session-new: Next (create + precheck)')
+await click('sn-next')
+out.step2 = await waitFor('sn-step-devices', true, 15000)
+await sleep(6000)
+out.facts = await pageFacts()
+out.sessionId = await text('sn-session-id')
+out.header = await text('sn-header-session')
+out.checks = await evaluate(`[...document.querySelectorAll('[data-testid^="sn-check-"]')].filter(e => e.getAttribute('data-testid') !== 'sn-check-chip').map(e => e.getAttribute('data-testid') + ': ' + e.innerText.replace(/\\s+/g,' ').trim().slice(0,90))`)
+out.outcome = await text('sn-gate-outcome')
+out.blocked = await text('sn-gate-blocked', 600)
+out.liveLink = await text('sn-gate-live-link', 400)
+out.next = await evaluate(`(() => { const b = document.querySelector('[data-testid="sn-next"]'); return b ? { disabled: b.disabled || b.getAttribute('aria-disabled') === 'true' || b.hasAttribute('data-disabled'), text: b.innerText } : null })()`)
+out.start = await evaluate(`(() => { const b = document.querySelector('[data-testid="sn-start"]'); return b ? { disabled: b.disabled || b.getAttribute('aria-disabled') === 'true', text: b.innerText } : null })()`)
+out.ctrls = await controls('[data-testid="page-session-new"]')
+out.s1 = await shot('32_session_new_devices_step_checks.png')
+await evaluate(`document.querySelector('[data-testid="sn-gate-blocked"]')?.scrollIntoView({ block: 'center' })`)
+await sleep(600)
+out.s2 = await shot('33_session_new_devices_step_core_blocked.png')
+out.audit = await auditTail(5)
+record('16 session new devices', out)
+return out
+
+
+// ──── step: 17 session new retry back cancel (2026-10-06T02:51:48.891Z) ────
+const out = {}
+mark('17a session-new: Re-run checks')
+await click('sn-retry'); await sleep(800)
+out.progress = await text('sn-gate-progress')
+out.s0 = await shot('34_session_new_rerun_in_progress.png')
+await sleep(5500)
+out.afterRetry = { outcome: await text('sn-gate-outcome'), core: await text('sn-check-CORE') }
+out.s1 = await shot('35_session_new_rerun_blocked_again.png')
+mark('17b session-new: Back to step 1')
+await click('sn-back'); await sleep(1500)
+out.back = { href: (await pageFacts()).href, info: await exists('sn-step-info'), caseValue: await evaluate(`document.querySelector('[data-testid="sn-case-number"]')?.value ?? null`), header: await text('sn-header-session') }
+out.s2 = await shot('36_session_new_back_to_info.png')
+mark('17c session-new: Cancel -> dialog')
+await click('sn-cancel'); await sleep(900)
+out.dialog = await text('sn-cancel-dialog')
+out.s3 = await shot('37_session_new_cancel_dialog.png')
+await click('sn-cancel-confirm'); await sleep(2500)
+out.after = await pageFacts()
+out.s4 = await shot('38_session_new_cancelled.png')
+out.audit = await auditTail(4)
+record('17 session new retry/back/cancel', out)
+return out
+
+
+// ──── step: 18 session monitor idle (2026-10-06T02:52:19.153Z) ────
+const out = {}
+mark('18 session-monitor: open (idle, no recording)')
+await clickByText('nav a, aside a', 'Session Monitor')
+out.shown = await waitFor('page-session-monitor', true, 15000)
+await sleep(3000)
+out.facts = await pageFacts()
+out.invitation = await text('sm-invitation', 500)
+out.banner = await text('sm-status-banner', 300)
+out.ctrls = await controls('[data-testid="page-session-monitor"]')
+out.s = await shot('39_session_monitor_idle.png')
+record('18 session monitor idle', out)
+return out
+
+
+// ──── step: 19 session monitor idle commands (2026-10-06T02:52:34.463Z) ────
+const out = {}
+mark('19a session-monitor: switch to Camera 2')
+await click('sm-camera-VIDEO-02'); await sleep(1200)
+out.cam = await evaluate(`[...document.querySelectorAll('[data-testid^="sm-camera-"]')].map(e => e.getAttribute('data-testid') + '=' + (e.getAttribute('aria-checked') ?? e.getAttribute('data-selected')))`)
+out.s1 = await shot('40_session_monitor_camera2.png')
+await click('sm-camera-VIDEO-01'); await sleep(600)
+mark('19b session-monitor: Re-verify')
+out.before = await text('sm-integrity-checks', 500)
+await click('sm-reverify'); await sleep(900)
+out.during = await text('sm-integrity-checks', 500)
+out.s2 = await shot('41_session_monitor_reverify_running.png')
+await sleep(4000)
+out.after = await text('sm-integrity-checks', 500)
+out.facts = await pageFacts()
+out.s3 = await shot('42_session_monitor_reverify_done.png')
+out.audit = await auditTail(3)
+record('19 sm idle commands', out)
+return out
+
+
+// ──── step: 19c session monitor reverify result (2026-10-06T02:53:13.470Z) ────
+const out = {}
+out.existing = await text('sm-chain-result')
+mark('19c session-monitor: Re-verify (read the chain result)')
+await click('sm-reverify'); await sleep(300)
+out.label = await text('sm-reverify')
+await sleep(3500)
+out.result = await text('sm-chain-result')
+await evaluate(`document.querySelector('[data-testid="sm-chain-result"]')?.scrollIntoView({ block: 'center' })`)
+await sleep(400)
+out.s = await shot('42_session_monitor_reverify_done.png')
+record('19c reverify', out)
+return out
+
+
+// ──── step: 20 evidence list open (2026-10-06T02:53:38.547Z) ────
+const out = {}
+mark('20 evidence: open via sidebar')
+await clickByText('nav a, aside a', 'Evidence')
+out.shown = await waitFor('page-evidence', true, 15000)
+await waitFor('evidence-table', true, 15000)
+await sleep(2500)
+out.facts = await pageFacts()
+out.summary = await text('evidence-page-summary')
+out.pagination = await text('evidence-pagination')
+out.rows = await evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="row"], [data-testid="evidence-table"] tbody tr')].slice(0,12).map(r => r.innerText.replace(/\\s+/g,' ').trim().slice(0,160))`)
+out.headers = await evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="columnheader"], [data-testid="evidence-table"] th')].map(h => ({ text: h.innerText.trim(), sort: h.getAttribute('aria-sort') }))`)
+out.toolbar = await controls('[data-testid="evidence-toolbar"]')
+out.pageCtrls = await controls('[data-testid="evidence-pagination"]')
+out.s = await shot('43_evidence_list_live.png')
+record('20 evidence list', out)
+return out
+
+
+// ──── step: 21 evidence search and status (2026-10-06T02:54:00.267Z) ────
+const out = {}
+const rows = async () => evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="row"]')].slice(1).map(r => r.innerText.replace(/\\s+/g,' ').trim().slice(0,70))`)
+mark('21a evidence: search "Indah"')
+await type('evidence-search', 'Indah'); await sleep(1500)
+out.search = { summary: await text('evidence-page-summary'), rows: await rows(), href: (await pageFacts()).href }
+out.s1 = await shot('44_evidence_search_indah.png')
+mark('21b evidence: clear search')
+await clickByText('[data-testid="evidence-toolbar"] button', 'Close').catch(() => null)
+if (await evaluate(`document.querySelector('[data-testid="evidence-search"] input, input[data-testid="evidence-search"]')?.value?.length ?? 0`)) { await type('evidence-search', ''); }
+await sleep(1200)
+out.cleared = { summary: await text('evidence-page-summary') }
+mark('21c evidence: status filter Sealed')
+await clickByText('[data-testid="evidence-status-filter"]', 'Sealed'); await sleep(1500)
+out.sealed = { summary: await text('evidence-page-summary'), statuses: await evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="row"]')].slice(1).map(r => r.querySelector('[role="gridcell"]:nth-last-child(2), td:nth-last-child(2)')?.innerText.trim())`), href: (await pageFacts()).href }
+out.s2 = await shot('45_evidence_filter_sealed.png')
+mark('21d evidence: status filter Under Review')
+await clickByText('[data-testid="evidence-status-filter"]', 'Under Review'); await sleep(1500)
+out.review = { summary: await text('evidence-page-summary'), rows: await rows() }
+out.s3 = await shot('46_evidence_filter_under_review.png')
+await clickByText('[data-testid="evidence-status-filter"]', 'All'); await sleep(1200)
+out.all = { summary: await text('evidence-page-summary') }
+record('21 evidence search/status', out)
+return out
+
+
+// ──── step: 21r evidence status filters (rerun with stable clicks) (2026-10-06T02:54:45.101Z) ────
+const out = {}
+const sel = async () => evaluate(`[...document.querySelectorAll('[data-testid="evidence-status-filter"]')].filter(e => e.getAttribute('aria-checked') === 'true').map(e => e.innerText.replace(/\\s+/g,' ').trim())`)
+const statuses = async () => evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="row"]')].slice(1).map(r => { const cells = [...r.querySelectorAll('[role="gridcell"], [role="rowheader"]')]; return (cells.find(c => /Sealed|Recorded|Exported|Under Review|Archived/.test(c.innerText))?.innerText ?? '').trim() })`)
+for (const [label, shotName] of [['Sealed', '45_evidence_filter_sealed.png'], ['Under Review', '46_evidence_filter_under_review.png'], ['Recorded', '47_evidence_filter_recorded.png'], ['All', null]]) {
+  mark(`21r evidence: status filter ${label}`)
+  const c = await clickByText('[data-testid="evidence-status-filter"]', label === 'All' ? 'All ' : label)
+  await sleep(1500)
+  out[label] = { click: c, selected: await sel(), summary: await text('evidence-page-summary'), statuses: await statuses(), href: (await pageFacts()).href }
+  if (shotName) out[label].s = await shot(shotName)
+}
+record('21r evidence status', out)
+return out
+
+
+// ──── step: 21q inspect status filter DOM (2026-10-06T02:55:02.134Z) ────
+return evaluate(`[...document.querySelectorAll('[data-testid="evidence-status-filter"]')].map(e => { const r = e.getBoundingClientRect(); return { tag: e.tagName, role: e.getAttribute('role'), text: e.innerText.replace(/\\s+/g,' ').trim(), checked: e.getAttribute('aria-checked'), pressed: e.getAttribute('aria-pressed'), selected: e.getAttribute('data-selected'), state: e.getAttribute('data-state'), x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } })`)
+
+
+// ──── step: 21s evidence status filters (radios) (2026-10-06T02:55:14.509Z) ────
+const out = {}
+const R = '[data-testid="evidence-status-filter"] [role="radio"]'
+const sel = async () => evaluate(`[...document.querySelectorAll('${R}')].filter(e => e.getAttribute('aria-checked') === 'true' || e.getAttribute('data-selected') === 'true').map(e => e.innerText.replace(/\\s+/g,' ').trim())`)
+const statuses = async () => evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="row"]')].slice(1).map(r => (r.innerText.match(/Sealed|Recorded|Exported|Under Review|Archived/) ?? [''])[0])`)
+for (const [label, shotName] of [['Sealed', '45_evidence_filter_sealed.png'], ['Under Review', '46_evidence_filter_under_review.png'], ['Recorded', '47_evidence_filter_recorded.png'], ['Archived', '48_evidence_filter_archived_empty.png'], ['All', null]]) {
+  mark(`21s evidence: status filter ${label}`)
+  const c = await clickByText(R, label)
+  await sleep(1500)
+  out[label] = { click: c, selected: await sel(), summary: await text('evidence-page-summary'), statuses: await statuses(), empty: await text('evidence-empty'), href: (await pageFacts()).href }
+  if (shotName) out[label].s = await shot(shotName)
+}
+record('21s evidence status', out)
+return out
+
+
+// ──── step: 22 evidence selects dates clear (2026-10-06T02:55:41.734Z) ────
+const out = {}
+const rows = async () => evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="row"]')].slice(1).map(r => r.innerText.replace(/\\s+/g,' ').trim().slice(0,90))`)
+const opt = (label) => clickByText('[role="listbox"] [role="option"]', label)
+mark('22a evidence: subject filter Saksi')
+await click('evidence-subject-filter'); await sleep(700)
+out.subjectOptions = await evaluate(`[...document.querySelectorAll('[role="listbox"] [role="option"]')].map(e => e.innerText.trim())`)
+await opt('Saksi'); await sleep(1500)
+out.subject = { summary: await text('evidence-page-summary'), href: (await pageFacts()).href, allSaksi: (await rows()).every(r => r.includes('Saksi')) }
+out.s1 = await shot('49_evidence_filter_subject_saksi.png')
+mark('22b evidence: investigator filter AKP Andi Pratama')
+await click('evidence-investigator-filter'); await sleep(700)
+out.invOptions = await evaluate(`[...document.querySelectorAll('[role="listbox"] [role="option"]')].map(e => e.innerText.trim())`)
+await opt('Andi Pratama'); await sleep(1500)
+out.investigator = { summary: await text('evidence-page-summary'), href: (await pageFacts()).href, rows: await rows() }
+out.s2 = await shot('50_evidence_filter_saksi_andi.png')
+mark('22c evidence: Clear filters')
+await click('evidence-clear-filters'); await sleep(1500)
+out.cleared = { summary: await text('evidence-page-summary'), href: (await pageFacts()).href }
+mark('22d evidence: date range from 06/10/2026')
+const dateInfo = await evaluate(`(() => { const a = document.querySelector('[data-testid="evidence-date-from"]'); const el = a?.tagName === 'INPUT' ? a : a?.querySelector('input'); return el ? { type: el.type, value: el.value } : null })()`)
+out.dateInfo = dateInfo
+await evaluate(`(() => { const a = document.querySelector('[data-testid="evidence-date-from"]'); const el = a.tagName === 'INPUT' ? a : a.querySelector('input'); el.scrollIntoView({ block: 'center' }); el.focus() })()`)
+// Typing into a native date input: day, month, year segments as a person would.
+await send('Input.insertText', { text: '06' }); await sleep(150)
+await send('Input.insertText', { text: '10' }); await sleep(150)
+await send('Input.insertText', { text: '2026' }); await sleep(300)
+await key('Tab'); await sleep(1500)
+out.dateFrom = { value: await evaluate(`(() => { const a = document.querySelector('[data-testid="evidence-date-from"]'); const el = a.tagName === 'INPUT' ? a : a.querySelector('input'); return el.value })()`), summary: await text('evidence-page-summary'), href: (await pageFacts()).href, rows: await rows() }
+out.s3 = await shot('51_evidence_filter_date_from.png')
+await click('evidence-clear-filters'); await sleep(1200)
+out.cleared2 = { summary: await text('evidence-page-summary'), href: (await pageFacts()).href }
+record('22 evidence selects', out)
+return out
+
+
+// ──── step: 22e evidence date range by keystrokes (2026-10-06T02:56:11.163Z) ────
+const out = {}
+const rows = async () => evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="row"]')].slice(1).map(r => r.innerText.replace(/\\s+/g,' ').trim().slice(0,40))`)
+const typeKeys = async (str) => { for (const ch of str) { await send('Input.dispatchKeyEvent', { type: 'keyDown', key: ch, code: 'Digit' + ch, text: ch, unmodifiedText: ch, windowsVirtualKeyCode: 48 + Number(ch) }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ch, code: 'Digit' + ch, windowsVirtualKeyCode: 48 + Number(ch) }); await sleep(60) } }
+const val = (id) => evaluate(`(() => { const a = document.querySelector('[data-testid="${id}"]'); const el = a.tagName === 'INPUT' ? a : a.querySelector('input'); return el.value })()`)
+mark('22e evidence: date range from 06/10/2026 to 06/10/2026 (keystrokes)')
+await click('evidence-date-from'); await sleep(300)
+await evaluate(`(() => { const a = document.querySelector('[data-testid="evidence-date-from"]'); const el = a.tagName === 'INPUT' ? a : a.querySelector('input'); el.focus() })()`)
+await typeKeys('06102026'); await sleep(1500)
+out.from = { value: await val('evidence-date-from'), summary: await text('evidence-page-summary'), href: (await pageFacts()).href, rows: await rows() }
+out.s1 = await shot('51_evidence_filter_date_from.png')
+await evaluate(`(() => { const a = document.querySelector('[data-testid="evidence-date-to"]'); const el = a.tagName === 'INPUT' ? a : a.querySelector('input'); el.scrollIntoView({ block: 'center' }); el.focus() })()`)
+await typeKeys('05102026'); await sleep(1500)
+out.to = { value: await val('evidence-date-to'), summary: await text('evidence-page-summary'), href: (await pageFacts()).href, empty: await text('evidence-empty'), alerts: (await pageFacts()).alerts }
+out.s2 = await shot('52_evidence_filter_date_to_before_from.png')
+await click('evidence-clear-filters'); await sleep(1200)
+out.cleared = { summary: await text('evidence-page-summary'), href: (await pageFacts()).href, from: await val('evidence-date-from'), to: await val('evidence-date-to') }
+record('22e evidence dates', out)
+return out
+
+
+// ──── step: 22f evidence date range via native setter (2026-10-06T02:56:48.361Z) ────
+const out = {}
+const rows = async () => evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="row"]')].slice(1).map(r => r.innerText.replace(/\\s+/g,' ').trim().slice(0,40))`)
+const setDate = (id, v) => evaluate(`(() => { const a = document.querySelector('[data-testid="${id}"]'); const el = a.tagName === 'INPUT' ? a : a.querySelector('input'); el.focus(); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(el, '${v}'); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return el.value })()`)
+mark('22f evidence: date from 2026-10-06 (native setter + input event)')
+out.fromSet = await setDate('evidence-date-from', '2026-10-06'); await sleep(1500)
+out.from = { summary: await text('evidence-page-summary'), href: (await pageFacts()).href, rows: await rows() }
+out.s1 = await shot('51_evidence_filter_date_from.png')
+mark('22g evidence: date to 2026-10-05 (before from)')
+out.toSet = await setDate('evidence-date-to', '2026-10-05'); await sleep(1500)
+out.to = { summary: await text('evidence-page-summary'), href: (await pageFacts()).href, empty: await text('evidence-empty'), fieldErrors: await evaluate(`[...document.querySelectorAll('[data-testid="evidence-toolbar"] [role="alert"], [data-testid="evidence-toolbar"] [data-invalid="true"], [data-testid="evidence-toolbar"] [aria-invalid="true"]')].map(e => e.getAttribute('data-testid') ?? e.tagName)`) }
+out.s2 = await shot('52_evidence_filter_date_to_before_from.png')
+mark('22h evidence: date to 2026-10-06')
+out.toSet2 = await setDate('evidence-date-to', '2026-10-06'); await sleep(1500)
+out.to2 = { summary: await text('evidence-page-summary'), href: (await pageFacts()).href, rows: await rows() }
+out.s3 = await shot('53_evidence_filter_date_range_one_day.png')
+await click('evidence-clear-filters'); await sleep(1200)
+out.cleared = { summary: await text('evidence-page-summary'), href: (await pageFacts()).href }
+record('22f evidence dates', out)
+return out
+
+
+// ──── step: 23 evidence sort and paging (2026-10-06T02:57:15.845Z) ────
+const out = {}
+const subjects = async () => evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="row"]')].slice(1).map(r => { const c = [...r.querySelectorAll('[role="gridcell"], [role="rowheader"]')]; return (c[3]?.innerText ?? '').split('\\n')[0].trim() })`)
+const ids = async () => evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="row"]')].slice(1).map(r => (r.innerText.match(/EV-\\d{8}-\\d{4}/) ?? [''])[0])`)
+const sortState = async () => evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="columnheader"]')].map(h => h.innerText.trim().split('\\n')[0] + ':' + h.getAttribute('aria-sort')).filter(s => !s.endsWith(':null'))`)
+const header = (t) => clickByText('[data-testid="evidence-table"] [role="columnheader"]', t)
+mark('23a evidence: sort by Subject (1st press)')
+await header('Subject'); await sleep(1500)
+out.subjectAsc = { sort: await sortState(), subjects: await subjects(), href: (await pageFacts()).href }
+out.s1 = await shot('54_evidence_sort_subject_first.png')
+mark('23b evidence: sort by Subject (2nd press)')
+await header('Subject'); await sleep(1500)
+out.subjectDesc = { sort: await sortState(), subjects: await subjects(), href: (await pageFacts()).href }
+out.s2 = await shot('55_evidence_sort_subject_second.png')
+mark('23c evidence: sort by Duration')
+await header('Duration'); await sleep(1500)
+out.duration = { sort: await sortState(), rows: await evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="row"]')].slice(1).map(r => (r.innerText.match(/\\d{2}:\\d{2}:\\d{2}/) ?? [''])[0])`) }
+out.s3 = await shot('56_evidence_sort_duration.png')
+mark('23d evidence: sort by Evidence ID (back to default)')
+await header('Evidence ID'); await sleep(1500)
+out.idSort = { sort: await sortState(), ids: await ids(), href: (await pageFacts()).href }
+if (!out.idSort.sort.some(s => s.includes('descending'))) { await header('Evidence ID'); await sleep(1500); out.idSort2 = { sort: await sortState(), ids: await ids() } }
+mark('23e evidence: page 2')
+await click('evidence-page-2'); await sleep(1500)
+out.page2 = { summary: await text('evidence-page-summary'), ids: await ids(), href: (await pageFacts()).href }
+out.s4 = await shot('57_evidence_page_2.png')
+mark('23f evidence: previous page')
+await clickByText('[data-testid="evidence-pagination"] button', '', {}).catch(() => null)
+await click('[aria-label="Previous page"]'); await sleep(1500)
+out.prev = { summary: await text('evidence-page-summary'), href: (await pageFacts()).href }
+mark('23g evidence: next page')
+await click('[aria-label="Next page"]'); await sleep(1500)
+out.next = { summary: await text('evidence-page-summary'), href: (await pageFacts()).href }
+await click('evidence-page-1'); await sleep(1200)
+out.back1 = { summary: await text('evidence-page-summary') }
+record('23 evidence sort/paging', out)
+return out
+
+
+// ──── step: 24 evidence row menu and bulk (2026-10-06T02:57:53.907Z) ────
+const out = {}
+const menuItems = async () => evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map(e => ({ text: e.innerText.replace(/\\s+/g,' ').trim().slice(0,80), disabled: e.getAttribute('aria-disabled') === 'true' }))`)
+mark('24a evidence: row menu of EV-20261006-0012')
+await click('evidence-row-menu-EV-20261006-0012'); await sleep(800)
+out.menu = await menuItems()
+out.s1 = await shot('58_evidence_row_menu.png')
+await key('Escape'); await sleep(400)
+mark('24b evidence: select one row -> bulk bar')
+const cb = await evaluate(`(() => { const row = [...document.querySelectorAll('[data-testid="evidence-table"] [role="row"]')].find(r => r.innerText.includes('EV-20261006-0012')); const c = row?.querySelector('[role="checkbox"], input[type="checkbox"], label'); if (!c) return false; document.querySelectorAll('[data-w1-target]').forEach(e => e.removeAttribute('data-w1-target')); c.setAttribute('data-w1-target', '1'); return true })()`)
+out.cbFound = cb
+if (cb) await click('[data-w1-target="1"]')
+await sleep(900)
+out.bulk = await text('evidence-bulk')
+out.bulkCtrls = await controls('[data-testid="evidence-bulk"]')
+out.s2 = await shot('59_evidence_bulk_bar_one_selected.png')
+mark('24c evidence: bulk export -> wizard (opened, then cancelled)')
+if (await exists('evidence-bulk-export')) {
+  await click('evidence-bulk-export'); await sleep(1200)
+  out.wizard = await text('export-wizard', 900)
+  out.wizardFacts = await pageFacts()
+  out.s3 = await shot('60_evidence_bulk_export_wizard.png')
+  if (await exists('export-cancel')) await click('export-cancel'); else await key('Escape')
+  await sleep(800)
+}
+out.afterCancel = await pageFacts()
+// deselect
+if (cb) await click('[data-w1-target="1"]').catch(() => null)
+await sleep(600)
+out.bulkAfter = await exists('evidence-bulk')
+record('24 evidence row menu/bulk', out)
+return out
+
+
+// ──── step: 25 evidence row verify and view (2026-10-06T02:58:21.844Z) ────
+const out = {}
+mark('25a evidence: row menu Verify (EV-20261006-0012)')
+await click('evidence-row-menu-EV-20261006-0012'); await sleep(700)
+await clickByText('[role="menu"] [role="menuitem"]', 'Verify'); await sleep(3500)
+out.verify = await pageFacts()
+out.verifyCard = await text('evidence-verify-card', 500)
+out.s1 = await shot('61_evidence_row_verify.png')
+out.audit1 = await auditTail(3)
+if (!(await exists('page-evidence'))) { await clickByText('nav a, aside a', 'Evidence'); await waitFor('evidence-table', true, 10000); await sleep(1500) }
+mark('25b evidence: row menu View (EV-20261006-0012)')
+await click('evidence-row-menu-EV-20261006-0012'); await sleep(700)
+await clickByText('[role="menu"] [role="menuitem"]', 'View')
+out.detail = await waitFor('page-evidence-detail', true, 15000)
+await sleep(3000)
+out.facts = await pageFacts()
+out.header = await text('evidence-detail-header', 400)
+out.tabs = await evaluate(`[...document.querySelectorAll('[data-testid^="evidence-tab-"]')].map(e => ({ id: e.getAttribute('data-testid'), text: e.innerText.trim(), selected: e.getAttribute('aria-selected') }))`)
+out.ctrls = await controls('[data-testid="page-evidence-detail"]')
+out.s2 = await shot('62_evidence_detail_overview.png')
+record('25 evidence verify/view', out)
+return out
+
+
+// ──── step: 26 evidence detail media (2026-10-06T02:58:51.375Z) ────
+const out = {}
+const media = async () => evaluate(`[...document.querySelectorAll('video, audio')].map(m => ({ tag: m.tagName, src: (m.currentSrc || m.src || '').replace(/^.*\\//, '').slice(0, 60), origin: (() => { try { return new URL(m.currentSrc || m.src, location.href).origin } catch { return null } })(), paused: m.paused, t: Math.round(m.currentTime * 10) / 10, ready: m.readyState, err: m.error ? m.error.code : null }))`)
+mark('26a evidence-detail: Media tab, Play')
+await click('evidence-tab-media'); await sleep(800)
+out.before = await media()
+await click('evidence-play-toggle'); await sleep(3000)
+out.playing = { media: await media(), toggle: await text('evidence-play-toggle'), slider: await evaluate(`document.querySelector('[data-testid="evidence-media"] input, input[data-testid="evidence-media"]')?.value ?? null`) }
+out.s1 = await shot('63_evidence_detail_media_playing.png')
+mark('26b evidence-detail: Camera 2, MIC 2')
+await click('evidence-camera-VIDEO-02'); await sleep(1200)
+await click('evidence-mic-AUDIO-02'); await sleep(1200)
+out.switched = { media: await media(), cams: await evaluate(`[...document.querySelectorAll('[data-testid^="evidence-camera-"], [data-testid^="evidence-mic-"]')].map(e => e.getAttribute('data-testid') + '=' + e.getAttribute('aria-checked'))`) }
+out.s2 = await shot('64_evidence_detail_media_camera2_mic2.png')
+mark('26c evidence-detail: pause, track AUDIO-02')
+await click('evidence-play-toggle'); await sleep(800)
+out.paused = await media()
+await click('evidence-track-AUDIO-02'); await sleep(1500)
+out.track = { facts: await pageFacts(), media: await media(), sel: await evaluate(`[...document.querySelectorAll('[data-testid^="evidence-track-"]')].map(e => e.getAttribute('data-testid') + ':' + (e.getAttribute('aria-pressed') ?? e.getAttribute('aria-current') ?? e.getAttribute('data-selected')))`) }
+out.s3 = await shot('65_evidence_detail_media_track_audio02.png')
+record('26 evidence media', out)
+return out
+
+
+// ──── step: 27 evidence detail metadata integrity (2026-10-06T02:59:18.462Z) ────
+const out = {}
+mark('27a evidence-detail: Metadata tab')
+await click('evidence-tab-metadata'); await sleep(1500)
+out.metaHref = (await pageFacts()).href
+out.meta = await text('evidence-metadata', 900)
+out.metaCtrls = await controls('[data-testid="evidence-metadata"]')
+out.s1 = await shot('66_evidence_detail_metadata.png')
+const docs = await evaluate(`[...document.querySelectorAll('[data-testid^="evidence-doc-"]')].map(e => e.getAttribute('data-testid'))`)
+out.docs = docs
+if (docs.length) {
+  mark('27b evidence-detail: Metadata, open a package document')
+  await click(docs[Math.min(1, docs.length - 1)]); await sleep(1200)
+  out.docOpen = { json: await text('evidence-json', 400), facts: await pageFacts() }
+  out.s2 = await shot('67_evidence_detail_metadata_document.png')
+}
+mark('27c evidence-detail: Hash & Integrity tab')
+await click('evidence-tab-integrity'); await sleep(1500)
+out.integrity = await text('evidence-integrity', 700)
+out.custody = await text('evidence-custody', 900)
+out.s3 = await shot('68_evidence_detail_integrity.png')
+await evaluate(`document.querySelector('[data-testid="evidence-custody"]')?.scrollIntoView({ block: 'start' })`); await sleep(600)
+out.s4 = await shot('69_evidence_detail_chain_of_custody.png')
+mark('27d evidence-detail: Verify again')
+await click('evidence-verify'); await sleep(800)
+out.verifyLabel = await text('evidence-verify')
+await sleep(3500)
+out.verdict = await text('evidence-verdict', 300)
+out.toasts = (await pageFacts()).toasts
+out.s5 = await shot('70_evidence_detail_verify_again.png')
+out.custodyAfter = await text('evidence-custody', 400)
+out.audit = await auditTail(2)
+record('27 evidence metadata/integrity', out)
+return out
+
+
+// ──── step: 27e core record of EV-20261006-0012 (2026-10-06T03:00:26.337Z) ────
+mark('27e evidence-detail: read the Core record of EV-20261006-0012 (page request)')
+const r = await pageFetch('/api/v1/evidence/EV-20261006-0012', { project: `(b) => { const e = b?.item ?? b?.evidence ?? b; return { keys: Object.keys(e ?? {}).slice(0, 40), id: e?.id, sessionId: e?.sessionId, caseNumber: e?.caseNumber, recordedAt: e?.recordedAt ? new Date(e.recordedAt).toISOString() : null, media: e?.media ?? e?.mediaRef ?? e?.package ?? null, origin: e?.origin ?? null } }` })
+const bundled = await text('evidence-bundled', 300)
+const differs = await text('evidence-bundled-differs', 300)
+record('27e core record', { r, bundled, differs })
+return { r, bundled, differs }
+
+
+// ──── step: 27f verification persistence (2026-10-06T03:00:39.320Z) ────
+const out = {}
+mark('27f evidence: verification shown after a reload of the detail and in the list preview')
+out.core = await pageFetch('/api/v1/evidence/EV-20261006-0012', { project: `(b) => ({ verification: b?.verification ?? null, custodyTop: (b?.custody ?? []).slice(-3).map(c => ({ action: c.action, at: c.at ? new Date(c.at).toISOString() : null })) })` })
+await navigate(`${ORIGIN}/evidence/EV-20261006-0012?tab=integrity`, 2500)
+await waitFor('page-evidence-detail', true, 15000); await sleep(2500)
+out.reloadCard = await text('evidence-verify-card', 260)
+out.verdictAttr = await evaluate(`document.querySelector('[data-testid="evidence-verdict"]')?.innerText ?? null`)
+out.s1 = await shot('71_evidence_detail_integrity_after_reload.png')
+await clickByText('nav a, aside a', 'Evidence'); await waitFor('evidence-table', true, 10000); await sleep(1500)
+await clickByText('[data-testid="evidence-table"] [role="row"]', 'EV-20261006-0012'); await sleep(1500)
+out.preview = await text('evidence-preview', 900)
+out.s2 = await shot('72_evidence_list_preview_after_verify.png')
+record('27f verification persistence', out)
+return out
+
+
+// ──── step: 27g core verification member (2026-10-06T03:01:03.978Z) ────
+const r = await pageFetch('/api/v1/evidence/EV-20261006-0012', { project: `(b) => { const e = b?.item ?? b?.evidence ?? b; return { top: Object.keys(b ?? {}), verification: e?.verification ?? null, custodyLast: (e?.custody ?? []).slice(-3).map(c => ({ action: c.action ?? c.type, at: c.at ? new Date(c.at).toISOString() : null })) } }` })
+record('27g core verification', r)
+return r
+
+
+// ──── step: 28 evidence detail more menu (2026-10-06T03:01:43.964Z) ────
+const out = {}
+mark('28a evidence-detail: More menu')
+await navigate(`${ORIGIN}/evidence/EV-20261006-0012`, 2000); await waitFor('page-evidence-detail', true, 15000); await sleep(2000)
+await click('evidence-more'); await sleep(800)
+out.menu = await evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map(e => ({ text: e.innerText.replace(/\\s+/g,' ').trim().slice(0,80), disabled: e.getAttribute('aria-disabled') === 'true' }))`)
+out.s1 = await shot('73_evidence_detail_more_menu.png')
+await key('Escape'); await sleep(400)
+record('28 more menu', out)
+return out
+
+
+// ──── step: 29 evidence copy id and download manifest (2026-10-06T03:02:03.689Z) ────
+const out = {}
+const dl = process.env.W1_DL
+await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dl, eventsEnabled: true })
+await send('Browser.grantPermissions', { origin: ORIGIN, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] }).catch((e) => { out.grant = String(e.message) })
+mark('29a evidence-detail: More > Copy ID')
+await click('evidence-more'); await sleep(700)
+await clickByText('[role="menu"] [role="menuitem"]', 'Copy ID'); await sleep(1200)
+out.copy = { toasts: (await pageFacts()).toasts, clip: await evaluate(`navigator.clipboard.readText().then(t => t.slice(0, 40)).catch(e => 'read failed: ' + e.name)`) }
+out.s1 = await shot('74_evidence_detail_copy_id.png')
+mark('29b evidence-detail: More > Download manifest')
+const { readdirSync, statSync } = await import('node:fs')
+const before = new Set(readdirSync(dl))
+await click('evidence-more'); await sleep(700)
+await clickByText('[role="menu"] [role="menuitem"]', 'Download manifest'); await sleep(3000)
+const files = readdirSync(dl).filter(f => !before.has(f))
+out.download = { files: files.map(f => ({ name: f, bytes: statSync(dl + '/' + f).size })), toasts: (await pageFacts()).toasts }
+out.s2 = await shot('75_evidence_detail_download_manifest.png')
+out.audit = await auditTail(3)
+record('29 copy/download', out)
+return out
+
+
+// ──── step: 30 evidence export wizard steps 1-2 (2026-10-06T03:02:22.956Z) ────
+const out = {}
+mark('30a evidence-detail: Export wizard, reason step')
+await click('evidence-export'); await waitFor('export-wizard', true, 8000); await sleep(1000)
+out.step1 = await text('export-wizard', 700)
+await type('export-reason', 'abc'); await sleep(400)
+out.shortReason = { next: await evaluate(`(() => { const b = document.querySelector('[data-testid="export-next"]'); return b ? (b.disabled || b.getAttribute('aria-disabled') === 'true' || b.hasAttribute('data-disabled')) : null })()`), field: await text('export-step-reason', 300) }
+out.s1 = await shot('76_evidence_export_reason_too_short.png')
+await type('export-reason', 'E2E-W1 walk: export to the case file (synthetic data)')
+await click('export-destination'); await sleep(600)
+out.destinations = await evaluate(`[...document.querySelectorAll('[role="listbox"] [role="option"]')].map(e => e.innerText.trim())`)
+await clickByText('[role="listbox"] [role="option"]', 'Encrypted USB drive'); await sleep(500)
+out.s2 = await shot('77_evidence_export_reason_filled.png')
+mark('30b evidence-detail: Export wizard, Next -> authorise step')
+await click('export-next'); await sleep(1500)
+out.step2 = await text('export-wizard', 900)
+out.step2Ctrls = await controls('[data-testid="export-wizard"]')
+out.s3 = await shot('78_evidence_export_authorise_step.png')
+record('30 export 1-2', out)
+return out
+
+
+// ──── step: 31 evidence export short reason on press (2026-10-06T03:02:42.770Z) ────
+const out = {}
+mark('31a evidence-detail: Export wizard Back, Next with a 3-character reason')
+await clickByText('[data-testid="export-wizard"] button', 'Back'); await sleep(900)
+await type('export-reason', 'abc'); await sleep(300)
+await click('export-next'); await sleep(1200)
+out.afterPress = { step: await text('export-wizard', 300), invalid: await evaluate(`(() => { const f = document.querySelector('[data-testid="export-reason"]'); const i = f?.tagName === 'TEXTAREA' || f?.tagName === 'INPUT' ? f : f?.querySelector('input, textarea'); return { ariaInvalid: i?.getAttribute('aria-invalid'), dataInvalid: f?.getAttribute('data-invalid'), err: [...document.querySelectorAll('[data-testid="export-wizard"] [data-slot="error-message"], [data-testid="export-wizard"] [role="alert"]')].map(e => e.innerText.trim()) } })()`) }
+out.s1 = await shot('79_evidence_export_short_reason_pressed.png')
+mark('31b evidence-detail: Export wizard, valid reason, Next')
+await type('export-reason', 'E2E-W1 walk: export to the case file (synthetic data)'); await sleep(300)
+await click('export-next'); await sleep(1500)
+out.step2 = await exists('export-authorise')
+record('31 export short reason', out)
+return out
+
+
+// ──── step: 32 evidence export authorise verify export download (2026-10-06T03:03:03.112Z) ────
+const out = {}
+const dl = process.env.W1_DL
+await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dl, eventsEnabled: true })
+mark('32a evidence-detail: Export wizard, Request authorisation')
+await click('export-authorise'); await sleep(2500)
+out.step3 = await text('export-wizard', 900)
+out.step3Ctrls = await controls('[data-testid="export-wizard"]')
+out.s1 = await shot('80_evidence_export_verify_source.png')
+// Walk on: whatever primary control the wizard offers next (Next / Export), until results appear.
+for (let i = 0; i < 4 && !(await exists('export-results')); i++) {
+  const nextId = (await exists('export-submit')) ? 'export-submit' : (await exists('export-next')) ? 'export-next' : null
+  if (!nextId) break
+  mark(`32b evidence-detail: Export wizard press ${nextId}`)
+  await click(nextId); await sleep(3500)
+  out['after_' + i] = await text('export-wizard', 700)
+}
+out.results = await text('export-results', 900)
+out.resultCtrls = await controls('[data-testid="export-wizard"]')
+out.s2 = await shot('81_evidence_export_results.png')
+const dlBtn = await evaluate(`document.querySelector('[data-testid^="export-download-"]')?.getAttribute('data-testid') ?? null`)
+if (dlBtn) {
+  mark('32c evidence-detail: Export wizard download')
+  const { readdirSync, statSync } = await import('node:fs')
+  const before = new Set(readdirSync(dl))
+  await click(dlBtn); await sleep(3500)
+  const files = readdirSync(dl).filter(f => !before.has(f))
+  out.download = { button: dlBtn, files: files.map(f => ({ name: f, bytes: statSync(dl + '/' + f).size })), toasts: (await pageFacts()).toasts }
+  out.s3 = await shot('82_evidence_export_downloaded.png')
+}
+out.audit = await auditTail(4)
+record('32 export', out)
+return out
+
+
+// ──── step: 33 evidence back and archive (2026-10-06T03:03:52.364Z) ────
+const out = {}
+mark('33a evidence-detail: Close wizard, Back to Evidence')
+if (await exists('export-cancel')) { await click('export-cancel'); await sleep(800) }
+await click('evidence-back'); await sleep(2000)
+out.back = (await pageFacts()).href
+mark('33b evidence: row menu Archive (EV-20261004-0001)')
+if (!(await exists('evidence-row-menu-EV-20261004-0001'))) { await click('evidence-page-2'); await sleep(1500) }
+await click('evidence-row-menu-EV-20261004-0001'); await sleep(700)
+await clickByText('[role="menu"] [role="menuitem"]', 'Archive'); await sleep(1200)
+out.dialog = (await pageFacts()).dialogs
+out.dialogCtrls = await controls('[role="dialog"], [role="alertdialog"]')
+out.s1 = await shot('83_evidence_archive_dialog.png')
+record('33 archive dialog', out)
+return out
+
+
+// ──── step: 33c archive result (2026-10-06T03:04:14.325Z) ────
+const out = {}
+out.audit = await auditTail(2)
+out.core = await pageFetch('/api/v1/evidence/EV-20261004-0001', { project: `(b) => ({ status: b?.evidence?.status, stage: b?.evidence?.lifecycleStage, custodyLast: (b?.evidence?.custody ?? []).slice(-1).map(c => c.action) })` })
+await sleep(800)
+out.row = await evaluate(`[...document.querySelectorAll('[data-testid="evidence-table"] [role="row"]')].find(r => r.innerText.includes('EV-20261004-0001'))?.innerText.replace(/\\s+/g,' ').slice(0,140) ?? null`)
+out.filters = await text('evidence-status-filter')
+out.s = await shot('84_evidence_archived_row.png')
+record('33c archive', out)
+return out
+
+
+// ──── step: 34 devices open (2026-10-06T03:04:27.391Z) ────
+const out = {}
+mark('34 devices: open via sidebar')
+await clickByText('nav a, aside a', 'Devices & Inputs')
+out.shown = await waitFor('page-devices', true, 15000); await sleep(3000)
+out.facts = await pageFacts()
+out.banner = await text('devices-banner', 300)
+out.tabletAlert = await text('tablet-offline-alert', 300)
+out.ctrls = await controls('[data-testid="page-devices"]')
+out.s = await shot('85_devices_live.png')
+record('34 devices', out)
+return out
+
+
+// ──── step: 35 devices camera menu and drawer (2026-10-06T03:04:54.059Z) ────
+const out = {}
+const items = async () => evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map(e => ({ text: e.innerText.replace(/\\s+/g,' ').trim().slice(0,90), disabled: e.getAttribute('aria-disabled') === 'true' }))`)
+mark('35a devices: Camera 1 device menu')
+await click('device-menu-CAM-01'); await sleep(800)
+out.menu = await items()
+out.s1 = await shot('86_devices_camera1_menu.png')
+const first = out.menu.find(i => !i.disabled && /detail|open|view/i.test(i.text)) ?? out.menu.find(i => !i.disabled)
+if (first) {
+  mark(`35b devices: Camera 1 menu > ${first.text}`)
+  await clickByText('[role="menu"] [role="menuitem"]', first.text.split(' ')[0]); await sleep(1800)
+  out.afterFirst = { facts: await pageFacts(), drawer: await exists('device-drawer') }
+  out.s2 = await shot('87_devices_camera1_drawer_overview.png')
+}
+if (await exists('device-drawer')) {
+  out.drawerCtrls = await controls('[data-testid="device-drawer"]')
+  out.overview = await text('device-overview', 600)
+  mark('35c devices: drawer Health tab')
+  await click('drawer-tab-health'); await sleep(1200)
+  out.health = await text('device-health', 700)
+  out.healthCtrls = await controls('[data-testid="device-drawer"]')
+  out.s3 = await shot('88_devices_camera1_drawer_health.png')
+  mark('35d devices: drawer Log tab')
+  await click('drawer-tab-log'); await sleep(1200)
+  out.log = await text('device-log', 700)
+  out.s4 = await shot('89_devices_camera1_drawer_log.png')
+}
+record('35 devices cam menu', out)
+return out
+
+
+// ──── step: 36 devices test signal identify (2026-10-06T03:05:33.878Z) ────
+const out = {}
+if (await exists('device-drawer')) { await key('Escape'); await sleep(700) }
+mark('36a devices: Camera 1 > Test signal')
+await click('device-menu-CAM-01'); await sleep(700)
+await clickByText('[role="menu"] [role="menuitem"]', 'Test signal'); await sleep(2000)
+out.test = (await pageFacts()).toasts
+out.s1 = await shot('90_devices_camera1_test_signal.png')
+await sleep(1500)
+mark('36b devices: Camera 1 > Identify (blink)')
+await click('device-menu-CAM-01'); await sleep(700)
+await clickByText('[role="menu"] [role="menuitem"]', 'Identify'); await sleep(1500)
+out.identify = { toasts: (await pageFacts()).toasts, identifyEl: await exists('identify-CAM-01') }
+out.s2 = await shot('91_devices_camera1_identify.png')
+out.audit = await auditTail(3)
+mark('36c devices: MIC 1 device menu')
+await sleep(1500)
+await click('device-menu-MIC-01'); await sleep(700)
+out.micMenu = await evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map(e => ({ text: e.innerText.replace(/\\s+/g,' ').trim().slice(0,90), disabled: e.getAttribute('aria-disabled') === 'true' }))`)
+out.s3 = await shot('92_devices_mic1_menu.png')
+await key('Escape'); await sleep(400)
+record('36 devices commands', out)
+return out
+
+
+// ──── step: 37 devices tiles lcd ports (2026-10-06T03:06:23.441Z) ────
+const out = {}
+const pop = async () => evaluate(`[...document.querySelectorAll('[role="dialog"], [role="tooltip"], [data-slot="popover"]')].filter(e => e.getClientRects().length).map(e => (e.getAttribute('data-testid') ?? '') + ': ' + e.innerText.replace(/\\s+/g,' ').trim().slice(0,200))`)
+mark('37a devices: camera tile Camera 2 (set active camera)')
+const recBefore = await evaluate(`[...document.querySelectorAll('[data-testid^="camera-rec-"]')].map(e => e.getAttribute('data-testid') + ':' + e.innerText.trim())`)
+await click('camera-tile-VIDEO-02'); await sleep(1500)
+out.cameraTile = { recBefore, recAfter: await evaluate(`[...document.querySelectorAll('[data-testid^="camera-rec-"], [data-testid^="camera-tile-"]')].map(e => e.getAttribute('data-testid') + ':' + (e.getAttribute('aria-pressed') ?? e.getAttribute('data-active') ?? e.innerText.trim().slice(0,30)))`), facts: await pageFacts(), pop: await pop() }
+out.s1 = await shot('93_devices_camera2_tile.png')
+await key('Escape'); await sleep(500)
+mark('37b devices: audio input MIC 1 (press)')
+await click('audio-input-AUDIO-01'); await sleep(1200)
+out.audio = { pop: await pop(), facts: await pageFacts() }
+out.s2 = await shot('94_devices_audio_input_mic1.png')
+await key('Escape'); await sleep(500)
+mark('37c devices: front panel LCD keys DOWN, ENTER, BACK')
+const lcd0 = await text('front-lcd', 200)
+await click('lcd-down'); await sleep(500)
+const lcd1 = await text('front-lcd', 200)
+await click('lcd-enter'); await sleep(600)
+const lcd2 = await text('front-lcd', 200)
+out.s3 = await shot('95_devices_front_panel_lcd_enter.png')
+await click('lcd-back'); await sleep(500)
+await click('lcd-up'); await sleep(500)
+const lcd3 = await text('front-lcd', 200)
+out.lcd = { lcd0, lcd1, lcd2, lcd3 }
+mark('37d devices: port MGMT LAN, other device Tablet Control, LED FAULT')
+await click('port-MGMT_LAN'); await sleep(1000)
+out.port = { pop: await pop(), facts: (await pageFacts()).dialogs }
+out.s4 = await shot('96_devices_port_mgmt_lan.png')
+await key('Escape'); await sleep(500)
+await click('other-TABLET'); await sleep(1500)
+out.tablet = { drawer: await exists('device-drawer'), pop: await pop(), paired: await text('drawer-paired-summary', 300) }
+out.tabletCtrls = await controls('[data-testid="device-drawer"]')
+out.s5 = await shot('97_devices_tablet_control_drawer.png')
+record('37 devices misc', out)
+return out
+
+
+// ──── step: 37r devices lcd ports tablet (2026-10-06T03:06:46.377Z) ────
+const out = {}
+const pop = async () => evaluate(`[...document.querySelectorAll('[role="dialog"], [role="tooltip"], [data-slot="popover"]')].filter(e => e.getClientRects().length).map(e => (e.getAttribute('data-testid') ?? '') + ': ' + String(e.innerText ?? e.textContent).replace(/\\s+/g,' ').trim().slice(0,200))`)
+await key('Escape'); await sleep(400)
+mark('37c devices: front panel LCD keys DOWN, ENTER, BACK, UP')
+const lcd0 = await text('front-lcd', 200)
+await click('lcd-down'); await sleep(500)
+const lcd1 = await text('front-lcd', 200)
+await click('lcd-enter'); await sleep(600)
+const lcd2 = await text('front-lcd', 200)
+out.s3 = await shot('95_devices_front_panel_lcd_enter.png')
+await click('lcd-back'); await sleep(500)
+await click('lcd-up'); await sleep(500)
+const lcd3 = await text('front-lcd', 200)
+out.lcd = { lcd0, lcd1, lcd2, lcd3 }
+mark('37d devices: port MGMT LAN')
+await click('port-MGMT_LAN'); await sleep(1000)
+out.port = { pop: await pop(), dialogs: (await pageFacts()).dialogs }
+out.s4 = await shot('96_devices_port_mgmt_lan.png')
+await key('Escape'); await sleep(500)
+mark('37e devices: other device Tablet Control')
+await click('other-TABLET'); await sleep(1500)
+out.tablet = { drawer: await exists('device-drawer'), pop: await pop(), paired: await text('drawer-paired-summary', 300) }
+out.tabletCtrls = await controls('[data-testid="device-drawer"]')
+out.s5 = await shot('97_devices_tablet_control_drawer.png')
+record('37r devices misc', out)
+return out
+
+
+// ──── step: 37s devices camera tile audio clip led (2026-10-06T03:07:14.769Z) ────
+const out = {}
+const pop = async () => evaluate(`[...document.querySelectorAll('[role="dialog"], [role="tooltip"], [data-slot="popover"]')].filter(e => e.getClientRects().length).map(e => (e.getAttribute('data-testid') ?? '') + ': ' + String(e.innerText ?? e.textContent).replace(/\\s+/g,' ').trim().slice(0,200))`)
+await key('Escape'); await sleep(600)
+mark('37a devices: camera tile Camera 2 (rerun)')
+const st = async () => evaluate(`[...document.querySelectorAll('[data-testid^="camera-tile-"], [data-testid^="camera-rec-"]')].map(e => e.getAttribute('data-testid') + ' pressed=' + e.getAttribute('aria-pressed') + ' active=' + e.getAttribute('data-active') + ' sel=' + e.getAttribute('data-selected') + ' txt=' + String(e.innerText).replace(/\\s+/g,' ').trim().slice(0,30))`)
+out.camBefore = await st()
+await click('camera-tile-VIDEO-02'); await sleep(1500)
+out.camAfter = await st(); out.camPop = await pop(); out.camToasts = (await pageFacts()).toasts
+out.s1 = await shot('93_devices_camera2_tile.png')
+await key('Escape'); await sleep(600)
+mark('37b devices: audio input MIC 1 (rerun)')
+await click('audio-input-AUDIO-01'); await sleep(1200)
+out.audioPop = await pop(); out.audioToasts = (await pageFacts()).toasts
+out.s2 = await shot('94_devices_audio_input_mic1.png')
+await key('Escape'); await sleep(600)
+const clip = await evaluate(`[...document.querySelectorAll('[data-testid^="clip-reset-"]')].map(e => ({ id: e.getAttribute('data-testid'), tag: e.tagName, disabled: e.disabled === true || e.getAttribute('aria-disabled') === 'true', text: String(e.innerText).trim() }))`)
+out.clip = clip
+if (clip.length && !clip[0].disabled && clip[0].tag === 'BUTTON') { mark('37f devices: clip reset'); await click(clip[0].id); await sleep(1200); out.clipToasts = (await pageFacts()).toasts }
+mark('37g devices: hover LED FAULT')
+const box = await evaluate(`(() => { const el = document.querySelector('[data-testid="led-FAULT"]'); el.scrollIntoView({ block: 'center', behavior: 'instant' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`)
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y }); await sleep(1200)
+out.ledTip = await pop()
+out.s3 = await shot('98_devices_led_fault_tooltip.png')
+record('37s devices misc 2', out)
+return out
+
+
+// ──── step: 38 storage open (2026-10-06T03:07:47.691Z) ────
+const out = {}
+await key('Escape'); await sleep(400)
+mark('38 storage: open via sidebar')
+await clickByText('nav a, aside a', 'Storage')
+out.shown = await waitFor('page-storage', true, 15000); await sleep(3000)
+out.facts = await pageFacts()
+out.banner = await text('storage-banner', 300)
+out.ctrls = await controls('[data-testid="page-storage"]')
+out.s = await shot('99_storage_live.png')
+record('38 storage', out)
+return out
+
+
+// ──── step: 39 storage calculator and manage (2026-10-06T03:08:03.761Z) ────
+const out = {}
+mark('39a storage: calculator Increase video Mbps, Decrease retention')
+const verdict0 = await text('storage-calc-verdict', 200)
+await click('[data-testid="storage-calc-videoMbps"] [aria-label="Increase"], [data-testid="storage-calc-videoMbps"] button[slot="increment"]'); await sleep(400)
+const incBtn = await evaluate(`[...document.querySelectorAll('[data-testid="storage-calc-videoMbps"] button')].map(b => b.getAttribute('aria-label') ?? b.getAttribute('slot') ?? b.innerText)`)
+await clickByText('[data-testid="storage-calc-videoMbps"] button', '').catch(() => null)
+out.calc = { verdict0, incBtn, video: await evaluate(`document.querySelector('[data-testid="storage-calc-videoMbps"] input')?.value`), verdict1: await text('storage-calc-verdict', 200), meter: await text('storage-calc-meter', 200) }
+out.s1 = await shot('100_storage_calculator_changed.png')
+mark('39b storage: calculator Reset to book example')
+await click('storage-calc-reset'); await sleep(600)
+out.calcReset = { video: await evaluate(`document.querySelector('[data-testid="storage-calc-videoMbps"] input')?.value`), verdict: await text('storage-calc-verdict', 200) }
+mark('39c storage: Manage Storage drawer')
+await click('storage-manage-open'); await sleep(1500)
+out.drawer = await text('storage-manage-drawer', 1200)
+out.drawerCtrls = await controls('[data-testid="storage-manage-drawer"]')
+out.s2 = await shot('101_storage_manage_drawer.png')
+record('39 storage calc/manage', out)
+return out
+
+
+// ──── step: 40 storage policy change and restore (2026-10-06T03:08:25.819Z) ────
+const out = {}
+const st = async () => ({ policy: await text('storage-policy-select'), auto: await evaluate(`(() => { const el = document.querySelector('[data-testid="storage-auto-archive"]'); const i = el?.tagName === 'INPUT' ? el : el?.querySelector('input'); return i ? i.checked : null })()`), apply: await text('storage-policy-apply') })
+const core = async () => pageFetch('/api/v1/storage/status', { project: `(b) => ({ policy: b?.policy ?? b?.storage?.policy ?? null, retention: b?.retentionPolicy ?? b?.storage?.retentionPolicy ?? null, keys: Object.keys(b ?? {}).slice(0, 20) })` })
+out.coreBefore = await core()
+mark('40a storage: policy 1 year + auto-archive off')
+await click('storage-policy-select'); await sleep(600)
+out.options = await evaluate(`[...document.querySelectorAll('[role="listbox"] [role="option"]')].map(e => e.innerText.trim())`)
+await clickByText('[role="listbox"] [role="option"]', '1 year'); await sleep(500)
+await click('[data-testid="storage-auto-archive"]'); await sleep(500)
+out.pending = await st()
+out.s1 = await shot('102_storage_policy_pending_change.png')
+await click('storage-policy-apply'); await sleep(2000)
+out.applied = { facts: await pageFacts(), state: (await exists('storage-manage-drawer')) ? await st() : 'drawer closed', rbac: await text('storage-policy-rbac', 200) }
+out.s2 = await shot('103_storage_policy_applied.png')
+out.coreAfter = await core()
+out.audit1 = await auditTail(2)
+mark('40b storage: restore policy 90 days + auto-archive on')
+if (!(await exists('storage-manage-drawer'))) { await click('storage-manage-open'); await sleep(1500) }
+out.reopened = await st()
+await click('storage-policy-select'); await sleep(600)
+await clickByText('[role="listbox"] [role="option"]', '90 days'); await sleep(500)
+const autoNow = (await st()).auto
+if (autoNow === false) { await click('[data-testid="storage-auto-archive"]'); await sleep(500) }
+out.pending2 = await st()
+await click('storage-policy-apply'); await sleep(2000)
+out.restored = { facts: await pageFacts() }
+out.s3 = await shot('104_storage_policy_restored.png')
+out.coreRestored = await core()
+out.audit2 = await auditTail(2)
+record('40 storage policy', out)
+return out
+
+
+// ──── step: 41 storage auto-archive and calculator (2026-10-06T03:08:59.189Z) ────
+const out = {}
+const auto = async () => evaluate(`(() => { const el = document.querySelector('[data-testid="storage-auto-archive"]'); const i = el?.tagName === 'INPUT' ? el : el?.querySelector('input'); return i ? i.checked : null })()`)
+const core = async () => pageFetch('/api/v1/storage/status', { project: `(b) => b?.retention ?? null` })
+const markSwitch = async () => evaluate(`(() => { const el = document.querySelector('[data-testid="storage-auto-archive"]'); const host = el.closest('label') ?? el.parentElement; document.querySelectorAll('[data-w1-target]').forEach(e => e.removeAttribute('data-w1-target')); host.setAttribute('data-w1-target', '1'); const r = host.getBoundingClientRect(); return { tag: host.tagName, w: Math.round(r.width), h: Math.round(r.height) } })()`)
+out.coreBefore = await core()
+mark('41a storage: auto-archive off + apply')
+await click('storage-manage-open'); await sleep(1500)
+out.host = await markSwitch()
+await click('[data-w1-target="1"]'); await sleep(600)
+out.autoPending = { auto: await auto(), apply: await text('storage-policy-apply') }
+out.s1 = await shot('105_storage_auto_archive_off_pending.png')
+await click('storage-policy-apply'); await sleep(2000)
+out.applied = (await pageFacts()).toasts
+out.coreAfter = await core()
+out.audit1 = await auditTail(1)
+mark('41b storage: auto-archive back on + apply')
+await click('storage-manage-open'); await sleep(1500)
+out.autoReopen = await auto()
+await markSwitch(); await click('[data-w1-target="1"]'); await sleep(600)
+out.autoPending2 = { auto: await auto(), apply: await text('storage-policy-apply') }
+await click('storage-policy-apply'); await sleep(2000)
+out.applied2 = (await pageFacts()).toasts
+out.coreRestored = await core()
+out.audit2 = await auditTail(1)
+out.s2 = await shot('106_storage_auto_archive_restored.png')
+mark('41c storage: calculator Increase video Mbps x2, Decrease retention days')
+await click('button[data-testid="storage-calc-videoMbps"][aria-label="Increase"]'); await sleep(250)
+await click('button[data-testid="storage-calc-videoMbps"][aria-label="Increase"]'); await sleep(250)
+await click('button[data-testid="storage-calc-retentionDays"][aria-label="Decrease"]'); await sleep(500)
+out.calc = { video: await evaluate(`document.querySelector('input[data-testid="storage-calc-videoMbps"]')?.value`), days: await evaluate(`document.querySelector('input[data-testid="storage-calc-retentionDays"]')?.value`), verdict: await text('storage-calc-verdict', 200), meter: await text('storage-calc-meter', 200) }
+out.s3 = await shot('100_storage_calculator_changed.png')
+await click('storage-calc-reset'); await sleep(500)
+out.calcReset = { video: await evaluate(`document.querySelector('input[data-testid="storage-calc-videoMbps"]')?.value`), verdict: await text('storage-calc-verdict', 200) }
+record('41 storage auto/calc', out)
+return out
+
+
+// ──── step: 41d storage state after partial step (2026-10-06T03:09:22.004Z) ────
+const core = await pageFetch('/api/v1/storage/status', { project: `(b) => b?.retention ?? null` })
+const audit = await auditTail(3)
+return { core, audit, facts: await pageFacts() }
+
+
+// ──── step: 41e inspect auto-archive switch (2026-10-06T03:09:33.378Z) ────
+return evaluate(`(() => { const el = document.querySelector('[data-testid="storage-auto-archive"]'); const chain = []; let n = el; for (let i = 0; i < 4 && n; i++) { const r = n.getBoundingClientRect(); chain.push({ tag: n.tagName, cls: String(n.className).slice(0, 80), role: n.getAttribute('role'), w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.left), y: Math.round(r.top), slot: n.getAttribute('data-slot') }); n = n.parentElement } return { checked: el.checked, chain, sw: [...document.querySelectorAll('[data-testid="storage-manage-drawer"] [data-slot="switch"], [data-testid="storage-manage-drawer"] label')].map(e => { const r = e.getBoundingClientRect(); return { tag: e.tagName, slot: e.getAttribute('data-slot'), text: e.innerText.slice(0, 40), w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.left), y: Math.round(r.top) } }) } })()`)
+
+
+// ──── step: 41f storage auto-archive via its label, apply, restore (2026-10-06T03:09:49.343Z) ────
+const out = {}
+const auto = async () => evaluate(`document.querySelector('[data-testid="storage-auto-archive"] input')?.checked ?? null`)
+const core = async () => pageFetch('/api/v1/storage/status', { project: `(b) => b?.retention ?? null` })
+const ctl = '[data-testid="storage-auto-archive"] [data-slot="switch-content"]'
+mark('41a storage: auto-archive off (label) + apply')
+if (!(await exists('storage-manage-drawer'))) { await click('storage-manage-open'); await sleep(1500) }
+out.before = await auto()
+let c = await click(ctl); await sleep(600)
+if ((await auto()) === out.before) { const alt = await evaluate(`[...document.querySelectorAll('[data-testid="storage-auto-archive"] *')].map(e => e.getAttribute('data-slot')).filter(Boolean)`); out.slots = alt; await click('[data-testid="storage-auto-archive"] [data-slot="switch-control"]'); await sleep(600) }
+out.pending = { auto: await auto(), apply: await text('storage-policy-apply') }
+out.s1 = await shot('105_storage_auto_archive_off_pending.png')
+if (out.pending.auto === false) {
+  await click('storage-policy-apply'); await sleep(2000)
+  out.applied = (await pageFacts()).toasts
+  out.coreAfter = await core()
+  out.audit1 = await auditTail(1)
+  mark('41b storage: auto-archive back on + apply')
+  await click('storage-manage-open'); await sleep(1500)
+  out.reopen = await auto()
+  await click(ctl); await sleep(600)
+  if ((await auto()) !== true) { await click('[data-testid="storage-auto-archive"] [data-slot="switch-control"]'); await sleep(600) }
+  out.pending2 = { auto: await auto(), apply: await text('storage-policy-apply') }
+  await click('storage-policy-apply'); await sleep(2000)
+  out.applied2 = (await pageFacts()).toasts
+  out.coreRestored = await core()
+  out.audit2 = await auditTail(1)
+  out.s2 = await shot('106_storage_auto_archive_restored.png')
+}
+record('41f storage auto-archive', out)
+return out
+
+
+// ──── step: 41g storage calculator (2026-10-06T03:10:10.822Z) ────
+const out = {}
+if (await exists('storage-manage-drawer')) { await key('Escape'); await sleep(700) }
+const v = (id) => evaluate(`document.querySelector('input[data-testid="${id}"]')?.value ?? null`)
+mark('41c storage: calculator Increase video Mbps x2, Decrease retention days')
+out.before = { video: await v('storage-calc-videoMbps'), days: await v('storage-calc-retentionDays'), verdict: await text('storage-calc-verdict', 200) }
+await click('button[data-testid="storage-calc-videoMbps"][aria-label="Increase"]'); await sleep(250)
+await click('button[data-testid="storage-calc-videoMbps"][aria-label="Increase"]'); await sleep(250)
+await click('button[data-testid="storage-calc-retentionDays"][aria-label="Decrease"]'); await sleep(600)
+out.after = { video: await v('storage-calc-videoMbps'), days: await v('storage-calc-retentionDays'), verdict: await text('storage-calc-verdict', 200), meter: await text('storage-calc-meter', 200) }
+out.s1 = await shot('100_storage_calculator_changed.png')
+mark('41d storage: calculator Reset to book example')
+await click('storage-calc-reset'); await sleep(600)
+out.reset = { video: await v('storage-calc-videoMbps'), days: await v('storage-calc-retentionDays'), verdict: await text('storage-calc-verdict', 200) }
+mark('41e storage: View sealed link')
+await click('[data-testid="storage-panel-sealed"] a, a[data-testid="storage-panel-sealed"]'); await sleep(2000)
+out.viewSealed = (await pageFacts()).href
+record('41g storage calc', out)
+return out
+
+
+// ──── step: 41h inspect calculator (2026-10-06T03:10:26.338Z) ────
+await clickByText('nav a, aside a', 'Storage'); await waitFor('page-storage', true, 10000); await sleep(2500)
+await evaluate(`document.querySelector('[data-testid="storage-calc-reset"]').scrollIntoView({ block: 'center', behavior: 'instant' })`)
+await sleep(500)
+await shot('100_storage_calculator_before.png')
+return evaluate(`[...document.querySelectorAll('[data-testid^="storage-calc-"]')].map(e => { const r = e.getBoundingClientRect(); return { id: e.getAttribute('data-testid'), tag: e.tagName, type: e.type ?? null, label: e.getAttribute('aria-label'), value: e.value ?? null, text: String(e.innerText ?? '').replace(/\\s+/g,' ').slice(0, 60), x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } })`)
+
+
+// ──── step: 41i storage calculator (scoped) (2026-10-06T03:10:49.558Z) ────
+const out = {}
+const vals = async () => evaluate(`Object.fromEntries(['videoMbps','hoursPerDay','retentionDays','overhead'].map(k => [k, [...document.querySelectorAll('[data-testid="storage-calc-' + k + '"] input')].map(i => i.value)]))`)
+const outs = async () => evaluate(`[...document.querySelectorAll('[data-testid^="storage-calc-out-"], [data-testid="storage-calc-meter"]')].map(e => String(e.innerText).replace(/\\s+/g,' ').trim())`)
+mark('41c storage: calculator Increase video Mbps x2, Decrease retention days x1 (scoped)')
+out.before = { vals: await vals(), outs: await outs() }
+const c1 = await click('[data-testid="storage-calc-videoMbps"] button[aria-label="Increase"]'); await sleep(300)
+const c2 = await click('[data-testid="storage-calc-videoMbps"] button[aria-label="Increase"]'); await sleep(300)
+const c3 = await click('[data-testid="storage-calc-retentionDays"] button[aria-label="Decrease"]'); await sleep(700)
+out.clicks = [c1, c2, c3]
+out.after = { vals: await vals(), outs: await outs(), verdict: await text('storage-calc-verdict', 200) }
+out.s1 = await shot('100_storage_calculator_changed.png')
+mark('41d storage: calculator Reset to book example (scoped)')
+await click('storage-calc-reset'); await sleep(700)
+out.reset = { vals: await vals(), outs: await outs(), verdict: await text('storage-calc-verdict', 200) }
+out.s2 = await shot('100b_storage_calculator_reset.png')
+record('41i storage calc', out)
+return out
+
+
+// ──── step: 42 network time open (2026-10-06T03:11:04.042Z) ────
+const out = {}
+mark('42 network-time: open via sidebar')
+await clickByText('nav a, aside a', 'Network & Time')
+out.shown = await waitFor('page-network-time', true, 15000); await sleep(3000)
+out.facts = await pageFacts()
+out.banner = await text('network-time-banner', 300)
+out.source = await text('network-time-source', 200)
+out.lastSync = await text('network-time-last-sync', 200)
+out.offset = await text('network-time-offset', 200)
+out.tablet = await text('network-time-tablet-alert', 300)
+out.ctrls = await controls('[data-testid="page-network-time"]')
+out.s = await shot('107_network_time_live.png')
+record('42 network-time', out)
+return out
+
+
+// ──── step: 43 network time live update (2026-10-06T03:11:26.214Z) ────
+const out = {}
+mark('43 network-time: live values over 4 s')
+const read = async () => ({ clock: await text('network-time-clock', 60), lastSync: await text('network-time-last-sync', 60), offset: await text('network-time-offset', 60), bw: await text('network-time-bandwidth', 120), tablet: await text('network-time-tablet-state', 80) })
+out.r1 = await read(); await sleep(4000); out.r2 = await read()
+await evaluate(`document.querySelector('[data-testid="network-time-offset-chart"], [data-testid="network-time-bandwidth-chart"]')?.scrollIntoView({ block: 'center', behavior: 'instant' })`); await sleep(600)
+out.s = await shot('108_network_time_charts.png')
+record('43 network-time live', out)
+return out
+
+
+// ──── step: 44 security audit open (2026-10-06T03:11:40.064Z) ────
+const out = {}
+mark('44 security-audit: open via sidebar')
+await clickByText('nav a, aside a', 'Security & Audit')
+out.shown = await waitFor('page-security-audit', true, 15000); await sleep(3500)
+out.facts = await pageFacts()
+out.banner = await text('security-banner', 300)
+out.chain = await text('chain-status', 300)
+out.panels = await evaluate(`[...document.querySelectorAll('[data-testid^="panel-"]')].map(e => e.getAttribute('data-testid'))`)
+out.ctrls = await controls('[data-testid="page-security-audit"]')
+out.rowsTop = await evaluate(`[...document.querySelectorAll('[data-testid="audit-table"] [role="row"]')].slice(1, 6).map(r => String(r.innerText).replace(/\\s+/g,' ').trim().slice(0, 140))`)
+out.s = await shot('109_security_audit_live.png')
+record('44 security-audit', out)
+return out
+
+
+// ──── step: 45 security audit verify search filters (2026-10-06T03:12:03.265Z) ────
+const out = {}
+const rows = async (n = 6) => evaluate(`[...document.querySelectorAll('[data-testid="audit-table"] [role="row"]')].slice(1, ${n + 1}).map(r => String(r.innerText).replace(/\\s+/g,' ').trim().slice(0, 110))`)
+const count = async () => evaluate(`document.querySelectorAll('[data-testid="audit-table"] [role="row"]').length - 1`)
+const opt = (label) => clickByText('[role="listbox"] [role="option"]', label)
+mark('45a security-audit: Verify chain')
+await click('verify-chain'); await sleep(800)
+out.verifying = await text('chain-status', 200)
+await sleep(3500)
+out.verified = { status: await text('chain-status', 300), verifiedEl: await text('chain-verified', 200), toasts: (await pageFacts()).toasts }
+out.s1 = await shot('110_security_audit_verify_chain.png')
+mark('45b security-audit: Show in log')
+await click('chain-inspect'); await sleep(1500)
+out.inspect = { facts: (await pageFacts()).href, highlighted: await evaluate(`[...document.querySelectorAll('[data-testid="audit-table"] [role="row"][data-highlight="true"], [data-testid="audit-table"] [aria-selected="true"]')].map(r => String(r.innerText).replace(/\\s+/g,' ').slice(0, 80))`) }
+out.s2 = await shot('111_security_audit_show_in_log.png')
+mark('45c security-audit: search "Storage"')
+await type('audit-search', 'Storage'); await sleep(1200)
+out.search = { count: await count(), rows: await rows(4) }
+out.s3 = await shot('112_security_audit_search_storage.png')
+await type('audit-search', ''); await sleep(800)
+mark('45d security-audit: type filter Authentication')
+await click('audit-filter-type'); await sleep(600)
+out.typeOptions = await evaluate(`[...document.querySelectorAll('[role="listbox"] [role="option"]')].map(e => e.innerText.trim())`)
+await opt('Authentication'); await sleep(1200)
+out.type = { count: await count(), rows: await rows(5) }
+out.s4 = await shot('113_security_audit_filter_authentication.png')
+mark('45e security-audit: severity filter Warning')
+await click('audit-filter-severity'); await sleep(600)
+await opt('Warning'); await sleep(1200)
+out.severity = { count: await count(), rows: await rows(5) }
+out.s5 = await shot('114_security_audit_filter_auth_warning.png')
+mark('45f security-audit: operator filter AKP Andi Pratama (type+severity reset first)')
+await click('audit-filter-type'); await sleep(500); await opt('All types'); await sleep(600)
+await click('audit-filter-severity'); await sleep(500); await opt('All severities'); await sleep(600)
+await click('audit-filter-operator'); await sleep(600)
+out.operatorOptions = await evaluate(`[...document.querySelectorAll('[role="listbox"] [role="option"]')].map(e => e.innerText.trim())`)
+await opt('AKP Andi Pratama'); await sleep(1200)
+out.operator = { count: await count(), rows: await rows(4) }
+out.s6 = await shot('115_security_audit_filter_operator.png')
+await click('audit-filter-operator'); await sleep(500); await opt('All operators'); await sleep(800)
+out.reset = { count: await count() }
+record('45 security-audit filters', out)
+return out
+
+
+// ──── step: 46 security audit earlier live export (2026-10-06T03:12:59.283Z) ────
+const out = {}
+const dl = process.env.W1_DL
+await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dl, eventsEnabled: true })
+mark('46a security-audit: Earlier chains')
+await click('chain-earlier'); await sleep(1200)
+out.earlier = { list: await text('chain-earlier-list', 400), shown: await text('chain-earlier-shown', 200), dialogs: (await pageFacts()).dialogs }
+out.s1 = await shot('116_security_audit_earlier_chains.png')
+await key('Escape'); await sleep(500)
+mark('46b security-audit: Live switch off, then on')
+const liveVal = async () => evaluate(`(() => { const el = document.querySelector('[data-testid="audit-live"]'); const i = el?.tagName === 'INPUT' ? el : el?.querySelector('input'); return i ? i.checked : null })()`)
+out.live0 = await liveVal()
+await click('[data-testid="audit-live"] [data-slot="switch-content"], label:has(> [data-testid="audit-live"]), [data-testid="audit-live"]'); await sleep(800)
+out.live1 = await liveVal()
+out.s2 = await shot('117_security_audit_live_off.png')
+if (out.live1 === out.live0) { const host = await evaluate(`(() => { const el = document.querySelector('[data-testid="audit-live"]'); let n = el; for (let i = 0; i < 4 && n; i++) { if (n.tagName === 'LABEL' || n.getAttribute?.('data-slot') === 'switch') break; n = n.parentElement } document.querySelectorAll('[data-w1-target]').forEach(e => e.removeAttribute('data-w1-target')); n?.setAttribute('data-w1-target', '1'); return n?.tagName })()`); out.host = host; await click('[data-w1-target="1"]'); await sleep(800); out.live1b = await liveVal(); out.s2 = await shot('117_security_audit_live_off.png') }
+await click('[data-w1-target="1"]').catch(() => null); await sleep(800)
+out.live2 = await liveVal()
+mark('46c security-audit: Export audit dialog')
+await click('export-audit'); await waitFor('export-audit-dialog', true, 6000); await sleep(800)
+out.dialog = await text('export-audit-dialog', 600)
+out.dialogCtrls = await controls('[data-testid="export-audit-dialog"]')
+out.s3 = await shot('118_security_audit_export_dialog.png')
+await type('[data-testid="export-audit-dialog"] [data-testid="export-reason"]', 'E2E-W1 walk: audit export for the evidence index')
+await sleep(300)
+await click('export-confirm'); await sleep(5000)
+out.result = { result: await text('export-audit-result', 500), pages: await text('export-audit-pages', 200), file: await text('export-audit-file', 200), toasts: (await pageFacts()).toasts }
+out.s4 = await shot('119_security_audit_export_result.png')
+if (await exists('export-audit-download')) {
+  mark('46d security-audit: Export audit download')
+  const { readdirSync, statSync } = await import('node:fs')
+  const before = new Set(readdirSync(dl))
+  await click('export-audit-download'); await sleep(3500)
+  out.download = readdirSync(dl).filter(f => !before.has(f)).map(f => ({ name: f, bytes: statSync(dl + '/' + f).size }))
+  out.s5 = await shot('120_security_audit_export_downloaded.png')
+}
+out.audit = await auditTail(2)
+record('46 security-audit export', out)
+return out
+
+
+// ──── step: 46e security audit live on, download again (2026-10-06T03:13:31.809Z) ────
+const out = {}
+const dl = process.env.W1_DL
+await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dl, eventsEnabled: true })
+const liveVal = async () => evaluate(`document.querySelector('[data-testid="audit-live"]')?.checked ?? document.querySelector('[data-testid="audit-live"] input')?.checked ?? null`)
+if (await exists('export-audit-download')) {
+  mark('46d security-audit: Download again')
+  const { readdirSync, statSync } = await import('node:fs')
+  const before = new Set(readdirSync(dl))
+  await click('export-audit-download'); await sleep(3500)
+  out.download = readdirSync(dl).filter(f => !before.has(f)).map(f => ({ name: f, bytes: statSync(dl + '/' + f).size }))
+  out.s = await shot('120_security_audit_export_downloaded.png')
+}
+if (await exists('export-audit-dialog')) { await key('Escape'); await sleep(700) }
+mark('46e security-audit: Live switch back on')
+out.before = await liveVal()
+await click('[data-testid="audit-live"]'); await sleep(800)
+out.after = await liveVal()
+if (out.after !== true) { await clickByText('label, [data-slot="switch"]', 'Live'); await sleep(800); out.after2 = await liveVal() }
+out.s2 = await shot('121_security_audit_live_on_again.png')
+record('46e live/download', out)
+return out
+
+
+// ──── step: 47 system open (2026-10-06T03:14:14.889Z) ────
+const out = {}
+mark('47 system: open via sidebar')
+await clickByText('nav a, aside a', 'System')
+out.shown = await waitFor('page-system', true, 15000); await sleep(3500)
+out.facts = await pageFacts()
+out.banner = await text('system-banner', 300)
+out.panels = await evaluate(`[...document.querySelectorAll('[data-testid^="system-panel-"]')].map(e => e.getAttribute('data-testid'))`)
+out.ctrls = await controls('[data-testid="page-system"]')
+out.demo = await text('system-demo-body', 800)
+out.status = await pageFetch('/api/v1/demo/status', { project: `(b) => ({ enabled: b?.enabled, scenario: b?.scenario, scenarios: b?.scenarios, faults: (b?.faults ?? []).map(f => f.kind), epoch: b?.epoch, lastResetAt: b?.lastResetAt ? new Date(b.lastResetAt).toISOString() : null })` })
+out.s = await shot('122_system_live.png')
+record('47 system', out)
+return out
+
+
+// ──── step: 48 system diagnostics (2026-10-06T03:14:36.142Z) ────
+const out = {}
+mark('48a system: Run Diagnostics (maintenance panel)')
+await click('system-run-diagnostics'); await sleep(1000)
+out.modalOpen = await exists('system-diagnostics-modal')
+out.s1 = await shot('123_system_diagnostics_running.png')
+await sleep(4500)
+out.summary = await text('system-diagnostics-summary', 300)
+out.checks = await evaluate(`[...document.querySelectorAll('[data-testid^="system-diag-"]')].map(e => e.getAttribute('data-testid') + ': ' + String(e.innerText).replace(/\\s+/g,' ').trim().slice(0, 60))`)
+out.s2 = await shot('124_system_diagnostics_done.png')
+out.audit1 = await auditTail(1)
+mark('48b system: Diagnostics Run again')
+if (await exists('system-diagnostics-again')) { await click('system-diagnostics-again'); await sleep(5000); out.again = await text('system-diagnostics-summary', 300); out.audit2 = await auditTail(1) }
+await key('Escape'); await sleep(700)
+out.closed = !(await exists('system-diagnostics-modal'))
+out.last = await text('system-diagnostics-last', 200)
+record('48 diagnostics', out)
+return out
+
+
+// ──── step: 49 system close modal export logs locked (2026-10-06T03:15:05.032Z) ────
+const out = {}
+const tip = async () => evaluate(`[...document.querySelectorAll('[role="tooltip"], [data-slot="tooltip-content"], [data-slot="tooltip"]')].filter(e => e.getClientRects().length).map(e => String(e.innerText).replace(/\\s+/g,' ').trim().slice(0, 200))`)
+mark('49a system: diagnostics modal close')
+out.modalCtrls = await controls('[data-testid="system-diagnostics-modal"]')
+out.stillOpen = await exists('system-diagnostics-modal')
+if (out.stillOpen) { const c = await clickByText('[data-testid="system-diagnostics-modal"] button', 'Close'); out.closeClick = c; await sleep(900) }
+out.closed = !(await exists('system-diagnostics-modal'))
+mark('49b system: hover locked Install update and disabled Restart services')
+const hover = async (sel) => { const b = await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(q(sel))}); if (!el) return null; el.scrollIntoView({ block: 'center', behavior: 'instant' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`); if (!b) return false; await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 3, y: 3 }); await sleep(200); await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: b.x, y: b.y }); await sleep(1300); return true }
+await hover('system-update-locked'); out.installTip = await tip(); out.s1 = await shot('125_system_install_update_locked.png')
+await hover('[data-testid="system-panel-maintenance"] [role="button"]'); out.restartTip = await tip(); out.s2 = await shot('126_system_restart_services_locked.png')
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 700, y: 300 })
+mark('49c system: Export logs dialog')
+await click('system-export-logs'); await waitFor('system-export-dialog', true, 6000); await sleep(800)
+out.dialog = await text('system-export-dialog', 500)
+await click('system-export-submit'); await sleep(800)
+out.emptyReason = { err: await text('system-export-reason-error', 200), open: await exists('system-export-dialog') }
+out.s3 = await shot('127_system_export_logs_reason_required.png')
+await type('[data-testid="system-export-reason-field"] textarea, [data-testid="system-export-reason"] textarea, [data-testid="system-export-reason"]', 'E2E-W1 walk: log bundle for the evidence index')
+await sleep(300)
+await click('system-export-submit'); await sleep(1200)
+out.progress = await text('system-export-progress', 300)
+out.s4 = await shot('128_system_export_logs_progress.png')
+await sleep(5000)
+out.done = { toasts: (await pageFacts()).toasts, open: await exists('system-export-dialog') }
+out.s5 = await shot('129_system_export_logs_done.png')
+out.audit = await auditTail(1)
+record('49 system export/locked', out)
+return out
+
+
+// ──── step: 50 system export logs with automatic downloads granted (2026-10-06T03:15:49.787Z) ────
+const out = {}
+const dl = process.env.W1_DL
+await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dl, eventsEnabled: true })
+try { await send('Browser.setPermission', { permission: { name: 'automatic-downloads' }, setting: 'granted', origin: ORIGIN }); out.perm = 'automatic-downloads granted' } catch (e) { out.perm = 'setPermission failed: ' + e.message }
+const { readdirSync, statSync } = await import('node:fs')
+const before = new Set(readdirSync(dl))
+mark('50 system: Export logs again (automatic downloads granted)')
+await click('system-export-logs'); await waitFor('system-export-dialog', true, 6000); await sleep(600)
+await type('[data-testid="system-export-reason-field"] textarea, [data-testid="system-export-reason"] textarea, [data-testid="system-export-reason"]', 'E2E-W1 walk: log bundle download check')
+await click('system-export-submit'); await sleep(4000)
+out.toasts = (await pageFacts()).toasts
+await sleep(2500)
+out.files = readdirSync(dl).filter(f => !before.has(f)).map(f => ({ name: f.replace(/\d{6}/g, '######'), bytes: statSync(dl + '/' + f).size }))
+out.s = await shot('130_system_export_logs_downloaded.png')
+out.audit = await auditTail(1)
+record('50 export logs download', out)
+return out
+
+
+// ──── step: 50b audit after export logs (2026-10-06T03:16:24.964Z) ────
+return { audit: await auditTail(3), facts: await pageFacts() }
+
+
+// ──── step: 51 system settings (2026-10-06T03:16:49.918Z) ────
+const out = {}
+const sw = (id) => evaluate(`document.querySelector('[data-testid="${id}"]')?.checked ?? document.querySelector('[data-testid="${id}"] input')?.checked ?? null`)
+const toggle = async (id) => { const host = await evaluate(`(() => { const el = document.querySelector('[data-testid="${id}"]'); let n = el; for (let i = 0; i < 5 && n; i++) { if (n.getAttribute?.('data-slot') === 'switch' || n.tagName === 'LABEL') break; n = n.parentElement } const c = n?.querySelector('[data-slot="switch-control"], [data-slot="switch-content"]') ?? n; document.querySelectorAll('[data-w1-target]').forEach(e => e.removeAttribute('data-w1-target')); c?.setAttribute('data-w1-target', '1'); return c?.getAttribute('data-slot') ?? c?.tagName })()`); await click('[data-w1-target="1"]'); await sleep(600); return host }
+const openSection = async (id, label) => { const expanded = await evaluate(`[...document.querySelectorAll('button[data-testid="${id}"]')].find(b => b.innerText.includes(${JSON.stringify(label)}))?.getAttribute('aria-expanded')`); if (expanded !== 'true') { await clickByText(`button[data-testid="${id}"]`, label); await sleep(700) } }
+mark('51a system: settings Account')
+await openSection('system-settings-account', 'Account')
+out.account = await text('[data-testid="system-panel-settings"]', 500)
+out.s1 = await shot('131_system_settings_account.png')
+mark('51b system: settings App Preferences: presentation mode on, then off')
+await openSection('system-settings-app', 'App Preferences')
+out.pres0 = { sw: await sw('system-presentation-mode'), store: await evaluate(`sessionStorage.getItem('dems.presentation.v1')`) }
+out.presHost = await toggle('system-presentation-mode')
+out.pres1 = { sw: await sw('system-presentation-mode'), store: await evaluate(`sessionStorage.getItem('dems.presentation.v1')`), demoBadge: await text('system-demo-presentation', 200) }
+out.s2 = await shot('132_system_presentation_mode_on.png')
+await toggle('system-presentation-mode')
+out.pres2 = { sw: await sw('system-presentation-mode'), store: await evaluate(`sessionStorage.getItem('dems.presentation.v1')`) }
+mark('51c system: settings App Preferences: reduce motion toggle and back')
+out.rm0 = await sw('system-reduce-motion'); await toggle('system-reduce-motion'); out.rm1 = await sw('system-reduce-motion'); out.s3 = await shot('133_system_reduce_motion_toggled.png'); await toggle('system-reduce-motion'); out.rm2 = await sw('system-reduce-motion')
+mark('51d system: settings App Preferences: clock 12 h and back to 24 h')
+const fmt = async () => evaluate(`[...document.querySelectorAll('input[data-testid="system-settings-app"], [data-testid="system-settings-app"] input[type="radio"]')].map(i => i.value + ':' + i.checked)`)
+out.fmt0 = await fmt()
+await clickByText('[data-testid="system-panel-settings"] label, [data-testid="system-panel-settings"] [role="radio"]', '12'); await sleep(700)
+out.fmt1 = { fmt: await fmt(), clock: await text('top-bar-clock', 40) }
+out.s4 = await shot('134_system_clock_12h.png')
+await clickByText('[data-testid="system-panel-settings"] label, [data-testid="system-panel-settings"] [role="radio"]', '24'); await sleep(700)
+out.fmt2 = { fmt: await fmt(), clock: await text('top-bar-clock', 40) }
+record('51 settings', out)
+return out
+
+
+// ──── step: 52 system settings 2 (2026-10-06T03:17:45.836Z) ────
+const out = {}
+const openSection = async (id, label) => { const expanded = await evaluate(`[...document.querySelectorAll('button[data-testid="${id}"]')].find(b => b.innerText.includes(${JSON.stringify(label)}))?.getAttribute('aria-expanded')`); if (expanded !== 'true') { await clickByText(`button[data-testid="${id}"]`, label); await sleep(800) } }
+const notif = async () => evaluate(`[...document.querySelectorAll('input[data-testid="system-settings-notifications"]')].map(i => (i.getAttribute('aria-label') ?? i.name ?? '') + ':' + i.checked)`)
+mark('52a system: settings Notifications: first switch off, then on')
+await openSection('system-settings-notifications', 'Notifications')
+out.n0 = await notif()
+const markN = () => evaluate(`(() => { const i = document.querySelector('input[data-testid="system-settings-notifications"]'); let n = i; for (let k = 0; k < 5 && n; k++) { if (n.getAttribute?.('data-slot') === 'switch' || n.tagName === 'LABEL') break; n = n.parentElement } const c = n?.querySelector('[data-slot="switch-content"], [data-slot="switch-control"]') ?? n; document.querySelectorAll('[data-w1-target]').forEach(e => e.removeAttribute('data-w1-target')); c?.setAttribute('data-w1-target', '1'); return !!c })()`)
+await markN(); await click('[data-w1-target="1"]'); await sleep(700)
+out.n1 = await notif(); out.s1 = await shot('135_system_notifications_toggled.png')
+await markN(); await click('[data-w1-target="1"]'); await sleep(700)
+out.n2 = await notif()
+mark('52b system: settings Device Settings: active camera VIDEO-02, then VIDEO-01')
+await openSection('system-settings-device', 'Device Settings')
+out.cam0 = await text('system-active-camera', 60)
+await click('system-active-camera'); await sleep(600)
+out.camOptions = await evaluate(`[...document.querySelectorAll('[role="listbox"] [role="option"]')].map(e => e.innerText.trim())`)
+await clickByText('[role="listbox"] [role="option"]', 'VIDEO-02'); await sleep(1500)
+out.cam1 = { sel: await text('system-active-camera', 60), toasts: (await pageFacts()).toasts }
+out.s2 = await shot('136_system_active_camera_video02.png')
+await click('system-active-camera'); await sleep(600)
+await clickByText('[role="listbox"] [role="option"]', 'VIDEO-01'); await sleep(1500)
+out.cam2 = { sel: await text('system-active-camera', 60) }
+mark('52c system: settings System Maintenance and About')
+await openSection('system-settings-maintenance', 'System Maintenance'); out.maint = await text('[data-testid="system-panel-settings"]', 900); out.s3 = await shot('137_system_settings_maintenance.png')
+await openSection('system-settings-about', 'About DEMS'); await sleep(400)
+out.about = await text('system-about-summary', 300); out.sbom = await text('system-sbom', 300); out.s4 = await shot('138_system_settings_about.png')
+record('52 settings 2', out)
+return out
+
+
+// ──── step: 52r system settings 2 (wrapper selectors) (2026-10-06T03:18:21.672Z) ────
+const out = {}
+const openSection = async (id) => { const b = `[data-testid="${id}"] button[aria-expanded]`; const ex = await evaluate(`document.querySelector('${b}')?.getAttribute('aria-expanded') ?? null`); if (ex !== 'true') { await click(b); await sleep(900) } return evaluate(`document.querySelector('${b}')?.getAttribute('aria-expanded') ?? null`) }
+const notif = async () => evaluate(`[...document.querySelectorAll('[data-testid="system-settings-notifications"] input')].map(i => i.checked)`)
+mark('52a system: settings Notifications: first switch off, then on (rerun)')
+out.nOpen = await openSection('system-settings-notifications')
+out.nText = await text('system-settings-notifications', 300)
+out.n0 = await notif()
+const markN = () => evaluate(`(() => { const i = document.querySelector('[data-testid="system-settings-notifications"] input'); let n = i; for (let k = 0; k < 5 && n; k++) { if (n.getAttribute?.('data-slot') === 'switch' || n.tagName === 'LABEL') break; n = n.parentElement } const c = n?.querySelector('[data-slot="switch-content"], [data-slot="switch-control"]') ?? n; document.querySelectorAll('[data-w1-target]').forEach(e => e.removeAttribute('data-w1-target')); c?.setAttribute('data-w1-target', '1'); return !!c })()`)
+await markN(); await click('[data-w1-target="1"]'); await sleep(800)
+out.n1 = await notif(); out.s1 = await shot('135_system_notifications_toggled.png')
+await markN(); await click('[data-w1-target="1"]'); await sleep(800)
+out.n2 = await notif()
+mark('52b system: settings Device Settings: active camera VIDEO-02, then VIDEO-01 (rerun)')
+out.dOpen = await openSection('system-settings-device')
+out.cam0 = await text('system-active-camera', 60)
+await click('system-active-camera'); await sleep(700)
+out.camOptions = await evaluate(`[...document.querySelectorAll('[role="listbox"] [role="option"]')].map(e => e.innerText.trim())`)
+await clickByText('[role="listbox"] [role="option"]', 'VIDEO-02'); await sleep(1500)
+out.cam1 = { sel: await text('system-active-camera', 60), toasts: (await pageFacts()).toasts }
+out.s2 = await shot('136_system_active_camera_video02.png')
+out.audit1 = await auditTail(1)
+await click('system-active-camera'); await sleep(700)
+await clickByText('[role="listbox"] [role="option"]', 'VIDEO-01'); await sleep(1500)
+out.cam2 = { sel: await text('system-active-camera', 60) }
+mark('52c system: settings System Maintenance, Security & Privacy, Account, About (rerun)')
+out.mOpen = await openSection('system-settings-maintenance'); out.maint = await text('system-settings-maintenance', 400); out.s3 = await shot('137_system_settings_maintenance.png')
+out.secOpen = await openSection('system-settings-security'); out.sec = await text('system-settings-security', 300)
+out.accOpen = await openSection('system-settings-account'); out.acc = await text('system-settings-account', 300); out.s3b = await shot('131_system_settings_account.png')
+out.aOpen = await openSection('system-settings-about'); out.about = await text('system-settings-about', 300); out.s4 = await shot('138_system_settings_about.png')
+record('52r settings 2', out)
+return out
+
+
+// ──── step: 53 system active camera (2026-10-06T03:18:54.377Z) ────
+const out = {}
+const sel = async () => evaluate(`document.querySelector('[data-testid="system-active-camera"] [data-slot="select-value"], [data-testid="system-active-camera"] .select__value')?.innerText ?? document.querySelector('[data-testid="system-active-camera"]')?.innerText?.split('\\n')[0]`)
+const core = async () => pageFetch('/api/v1/device', { project: `(b) => ({ activeCamera: b?.activeCamera ?? b?.devices?.activeCamera ?? b?.inventory?.activeCamera ?? null, keys: Object.keys(b ?? {}).slice(0, 12) })` })
+mark('53a system: Device Settings active camera -> Camera 2')
+out.core0 = await core()
+await click('system-active-camera'); await sleep(700)
+await clickByText('[role="listbox"] [role="option"]', 'Camera 2'); await sleep(1500)
+out.sel1 = await sel(); out.core1 = await core(); out.toasts1 = (await pageFacts()).toasts
+out.s1 = await shot('136_system_active_camera_video02.png')
+mark('53b system: Device Settings active camera -> Camera 1')
+await click('system-active-camera'); await sleep(700)
+await clickByText('[role="listbox"] [role="option"]', 'Camera 1'); await sleep(1500)
+out.sel2 = await sel(); out.core2 = await core()
+record('53 active camera', out)
+return out
+
+
+// ──── step: 54 system demo panel open (2026-10-06T03:19:14.824Z) ────
+const out = {}
+mark('54 system: Demo Control panel')
+await evaluate(`document.querySelector('[data-testid="system-panel-demo"]').scrollIntoView({ block: 'start', behavior: 'instant' })`); await sleep(600)
+out.toggle = await evaluate(`document.querySelector('[data-testid="system-demo-toggle"]')?.checked ?? null`)
+out.panel = await text('system-panel-demo', 900)
+if (!(await exists('system-demo-body'))) {
+  const host = await evaluate(`(() => { const i = document.querySelector('[data-testid="system-demo-toggle"]'); let n = i; for (let k = 0; k < 5 && n; k++) { if (n.getAttribute?.('data-slot') === 'switch' || n.tagName === 'LABEL') break; n = n.parentElement } const c = n?.querySelector('[data-slot="switch-content"], [data-slot="switch-control"]') ?? n; document.querySelectorAll('[data-w1-target]').forEach(e => e.removeAttribute('data-w1-target')); c?.setAttribute('data-w1-target', '1'); return c?.getAttribute('data-slot') })()`)
+  out.host = host
+  await click('[data-w1-target="1"]'); await sleep(1200)
+}
+out.body = await text('system-demo-body', 1500)
+out.ctrls = await controls('[data-testid="system-panel-demo"]')
+out.s = await shot('139_system_demo_panel_open.png')
+record('54 demo panel', out)
+return out
+
+
+// ──── step: 55 demo fault and time source (2026-10-06T03:19:44.124Z) ────
+const out = {}
+const st = async () => pageFetch('/api/v1/demo/status', { project: `(b) => ({ scenario: b?.scenario, faults: (b?.faults ?? []).map(f => f.kind), epoch: b?.epoch })` })
+mark('55a demo: inject MIC_NO_SIGNAL')
+await click('system-demo-fault-MIC_NO_SIGNAL'); await sleep(2000)
+out.raised = { status: await st(), count: await text('system-demo-active-count', 80), pressed: await attr('system-demo-fault-MIC_NO_SIGNAL', 'aria-pressed'), banner: await text('system-banner', 200), pill: await text('secure-pill', 120), toasts: (await pageFacts()).toasts }
+out.s1 = await shot('140_demo_fault_mic1_no_signal_raised.png')
+out.audit1 = await auditTail(2)
+mark('55b demo: Devices page while MIC 1 has no signal')
+await clickByText('nav a, aside a', 'Devices & Inputs'); await waitFor('page-devices', true, 10000); await sleep(2500)
+out.devices = { banner: await text('devices-banner', 300), mic1: await text('audio-input-AUDIO-01', 200) }
+out.s2 = await shot('141_demo_fault_devices_mic1_no_signal.png')
+await clickByText('nav a, aside a', 'System'); await waitFor('page-system', true, 10000); await sleep(2000)
+await evaluate(`document.querySelector('[data-testid="system-panel-demo"]').scrollIntoView({ block: 'start', behavior: 'instant' })`); await sleep(500)
+mark('55c demo: clear MIC_NO_SIGNAL (press again)')
+await click('system-demo-fault-MIC_NO_SIGNAL'); await sleep(2000)
+out.cleared = { status: await st(), count: await text('system-demo-active-count', 80) }
+out.s3 = await shot('142_demo_fault_mic1_cleared.png')
+out.audit2 = await auditTail(1)
+mark('55d demo: time source NTP fallback')
+await click('system-demo-time-NTP'); await sleep(2000)
+out.ntp = { src: await text('system-demo-time-source', 120), audit: await auditTail(1), strip: await text('strip-time', 80) }
+out.s4 = await shot('143_demo_time_source_ntp.png')
+mark('55e demo: time source back to GNSS lock')
+await click('system-demo-time-GNSS'); await sleep(2000)
+out.gnss = { src: await text('system-demo-time-source', 120), audit: await auditTail(1) }
+record('55 demo fault/time', out)
+return out
+
+
+// ──── step: 56 demo status keys (2026-10-06T03:20:27.478Z) ────
+return pageFetch('/api/v1/demo/status', { project: `(b) => ({ keys: Object.keys(b ?? {}), faults: b?.faults, scenario: b?.scenario, epoch: b?.epoch })` })
+
+
+// ──── step: 57 demo two faults and clear all (2026-10-06T03:20:43.246Z) ────
+const out = {}
+const st = async () => pageFetch('/api/v1/demo/status', { project: `(b) => ({ activeFaults: (b?.activeFaults ?? []).map(f => f.kind), epoch: b?.epoch })` })
+await evaluate(`document.querySelector('[data-testid="system-panel-demo"]').scrollIntoView({ block: 'start', behavior: 'instant' })`); await sleep(400)
+mark('57a demo: inject CAMERA_LOSS and FAN_STALL')
+await click('system-demo-fault-CAMERA_LOSS'); await sleep(1500)
+await click('system-demo-fault-FAN_STALL'); await sleep(2000)
+out.raised = { status: await st(), count: await text('system-demo-active-count', 80), clearAllDisabled: await attr('system-demo-clear-all', 'disabled'), banner: await text('system-banner', 200), toasts: (await pageFacts()).toasts }
+out.s1 = await shot('144_demo_two_faults_raised.png')
+out.audit1 = await auditTail(2)
+mark('57b demo: Dashboard while two faults are active')
+await clickByText('nav a, aside a', 'Dashboard'); await waitFor('page-dashboard', true, 10000); await sleep(2500)
+out.dash = { ring: await text('ring-status-line', 200), pill: await text('secure-pill', 120), cam: await text('strip-cameras', 80) }
+out.s2 = await shot('145_demo_two_faults_dashboard.png')
+await clickByText('nav a, aside a', 'System'); await waitFor('page-system', true, 10000); await sleep(2000)
+await evaluate(`document.querySelector('[data-testid="system-panel-demo"]').scrollIntoView({ block: 'start', behavior: 'instant' })`); await sleep(400)
+mark('57c demo: Clear all faults')
+await click('system-demo-clear-all'); await sleep(2500)
+out.cleared = { status: await st(), count: await text('system-demo-active-count', 80), toasts: (await pageFacts()).toasts, banner: await text('system-banner', 200) }
+out.s3 = await shot('146_demo_clear_all_faults.png')
+out.audit2 = await auditTail(3)
+record('57 demo clear all', out)
+return out
+
+
+// ──── step: 58 demo load scenario recording (2026-10-06T03:21:11.220Z) ────
+const out = {}
+const st = async () => pageFetch('/api/v1/demo/status', { project: `(b) => ({ scenario: b?.scenario, activeFaults: (b?.activeFaults ?? []).map(f => f.kind), epoch: b?.epoch, lastResetAt: b?.lastResetAt ? new Date(b.lastResetAt).toISOString() : null })` })
+out.before = await st()
+await evaluate(`document.querySelector('[data-testid="system-panel-demo"]').scrollIntoView({ block: 'start', behavior: 'instant' })`); await sleep(400)
+mark('58a demo: choose scenario Recording')
+await click('system-demo-scenario'); await sleep(600)
+await clickByText('[role="listbox"] [role="option"]', 'Recording'); await sleep(500)
+out.chosen = await text('system-demo-scenario', 60)
+mark('58b demo: Load scenario -> confirmation')
+await click('system-demo-load'); await sleep(900)
+out.confirm = await text('system-demo-confirm', 500)
+out.s1 = await shot('147_demo_load_recording_confirm.png')
+mark('58c demo: confirm Load scenario Recording (LANE 3 ONLY)')
+await click('system-demo-confirm-go'); await sleep(5000)
+out.after = { status: await st(), toasts: (await pageFacts()).toasts, current: await text('system-demo-body', 160) }
+out.s2 = await shot('148_demo_scenario_recording_loaded.png')
+out.audit = await auditTail(3)
+record('58 load recording', out)
+return out
+
+
+// ──── step: 59 session monitor recording (2026-10-06T03:21:41.785Z) ────
+const out = {}
+mark('59a session-monitor: open during the Recording scenario')
+await clickByText('nav a, aside a', 'Session Monitor'); await waitFor('page-session-monitor', true, 10000); await sleep(3500)
+out.facts = await pageFacts()
+out.banner = await text('sm-status-banner', 300)
+out.details = await text('sm-details', 500)
+const meters = async () => evaluate(`[...document.querySelectorAll('[role="meter"], [data-testid="dbfs-meter"]')].map(m => m.getAttribute('aria-valuetext') ?? m.getAttribute('aria-valuenow') ?? String(m.innerText).slice(0, 20))`)
+out.r1 = { t: Date.now(), duration: await text('sm-duration', 40), timer: await text('rec-timer', 40), meters: await meters(), size: await text('sm-session-size', 60) }
+out.s1 = await shot('149_session_monitor_recording_reading_1.png')
+await sleep(3000)
+out.r2 = { t: Date.now(), duration: await text('sm-duration', 40), timer: await text('rec-timer', 40), meters: await meters(), size: await text('sm-session-size', 60) }
+out.s2 = await shot('150_session_monitor_recording_reading_2.png')
+out.ctrls = await controls('[data-testid="page-session-monitor"]')
+out.current = await pageFetch('/api/v1/session/current', { project: `(b) => { const s = b?.session ?? b; return { id: s?.id, state: s?.state, startedAt: s?.startedAt ? new Date(s.startedAt).toISOString() : null } }` })
+record('59 session monitor recording', out)
+return out
+
+
+// ──── step: 60 session monitor marker and note (2026-10-06T03:22:01.916Z) ────
+const out = {}
+mark('60a session-monitor: Add Marker')
+await click('sm-action-marker'); await sleep(900)
+out.markerUi = { input: await exists('sm-marker-input'), dialogs: (await pageFacts()).dialogs }
+if (await exists('sm-marker-input')) {
+  await type('sm-marker-input', 'E2E-W1 marker: subject asked for water')
+  out.s1 = await shot('151_session_monitor_marker_input.png')
+  await click('sm-marker-submit'); await sleep(2000)
+}
+out.markerAfter = { toasts: (await pageFacts()).toasts, pending: await exists('sm-marker-pending'), timeline: await text('session-timeline', 400) }
+out.s2 = await shot('152_session_monitor_marker_added.png')
+out.audit1 = await auditTail(2)
+mark('60b session-monitor: Session Note')
+await click('sm-action-note'); await sleep(1000)
+out.noteUi = { drawer: await exists('sm-note-drawer'), input: await exists('sm-note-input') }
+if (await exists('sm-note-input')) {
+  await type('sm-note-input', 'E2E-W1 note: interview proceeding normally; synthetic walk on lane 3.')
+  out.s3 = await shot('153_session_monitor_note_drawer.png')
+  await click('sm-note-submit'); await sleep(2000)
+}
+out.noteAfter = { toasts: (await pageFacts()).toasts, drawer: await exists('sm-note-drawer') }
+out.s4 = await shot('154_session_monitor_note_added.png')
+out.audit2 = await auditTail(2)
+record('60 marker/note', out)
+return out
+
+
+// ──── step: 61 session monitor pause snapshot fullscreen (2026-10-06T03:22:27.307Z) ────
+const out = {}
+mark('61a session-monitor: Pause Monitoring')
+out.pause0 = await text('sm-action-pause', 60)
+await click('sm-action-pause'); await sleep(1500)
+out.pause1 = { label: await text('sm-action-pause', 60), banner: await text('sm-status-banner', 200), toasts: (await pageFacts()).toasts, dialogs: (await pageFacts()).dialogs, duration: await text('sm-duration', 40) }
+out.s1 = await shot('155_session_monitor_paused.png')
+await sleep(2500)
+out.pause2 = { duration: await text('sm-duration', 40), state: (await pageFetch('/api/v1/session/current', { project: `(b) => (b?.session ?? b)?.state` })).body }
+mark('61b session-monitor: Resume Monitoring')
+await click('sm-action-pause'); await sleep(1500)
+out.resume = { label: await text('sm-action-pause', 60), banner: await text('sm-status-banner', 200), toasts: (await pageFacts()).toasts }
+out.audit1 = await auditTail(3)
+mark('61c session-monitor: Snapshot')
+await click('sm-action-snapshot'); await sleep(1800)
+out.snapshot = { toasts: (await pageFacts()).toasts, shutter: await exists('sm-shutter') }
+out.s2 = await shot('156_session_monitor_snapshot.png')
+out.audit2 = await auditTail(2)
+mark('61d session-monitor: Camera 2 while recording')
+await click('sm-camera-VIDEO-02'); await sleep(1200)
+out.cam = await evaluate(`[...document.querySelectorAll('[data-testid^="sm-camera-"]')].map(e => e.getAttribute('data-testid') + '=' + e.getAttribute('aria-checked'))`)
+await click('sm-camera-VIDEO-01'); await sleep(600)
+mark('61e session-monitor: Fullscreen')
+await click('sm-feed-fullscreen'); await sleep(1500)
+out.fullscreen = await evaluate(`({ fs: !!document.fullscreenElement, el: document.fullscreenElement?.getAttribute('data-testid') ?? document.fullscreenElement?.tagName ?? null })`)
+out.s3 = await shot('157_session_monitor_fullscreen.png')
+if (out.fullscreen.fs) { await key('Escape'); await sleep(800); await evaluate(`document.exitFullscreen?.().catch(() => null)`); await sleep(500) }
+out.fullscreenAfter = await evaluate(`!!document.fullscreenElement`)
+record('61 pause/snapshot/fullscreen', out)
+return out
+
+
+// ──── step: 62 session monitor end session (2026-10-06T03:23:14.748Z) ────
+const out = {}
+out.overlayOpen = await evaluate(`[...document.querySelectorAll('[role="dialog"]')].map(d => d.getAttribute('data-testid') ?? d.getAttribute('aria-label') ?? 'dialog')`)
+if (out.overlayOpen.length) { await key('Escape'); await sleep(800); out.overlayAfterEsc = await evaluate(`[...document.querySelectorAll('[role="dialog"]')].length`) }
+mark('62a session-monitor: End Session (press and hold)')
+await click('sm-action-end', { hold: 2600, after: 900 })
+out.dialog = { open: await exists('sm-end-dialog'), text: await text('sm-end-dialog', 400) }
+out.s1 = await shot('158_session_monitor_end_dialog.png')
+if (out.dialog.open) {
+  await type('sm-end-reason', 'Interview completed (E2E-W1 walk, lane 3)')
+  await sleep(300)
+  mark('62b session-monitor: End Session confirm')
+  await click('sm-end-confirm'); await sleep(1500)
+  out.finalizing = { modal: await exists('finalization-modal'), progress: await text('sm-final-progress', 300) }
+  out.s2 = await shot('159_session_monitor_finalizing.png')
+  for (let i = 0; i < 20 && !(await exists('sm-final-sealed')); i++) await sleep(1000)
+  out.sealed = { sealed: await text('sm-final-sealed', 300), sealedIn: await text('sm-sealed-in', 120), modal: await text('finalization-modal', 500) }
+  out.s3 = await shot('160_session_monitor_sealed.png')
+  out.current = await pageFetch('/api/v1/session/current', { project: `(b) => { const s = b?.session ?? b; return { id: s?.id ?? null, state: s?.state ?? null } }` })
+  out.audit = await auditTail(6)
+}
+record('62 end session', out)
+return out
+
+
+// ──── step: 63 view sealed evidence (2026-10-06T03:23:39.119Z) ────
+const out = {}
+mark('63a session-monitor: View evidence from the finalization modal')
+await click('sm-final-view-evidence'); await sleep(2500)
+out.facts = await pageFacts()
+out.header = await text('evidence-detail-header', 500)
+out.s1 = await shot('161_evidence_detail_new_sealed_item.png')
+await click('evidence-tab-integrity'); await sleep(1200)
+out.custody = await text('evidence-custody', 600)
+out.s2 = await shot('162_evidence_new_item_custody.png')
+out.core = await pageFetch('/api/v1/evidence/EV-20261006-0014', { project: `(b) => { const e = b?.evidence; return { status: e?.status, sessionId: e?.sessionId, markers: (e?.markers ?? []).map(m => m.label ?? m.text ?? null), notes: (e?.notes ?? []).length, media: b?.media ? Object.keys(b.media) : null } }` })
+mark('63b session-monitor: back to Session Monitor after sealing')
+await clickByText('nav a, aside a', 'Session Monitor'); await waitFor('page-session-monitor', true, 10000); await sleep(2500)
+out.monitor = { banner: await text('sm-status-banner', 200), dialogs: (await pageFacts()).dialogs }
+out.s3 = await shot('163_session_monitor_after_seal.png')
+record('63 view sealed', out)
+return out
+
+
+// ──── step: 63c custody actor check (2026-10-06T03:23:59.704Z) ────
+mark('63c evidence: custody actor of RECORDING_STOPPED in the Core record')
+const core = await pageFetch('/api/v1/evidence/EV-20261006-0014', { project: `(b) => ({ investigatorId: b?.evidence?.investigatorId, custody: (b?.evidence?.custody ?? []).map(c => ({ action: c.action, actorId: c.actorId ?? c.actor ?? null, at: c.at ? new Date(c.at).toISOString() : null, detail: c.detail ?? c.note ?? null, keys: Object.keys(c) })) })` })
+const audit = await pageFetch('/api/v1/audit?order=DESC&limit=5&type=RECORDING_STOPPED', { project: `(b) => (b?.rows ?? []).map(r => ({ seq: r.seq, actorId: r.actorId, sessionId: r.sessionId, at: new Date(r.at).toISOString(), details: r.details }))` })
+record('63c custody actor', { core, audit })
+return { core, audit }
+
+
+// ──── step: 64 demo reset (2026-10-06T03:24:39.287Z) ────
+const out = {}
+const st = async () => pageFetch('/api/v1/demo/status', { project: `(b) => ({ scenario: b?.scenario, activeFaults: (b?.activeFaults ?? []).map(f => f.kind), epoch: b?.epoch, lastResetAt: b?.lastResetAt ? new Date(b.lastResetAt).toISOString() : null })` })
+await clickByText('nav a, aside a', 'System'); await waitFor('page-system', true, 10000); await sleep(2500)
+await evaluate(`document.querySelector('[data-testid="system-panel-demo"]').scrollIntoView({ block: 'start', behavior: 'instant' })`); await sleep(500)
+out.before = await st()
+mark('64a demo: Reset demo -> confirmation')
+await click('system-demo-reset'); await sleep(900)
+out.confirm = await text('system-demo-confirm', 400)
+out.s1 = await shot('164_demo_reset_confirm.png')
+mark('64b demo: confirm Reset demo (LANE 3 ONLY)')
+await click('system-demo-confirm-go')
+let toast = []
+for (let i = 0; i < 16; i++) { await sleep(500); toast = (await pageFacts()).toasts; if (toast.length) break }
+out.toast = toast
+out.s2 = await shot('165_demo_reset_done.png')
+await sleep(1500)
+out.after = await st()
+out.signedIn = await attr('user-menu', 'aria-label')
+out.audit = await auditTail(2)
+out.evidenceCount = await pageFetch('/api/v1/evidence?limit=1', { project: `(b) => ({ total: b?.total ?? null, keys: Object.keys(b ?? {}) })` })
+record('64 demo reset', out)
+return out
+
+
+// ──── step: 65 users roles open (2026-10-06T03:25:02.554Z) ────
+const out = {}
+mark('65 users-roles: open via sidebar')
+await clickByText('nav a, aside a', 'Users & Roles'); await waitFor('page-users-roles', true, 10000); await waitFor('ur-users-table', true, 10000); await sleep(3000)
+out.facts = await pageFacts()
+out.summary = await text('ur-summary', 200)
+out.rows = await evaluate(`[...document.querySelectorAll('[data-testid^="ur-user-"]')].map(r => String(r.innerText).replace(/\\s+/g,' ').trim().slice(0, 160))`)
+out.matrixReadOnly = await text('ur-matrix-readonly', 60)
+out.grants = await evaluate(`document.querySelectorAll('[data-testid^="ur-grant-"][data-granted="true"]').length`)
+out.supervisorGrants = await evaluate(`[...document.querySelectorAll('[data-testid^="ur-grant-SUPERVISOR-"][data-granted="true"]')].map(e => e.getAttribute('data-testid').slice('ur-grant-SUPERVISOR-'.length))`)
+out.ctrls = await controls('[data-testid="page-users-roles"]')
+out.core = await pageFetch('/api/v1/admin/users', { project: `(b) => (b?.users ?? []).map(u => ({ id: u.id, role: u.role, enabled: u.enabled }))` })
+out.s = await shot('166_users_roles_live.png')
+record('65 users-roles', out)
+return out
+
+
+// ──── step: 66 users roles self hint and role change (2026-10-06T03:25:24.611Z) ────
+const out = {}
+const items = async () => evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map(e => ({ id: e.getAttribute('data-testid'), text: String(e.innerText).replace(/\\s+/g,' ').trim(), disabled: e.getAttribute('aria-disabled') === 'true' }))`)
+const dlg = async () => evaluate(`(() => { const d = document.querySelector('[data-testid="ur-role-dialog"]'); if (!d) return null; return { options: [...d.querySelectorAll('[data-testid^="ur-role-option-"]')].map(o => o.getAttribute('data-testid').slice(15) + (o.getAttribute('data-blocked') === 'true' ? ':blocked' : '') + (o.querySelector('input')?.checked ? ':checked' : '')), own: !!d.querySelector('[data-testid="ur-role-own"]'), diff: d.querySelector('[data-testid="ur-role-diff"]')?.innerText?.replace(/\\s+/g,' ') ?? null, text: d.innerText.replace(/\\s+/g,' ').slice(0, 300) } })()`)
+const users = async () => (await pageFetch('/api/v1/admin/users', { project: `(b) => (b?.users ?? []).map(u => u.id + ':' + u.role + ':' + (u.enabled ? 'on' : 'off'))` })).body
+mark('66a users-roles: own row menu and role dialog (last-administrator hint)')
+await click('ur-actions-OPR-002'); await sleep(700)
+out.ownMenu = await items()
+await click('ur-change-role-OPR-002'); await waitFor('ur-role-dialog', true, 6000); await sleep(700)
+out.ownDialog = await dlg()
+out.s1 = await shot('167_users_roles_own_role_dialog_hint.png')
+await click('ur-role-cancel'); await waitFor('ur-role-dialog', false, 6000); await sleep(500)
+mark('66b users-roles: OPR-003 TECHNICIAN -> INVESTIGATOR')
+await click('ur-actions-OPR-003'); await sleep(700)
+out.menu3 = await items()
+await click('ur-change-role-OPR-003'); await waitFor('ur-role-dialog', true, 6000); await sleep(600)
+await click('[data-testid="ur-role-option-INVESTIGATOR"]'); await sleep(500)
+if (await exists('ur-role-reason')) await type('ur-role-reason', 'E2E-W1 walk: temporary role change, set back next')
+out.dialog3 = await dlg()
+out.s2 = await shot('168_users_roles_change_role_dialog.png')
+await click('ur-role-confirm'); await sleep(2500)
+out.changed = { toasts: (await pageFacts()).toasts, users: await users(), row: await text('ur-user-OPR-003', 160) }
+out.s3 = await shot('169_users_roles_role_changed.png')
+out.audit1 = await auditTail(1)
+mark('66c users-roles: OPR-003 back to TECHNICIAN')
+await click('ur-actions-OPR-003'); await sleep(700)
+await click('ur-change-role-OPR-003'); await waitFor('ur-role-dialog', true, 6000); await sleep(600)
+await click('[data-testid="ur-role-option-TECHNICIAN"]'); await sleep(500)
+if (await exists('ur-role-reason')) await type('ur-role-reason', 'E2E-W1 walk: back to the seeded role')
+await click('ur-role-confirm'); await sleep(2500)
+out.restored = { toasts: (await pageFacts()).toasts, users: await users(), row: await text('ur-user-OPR-003', 160) }
+out.s4 = await shot('170_users_roles_role_restored.png')
+out.audit2 = await auditTail(1)
+record('66 users-roles role', out)
+return out
+
+
+// ──── step: 66q inspect role option (2026-10-06T03:26:01.160Z) ────
+const dialogOpen = await exists('ur-role-dialog')
+if (dialogOpen) { await click('ur-role-cancel'); await sleep(600) }
+await click('ur-actions-OPR-003'); await sleep(700)
+await click('ur-change-role-OPR-003'); await waitFor('ur-role-dialog', true, 6000); await sleep(700)
+return evaluate(`(() => { const o = document.querySelector('[data-testid="ur-role-option-INVESTIGATOR"]'); const r = o.getBoundingClientRect(); return { tag: o.tagName, slot: o.getAttribute('data-slot'), w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.left), y: Math.round(r.top), kids: [...o.querySelectorAll('*')].slice(0, 14).map(k => { const b = k.getBoundingClientRect(); return k.tagName + '[' + (k.getAttribute('data-slot') ?? '') + '] ' + Math.round(b.width) + 'x' + Math.round(b.height) + ' ' + String(k.innerText ?? '').slice(0, 20).replace(/\\s+/g,' ') }) } })()`)
+
+
+// ──── step: 66r users roles role change (radio control) (2026-10-06T03:26:19.181Z) ────
+const out = {}
+const dlg = async () => evaluate(`(() => { const d = document.querySelector('[data-testid="ur-role-dialog"]'); if (!d) return null; return { options: [...d.querySelectorAll('[data-testid^="ur-role-option-"]')].map(o => o.getAttribute('data-testid').slice(15) + (o.querySelector('input')?.checked ? ':checked' : '')), diff: d.querySelector('[data-testid="ur-role-diff"]')?.innerText?.replace(/\\s+/g,' ') ?? null, confirmDisabled: (() => { const c = d.querySelector('[data-testid="ur-role-confirm"]'); return c ? (c.disabled || c.getAttribute('aria-disabled') === 'true' || c.hasAttribute('data-disabled')) : null })() } })()`)
+const users = async () => (await pageFetch('/api/v1/admin/users', { project: `(b) => (b?.users ?? []).map(u => u.id + ':' + u.role + ':' + (u.enabled ? 'on' : 'off'))` })).body
+const change = async (role, reason, shotDialog, shotAfter, label) => {
+  mark(label)
+  if (!(await exists('ur-role-dialog'))) { await click('ur-actions-OPR-003'); await sleep(700); await click('ur-change-role-OPR-003'); await waitFor('ur-role-dialog', true, 6000); await sleep(600) }
+  await click(`[data-testid="ur-role-option-${role}"] [data-slot="radio-control"]`); await sleep(500)
+  if (await exists('ur-role-reason')) await type('ur-role-reason', reason)
+  const d = await dlg()
+  const s1 = await shot(shotDialog)
+  await click('ur-role-confirm')
+  let toasts = []
+  for (let i = 0; i < 12; i++) { await sleep(400); toasts = (await pageFacts()).toasts; if (toasts.length) break }
+  await sleep(1200)
+  return { dialog: d, s1, toasts, users: await users(), row: await text('ur-user-OPR-003', 160), s2: await shot(shotAfter), audit: await auditTail(1) }
+}
+out.changed = await change('INVESTIGATOR', 'E2E-W1 walk: temporary role change, set back next', '168_users_roles_change_role_dialog.png', '169_users_roles_role_changed.png', '66b users-roles: OPR-003 TECHNICIAN -> INVESTIGATOR (radio control)')
+out.restored = await change('TECHNICIAN', 'E2E-W1 walk: back to the seeded role', '170a_users_roles_restore_role_dialog.png', '170_users_roles_role_restored.png', '66c users-roles: OPR-003 back to TECHNICIAN (radio control)')
+record('66r role change', out)
+return out
+
+
+// ──── step: 67 users roles disable enable (2026-10-06T03:26:45.584Z) ────
+const out = {}
+const users = async () => (await pageFetch('/api/v1/admin/users', { project: `(b) => (b?.users ?? []).map(u => u.id + ':' + u.role + ':' + (u.enabled ? 'on' : 'off'))` })).body
+const waitToast = async () => { let t = []; for (let i = 0; i < 12; i++) { await sleep(400); t = (await pageFacts()).toasts; if (t.length) break } return t }
+mark('67a users-roles: Disable OPR-001 -> dialog')
+await click('ur-actions-OPR-001'); await sleep(700)
+await click('ur-disable-OPR-001'); await waitFor('ur-disable-dialog', true, 6000); await sleep(600)
+out.disableDialog = await text('ur-disable-dialog', 500)
+if (await exists('ur-disable-reason')) await type('ur-disable-reason', 'E2E-W1 walk: temporary disable, enabled again next')
+out.s1 = await shot('171_users_roles_disable_dialog.png')
+mark('67b users-roles: Disable OPR-001 confirm')
+await click('ur-disable-confirm')
+out.disabled = { toasts: await waitToast() }
+await sleep(1200)
+out.disabled.users = await users(); out.disabled.row = await text('ur-user-OPR-001', 160)
+out.s2 = await shot('172_users_roles_user_disabled.png')
+out.audit1 = await auditTail(1)
+mark('67c users-roles: Enable OPR-001 -> dialog -> confirm')
+await click('ur-actions-OPR-001'); await sleep(700)
+out.menuWhenDisabled = await evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map(e => String(e.innerText).replace(/\\s+/g,' ').trim() + (e.getAttribute('aria-disabled') === 'true' ? ' (disabled)' : ''))`)
+await click('ur-enable-OPR-001'); await waitFor('ur-enable-dialog', true, 6000); await sleep(600)
+out.enableDialog = await text('ur-enable-dialog', 400)
+out.s3 = await shot('173_users_roles_enable_dialog.png')
+await click('ur-enable-confirm')
+out.enabled = { toasts: await waitToast() }
+await sleep(1200)
+out.enabled.users = await users(); out.enabled.row = await text('ur-user-OPR-001', 160)
+out.s4 = await shot('174_users_roles_user_enabled.png')
+out.audit2 = await auditTail(1)
+record('67 disable/enable', out)
+return out
+
+
+// ──── step: 68 sign out via user menu before browser relaunch (2026-10-06T03:27:25.124Z) ────
+const out = {}
+mark('68a shell: user menu (before the controller-ordered browser relaunch)')
+await click('user-menu'); await sleep(800)
+out.menu = await evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map(e => String(e.innerText).replace(/\\s+/g,' ').trim())`)
+out.s1 = await shot('175_user_menu_open.png')
+mark('68b shell: user menu > Sign out')
+await clickByText('[role="menu"] [role="menuitem"]', 'Sign out')
+out.login = await waitFor('page-login', true, 15000); await sleep(1500)
+out.facts = await pageFacts()
+out.state = await attr('page-login', 'data-state')
+out.alert = await text('login-alert', 200)
+out.s2 = await shot('176_signed_out_before_relaunch.png')
+record('68 sign out (relaunch)', out)
+return out
+
+
+// ──── step: 69 relaunch: login again (2026-10-06T03:28:17.159Z) ────
+const out = {}
+mark('69 relaunch: fresh browser on an OS-assigned port (controller instruction after IN-1); sign in again through the form')
+await viewport(1440, 900)
+await navigate(`${ORIGIN}/login`, 3000)
+await waitFor('page-login', true, 15000); await sleep(1200)
+out.mode = await attr('page-login', 'data-core-mode')
+out.arrived = await signIn()
+out.facts = await pageFacts()
+out.menu = await attr('user-menu', 'aria-label')
+out.s = await shot('177_relaunch_signed_in_again.png')
+out.audit = await auditTail(2)
+record('69 relaunch sign-in', out)
+return out
+
+
+// ──── step: 70 paired devices open (2026-10-06T03:28:43.411Z) ────
+const out = {}
+mark('70 paired-devices: open via sidebar')
+await clickByText('nav a, aside a', 'Paired Devices'); await waitFor('page-paired-devices', true, 10000); await sleep(3000)
+out.facts = await pageFacts()
+out.summary = await text('pd-summary', 200)
+out.empty = await text('pd-empty', 300)
+out.issuePanel = await text('pd-issue-panel', 400)
+out.ctrls = await controls('[data-testid="page-paired-devices"]')
+out.core = await pageFetch('/api/v1/pairing/devices', { project: `(b) => ({ count: (b?.devices ?? []).length, devices: (b?.devices ?? []).map(d => ({ id: d.id, state: d.state ?? d.status })) })` })
+out.s = await shot('178_paired_devices_live_empty.png')
+record('70 paired devices', out)
+return out
+
+
+// ──── step: 71 paired devices issue code (masked) and cancel (2026-10-06T03:29:02.076Z) ────
+const out = {}
+// Mask first: blur on the code and the QR, and an observer that blurs any text node holding a 6-digit run.
+const installMask = () => evaluate(`(() => {
+  let style = document.getElementById('w1-mask'); if (!style) { style = document.createElement('style'); style.id = 'w1-mask'; document.head.appendChild(style) }
+  style.textContent = '[data-testid="pd-code"], [data-testid="pd-qr"], [data-w1-mask] { filter: blur(18px) !important; }'
+  const markAll = () => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); while (w.nextNode()) { const t = w.currentNode.nodeValue ?? ''; if (/(?<![0-9A-Za-z])\\d{3}[\\s-]?\\d{3}(?![0-9A-Za-z])/.test(t) && w.currentNode.parentElement && !w.currentNode.parentElement.closest('[data-w1-mask]')) w.currentNode.parentElement.setAttribute('data-w1-mask', '1') } }
+  markAll(); if (!window.__w1obs) { window.__w1obs = new MutationObserver(markAll); window.__w1obs.observe(document.body, { subtree: true, childList: true, characterData: true }) }
+  return true })()`)
+const maskCheck = () => evaluate(`(() => { const c = document.querySelector('[data-testid="pd-code"]'); const q = document.querySelector('[data-testid="pd-qr"]'); return { code: c ? getComputedStyle(c).filter : 'absent', qr: q ? getComputedStyle(q).filter : 'absent' } })()`)
+out.maskInstalled = await installMask()
+mark('71a paired-devices: Issue pairing code (masked before capture)')
+await click('pd-issue'); await waitFor('pd-code', true, 8000); await sleep(1200)
+await installMask(); await sleep(300)
+out.mask1 = await maskCheck()
+out.panel = { countdown: await text('pd-countdown', 60), attempts: await text('pd-attempts', 80), expiry: await attr('pd-expiry-bar', 'aria-valuenow'), ctrls: (await controls('[data-testid="pd-issue-panel"]')).map(c => c.testid + ':' + c.text) }
+if (out.mask1.code.includes('blur') && (out.mask1.qr === 'absent' || out.mask1.qr.includes('blur'))) out.s1 = await shot('179_paired_devices_code_issued_masked.png'); else out.s1 = 'NOT CAPTURED: mask not confirmed'
+out.status = await pageFetch('/api/v1/pairing/code', { project: `(b) => ({ state: b?.state ?? b?.status ?? null, expiresAt: b?.expiresAt ? new Date(b.expiresAt).toISOString() : null, attemptsLeft: b?.attemptsLeft ?? null, keys: Object.keys(b ?? {}).filter(k => !/code/i.test(k)) })` })
+out.audit1 = await auditTail(1)
+mark('71b paired-devices: Cancel code')
+await click('pd-cancel-code'); await sleep(1800)
+out.afterCancel = { codeShown: await exists('pd-code'), panel: await text('pd-issue-panel', 300), toasts: (await pageFacts()).toasts }
+out.s2 = await shot('180_paired_devices_code_cancelled.png')
+out.audit2 = await auditTail(1)
+record('71 pairing code', out)
+return out
+
+
+// ──── step: 72 paired devices issue second code (to expire) (2026-10-06T03:29:26.178Z) ────
+const out = {}
+const maskCheck = () => evaluate(`(() => { const c = document.querySelector('[data-testid="pd-code"]'); const q = document.querySelector('[data-testid="pd-qr"]'); return { code: c ? getComputedStyle(c).filter : 'absent', qr: q ? getComputedStyle(q).filter : 'absent', style: !!document.getElementById('w1-mask'), observer: !!window.__w1obs } })()`)
+mark('72 paired-devices: issue a second code and leave it to expire (5 min)')
+await click('pd-issue'); await waitFor('pd-code', true, 8000); await sleep(1000)
+out.mask = await maskCheck()
+out.countdown = await text('pd-countdown', 30)
+out.t = new Date().toISOString()
+if (out.mask.code.includes('blur')) out.s = await shot('181_paired_devices_second_code_masked.png')
+out.audit = await auditTail(1)
+record('72 second code', out)
+return out
+
+
+// ──── step: 73 paired devices code expiry (2026-10-06T03:31:09.923Z) ────
+const out = {}
+mark('73 paired-devices: waiting on the page for the second code to expire')
+const until = Date.now() + 280000
+let seen = false
+while (Date.now() < until) { if (await exists('pd-code-expired')) { seen = true; break } await sleep(2000) }
+out.expiredShown = seen
+out.t = new Date().toISOString()
+out.panel = await text('pd-issue-panel', 300)
+out.mask = await evaluate(`(() => { const c = document.querySelector('[data-testid="pd-code"]'); return c ? getComputedStyle(c).filter : 'absent' })()`)
+if (out.mask === 'absent' || out.mask.includes('blur')) out.s = await shot('182_paired_devices_code_expired.png'); else out.s = 'NOT CAPTURED: mask not confirmed'
+out.status = await pageFetch('/api/v1/pairing/code', { project: `(b) => ({ active: b?.active ?? null })` })
+out.audit = await auditTail(2)
+out.ctrls = await controls('[data-testid="pd-issue-panel"]')
+record('73 code expiry', out)
+return out
+
+
+// ──── step: 74 pairing expiry audit and API reference open (2026-10-06T03:35:48.389Z) ────
+const out = {}
+mark('74a paired-devices: audit row of the expiry (sweep)')
+out.audit = await auditTail(2, '&category=PAIRING')
+mark('74b api-reference: open via sidebar')
+await clickByText('nav a, aside a', 'API Reference'); await waitFor('page-api-reference', true, 15000); await sleep(4000)
+out.facts = await pageFacts()
+out.banner = await text('api-service-banner', 300)
+out.strip = await text('api-server-strip', 300)
+out.count = await text('api-operation-count', 80)
+out.version = await text('api-spec-version', 80)
+out.baseUrl = await text('api-base-url', 120)
+out.liveWarning = await text('api-live-warning', 300)
+out.renderer = await exists('api-renderer')
+out.ctrls = (await controls('[data-testid="page-api-reference"]')).slice(0, 40)
+out.s = await shot('183_api_reference_live.png')
+record('74 api ref open', out)
+return out
+
+
+// ──── step: 75 api reference try it health (2026-10-06T03:36:10.020Z) ────
+const out = {}
+mark('75a api-reference: open GET /api/v1/health')
+await click('a[href="#tag/service/GET/api/v1/health"]'); await sleep(2000)
+out.href = (await pageFacts()).href
+out.buttons = await evaluate(`[...document.querySelectorAll('[data-testid="page-api-reference"] button')].filter(b => b.getClientRects().length && /test|try|send/i.test(b.innerText + ' ' + (b.getAttribute('aria-label') ?? ''))).map(b => String(b.innerText || b.getAttribute('aria-label')).replace(/\\s+/g,' ').trim().slice(0, 50)).slice(0, 10)`)
+out.s1 = await shot('184_api_reference_health_operation.png')
+mark('75b api-reference: Test Request (open the client)')
+const t = await clickByText('[data-testid="page-api-reference"] button', 'Test Request')
+out.testClick = t
+await sleep(2500)
+out.modal = await evaluate(`[...document.querySelectorAll('[role="dialog"], .scalar-client, .api-client-drawer')].filter(e => e.getClientRects().length).map(e => String(e.innerText).replace(/\\s+/g,' ').slice(0, 300))`)
+out.sendButtons = await evaluate(`[...document.querySelectorAll('button')].filter(b => b.getClientRects().length && /send/i.test(b.innerText + ' ' + (b.getAttribute('aria-label') ?? ''))).map(b => String(b.innerText || b.getAttribute('aria-label')).replace(/\\s+/g,' ').trim().slice(0, 50))`)
+out.s2 = await shot('185_api_reference_client_health.png')
+record('75 api try health 1', out)
+return out
+
+
+// ──── step: 76 api reference send health (2026-10-06T03:36:25.228Z) ────
+const out = {}
+mark('76 api-reference: Send GET /api/v1/health from the client')
+const c = await clickByText('button', 'Send Request')
+out.sendClick = c
+await sleep(2500)
+out.response = await evaluate(`(() => { const d = [...document.querySelectorAll('[role="dialog"]')].find(e => e.innerText.includes('/api/v1/health') && e.getClientRects().length) ?? document.body; const txt = String(d.innerText); const i = txt.search(/Response/); return txt.slice(Math.max(0, i), i + 600).replace(/\\s+/g, ' ') })()`)
+out.s = await shot('186_api_reference_health_response.png')
+record('76 api send health', out)
+return out
+
+
+// ──── step: 77 api reference authenticated read (2026-10-06T03:36:42.827Z) ────
+const out = {}
+await key('Escape'); await sleep(800)
+const hrefs = await evaluate(`[...document.querySelectorAll('a[href^="#tag/storage/"], a[href^="#tag/administration/"]')].map(a => a.getAttribute('href'))`)
+out.hrefs = hrefs
+let target = hrefs.find(h => h.includes('GET/api/v1/storage/status'))
+if (!target) { await click('a[href="#tag/storage"]'); await sleep(1500); const h2 = await evaluate(`[...document.querySelectorAll('a[href^="#tag/storage/"]')].map(a => a.getAttribute('href'))`); out.hrefs2 = h2; target = h2.find(h => h.includes('GET/api/v1/storage/status')) ?? h2.find(h => h.includes('/GET/')) }
+out.target = target
+mark('77a api-reference: open ' + target)
+await click(`a[href="${target}"]`); await sleep(2000)
+out.s1 = await shot('187_api_reference_storage_status_operation.png')
+mark('77b api-reference: Test Request + Send (authenticated read)')
+await clickByText('[data-testid="page-api-reference"] button', 'Test Request'); await sleep(2500)
+await clickByText('button', 'Send Request'); await sleep(2500)
+out.response = await evaluate(`(() => { const d = [...document.querySelectorAll('[role="dialog"]')].find(e => e.getClientRects().length && e.innerText.includes('Response')) ?? document.body; const txt = String(d.innerText); const i = txt.search(/Response Information/); return txt.slice(Math.max(0, i), i + 520).replace(/\\s+/g, ' ') })()`)
+out.s2 = await shot('188_api_reference_storage_status_response.png')
+await key('Escape'); await sleep(800)
+mark('77c api-reference: realtime panel connect')
+const rt = await exists('api-realtime-connect')
+out.realtimeExists = rt
+if (rt) {
+  await click('api-realtime-connect'); await sleep(4000)
+  out.realtime = { chip: await text('api-realtime-chip', 60), url: await text('api-realtime-url', 100), messages: await text('api-realtime-messages', 80), epoch: await text('api-realtime-epoch', 60), seq: await text('api-realtime-seq', 60), clients: await text('api-realtime-clients', 60) }
+  out.s3 = await shot('189_api_reference_realtime_connected.png')
+}
+record('77 api auth read', out)
+return out
+
+
+// ──── step: 78 api reference authenticated read (close client first) (2026-10-06T03:37:23.195Z) ────
+const out = {}
+const closeBtn = await evaluate(`[...document.querySelectorAll('button')].filter(b => b.getClientRects().length && /close client/i.test((b.getAttribute('aria-label') ?? '') + ' ' + b.innerText)).length`)
+out.closeButtons = closeBtn
+if (closeBtn) { await clickByText('button', 'Close Client').catch(() => null); await sleep(500) }
+if (await evaluate(`[...document.querySelectorAll('[role="dialog"]')].some(d => d.getClientRects().length && d.innerText.includes('Send'))`)) {
+  await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find(b => b.getClientRects().length && /close/i.test(b.getAttribute('aria-label') ?? '')); if (b) { document.querySelectorAll('[data-w1-target]').forEach(e => e.removeAttribute('data-w1-target')); b.setAttribute('data-w1-target', '1') } return !!b })()`)
+  await click('[data-w1-target="1"]'); await sleep(800)
+}
+out.modalOpen = await evaluate(`[...document.querySelectorAll('[role="dialog"]')].some(d => d.getClientRects().length && d.innerText.includes('Send'))`)
+mark('78a api-reference: storage status operation, Test Request, Send (authenticated read)')
+await click('a[href="#tag/storage/GET/api/v1/storage/status"]'); await sleep(2000)
+const tr = await evaluate(`[...document.querySelectorAll('button')].filter(b => b.getClientRects().length && /Test Request/.test(b.innerText)).map(b => b.innerText.replace(/\\s+/g,' ').slice(0, 60))`)
+out.testButtons = tr
+await clickByText('button', 'Test Request (get /api/v1/storage/status)'); await sleep(2500)
+out.clientUrl = await evaluate(`[...document.querySelectorAll('[role="dialog"]')].filter(d => d.getClientRects().length).map(d => (d.innerText.match(/\\/api\\/v1\\/[a-z/-]+/) ?? [''])[0])`)
+await clickByText('button', 'Send Request'); await sleep(2500)
+out.response = await evaluate(`(() => { const d = [...document.querySelectorAll('[role="dialog"]')].find(e => e.getClientRects().length && e.innerText.includes('Response')) ?? document.body; const txt = String(d.innerText); const i = txt.search(/Response Information/); return txt.slice(Math.max(0, i), i + 420).replace(/\\s+/g, ' ') })()`)
+out.s = await shot('188_api_reference_storage_status_response.png')
+record('78 api auth read', out)
+return out
+
+
+// ──── step: 79 api reference storage client retry (2026-10-06T03:37:45.263Z) ────
+const out = {}
+mark('79a api-reference: Test Request (get /api/v1/storage/status), longer wait')
+const c = await clickByText('button', 'Test Request (get /api/v1/storage/status)')
+out.click = c
+for (let i = 0; i < 20; i++) { await sleep(300); if (await evaluate(`[...document.querySelectorAll('[role="dialog"]')].some(d => d.getClientRects().length && d.innerText.includes('Send'))`)) break }
+out.dialogs = await evaluate(`[...document.querySelectorAll('[role="dialog"]')].filter(d => d.getClientRects().length).map(d => String(d.innerText).replace(/\\s+/g,' ').slice(0, 160))`)
+out.s1 = await shot('187b_api_reference_storage_client.png')
+const sendSel = await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find(b => b.getClientRects().length && /Send get request to http:\\/\\/127\\.0\\.0\\.1:5178\\/api\\/v1\\/storage\\/status/.test(b.innerText + ' ' + (b.getAttribute('aria-label') ?? ''))); if (!b) return false; document.querySelectorAll('[data-w1-target]').forEach(e => e.removeAttribute('data-w1-target')); b.setAttribute('data-w1-target', '1'); return true })()`)
+out.sendFound = sendSel
+if (sendSel) {
+  mark('79b api-reference: Send GET /api/v1/storage/status')
+  await click('[data-w1-target="1"]'); await sleep(2500)
+  out.response = await evaluate(`(() => { const d = [...document.querySelectorAll('[role="dialog"]')].find(e => e.getClientRects().length && e.innerText.includes('/storage/status')) ?? document.body; const txt = String(d.innerText); const i = txt.search(/Response Information|\\d+ms/); return txt.slice(Math.max(0, i), i + 420).replace(/\\s+/g, ' ') })()`)
+  out.s2 = await shot('188_api_reference_storage_status_response.png')
+}
+record('79 api storage', out)
+return out
+
+
+// ──── step: 80 api reference storage try it by geometry (2026-10-06T03:38:19.531Z) ────
+const out = {}
+out.buttons = await evaluate(`[...document.querySelectorAll('button')].filter(b => /Test Request/.test(b.textContent)).map(b => { const r = b.getBoundingClientRect(); return { text: b.textContent.replace(/\\s+/g,' ').trim().slice(0, 60), x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } })`)
+const ok = await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find(b => /storage\\/status/.test(b.textContent) && /Test Request/.test(b.textContent)); if (!b) return false; document.querySelectorAll('[data-w1-target]').forEach(e => e.removeAttribute('data-w1-target')); b.setAttribute('data-w1-target', '1'); return true })()`)
+out.marked = ok
+mark('80a api-reference: Test Request (storage status) by geometry')
+out.click = await click('[data-w1-target="1"]')
+for (let i = 0; i < 20; i++) { await sleep(300); if (await evaluate(`[...document.querySelectorAll('button')].some(b => b.getClientRects().length && /Send get request to http:\\/\\/127\\.0\\.0\\.1:5178\\/api\\/v1\\/storage\\/status/.test(b.textContent + ' ' + (b.getAttribute('aria-label') ?? '')))`)) break }
+const sendOk = await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find(b => b.getClientRects().length && /Send get request to http:\\/\\/127\\.0\\.0\\.1:5178\\/api\\/v1\\/storage\\/status/.test(b.textContent + ' ' + (b.getAttribute('aria-label') ?? ''))); if (!b) return false; document.querySelectorAll('[data-w1-target]').forEach(e => e.removeAttribute('data-w1-target')); b.setAttribute('data-w1-target', '1'); return true })()`)
+out.sendFound = sendOk
+out.s1 = await shot('187b_api_reference_storage_client.png')
+if (sendOk) {
+  mark('80b api-reference: Send GET /api/v1/storage/status (authenticated read)')
+  await click('[data-w1-target="1"]'); await sleep(2500)
+  out.response = await evaluate(`(() => { const txt = String(document.body.innerText); const i = txt.search(/\\d+ms\\s+\\d+(\\.\\d+)?\\s*[kK]?B/); return txt.slice(Math.max(0, i), i + 500).replace(/\\s+/g, ' ') })()`)
+  out.s2 = await shot('188_api_reference_storage_status_response.png')
+}
+record('80 api storage', out)
+return out
+
+
+// ──── step: 81 api reference copy and download (2026-10-06T03:38:52.225Z) ────
+const out = {}
+const dl = process.env.W1_DL
+await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dl, eventsEnabled: true })
+await send('Browser.setPermission', { permission: { name: 'automatic-downloads' }, setting: 'granted', origin: ORIGIN }).catch(() => null)
+await send('Browser.grantPermissions', { origin: ORIGIN, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] }).catch(() => null)
+const closer = await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find(b => b.getClientRects().length && /close/i.test(b.getAttribute('aria-label') ?? '') && b.closest('[role="dialog"]')); if (!b) return false; document.querySelectorAll('[data-w1-target]').forEach(e => e.removeAttribute('data-w1-target')); b.setAttribute('data-w1-target', '1'); return true })()`)
+if (closer) { await click('[data-w1-target="1"]'); await sleep(900) }
+out.clientClosed = !(await evaluate(`[...document.querySelectorAll('[role="dialog"]')].some(d => d.getClientRects().length && d.innerText.includes('Send'))`))
+await evaluate(`window.scrollTo(0, 0); document.querySelector('main')?.scrollTo?.(0, 0); document.querySelector('[data-testid="api-server-strip"]')?.scrollIntoView({ block: 'center', behavior: 'instant' })`); await sleep(600)
+mark('81a api-reference: Copy base URL')
+await click('api-copy-base-url'); await sleep(900)
+out.copy = { toasts: (await pageFacts()).toasts, clip: await evaluate(`navigator.clipboard.readText().then(t => t.slice(0, 60)).catch(e => 'read failed: ' + e.name)`) }
+out.s1 = await shot('190_api_reference_copy_base_url.png')
+mark('81b api-reference: Download openapi.json')
+const { readdirSync, statSync, readFileSync } = await import('node:fs')
+const before = new Set(readdirSync(dl))
+await click('api-download'); await sleep(3000)
+const files = readdirSync(dl).filter(f => !before.has(f))
+out.download = files.map(f => { let ops = null, ver = null; try { const j = JSON.parse(readFileSync(dl + '/' + f, 'utf8')); ver = j.openapi + ' / ' + j.info?.version; ops = Object.values(j.paths ?? {}).reduce((n, p) => n + Object.keys(p).filter(k => ['get','post','put','patch','delete'].includes(k)).length, 0) } catch {} return { name: f, bytes: statSync(dl + '/' + f).size, openapi: ver, operations: ops } })
+out.toasts = (await pageFacts()).toasts
+out.s2 = await shot('191_api_reference_download_openapi.png')
+record('81 api copy/download', out)
+return out
+
+
+// ──── step: 82 api reference close client and retry copy/download (2026-10-06T03:39:13.301Z) ────
+const out = {}
+const dl = process.env.W1_DL
+out.hit = await evaluate(`(() => { const e = document.elementFromPoint(1413, 26); const b = e?.closest('button'); return b ? { tag: b.tagName, label: b.getAttribute('aria-label'), text: b.textContent.trim().slice(0, 30) } : { tag: e?.tagName ?? null } })()`)
+mark('82a api-reference: close the Try it client (x)')
+const marked = await evaluate(`(() => { const e = document.elementFromPoint(1413, 26); const b = e?.closest('button'); if (!b) return false; document.querySelectorAll('[data-w1-target]').forEach(x => x.removeAttribute('data-w1-target')); b.setAttribute('data-w1-target', '1'); return true })()`)
+if (marked) { await click('[data-w1-target="1"]'); await sleep(1000) }
+out.clientOpen = await evaluate(`[...document.querySelectorAll('button')].some(b => b.getClientRects().length && /Send get request/.test(b.textContent + ' ' + (b.getAttribute('aria-label') ?? '')))`)
+record('82 close client', out)
+return out
+
+
+// ──── step: 82b check client state (2026-10-06T03:39:24.397Z) ────
+await shot('192_api_reference_client_closed.png')
+return evaluate(`(() => { const e = document.elementFromPoint(700, 450); return { at: e?.tagName, inDialog: !!e?.closest('[role="dialog"]'), strip: !!document.querySelector('[data-testid="api-server-strip"]') } })()`)
+
+
+// ──── step: 83 api reference copy and download (client closed) (2026-10-06T03:39:43.396Z) ────
+const out = {}
+const dl = process.env.W1_DL
+await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dl, eventsEnabled: true })
+await send('Browser.setPermission', { permission: { name: 'automatic-downloads' }, setting: 'granted', origin: ORIGIN }).catch(() => null)
+await send('Browser.grantPermissions', { origin: ORIGIN, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] }).catch(() => null)
+mark('83a api-reference: Copy base URL')
+await click('api-copy-base-url'); await sleep(900)
+out.copy = { toasts: (await pageFacts()).toasts, clip: await evaluate(`navigator.clipboard.readText().then(t => t.slice(0, 60)).catch(e => 'read failed: ' + e.name)`), label: await text('api-copy-base-url', 40) }
+out.s1 = await shot('190_api_reference_copy_base_url.png')
+mark('83b api-reference: Download openapi.json')
+const { readdirSync, statSync, readFileSync } = await import('node:fs')
+const before = new Set(readdirSync(dl))
+await click('api-download'); await sleep(3000)
+const files = readdirSync(dl).filter(f => !before.has(f))
+out.download = files.map(f => { let ops = null, ver = null; try { const j = JSON.parse(readFileSync(dl + '/' + f, 'utf8')); ver = j.openapi + ' / ' + j.info?.version; ops = Object.values(j.paths ?? {}).reduce((n, p) => n + Object.keys(p).filter(k => ['get','post','put','patch','delete'].includes(k)).length, 0) } catch {} return { name: f, bytes: statSync(dl + '/' + f).size, openapi: ver, operations: ops } })
+out.toasts = (await pageFacts()).toasts
+out.s2 = await shot('191_api_reference_download_openapi.png')
+record('83 api copy/download', out)
+return out
+
+
+// ──── step: 84 lock console (2026-10-06T03:40:10.894Z) ────
+const out = {}
+mark('84a shell: user menu > Lock console')
+await click('user-menu'); await sleep(800)
+await clickByText('[role="menu"] [role="menuitem"]', 'Lock console')
+await sleep(2500)
+out.facts = await pageFacts()
+out.state = await attr('page-login', 'data-state')
+out.alert = await text('login-alert', 200)
+out.lock = await text('login-lock-countdown', 100)
+out.username = await evaluate(`document.querySelector('[data-testid="login-username-field"] input')?.value?.length ?? null`)
+out.s1 = await shot('193_lock_console.png')
+out.audit = await auditTail(1)
+mark('84b login: sign in again after the lock')
+if (await exists('page-login')) { out.again = await signIn(); out.s2 = await shot('194_signed_in_after_lock.png'); out.audit2 = await auditTail(1) }
+record('84 lock', out)
+return out
+
+
+// ──── step: 85 final sign out and deep link signed out (2026-10-06T03:40:33.838Z) ────
+const out = {}
+out.auditBefore = await auditTail(3, '&category=AUTH')
+mark('85a shell: final Sign out (user menu)')
+await click('user-menu'); await sleep(800)
+out.s0 = await shot('195_final_user_menu.png')
+await clickByText('[role="menu"] [role="menuitem"]', 'Sign out')
+out.login = await waitFor('page-login', true, 15000); await sleep(1500)
+out.facts = await pageFacts()
+out.state = await attr('page-login', 'data-state')
+out.alert = await text('login-alert', 200)
+out.cookies = (await send('Network.getCookies', { urls: [ORIGIN] }).catch(() => ({ cookies: [] }))).cookies.map(c => ({ name: c.name, valueLength: c.value.length, httpOnly: c.httpOnly }))
+out.s1 = await shot('196_final_signed_out.png')
+mark('85b login: deep link /evidence/EV-20261006-0012 while signed out')
+await navigate(`${ORIGIN}/evidence/EV-20261006-0012`, 2500)
+await sleep(1500)
+out.deepLink = { facts: await pageFacts(), loginShown: await exists('page-login'), detailShown: await exists('page-evidence-detail') }
+out.s2 = await shot('197_deep_link_signed_out.png')
+record('85 final sign out', out)
+return out
+
+
+// ──── step: 86 extra round: password toggle, start options, software update, play (2026-10-06T03:41:17.224Z) ────
+const out = {}
+mark('86a login: password visibility toggle with a non-secret test string')
+await navigate(`${ORIGIN}/login`, 2500); await waitFor('page-login', true, 15000); await sleep(1000)
+await type('login-password-field', 'visible-test-text')
+out.typeBefore = await evaluate(`document.querySelector('[data-testid="login-password-field"] input')?.type`)
+await click('login-password-toggle'); await sleep(500)
+out.typeAfter = await evaluate(`document.querySelector('[data-testid="login-password-field"] input')?.type`)
+out.s1 = await shot('198_login_password_toggle_visible_test_text.png')
+await click('login-password-toggle'); await sleep(300)
+out.typeBack = await evaluate(`document.querySelector('[data-testid="login-password-field"] input')?.type`)
+await type('login-password-field', '')
+mark('86b login: sign in for the extra round')
+out.signedIn = await signIn()
+mark('86c dashboard: More start options > Start with last profile')
+await click('[aria-label="More start options"]'); await sleep(700)
+await clickByText('[role="menu"] [role="menuitem"]', 'Start with last profile'); await sleep(2500)
+out.lastProfile = { href: (await pageFacts()).href, toasts: (await pageFacts()).toasts, caseValue: await evaluate(`document.querySelector('[data-testid="sn-case-number"]')?.value ?? null`), profile: await text('sn-profile', 80) }
+out.s2 = await shot('199_dashboard_start_with_last_profile.png')
+if (await exists('page-session-new')) { await click('sn-cancel'); await sleep(800); if (await exists('sn-cancel-confirm')) { await click('sn-cancel-confirm'); await sleep(1500) } }
+await clickByText('nav a, aside a', 'Dashboard'); await waitFor('page-dashboard', true, 10000); await sleep(1500)
+mark('86d dashboard: More start options > Start from template')
+await click('[aria-label="More start options"]'); await sleep(700)
+await clickByText('[role="menu"] [role="menuitem"]', 'Start from template'); await sleep(2500)
+out.template = { href: (await pageFacts()).href, dialogs: (await pageFacts()).dialogs, toasts: (await pageFacts()).toasts }
+out.s3 = await shot('200_dashboard_start_from_template.png')
+await key('Escape'); await sleep(500)
+if (await exists('page-session-new')) { await click('sn-cancel'); await sleep(800); if (await exists('sn-cancel-confirm')) { await click('sn-cancel-confirm'); await sleep(1500) } }
+mark('86e system: quick action Software Update')
+await clickByText('nav a, aside a', 'System'); await waitFor('page-system', true, 10000); await sleep(2000)
+await click('system-quick-softwareUpdate'); await sleep(1500)
+out.update = { facts: (await pageFacts()).dialogs, inView: await evaluate(`(() => { const r = document.querySelector('[data-testid="system-panel-update"]')?.getBoundingClientRect(); return r ? Math.round(r.top) : null })()`), focused: await evaluate(`document.activeElement?.getAttribute('data-testid') ?? document.activeElement?.tagName`) }
+out.s4 = await shot('201_system_quick_software_update.png')
+mark('86f evidence-detail: header Play')
+await navigate(`${ORIGIN}/evidence/EV-20261006-0012`, 2500); await waitFor('page-evidence-detail', true, 15000); await sleep(2000)
+await click('evidence-play'); await sleep(2500)
+out.play = { tab: await evaluate(`[...document.querySelectorAll('[data-testid^="evidence-tab-"]')].find(e => e.getAttribute('aria-selected') === 'true')?.getAttribute('data-testid')`), media: await evaluate(`[...document.querySelectorAll('video, audio')].map(m => m.tagName + ':' + (m.paused ? 'paused' : 'playing') + ':' + Math.round(m.currentTime))`) }
+out.s5 = await shot('202_evidence_header_play.png')
+out.audit = await auditTail(4)
+record('86 extra round', out)
+return out
+
+
+// ──── step: 87 final sign out (end of walk) (2026-10-06T03:42:27.491Z) ────
+const out = {}
+mark('87 shell: final Sign out through the user menu (end of walk)')
+await click('user-menu'); await sleep(800)
+await clickByText('[role="menu"] [role="menuitem"]', 'Sign out')
+out.login = await waitFor('page-login', true, 15000); await sleep(1500)
+out.state = await attr('page-login', 'data-state')
+out.alert = await text('login-alert', 200)
+out.href = (await pageFacts()).href
+out.s = await shot('203_final_sign_out_end_of_walk.png')
+record('87 final sign out', out)
+mark('99 end of walk')
+return out
+

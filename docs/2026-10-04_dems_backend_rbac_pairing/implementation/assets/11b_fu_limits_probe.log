@@ -1,0 +1,57 @@
+# W11b follow-up: does the line vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 }) take effect in Vitest 5.0.3, for a test, for a hook, and when the tests are defined by an imported module (as in the two isolation files)?
+# Four probe files in the scratch copy OUTSIDE the repository, removed afterwards. Expected: the file with the line passes; the two controls without it fail at 5 s and at 10 s. 2026-10-04 18:16:37 WIB
+--- zz-cap-suite.ts
+// SCRATCH ONLY (never copied into the repository): a suite defined by an imported module, as the
+// two isolation files do it.
+import { beforeAll, expect, it } from 'vitest';
+
+export const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+export function defineSlowSuite(label: string): void {
+  beforeAll(async () => {
+    await sleep(10_500); // the runner's default for a hook is 10 s
+  });
+  it(`${label}: a test that takes 5.5 s`, async () => {
+    await sleep(5_500); // the runner's default for a test is 5 s
+    expect(true).toBe(true);
+  });
+}
+--- zz-cap-probe.test.ts
+// SCRATCH ONLY: with the line, a 5.5 s test and a 10.5 s hook pass.
+import { vi } from 'vitest';
+import { defineSlowSuite } from './zz-cap-suite';
+
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
+
+defineSlowSuite('with the limits');
+--- zz-cap-control-test.test.ts
+// SCRATCH ONLY: without the line, a 5.5 s test fails at 5 s.
+import { expect, it } from 'vitest';
+import { sleep } from './zz-cap-suite';
+
+it('control: a test that takes 5.5 s', async () => {
+  await sleep(5_500);
+  expect(true).toBe(true);
+});
+--- zz-cap-control-hook.test.ts
+// SCRATCH ONLY: without the line, a 10.5 s hook fails at 10 s.
+import { defineSlowSuite } from './zz-cap-suite';
+
+defineSlowSuite('control, no limits');
+--- output
+ ❯ |unit| test/helpers/db/__tests__/zz-cap-control-test.test.ts (1 test | 1 failed) 5005ms
+   × control: a test that takes 5.5 s 5004ms
+ ❯ |unit| test/helpers/db/__tests__/zz-cap-control-hook.test.ts (1 test | 1 skipped) 10007ms
+ ✓ |unit| test/helpers/db/__tests__/zz-cap-probe.test.ts (1 test) 16007ms
+   ✓ with the limits: a test that takes 5.5 s 5503ms
+ FAIL  |unit| test/helpers/db/__tests__/zz-cap-control-hook.test.ts [ test/helpers/db/__tests__/zz-cap-control-hook.test.ts ]
+Error: Hook timed out in 10000ms.
+ ❯ defineSlowSuite test/helpers/db/__tests__/zz-cap-suite.ts:8:3
+ ❯ test/helpers/db/__tests__/zz-cap-control-hook.test.ts:4:1
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  |unit| test/helpers/db/__tests__/zz-cap-control-test.test.ts > control: a test that takes 5.5 s
+Error: Test timed out in 5000ms.
+ ❯ test/helpers/db/__tests__/zz-cap-control-test.test.ts:5:1
+ Test Files  2 failed | 1 passed (3)
+      Tests  1 failed | 1 passed | 1 skipped (3)
+   Duration  21.13s (tests 100%)

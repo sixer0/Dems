@@ -1,0 +1,11 @@
+tap 1736,379 at 16:50:40.529
+slept 1500 ms
+tap 760,568 at 16:50:42.113
+slept 1000 ms
+tap 1178,808 at 16:50:43.244
+slept 1200 ms
+text typed (Uji Satu); editor inputType 0x2001
+slept 1000 ms
+tap 1178,248 at 16:50:45.898
+slept 1500 ms
+screencap E1_02_wizard_step1_filled.png (744426 bytes) at 16:50:47.843

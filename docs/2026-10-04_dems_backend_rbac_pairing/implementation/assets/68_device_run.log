@@ -1,0 +1,93 @@
+
+== 01:12:42 0. before (no reset): listeners free?; dems_lane_1 as the earlier rows left it
+   active_session           1
+   audit_log                197
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 01:12:43 1. start the lane backend (demo flag off)
+npm PID 87881, listener PID 87926
+   "port":4421,"database":"dems_lane_1","demoControls":false
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T18:12:44.784Z","uptimeMs":231,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 01:12:44 2. device session: phone, Metro 8083, tcp:4420 -> tcp:4421 (cap 600 s)
+[device-session phone 01:12:44] lock held; hard cap 600 s, until 01:22:44 (watchdog PID 87982)
+[device-session phone 01:12:44] session serial: emulator-5554 (dems2_phone)
+[device-session phone 01:12:45] emulator-5554: screen awake, no keyguard
+[device-session phone 01:12:45] Metro PID 88018 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session phone 01:12:48] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 01:12:48] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 01:12:48] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), lane port 4421, run w68011242
+== D1. cold launch in LIVE mode on the PAIRED phone, at /login, motion off (D164 DN-7) ==
+-- am start -W -d 'demsdemo:///login?core=LIVE&motion=off'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 1 s for: runtime.live.ready
+-- waited 0 s for: DEMS-LIVE\] GET /api/v1/pairing/device 200
+== D2..D8: the queue-driven UI driver (sign-in, Start Session, hand-off, meters, End Session) ==
+-- 01:13:08 ACK 001 | tap 540,1105 | slept 800 ms | username typed (budi.santoso); editor inputType 0x80001 | slept 400 ms | tap 540,1265 | slept 800 ms | focused true; editor inputType 0x80081 | screencap 001.png (1231511 bytes)
+-- 01:13:14 ACK 002 | password typed (not shown); editor inputType 0x80081 | slept 300 ms | key 66 | signin 200 (POST /api/v1/auth/sign-in 200) | slept 4000 ms | screencap 002.png (395920 bytes)
+-- 01:13:31 ACK 003 | tap 541,1444 | slept 1500 ms | screencap 68_phone_home_live.png (444718 bytes) | deep link demsdemo:///session/new?step=1 | slept 3000 ms | screencap 003.png (205638 bytes)
+-- 01:13:59 ACK 004 | tap 912,668 | slept 700 ms | tap 229,915 | slept 700 ms | tap 540,1230 | slept 900 ms | text typed (Ahmad Fauzi); editor inputType 0x2001 | slept 1200 ms | screencap 68_phone_step1_filled_live.png (226605 bytes) | tap 540,2256 | create 201 (POST /api/v1/session 201) | precheck 202 (POST /api/v1/session/{id}/precheck 202) | slept 7000 ms | screencap 004.png (497715 bytes)
+-- 01:14:26 ACK 005 | tap 540,2256 | slept 1800 ms | screencap 68_phone_step3_ready_live.png (248106 bytes) | tap 540,2256 | start 200 (POST /api/v1/session/{id}/start 200) | slept 2500 ms | screencap 68_phone_monitor_meters_a_live.png (513231 bytes) | slept 3000 ms | screencap 68_phone_monitor_meters_b_live.png (503270 bytes)
+-- 01:14:53 ACK 006 | tap 162,1557 | snapshot 204 (POST /api/v1/session/{id}/snapshots 204) | slept 1200 ms | screencap 68_phone_snapshot_live.png (533413 bytes) | tap 539,2266 | slept 1500 ms | tap 539,1278 | slept 800 ms | text typed (W68 device check end); editor inputType 0x24001 | slept 1200 ms | screencap 006.png (314803 bytes)
+-- 01:15:16 ACK 007 | tap 809,1621 | stop 202 (POST /api/v1/session/{id}/stop 202) | slept 7000 ms | screencap 68_phone_after_stop_summary_live.png (204705 bytes)
+-- 01:15:33 ACK 008 done 0
+-- driver exit: 0
+-- Core request lines this session (method, path template, status):
+      1 DEMS-LIVE] POST /api/v1/session/{id}/stop 202
+      1 DEMS-LIVE] POST /api/v1/session/{id}/start 200
+      1 DEMS-LIVE] POST /api/v1/session/{id}/snapshots 204
+      1 DEMS-LIVE] POST /api/v1/session/{id}/precheck 202
+      1 DEMS-LIVE] POST /api/v1/session 201
+      1 DEMS-LIVE] POST /api/v1/auth/touch 200
+      1 DEMS-LIVE] POST /api/v1/auth/sign-in 200
+      1 DEMS-LIVE] GET /api/v1/pairing/device 200
+      1 DEMS-LIVE] GET /api/v1/auth/status 200
+      1 DEMS-LIVE] GET /api/v1/auth/session 401
+-- live.misuse lines: 0; credential/token lines (must be 0): 0
+-- 'session is already active' lines in the JS log: 0
+== D9. leave the app in SIMULATED mode as found (D124) ==
+-- am start -W -d 'demsdemo:///?core=SIMULATED'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 3 s for runtime.sim.hydrated; Core requests after (must be 0): 0
+-- prefs after: {"coreLinkSource":"SIMULATED"}
+
+-- screencap: 68_phone_after_simulated.png
+-- lock at end: isKeyguardShowing=false
+[device-session phone 01:15:56] Metro 88018 stopped
+[device-session phone 01:15:57] session ended with status 0
+device session exit=0
+
+== 01:15:57 3. backend request log during the session
+      1 GET /api/v1/auth/session 401 principal=device
+      1 GET /api/v1/auth/status 200 principal=device
+      1 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/device 200 principal=device
+      1 POST /api/v1/auth/sign-in 200 principal=device
+      1 POST /api/v1/auth/touch 200 principal=operator
+      1 POST /api/v1/session 201 principal=operator
+      1 POST /api/v1/session/:id/precheck 202 principal=operator
+      1 POST /api/v1/session/:id/snapshots 204 principal=operator
+      1 POST /api/v1/session/:id/start 200 principal=operator
+      1 POST /api/v1/session/:id/stop 202 principal=operator
+-- audit rows of the session this run:
+-- socket lines of the session (meters subscription):
+      2 "msg":"socket closed"
+      2 "msg":"socket opened"
+-- bearer/cookie/credential lines in the server log this run (must be 0): 0
+
+== 01:15:57 4. stop the backend and check nothing is left
+-- shutdown complete lines: 1
+lsof exit 1 (1 = none)
+   active_session           1
+   audit_log                220
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 01:15:57 end of run w68011242
+lockf exit=0

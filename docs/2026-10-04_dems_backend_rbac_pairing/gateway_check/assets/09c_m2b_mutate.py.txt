@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""M2 follow-up mutation check (decision D180; rule M15: nothing in the tree is written). The method of M0, M1, M2.
+
+Groups:
+  V  the LIVE look of Login's chip and ring (`features/login/login-model.ts`)
+  W  the wiring: the controller's `coreLook`, the screen's ring and dust loop, the card's chip and icon
+
+  python3 mutate.py control            the unmutated test files of every group, once
+  python3 mutate.py V                  every mutant of group V (or W); ids also work (V1 W3 …)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+
+MODEL = 'src/features/login/login-model.ts'
+CONTROLLER = 'src/features/login/use-login-controller.ts'
+SCREEN = 'src/features/login/login-screen.tsx'
+CARD = 'src/features/login/login-card.tsx'
+
+LOGIN_TESTS = [
+    'src/features/login/live-login-link-visuals.test.tsx',
+    'src/features/login/login-model.test.ts',
+    'src/features/login/live-login.test.tsx',
+    'src/features/login/login.test.tsx',
+]
+TESTS = {'V': LOGIN_TESTS, 'W': LOGIN_TESTS}
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+RING_LIVE = "  if (coreLink.source === 'LIVE') return LIVE_RING[liveLookFor(coreLink, liveLook)];\n"
+CHIP_LIVE = "  if (coreLink.source === 'LIVE') return LIVE_CHIP[liveLookFor(coreLink, liveLook)];\n"
+LOOK_DOWN = "  if (link.offline || link.view === 'down') return 'offline';"
+LOOK_UP = "  return link.view === 'up' ? 'up' : 'connecting';"
+M = [
+  ('V1', MODEL, 'the ring reads the two-valued state again in LIVE (L-1 back)', [e(RING_LIVE, '')]),
+  ('V2', MODEL, 'the chip reads the two-valued state again in LIVE (L-1 back)', [e(CHIP_LIVE, '')]),
+  ('V3', MODEL, 'settling reads offline (a cold start is "Core offline" again)', [e(LOOK_UP, "  return link.view === 'up' ? 'up' : 'offline';")]),
+  ('V4', MODEL, 'the notice is ignored: the view alone (a reconnect attempt in an outage flickers to connecting)', [e(LOOK_DOWN, "  if (link.view === 'down') return 'offline';")]),
+  ('V5', MODEL, 'a down view without the notice is not offline', [e(LOOK_DOWN, "  if (link.offline) return 'offline';")]),
+  ('V6', MODEL, 'up reads connecting', [e(LOOK_UP, "  return 'connecting';")]),
+  ('V7', MODEL, 'the connecting ring is critical', [e("connecting: 'attention'", "connecting: 'critical'")]),
+  ('V8', MODEL, 'the connecting ring is ready (says nothing while Sign In is disabled)', [e("connecting: 'attention'", "connecting: 'ready'")]),
+  ('V9', MODEL, 'the connecting chip is "Core offline"', [e("connecting: { kind: 'SETTLING', tone: 'warning' }", "connecting: { kind: 'OFFLINE', tone: 'danger' }")]),
+  ('V10', MODEL, 'LIVE without a look reads every view as offline', [e("liveCoreLookOf({ view: coreLinkViewOf(coreLink), offline: false })", "liveCoreLookOf({ view: coreLinkViewOf(coreLink), offline: true })")]),
+  ('V11', MODEL, 'the LIVE look wins over a lockout on the ring', [e("  if (locked) return 'attention';\n" + RING_LIVE, RING_LIVE + "  if (locked) return 'attention';\n")]),
+  ('V12', MODEL, 'a look handed in applies outside LIVE too (the chip of SIMULATED and HEARTBEAT changes)', [e(CHIP_LIVE, "  if (liveLook !== null) return LIVE_CHIP[liveLook];\n" + CHIP_LIVE)]),
+  ('W1', CONTROLLER, 'the controller hands no look (LIVE falls back to the view alone)', [e('const coreLook = live ? liveCoreLookOf(linkNotice) : null;', 'const coreLook = null;')]),
+  ('W2', CONTROLLER, 'the controller drops the notice from the look', [e('liveCoreLookOf(linkNotice)', 'liveCoreLookOf({ view: linkNotice.view, offline: false })')]),
+  ('W3', SCREEN, 'the ring is not handed the look', [e(', liveLook: controller.coreLook })', ' })')]),
+  ('W4', SCREEN, 'the dust loop follows the two-valued state again', [e("coreChipFor(controller.coreLink, controller.coreLook).kind === 'OFFLINE'", "controller.coreLink.state === 'OFFLINE'")]),
+  ('W5', CARD, 'the chip is not handed the look', [e('coreChipFor(controller.coreLink, controller.coreLook)', 'coreChipFor(controller.coreLink)')]),
+  ('W6', CARD, 'the connecting chip shows the alert triangle', [e("chip.kind === 'ONLINE' || chip.kind === 'SETTLING' ? 'Wifi'", "chip.kind === 'ONLINE' ? 'Wifi'")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = sys.argv[1:]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# M2b mutation check, %s; the tree is not edited' % time.strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+    if 'control' in wanted:
+        tests = sorted({t for group in TESTS.values() for t in group})
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'), tests)
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation, %d test files): exit=%d %s (%.0f s)' % (len(tests), run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-4000:])
+            sys.exit(1)
+    chosen = [m for m in M if m[0] in wanted or m[0].rstrip('0123456789') in wanted]
+    detected = missed = unapplied = 0
+    for mid, file, what, edits in chosen:
+        group = mid.rstrip('0123456789')
+        with open(SPEC, 'w') as f:
+            json.dump({'id': mid, 'file': file, 'edits': edits}, f)
+        started = time.time()
+        run = jest(dict(os.environ, CI='1', M2B_MUT_SPEC=SPEC), TESTS[group])
+        tail, failed, first = summary(run.stdout)
+        if 'expected exactly 1' in run.stdout:
+            unapplied += 1
+            verdict = 'NOT APPLIED'
+        elif run.returncode != 0:
+            detected += 1
+            verdict = 'DETECTED'
+        else:
+            missed += 1
+            verdict = 'not detected'
+        print('%-4s %-12s %s | %s | %s | failing files: %s | first: %s (%.0f s)' % (mid, verdict, what, file, tail, ', '.join(failed) or '-', ' / '.join(first) or '-', time.time() - started), flush=True)
+    if chosen:
+        print('## %d detected, %d not detected, %d not applied, of %d' % (detected, missed, unapplied, len(chosen)), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    same = before == after
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if same else 'CHANGED'), flush=True)
+    for f in files:
+        print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+
+if __name__ == '__main__':
+    main()

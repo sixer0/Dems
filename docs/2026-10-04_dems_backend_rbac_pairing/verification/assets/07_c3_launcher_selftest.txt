@@ -1,0 +1,39 @@
+# unpacked: unzip release/web/DEMS-Web-Demo-0.1.0-macos-arm64.zip into $TMPDIR=/tmp/claude-501/w97_launcher (outside the workspace)
+# ./"DEMS Web Demo" --version  -> exit 0
+DEMS Web Demo 0.1.0 (node v26.8.2, sea, darwin-arm64)
+# first attempt inside the command sandbox: exit 1, "ok": false, error "listen EPERM: operation not permitted 127.0.0.1" (sandbox forbids bind; plan GR-4/§4.1 per-command bypass)
+# 2026-10-07 10:30:53 WIB, sandbox bypassed for this one command: ./"DEMS Web Demo" --self-test -> exit 0
+{
+  "ok": true,
+  "product": "DEMS Web Demo",
+  "version": "0.1.0",
+  "node": "v26.8.2",
+  "platform": "darwin-arm64",
+  "mode": "sea",
+  "assets": {
+    "files": 511,
+    "bytes": 43392327,
+    "manifestSha256": "823581dbfc538539e739373a4f19f2cf9e5f44588da21f3debeaa977afc3d8a8",
+    "hashMismatches": 0
+  },
+  "port": 49465,
+  "health": {
+    "status": 200,
+    "launcherHeader": "0.1.0",
+    "shapeOk": true
+  },
+  "index": {
+    "status": 200,
+    "contentType": "text/html; charset=utf-8",
+    "bytes": 2037,
+    "matches": true,
+    "csp": true
+  },
+  "ws": {
+    "acceptOk": true,
+    "heartbeatShapeOk": true,
+    "seq": 0
+  }
+}
+# removed: ls $TMPDIR/w97_launcher -> No such file or directory
+# BUILD-INFO.txt:9 web-manifest.json sha256: 823581dbfc538539e739373a4f19f2cf9e5f44588da21f3debeaa977afc3d8a8 (511 files) = self-test manifestSha256

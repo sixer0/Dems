@@ -1,0 +1,220 @@
+// W80 device check: the Operator Audit view in LIVE mode (the lane's real rows, Verify with the Core's
+// verdict = site S1-7 settled) and in SIMULATED mode, on the phone of lane 1, in one sitting.
+//   node --import tsx device_flow.mts <serial> <out> <T0> <live|simulated>
+// Rules (D164 DN-7, D162, D125, P19):
+// - Launched with `demsdemo:///login?core=…&motion=off` (never `/` with `motion=`), then a deep link to /audit.
+// - Login, Summary and Home are never dumped: W60's fixed Login coordinates; the app's biometric offer is
+//   detected by its pixels (W66's `pixels.py offer`) and only ever DECLINED ("Not now", 540,1444).
+// - `uiautomator dump` only on the Audit screen (motion off: no ambient loop), each with a 20 s limit.
+// - The demo password is read from the shared dataset constant and never printed; it is only ever the
+//   argument of one `adb shell input text` into the APP's own password field.
+// - Nothing is typed or tapped unless the app has the focus and no keyguard shows (exit 77 otherwise).
+//   No keyguard, PIN, fingerprint or device setting is touched.
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../packages/shared/src/sim/dataset';
+
+const [serial, out, t0, phase] = process.argv.slice(2);
+if (!serial || !out || !t0 || (phase !== 'live' && phase !== 'simulated')) {
+  console.error('usage: device_flow.mts <serial> <out> <T0> <live|simulated>');
+  process.exit(64);
+}
+const ROOT = '/Users/gsp-budi/Documents/DEMS';
+const DUMP = '/sdcard/w80.xml';
+const BIG = { encoding: 'utf8' as const, maxBuffer: 256 * 1024 * 1024 };
+const adb = (...a: string[]): string => execFileSync('adb', ['-s', serial, ...a], BIG);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const jsLog = (): string => adb('logcat', '-d', '-T', t0, '-s', 'ReactNativeJS:V');
+const say = (text: string) => console.log(`-- ${new Date().toTimeString().slice(0, 8)} ${text}`);
+class Locked extends Error {
+  readonly code = 77;
+}
+
+function guard(): void {
+  const w = adb('shell', 'dumpsys', 'window');
+  if (!/isKeyguardShowing=false/.test(w) || !/mCurrentFocus=.*com\.dems\.demo\.tablet/.test(w)) throw new Locked('app not focused / keyguard');
+}
+function tapAt(x: number, y: number, what: string): void {
+  guard();
+  adb('shell', 'input', 'tap', String(x), String(y));
+  say(`tapped ${what} at ${x},${y}`);
+}
+function shot(name: string): string {
+  const png = execFileSync('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], { maxBuffer: BIG.maxBuffer });
+  const path = `${out}/80_${name}.png`;
+  writeFileSync(path, png);
+  say(`screencap 80_${name}.png (${png.length} bytes)`);
+  return path;
+}
+function core(pattern: RegExp): string[] {
+  return jsLog()
+    .split('\n')
+    .map((line) => /DEMS-LIVE\] (.*)$/.exec(line)?.[1] ?? '')
+    .filter((line) => line !== '' && pattern.test(line))
+    .map((line) => line.replace(/ [0-9a-f]{8}-[0-9a-f-]{27}$/, ''));
+}
+async function waitCore(pattern: RegExp, seconds: number): Promise<string[]> {
+  for (let waited = 0; waited < seconds; waited += 1) {
+    const lines = core(pattern);
+    if (lines.length > 0) return lines;
+    await sleep(1000);
+  }
+  return [];
+}
+
+interface Node { box: { l: number; t: number; r: number; b: number }; text: string }
+/** One dump of the Audit screen; null when it does not go idle in 20 s. */
+function dump(): { ids: Map<string, Node>; height: number } | null {
+  try {
+    execFileSync('adb', ['-s', serial, 'shell', 'uiautomator', 'dump', DUMP], { ...BIG, timeout: 20_000 });
+  } catch {
+    say('dump: no idle state in 20 s');
+    return null;
+  }
+  const xml = adb('exec-out', 'cat', DUMP);
+  const ids = new Map<string, Node>();
+  let height = 0;
+  for (const [node] of xml.matchAll(/<node\b[^>]*>/g)) {
+    const bounds = / bounds="\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]"/.exec(node);
+    if (!bounds) continue;
+    const box = { l: Number(bounds[1]), t: Number(bounds[2]), r: Number(bounds[3]), b: Number(bounds[4]) };
+    height = Math.max(height, box.b);
+    const id = / resource-id="([^"]*)"/.exec(node)?.[1]?.replace(/^.*:id\//, '');
+    const text = (/ text="([^"]*)"/.exec(node)?.[1] ?? '') || (/ content-desc="([^"]*)"/.exec(node)?.[1] ?? '');
+    if (id && !ids.has(id)) ids.set(id, { box, text });
+  }
+  return { ids, height };
+}
+async function tapId(id: string, tries = 4): Promise<boolean> {
+  for (let attempt = 0; attempt < tries; attempt += 1) {
+    const d = dump();
+    const node = d?.ids.get(id);
+    if (d && node && node.box.b > node.box.t && node.box.t >= 0) {
+      tapAt(Math.round((node.box.l + node.box.r) / 2), Math.round((node.box.t + node.box.b) / 2), id);
+      return true;
+    }
+    await sleep(1000);
+  }
+  say(`no visible node ${id}`);
+  return false;
+}
+function visible(pattern: RegExp): string[] {
+  const d = dump();
+  return d === null ? [] : [...d.ids.entries()].filter(([key]) => pattern.test(key)).map(([key, node]) => (node.text ? `${key} "${node.text}"` : key));
+}
+
+/** W60's sign-in on the app's own Login form, fixed coordinates (phone portrait 1080 x 2424). */
+async function signIn(username: string): Promise<void> {
+  const USER: [number, number] = [540, 1105];
+  const PASS: [number, number] = [540, 1265];
+  tapAt(...USER, 'the username field');
+  await sleep(1200);
+  tapAt(540, 2338, "the handwriting coach's Cancel (empty space when none)");
+  await sleep(800);
+  tapAt(...USER, 'the username field');
+  await sleep(600);
+  guard();
+  adb('shell', 'input', 'text', username);
+  say(`typed the operator username (${username})`);
+  await sleep(400);
+  tapAt(...PASS, 'the password field');
+  await sleep(600);
+  guard();
+  adb('shell', 'input', 'text', DEMO_OPERATOR_PASSWORD); // never printed
+  say('typed the demo password (not shown)');
+  await sleep(400);
+  guard();
+  adb('shell', 'input', 'keyevent', '66');
+  say("pressed the keypad's go key");
+}
+function link(url: string): void {
+  guard();
+  adb('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', url, 'com.dems.demo.tablet');
+  say(`deep link ${url}`);
+}
+/** Declines the app's biometric offer only when its pixels show (W66's detector); touches nothing otherwise. */
+async function declineOffer(name: string): Promise<void> {
+  const png = shot(`${phase}_${name}_offer_check`);
+  const seen = execFileSync('python3', [`${ROOT}/.cache/w66/pixels.py`, 'offer', png], BIG).trim();
+  if (seen === 'offer') {
+    tapAt(540, 1444, 'the app\'s biometric offer: "Not now"');
+    await sleep(2000);
+  } else {
+    say('the app\'s biometric offer: not shown, nothing tapped');
+  }
+}
+
+async function audit(): Promise<number> {
+  link('demsdemo:///audit');
+  await sleep(4000);
+  const screen = visible(/^(screen-audit|audit-chain-total|audit-chain-head|audit-count|audit-chain-chip-ok|audit-chain-chip-broken|audit-link-offline)$/);
+  say(`on screen: ${screen.join(', ') || 'none'}`);
+  if (!screen.some((entry) => entry.startsWith('screen-audit'))) return 1;
+  shot(`${phase}_audit`);
+  if (!(await tapId('audit-verify'))) return 1;
+  if (phase === 'live') say(`verify: ${(await waitCore(/GET \/api\/v1\/audit\/chain/, 15)).join(' | ') || 'NOT SEEN'}`);
+  await sleep(2500);
+  say(`on screen: ${visible(/^(audit-verify-PASS|audit-verify-FAIL|audit-verify-text|audit-live-stored-ok|audit-live-stored-broken|audit-live-lineage|audit-live-chain)$/).join(', ') || 'none'}`);
+  shot(`${phase}_verdict`);
+  return 0;
+}
+
+async function live(): Promise<number> {
+  const investigator = OPERATORS.find((o) => o.role === 'INVESTIGATOR');
+  if (!investigator) throw new Error('no INVESTIGATOR in the dataset');
+  await sleep(6000);
+  shot('live_login');
+  await signIn(investigator.username);
+  say(`the app's sign-in: ${(await waitCore(/POST \/api\/v1\/auth\/sign-in/, 30)).join(' | ') || 'NOT SEEN'}`);
+  await sleep(6000);
+  await declineOffer('after_signin');
+  shot('live_after_signin');
+  const result = await audit();
+  if (result !== 0) return result;
+  // The rows of a failed or locked sign-in with a known username, if the lane holds any (CPS1-12 (a)).
+  if (await tapId('audit-search')) {
+    await sleep(600);
+    guard();
+    adb('shell', 'input', 'text', 'typed');
+    say('typed "typed" into the audit search (the app\'s own field)');
+    await sleep(2500);
+    adb('shell', 'input', 'keyevent', '111'); // ESC: hide the keyboard
+    await sleep(1200);
+    say(`on screen: ${visible(/^(audit-empty|audit-count|audit-row-actor-\d+)$/).slice(0, 6).join(', ') || 'none'}`);
+    shot('live_search_typed');
+  }
+  const log = jsLog();
+  say(`credential/token lines in the JS log (must be 0): ${log.split('\n').filter((l) => /dvc_|ses_|bio_/.test(l)).length}`);
+  say(`audit chain requests: ${core(/\/api\/v1\/audit\/chain/).length}; audit list requests (must be 0): ${core(/GET \/api\/v1\/audit(?:\?\S*)? /).length}; demo operations (must be 0): ${core(/\/api\/v1\/demo\//).length}; biometric enrolment requests (must be 0): ${core(/biometric/).length}`);
+  return 0;
+}
+
+async function simulated(): Promise<number> {
+  const investigator = OPERATORS.find((o) => o.role === 'INVESTIGATOR');
+  if (!investigator) throw new Error('no INVESTIGATOR in the dataset');
+  await sleep(6000);
+  shot('simulated_start');
+  const signedIn = process.env.SIM_AUTH?.includes('SIGNED_IN') ?? false;
+  if (!signedIn) {
+    await signIn(investigator.username);
+    await sleep(6000);
+    await declineOffer('after_signin');
+  } else {
+    say('the simulator is already signed in (stored state): no sign-in typed');
+  }
+  const result = await audit();
+  say(`Core requests in SIMULATED mode (must be 0): ${core(/\/api\/v1\//).length}`);
+  return result;
+}
+
+(phase === 'live' ? live() : simulated()).then(
+  (status) => process.exit(status),
+  (error: unknown) => {
+    if (error instanceof Locked) {
+      say(`LOCKED: ${error.message} - stop, report`);
+      process.exit(77);
+    }
+    console.error(`-- failed: ${error instanceof Error ? error.message : 'unknown'}`);
+    process.exit(1);
+  },
+);

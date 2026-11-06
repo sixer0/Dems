@@ -1,0 +1,60 @@
+// R-S step 4 (E2E-S-2): sign in on phone2 (emulator-5558) in LIVE mode as budi.santoso (INVESTIGATOR), typing into
+// the app's own fields, while the web Paired Devices page stays OPEN (the background watcher stamps its cells; this
+// driver never touches the page). The Username field is already focused (checked by screencap: keyboard up). The
+// demo password comes from the shared seed constant (the README Quick start publishes the same value) and is only
+// ever the argument of ONE `adb shell input text`; it is never printed or written. Nothing is typed unless the app
+// is the focused window and no keyguard shows. No uiautomator dump (Login / Home show). Adapted from round 1's
+// drv_04_phone_sign_in.mjs.txt (250 ms polling, server line added).
+//   node --import tsx sign_in.mjs <prefix> "<password x y>" "<sign-in x y>"
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset.ts'
+import { adb, clockOffset, deviceNow, deviceState, fmtServer, hms, liveLines, log, screencap, serverLines, sleep, stamp, tap, writeJson } from './lib.mjs'
+
+const [prefix = '04', passAt, submitAt] = process.argv.slice(2)
+const xy = (s) => s.trim().split(/\s+/)
+const budi = OPERATORS.find((o) => o.username === (process.env.OPERATOR || 'budi.santoso'))
+if (!budi) throw new Error('seed: budi.santoso missing')
+const T0 = deviceNow()
+const startedAt = Date.now()
+const result = { operator: { username: budi.username, id: budi.id, role: budi.role }, deviceT0: T0, clock: clockOffset() }
+log(`device T0 ${T0}; device clock minus host ${result.clock.offsetMs} ms (bracket ${result.clock.bracketMs} ms)`)
+const guard = (when) => { const s = deviceState(); log(`${when}: keyguard ${s.keyguard}, app focused ${s.appFocused}`); return s.appFocused }
+
+if (!guard('before the username')) process.exit(77)
+adb('shell', 'input', 'text', budi.username)
+log(`typed the username (${budi.username})`)
+await sleep(500)
+tap(...xy(passAt)); await sleep(900)
+if (!guard('before the password')) process.exit(77)
+adb('shell', 'input', 'text', DEMO_OPERATOR_PASSWORD)
+log('typed the demo password (not shown)')
+const typedPwAt = Date.now()
+await sleep(2600) // rule: no capture within 2 s of typing a password
+result.prefill = screencap(`${prefix}_phone_login_prefilled.png`) // the password field shows dots only
+result.prefillDelayMs = Date.now() - typedPwAt
+if (!guard('before submit')) process.exit(77)
+const submitAtMs = Date.now()
+adb('shell', 'input', 'keyevent', '66')
+log(`pressed the keypad's go key (KEYCODE_ENTER) at ${hms(submitAtMs)}`)
+let line
+for (let waited = 0; waited < 160 && !line; waited++) {
+  await sleep(250)
+  line = liveLines(T0).find((l) => l.method === 'POST' && l.path === '/api/v1/auth/sign-in')
+  if (!line && waited === 40) { tap(...xy(submitAt)); log('no sign-in request after 10 s: tapped Sign In') }
+}
+result.submitAt = stamp(submitAtMs)
+result.signIn = line ? { ...line, deviceTime: stamp(Math.round(line.deviceEpoch * 1000)) } : 'NOT SEEN in 40 s'
+log(`the app's sign-in request (device log): ${line ? `POST /api/v1/auth/sign-in ${line.status} at device ${stamp(Math.round(line.deviceEpoch * 1000))}` : 'NOT SEEN'}`)
+await sleep(6000)
+const s = deviceState()
+result.after = s
+result.afterShot = s.keyguard === 'false' ? screencap(`${prefix}_phone_signed_in.png`) : 'NOT TAKEN: keyguard'
+result.appRequests = liveLines(T0).map((l) => `${stamp(Math.round(l.deviceEpoch * 1000))} ${l.method} ${l.path} ${l.status}`)
+log(`after: ${JSON.stringify(result.afterShot)}; app requests since T0:\n   ${result.appRequests.join('\n   ')}`)
+result.serverLines = serverLines(startedAt - 1000).filter((l) => (l.route ?? '').startsWith('/api/v1/auth') || (l.principal ?? '').startsWith('device:') || (l.principal ?? '').startsWith('operator:OPR-001') || l.msg.startsWith('socket'))
+for (const l of result.serverLines) log(`server ${fmtServer(l)}`)
+const js = adb('logcat', '-d', '-T', T0, '-s', 'ReactNativeJS:V')
+result.credentialLinesDeviceJs = js.split('\n').filter((l) => /dvc_|ses_|bio_/.test(l)).length
+result.passwordInDeviceJs = js.split(DEMO_OPERATOR_PASSWORD).length - 1
+log(`credential/token lines in the device JS log: ${result.credentialLinesDeviceJs}; password occurrences in the device JS log: ${result.passwordInDeviceJs}`)
+writeJson(`${prefix}_phone_sign_in.json`, result)
+process.exit(line && line.status === '200' ? 0 : 2)

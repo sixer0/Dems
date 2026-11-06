@@ -1,0 +1,28 @@
+$ npm run typecheck -w @dems/shared   (07:51:07)
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+
+$ npm run lint -w @dems/shared   (07:51:08)
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+
+$ npm run typecheck -w @dems/core-web   (07:51:08)
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+
+$ npm run typecheck -w @dems/mobile   (07:51:17)
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+

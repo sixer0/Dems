@@ -1,0 +1,222 @@
+// CF-W before/after captures on lane 3 (http://127.0.0.1:5178, Live, Core 4423).
+// Usage: node capture.mjs <before|after> <assetDir> [evidenceId]
+// Requests sent to the Core: sign-in, reads (GET evidence list and items), sign-out. No Verify, no
+// export, no archive, no demo reset, scenario or fault.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { launch, openPage, signIn, signOut, sleep } from './cdp.mjs'
+
+const phase = process.argv[2]
+const dir = process.argv[3]
+const wanted = process.argv[4] ?? 'EV-20261006-0014'
+if (!['before', 'after', 'probe'].includes(phase) || !dir) throw new Error('usage: capture.mjs <before|after|probe> <dir> [id]')
+const lines = []
+const log = (line) => {
+  const stamped = `${new Date().toISOString()} ${line}`
+  lines.push(stamped)
+  console.log(stamped)
+}
+const file = (name) => join(dir, `12c_${phase}_${name}.png`)
+process.on('unhandledRejection', (error) => log(`unhandled: ${error?.message ?? error}`))
+
+/** Custody table geometry: card, scroll container, table, columns, Detail visibility, time tokens. */
+const measureCustody = () => {
+  const card = document.querySelector('[data-testid="evidence-custody"]')
+  if (!card) return null
+  const scroll = card.querySelector('.table__scroll-container')
+  const table = card.querySelector('table')
+  const scrollBox = scroll.getBoundingClientRect()
+  const headers = [...table.querySelectorAll('thead th')].map((th) => ({ text: th.textContent.trim(), width: Math.round(th.getBoundingClientRect().width) }))
+  const lh = (el) => parseFloat(getComputedStyle(el).lineHeight) || 16
+  const lines = (el) => (el ? Math.round(el.getBoundingClientRect().height / lh(el)) : null)
+  const rows = [...table.querySelectorAll('tbody tr')].map((tr) => {
+    const cells = [...tr.children]
+    const detail = cells[3]
+    const empty = detail.getAttribute('data-empty') === 'true'
+    const detailBox = detail.getBoundingClientRect()
+    const actionCell = cells[1]
+    const actionBox = actionCell.getBoundingClientRect()
+    const date = tr.querySelector('.evi-custody-date')
+    const clock = tr.querySelector('.evi-custody-clock')
+    const code = actionCell.querySelector('.evi-strong')
+    return {
+      action: tr.getAttribute('data-custody-action'),
+      detail: detail.textContent,
+      detailEmpty: empty,
+      detailWidth: Math.round(detailBox.width),
+      // What the eye sees of a real Detail: the part of its cell inside the scroll container.
+      detailVisible: empty ? null : Math.max(0, Math.round(Math.min(detailBox.right, scrollBox.right) - Math.max(detailBox.left, scrollBox.left))),
+      detailLines: empty ? null : lines(detail.querySelector('span')),
+      detailUnderAction: empty ? null : detailBox.top >= actionBox.bottom - 1,
+      dateLines: date ? date.getClientRects().length : null,
+      clockLines: clock ? clock.getClientRects().length : null,
+      date: date?.textContent ?? null,
+      clock: clock?.textContent ?? null,
+      actionText: code?.textContent ?? null,
+      actionLines: lines(code),
+      // Cells whose content is wider than the cell (a visually hidden empty Detail is 1 px by design).
+      cellsOverflowing: cells.filter((cell) => cell.getAttribute('data-empty') !== 'true' && cell.scrollWidth > cell.clientWidth + 1).length,
+    }
+  })
+  return {
+    viewport: `${innerWidth}x${innerHeight}`,
+    card: Math.round(card.getBoundingClientRect().width),
+    container: Math.round(scroll.clientWidth),
+    table: Math.round(table.getBoundingClientRect().width),
+    scrollWidth: scroll.scrollWidth,
+    horizontalOverflow: scroll.scrollWidth - scroll.clientWidth,
+    tableLayout: getComputedStyle(table).tableLayout,
+    headers,
+    rows,
+  }
+}
+
+const browser = await launch(log)
+const results = { phase, wanted }
+try {
+  const page = await openPage(browser.cdp, log)
+  await page.viewport(1440, 900)
+  await signIn(page, log)
+  await sleep(3000)
+
+  // Read-only: which items carry a multi-word custody Detail, and whether a media reference joins them.
+  const inventory = await page.eval(async () => {
+    const list = await fetch('/api/v1/evidence?limit=100', { headers: { accept: 'application/json' } }).then((r) => r.json())
+    const items = list.items ?? list.evidence ?? list.data ?? []
+    const out = []
+    for (const entry of items) {
+      const id = entry.id ?? entry.evidenceId
+      const body = await fetch(`/api/v1/evidence/${id}`, { headers: { accept: 'application/json' } }).then((r) => r.json())
+      const evidence = body.evidence ?? body
+      const custody = evidence.custody ?? []
+      out.push({
+        id,
+        status: evidence.status,
+        media: body.media ? Object.keys(body.media) : null,
+        mediaSource: body.media?.source ?? null,
+        multiWordDetails: custody.filter((c) => typeof c.detail === 'string' && c.detail.trim().split(/\s+/).length > 1).map((c) => ({ action: c.action, detail: c.detail })),
+      })
+    }
+    return { keys: Object.keys(list), count: items.length, out }
+  })
+  results.inventory = inventory
+  log(`inventory: ${inventory.count} items; keys ${JSON.stringify(inventory.keys)}`)
+  for (const row of inventory.out) log(`  ${row.id} ${row.status} media=${JSON.stringify(row.mediaSource)} multiWord=${JSON.stringify(row.multiWordDetails)}`)
+  const target = inventory.out.find((row) => row.id === wanted && row.multiWordDetails.length) ?? inventory.out.find((row) => row.multiWordDetails.length)
+  if (!target) throw new Error('no item with a multi-word custody Detail on lane 3')
+  results.target = target.id
+  log(`target ${target.id}`)
+
+  if (phase !== 'probe') {
+    // ── R-W-1: custody table at three widths ──
+    results.custody = {}
+    // The three widths of the brief; after the fix also 1024x768 and 390x844 (regression check only).
+    const widths = [
+      [1280, 800],
+      [1440, 900],
+      [1920, 1080],
+      ...(phase === 'after' ? [
+        [1024, 768],
+        [390, 844],
+      ] : []),
+    ]
+    for (const [width, height] of widths) {
+      await page.viewport(width, height)
+      await page.goto(`/evidence/${target.id}?tab=integrity`)
+      await page.waitFor(() => !!document.querySelector('[data-testid="evidence-custody"] tbody tr'), 20000)
+      await sleep(2000)
+      await page.eval(() => document.querySelector('[data-testid="evidence-custody"]').scrollIntoView({ block: 'center' }))
+      await sleep(800)
+      const geometry = await page.eval(measureCustody)
+      results.custody[`${width}x${height}`] = geometry
+      log(`custody ${width}x${height}: card ${geometry.card} container ${geometry.container} table ${geometry.table} overflow ${geometry.horizontalOverflow} layout ${geometry.tableLayout} cols ${JSON.stringify(geometry.headers.map((h) => h.width))}`)
+      for (const row of geometry.rows) log(`    ${row.action}: ${row.detailEmpty ? 'no Detail' : `Detail ${row.detailVisible}/${row.detailWidth} px visible, ${row.detailLines} lines, under action ${row.detailUnderAction}`}; date ${JSON.stringify(row.date)} ${row.dateLines} box, clock ${JSON.stringify(row.clock)} ${row.clockLines} box; action ${row.actionLines} lines; overflowing cells ${row.cellsOverflowing}`)
+      const clip = await page.eval(() => {
+        const box = document.querySelector('[data-testid="evidence-custody"]').getBoundingClientRect()
+        return { x: Math.max(0, box.left - 10), y: Math.max(0, box.top - 10), width: Math.min(innerWidth - Math.max(0, box.left - 10), box.width + 20), height: Math.min(innerHeight, box.height + 20) }
+      })
+      await page.shot(file(`rw1_custody_${width}x${height}`), clip)
+      await page.shot(file(`rw1_integrity_page_${width}x${height}`))
+    }
+
+    // ── O-RT-1: Media tab wording in Live ──
+    // No lane-3 item answers media NONE (all 14 join a DEMO package), so this browser — and only this
+    // browser — rewrites the one answer of GET /api/v1/evidence/{id} to the answer the Core gives a
+    // Live-recorded item: media {source: NONE, packageSuffix: null}. The Core is not touched.
+    const rewrites = []
+    const strip = (headers) => headers.filter((h) => !/^(content-length|content-encoding|etag)$/i.test(h.name))
+    const rewriteMedia = (mode) => async (params, s) => {
+      const url = new URL(params.request.url)
+      if (params.request.method !== 'GET' || url.pathname !== `/api/v1/evidence/${target.id}`) return s('Fetch.continueRequest', { requestId: params.requestId })
+      if (mode === 'unavailable') {
+        rewrites.push({ mode, url: url.pathname, status: params.responseStatusCode })
+        return s('Fetch.failRequest', { requestId: params.requestId, errorReason: 'ConnectionRefused' })
+      }
+      const { body, base64Encoded } = await s('Fetch.getResponseBody', { requestId: params.requestId })
+      const json = JSON.parse(base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body)
+      const before = json.media
+      json.media = { source: 'NONE', packageSuffix: null }
+      rewrites.push({ mode, url: url.pathname, status: params.responseStatusCode, mediaBefore: before, mediaAfter: json.media })
+      await s('Fetch.fulfillRequest', { requestId: params.requestId, responseCode: params.responseStatusCode, responseHeaders: strip(params.responseHeaders ?? []), body: Buffer.from(JSON.stringify(json)).toString('base64') })
+    }
+    page.responseHook = rewriteMedia('none')
+    await page.viewport(1440, 900)
+    await page.goto(`/evidence/${target.id}?tab=media`)
+    await page.waitFor(() => !!document.querySelector('[data-testid="evidence-media-empty"], [data-testid="evidence-media"]'), 20000)
+    await sleep(2000)
+    results.media = await page.eval(() => {
+      const empty = document.querySelector('[data-testid="evidence-media-empty"]')
+      return {
+        mode: document.querySelector('[data-testid="mode-badge"], [data-testid="core-mode-badge"]')?.textContent ?? null,
+        empty: !!empty,
+        source: empty?.getAttribute('data-source') ?? null,
+        title: empty?.querySelector('.evi-empty-title')?.textContent ?? null,
+        body: empty?.querySelector('.evi-empty-body')?.textContent ?? null,
+        packageChip: document.querySelector('[data-testid="evidence-package-chip"]')?.textContent ?? null,
+        packageChipKind: document.querySelector('[data-testid="evidence-package-chip"]')?.getAttribute('data-package') ?? null,
+      }
+    })
+    log(`media: ${JSON.stringify(results.media)}`)
+    await page.shot(file('ort1_media_tab_1440x900'))
+    const mediaClip = await page.eval(() => {
+      const box = (document.querySelector('[data-testid="evidence-media-empty"]') ?? document.querySelector('[data-testid="evidence-media"]')).getBoundingClientRect()
+      return { x: Math.max(0, box.left - 24), y: Math.max(0, box.top - 24), width: box.width + 48, height: box.height + 48 }
+    })
+    await page.shot(file('ort1_media_empty_1440x900'), mediaClip)
+
+    if (phase === 'after') {
+      // Live, the media reference does not answer (operation 40 fails in this browser only).
+      page.responseHook = rewriteMedia('unavailable')
+      await page.goto(`/evidence/${target.id}?tab=media`)
+      await page.waitFor(() => !!document.querySelector('[data-testid="evidence-media-empty"], [data-testid="evidence-media"]'), 20000)
+      await sleep(2500)
+      results.mediaUnavailable = await page.eval(() => {
+        const empty = document.querySelector('[data-testid="evidence-media-empty"]')
+        return {
+          empty: !!empty,
+          source: empty?.getAttribute('data-source') ?? null,
+          title: empty?.querySelector('.evi-empty-title')?.textContent ?? null,
+          body: empty?.querySelector('.evi-empty-body')?.textContent ?? null,
+          packageChip: document.querySelector('[data-testid="evidence-package-chip"]')?.textContent ?? null,
+        }
+      })
+      log(`media (reference unavailable): ${JSON.stringify(results.mediaUnavailable)}`)
+      await page.shot(file('ort1_media_unavailable_1440x900'))
+    }
+    page.responseHook = null
+    results.rewrites = rewrites
+    log(`answers rewritten in this browser: ${JSON.stringify(rewrites)}`)
+  }
+
+  results.exceptions = page.exceptions
+  results.blocked = page.blocked
+  log(`exceptions: ${page.exceptions.length}; blocked requests: ${page.blocked.length}`)
+  await signOut(page, log)
+} catch (error) {
+  log(`ERROR ${error?.message ?? error}`)
+  results.error = String(error?.message ?? error)
+} finally {
+  await browser.close()
+  writeFileSync(join(dir, `12c_${phase}_measurements.json`), JSON.stringify(results, null, 2))
+  writeFileSync(join(dir, `12c_${phase}_capture.log`), `${lines.join('\n')}\n`)
+}

@@ -1,0 +1,446 @@
+# W34 (step 56) follow-up of decision D94, gate log: the final runs, in the order they ran. Every block: the command, its start time (WIB), the runner's output (the sandbox's certificate warning lines left out), the exit code.
+
+## 1. Row command, unit project: npm run test -w @dems/core-server -- --maxWorkers=2 --reporter=verbose src/modules/sessions
+## started 2026-10-04 17:18:33 WIB
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 --reporter=verbose src/modules/sessions
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the binding to the contract (operations.ts) > operationOf gives the registry entry itself, and throws for a name the registry does not hold 1ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the binding to the contract (operations.ts) > actionOf throws when the contract binds no hosted action, or more than one, to an operation 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the binding to the contract (operations.ts) > successesOf accepts exactly the 2xx statuses the registry documents, in any order, and nothing else 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the binding to the contract (operations.ts) > a registry that changed under the module stops the registration: a success the module does not know 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the binding to the contract (operations.ts) > bodySchemaOf accepts the schema the registry names for the body of the operation, and no other 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the binding to the contract (operations.ts) > the label of a unit is a name of the pipeline's form 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the refusals (refusals.ts): status and code by the engine's table, details.simCode, a fixed text > each refusal of the module 1ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the refusals (refusals.ts): status and code by the engine's table, details.simCode, a fixed text > precheckBlocked names the blocking checks in order, by their reason or else their ID, and no other check 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the refusals (refusals.ts): status and code by the engine's table, details.simCode, a fixed text > createRefusal: the four reasons of the simulator's result; only SESSION_ACTIVE carries the open session 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop from five characters on is VALID, with the reason trimmed and unknown members dropped 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, four characters: TEXT_MISSING, the lower bound alone, which the hosted action refuses in its own order 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, blanks around two characters: TEXT_MISSING, the lower bound alone, which the hosted action refuses in its own order 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, the empty text: TEXT_MISSING, the lower bound alone, which the hosted action refuses in its own order 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, blanks only: TEXT_MISSING, the lower bound alone, which the hosted action refuses in its own order 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, no reason: TEXT_MISSING, the lower bound alone, which the hosted action refuses in its own order 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, no reason beside other members: TEXT_MISSING, the lower bound alone, which the hosted action refuses in its own order 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, three two-unit characters: TEXT_MISSING, the lower bound alone, which the hosted action refuses in its own order 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, a reason that is null: INVALID, the shape of the body, answered before the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, a reason that is a number: INVALID, the shape of the body, answered before the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, a reason that is a list: INVALID, the shape of the body, answered before the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, a reason that is an object: INVALID, the shape of the body, answered before the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, a reason that is true: INVALID, the shape of the body, answered before the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, U+0000 in a long reason: INVALID, the shape of the body, answered before the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, an unpaired surrogate: INVALID, the shape of the body, answered before the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, a short reason with U+0000: INVALID, the shape of the body, answered before the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, a body that is a text: INVALID, the shape of the body, answered before the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, a body that is a list: INVALID, the shape of the body, answered before the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, a body that is null: INVALID, the shape of the body, answered before the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a stop, no body: INVALID, the shape of the body, answered before the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > a note: VALID from one character to 2,000; TEXT_MISSING when it is absent or empty; INVALID when it is too long or no text 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > only the lower bound of the NAMED member counts, alone and at the top of the body 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the bodies of a stop and of a note (text-body.ts): what is the schema stage's and what is the hosted action's (decision D94) > NO_TEXT is the empty text, and both hosted actions refuse it; the refused text itself they could accept 9ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > a cursor is `<endedAt>-<session ID>`, fits the contract's pattern, and reads back to its position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "abc" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "1790819100000" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "1790819100000-" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "-SES-20261001-0022" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "SES-20261001-0022" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "1790819100000-SES-20261001-002" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "1790819100000-SES-20261001-00222" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "1790819100000-ses-20261001-0022" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "1790819100000-EV-20261001-0022" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "1790819100000-SES-20261001-0022-1" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "17908191000.5-SES-20261001-0022" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "1e12-SES-20261001-0022" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "0x10-SES-20261001-0022" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > " 1790819100000-SES-20261001-0022" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "9007199254740992-SES-20261001-0022" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "9999999999999999-SES-20261001-0022" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the cursor of the history (history.ts) > "99999999999999999-SES-20261001-0022" is no position 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the answer of getCurrentSession (current.ts) > null without a session; the server time is the instant given, in UTC+07:00 0ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the answer of getCurrentSession (current.ts) > scenario recording: built from the session and the operators ALONE, it is the simulator's own REST answer and validates against the contract 4ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the answer of getCurrentSession (current.ts) > scenario finalizing: built from the session and the operators ALONE, it is the simulator's own REST answer and validates against the contract 2ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the answer of getCurrentSession (current.ts) > scenario fault-demo: built from the session and the operators ALONE, it is the simulator's own REST answer and validates against the contract 2ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the answer of getCurrentSession (current.ts) > the recording time is counted to the instant given, not to the engine's published clock; an investigator who is not among the operators has an empty name 3ms
+ ✓ |unit| src/modules/sessions/__tests__/pure.test.ts > the answer of getCurrentSession (current.ts) > a session the contract's schema refuses is a defect of the shared code: thrown, never sent 2ms
+stdout | src/modules/sessions/__tests__/routes.test.ts > MODG: the route list of the module equals its registry operations > registers operations 24 to 38 with the method, the path and the operation ID of the registry, in registry order, and nothing else under /api/v1/session
+[w34] MODG routes of src/modules/sessions (15):
+[w34]   POST /api/v1/session createSession
+[w34]   POST /api/v1/session/{id}/start startSession
+[w34]   POST /api/v1/session/{id}/stop stopSession
+[w34]   GET /api/v1/session/current getCurrentSession
+[w34]   POST /api/v1/session/{id}/precheck beginPrecheck
+[w34]   POST /api/v1/session/{id}/precheck/retry retryPrecheck
+[w34]   POST /api/v1/session/{id}/precheck/acknowledge acknowledgePrecheckWarnings
+[w34]   POST /api/v1/session/{id}/cancel cancelSession
+[w34]   POST /api/v1/session/case-number scanCaseNumber
+[w34]   POST /api/v1/session/{id}/recover recoverSession
+[w34]   POST /api/v1/session/{id}/markers addSessionMarker
+[w34]   POST /api/v1/session/{id}/notes addSessionNote
+[w34]   POST /api/v1/session/{id}/snapshots takeSessionSnapshot
+[w34]   POST /api/v1/session/{id}/summary/acknowledge acknowledgeSessionSummary
+[w34]   GET /api/v1/session/history listSessionHistory
+[w34] MODG registry, tag Session (15):
+[w34]   POST /api/v1/session createSession
+[w34]   POST /api/v1/session/{id}/start startSession
+[w34]   POST /api/v1/session/{id}/stop stopSession
+[w34]   GET /api/v1/session/current getCurrentSession
+[w34]   POST /api/v1/session/{id}/precheck beginPrecheck
+[w34]   POST /api/v1/session/{id}/precheck/retry retryPrecheck
+[w34]   POST /api/v1/session/{id}/precheck/acknowledge acknowledgePrecheckWarnings
+[w34]   POST /api/v1/session/{id}/cancel cancelSession
+[w34]   POST /api/v1/session/case-number scanCaseNumber
+[w34]   POST /api/v1/session/{id}/recover recoverSession
+[w34]   POST /api/v1/session/{id}/markers addSessionMarker
+[w34]   POST /api/v1/session/{id}/notes addSessionNote
+[w34]   POST /api/v1/session/{id}/snapshots takeSessionSnapshot
+[w34]   POST /api/v1/session/{id}/summary/acknowledge acknowledgeSessionSummary
+[w34]   GET /api/v1/session/history listSessionHistory
+
+stdout | src/modules/sessions/__tests__/routes.test.ts > MODG: the route list of the module equals its registry operations > each command is bound to its hosted action by the contract's table, one action each
+[w34] operation -> hosted action (from SIM_ACTION_OPERATIONS): createSession -> createSession; startSession -> startRecording; stopSession -> stopRecording; beginPrecheck -> beginPrecheck; retryPrecheck -> retryPrecheck; acknowledgePrecheckWarnings -> acknowledgePrecheckWarnings; cancelSession -> cancel; scanCaseNumber -> scanCaseNumber; recoverSession -> recover; addSessionMarker -> addMarker; addSessionNote -> addNote; takeSessionSnapshot -> snapshot; acknowledgeSessionSummary -> acknowledgeSummary
+
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > MODG: the route list of the module equals its registry operations > registers operations 24 to 38 with the method, the path and the operation ID of the registry, in registry order, and nothing else under /api/v1/session 34ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > MODG: the route list of the module equals its registry operations > the tag Session of the registry is exactly the module's list, and the eleven entries of contract C are operations 28 to 38 0ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > MODG: the route list of the module equals its registry operations > request and response schemas are the registry's own objects; a 204 has none; the {id} is held to the registry's pattern; the bodies of a stop and of a note are read in the handler 7ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > MODG: the route list of the module equals its registry operations > M3: no route carries a check of its own: no hook beside the stages, and no route takes a validation failure into its handler 6ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > MODG: the route list of the module equals its registry operations > the access rule of each route is the registry's: SESSION_START, SESSION_NOTE, or any signed-in operator for the two reads 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > MODG: the route list of the module equals its registry operations > each command is bound to its hosted action by the contract's table, one action each 0ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > who may call is stage 6 (one allowed and one refused call per operation) > nobody without a session: 401 on all fifteen, no unit of the engine, no row 16ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > who may call is stage 6 (one allowed and one refused call per operation) > a TECHNICIAN holds neither SESSION_START nor SESSION_NOTE: 403 NOT_PERMITTED on the thirteen commands, one ACCESS_DENIED row each by the guard, none by the module, and no action runs 16ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > who may call is stage 6 (one allowed and one refused call per operation) > a 403 is decided before the body is read: a TECHNICIAN with a body that is no JSON, or with a short reason, is still 403 7ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > who may call is stage 6 (one allowed and one refused call per operation) > every role reads the monitor and the history: the two reads are AUTHENTICATED; a retired device is 403 on them 8ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > the scan itself > reads the seven production sources of the module 1ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 1ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rule M3: who may call is stage 6, only > the module names no permission and no role, reads no member of the principal, and resolves no session or device itself 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rule M3: who may call is stage 6, only > the principal is only ever handed on, as it is, to the engine: every use of it is an argument of a hosted command 1ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rule M3: who may call is stage 6, only > the module writes no denial row and takes no place in the denial budget: both are the guard's 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rule M3: who may call is stage 6, only > no route has a hook, no stage or seam is touched, and no boot step is added 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rules M4 and M5: a command is the engine host's > no simulator action is called directly and the working state of the Sim is never read 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rules M4 and M5: a command is the engine host's > the module opens no unit of the core pipeline and writes no row: no audit row, no event, no INSERT, UPDATE or DELETE 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rules M4 and M5: a command is the engine host's > every command goes through app.engine.command or app.engine.run, and only routes.ts calls the engine 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rules M4 and M5: a command is the engine host's > the state inside a unit is read in one place, for the decision about the open session, and is never returned 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rules M4 and M5: a command is the engine host's > the one statement of the module is a read: the history page, through the typed builder on the pool 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rules M8 and M14: time, the request, the log > reads no system time and starts no timer; the one instant it needs is app.clock's 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rules M8 and M14: time, the request, the log > reads no header, no cookie and no raw URL of a request, and sets no cookie 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rules M8 and M14: time, the request, the log > writes nothing to the console, reads no environment and never listens 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > rules M8 and M14: time, the request, the log > M14: the one log call of the module logs its error under the key err, with a fixed text 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > decision D94: one error precedence for the two texts the hosted action bounds from below > the bodies of a stop and of a note are read in the handler, with the schema the registry names, and nowhere else 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > decision D94: one error precedence for the two texts the hosted action bounds from below > a body of the wrong shape is refused before the engine, and a missing text reaches the action as NO_TEXT, never as it was sent 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > decision D94: one error precedence for the two texts the hosted action bounds from below > no route takes a validation failure into its handler: what stage 7 refuses, stage 7 answers 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > decision D94: one error precedence for the two texts the hosted action bounds from below > the module answers no INVALID_REASON itself: that refusal is the hosted action's, mapped by the engine host 0ms
+ ✓ |unit| src/modules/sessions/__tests__/static.test.ts > what the module depends on > imports no test support, and reaches the rest of the server through this list of folders and no other 0ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > who may call is stage 6 (one allowed and one refused call per operation) > the holders: an INVESTIGATOR and a SUPERVISOR reach every command (one allowed call per operation) 19ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 24 createSession > 201 with the session in CREATE; the action got the parsed body and ran as the caller; API-7 names the outcome's position 3ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 24 createSession > equal input while the session is open: 200, created false, the state the session is in now, nothing stored 3ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 24 createSession > AC-B-49: other input while a session is open: 409 SESSION_ACTIVE with the open session in details, after a unit that changed nothing 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 24 createSession > a sealed session does not block: the next create is 201 and replaces it 11ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 24 createSession > 422: the schema stage refuses incomplete input before the engine; the simulator refuses an investigator who does not exist or may not start sessions 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 24 createSession > 400: a body that is no JSON object 3ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 24 createSession > a role that changed between stage 4 and the unit: the simulator's refusal in the result is 403 NOT_PERMITTED, and the module writes no row for it 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 25 startSession: the composite start of the design book > from CREATE: 202 PRECHECK through beginPrecheck, no audit row 3ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 25 startSession: the composite start of the design book > from ARMED: 200 RECORDING through startRecording, as the caller 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 25 startSession: the composite start of the design book > while the checks run: 409 PRECHECK_RUNNING, with or without acknowledgeWarnings; no action runs 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 25 startSession: the composite start of the design book > a pre-check that ended with a warning: 409 PRECHECK_WARNINGS until acknowledgeWarnings is true; then ONE unit runs the acknowledgement and the start: 200, two rows, one revision 10ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 25 startSession: the composite start of the design book > a pre-check that ended with a block: 409 PRECHECK_BLOCKED naming the blocking check, also with acknowledgeWarnings 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 25 startSession: the composite start of the design book > from RECORDING: 409 INVALID_STATE, the simulator's own refusal of startRecording 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 25 startSession: the composite start of the design book > from STOPPING: 409 INVALID_STATE, the simulator's own refusal of startRecording 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 25 startSession: the composite start of the design book > from SEALED: 409 INVALID_STATE, the simulator's own refusal of startRecording 10ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 25 startSession: the composite start of the design book > from FAULT: 409 INVALID_STATE, the simulator's own refusal of startRecording 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 25 startSession: the composite start of the design book > 422 for a body the schema refuses or a malformed {id}; 400 for a body that is no JSON object 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > 202 STOPPING; the action got the trimmed reason and ran as the caller, who is not the creator; RECORDING_STOPPED names the caller 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > a reason that is absent or shorter than five characters (four characters): 422 INVALID_REASON, decided by the hosted action, which got the EMPTY text; the recording goes on 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > a reason that is absent or shorter than five characters (two characters after trimming): 422 INVALID_REASON, decided by the hosted action, which got the EMPTY text; the recording goes on 6ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > a reason that is absent or shorter than five characters (the empty text): 422 INVALID_REASON, decided by the hosted action, which got the EMPTY text; the recording goes on 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > a reason that is absent or shorter than five characters (no reason): 422 INVALID_REASON, decided by the hosted action, which got the EMPTY text; the recording goes on 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > a reason that is absent or shorter than five characters (three two-unit characters): 422 INVALID_REASON, decided by the hosted action, which got the EMPTY text; the recording goes on 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > no body at all is a missing reason: 422 INVALID_REASON from the action 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > the SHAPE of the body is the schema stage's (spec §7.3 line 8): a reason that is no text or breaks the text rule is 422 INVALID_INPUT before the engine, also on a session that is not open; so is a malformed {id} 8ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > one error precedence (spec §7.3 line 10; decision D94), with the Core at IDLE: 404 for a session that is not the open one, then 409 for its state, then 422 INVALID_REASON, as the simulator's REST layer answers 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > one error precedence (spec §7.3 line 10; decision D94), with the Core at CREATE: 404 for a session that is not the open one, then 409 for its state, then 422 INVALID_REASON, as the simulator's REST layer answers 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > one error precedence (spec §7.3 line 10; decision D94), with the Core at PRECHECK_RUNNING: 404 for a session that is not the open one, then 409 for its state, then 422 INVALID_REASON, as the simulator's REST layer answers 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > one error precedence (spec §7.3 line 10; decision D94), with the Core at PRECHECK_BLOCK: 404 for a session that is not the open one, then 409 for its state, then 422 INVALID_REASON, as the simulator's REST layer answers 7ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > one error precedence (spec §7.3 line 10; decision D94), with the Core at ARMED: 404 for a session that is not the open one, then 409 for its state, then 422 INVALID_REASON, as the simulator's REST layer answers 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > one error precedence (spec §7.3 line 10; decision D94), with the Core at RECORDING: 404 for a session that is not the open one, then 409 for its state, then 422 INVALID_REASON, as the simulator's REST layer answers 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > one error precedence (spec §7.3 line 10; decision D94), with the Core at FAULT: 404 for a session that is not the open one, then 409 for its state, then 422 INVALID_REASON, as the simulator's REST layer answers 7ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > one error precedence (spec §7.3 line 10; decision D94), with the Core at STOPPING: 404 for a session that is not the open one, then 409 for its state, then 422 INVALID_REASON, as the simulator's REST layer answers 6ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > one error precedence (spec §7.3 line 10; decision D94), with the Core at SEALED: 404 for a session that is not the open one, then 409 for its state, then 422 INVALID_REASON, as the simulator's REST layer answers 11ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 26 stopSession (AC-B-50) > a long reason is passed whole: the server cuts nothing 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 27 getCurrentSession > null when no session is open; the server time is the server clock in UTC+07:00; no unit, no state position 3ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 27 getCurrentSession > with the session at CREATE the answer is the shared simulator's own REST answer 2ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 27 getCurrentSession > with the session at PRECHECK_RUNNING the answer is the shared simulator's own REST answer 2ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 27 getCurrentSession > with the session at PRECHECK_WARN the answer is the shared simulator's own REST answer 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 27 getCurrentSession > with the session at PRECHECK_BLOCK the answer is the shared simulator's own REST answer 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 27 getCurrentSession > with the session at ARMED the answer is the shared simulator's own REST answer 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 27 getCurrentSession > with the session at RECORDING the answer is the shared simulator's own REST answer 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 27 getCurrentSession > with the session at FAULT the answer is the shared simulator's own REST answer 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 27 getCurrentSession > with the session at STOPPING the answer is the shared simulator's own REST answer 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 27 getCurrentSession > with the session at SEALED the answer is the shared simulator's own REST answer 11ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 27 getCurrentSession > the recording time follows the server clock between two ticks of the engine 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 27 getCurrentSession > 503 while the engine does not run 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 28 beginPrecheck: 202 PRECHECK from CREATE, no audit row; 409 INVALID_STATE from any other state 3ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 29 retryPrecheck: 202 PRECHECK after a block; 409 PRECHECK_RUNNING while the checks run; 409 INVALID_STATE from CREATE 6ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 30 acknowledgePrecheckWarnings: 200 ARMED and PRECHECK_PASSED by the caller; 409 for a block (nothing to acknowledge), while the checks run, and from another state 14ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 31 cancelSession from CREATE: 204, SESSION_CANCELLED by the caller, no session afterwards 2ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 31 cancelSession from PRECHECK_RUNNING: 204, SESSION_CANCELLED by the caller, no session afterwards 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 31 cancelSession from PRECHECK_BLOCK: 204, SESSION_CANCELLED by the caller, no session afterwards 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 31 cancelSession from ARMED: 204, SESSION_CANCELLED by the caller, no session afterwards 3ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 31 cancelSession from RECORDING: 409 INVALID_STATE (a recording is stopped, not cancelled) 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 31 cancelSession from STOPPING: 409 INVALID_STATE (a recording is stopped, not cancelled) 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 31 cancelSession from SEALED: 409 INVALID_STATE (a recording is stopped, not cancelled) 11ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 31 cancelSession from FAULT: 409 INVALID_STATE (a recording is stopped, not cancelled) 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 33 recoverSession: 202 RECOVERY from FAULT, with SYSTEM_BOOT, RECOVERY_STARTED (the caller) and FAULT_CLEARED after a power failure; 409 from any other state 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 34 addSessionMarker: 204; the label as sent, or none; an empty label and no body let the Core name it 6ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 34 addSessionMarker: a label of 80 code units is stored as sent; 81 is refused with 422 (the server never cuts); 400 for a body that is no JSON object; 409 when not recording 8ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 35 addSessionNote: 204, the text as sent and its author; 2,000 characters pass; the shape of the body (too long, no text, the text rule) is 422 INVALID_INPUT before the engine; 409 when not recording 11ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 35 addSessionNote, one error precedence (decision D94): a text that is absent or empty is the hosted action's to refuse, after 404 and 409: 422 INVALID_INPUT with simCode NOTE_INVALID 31ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 28 to 31, 33 to 36: one hosted action on the open session > 36 takeSessionSnapshot: 204 and SNAPSHOT_TAKEN by the caller; 409 when not recording 8ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > the {id} of the path must be the open session (spec §7.8): decided inside the unit > another ID while a session is open: 404 NOT_FOUND on the ten operations that name the open session, in a unit that ran no action and changed nothing 7ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > the {id} of the path must be the open session (spec §7.8): decided inside the unit > with no session open every ID is another one: 404 3ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > the {id} of the path must be the open session (spec §7.8): decided inside the unit > a malformed {id} is refused by the schema stage on every operation that has one: 422 INVALID_INPUT, in params, no unit 7ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > the {id} of the path must be the open session (spec §7.8): decided inside the unit > a session that was replaced while a request waited is not the one it named: the check reads the state inside the unit 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 32 scanCaseNumber and 37 acknowledgeSessionSummary: one hosted action, no session named or needed > 32: 200 with the next case number; each scan reserves one; no audit row 2ms
+stdout | src/modules/sessions/__tests__/routes.test.ts > MODG: every documented status of operations 24 to 38 was produced above, and every answer validated > the ledger of this file equals the registry, status for status
+[w34] MODG statuses produced and validated against the contract, per operation:
+[w34]   createSession: 200 (success); 201 (success); 400 (INVALID_JSON); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED); 409 (SESSION_ACTIVE); 422 (INVALID_INPUT)
+[w34]   startSession: 200 (success); 202 (success); 400 (INVALID_JSON); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED); 404 (NOT_FOUND); 409 (INVALID_STATE, PRECHECK_BLOCKED, PRECHECK_RUNNING, PRECHECK_WARNINGS); 422 (INVALID_INPUT)
+[w34]   stopSession: 202 (success); 400 (INVALID_JSON); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED); 404 (NOT_FOUND); 409 (INVALID_STATE); 422 (INVALID_INPUT, INVALID_REASON)
+[w34]   getCurrentSession: 200 (success); 401 (NOT_SIGNED_IN); 403 (DEVICE_REVOKED)
+[w34]   beginPrecheck: 202 (success); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED); 404 (NOT_FOUND); 409 (INVALID_STATE); 422 (INVALID_INPUT)
+[w34]   retryPrecheck: 202 (success); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED); 404 (NOT_FOUND); 409 (INVALID_STATE, PRECHECK_RUNNING); 422 (INVALID_INPUT)
+[w34]   acknowledgePrecheckWarnings: 200 (success); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED); 404 (NOT_FOUND); 409 (INVALID_STATE, PRECHECK_RUNNING); 422 (INVALID_INPUT)
+[w34]   cancelSession: 204 (success); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED); 404 (NOT_FOUND); 409 (INVALID_STATE); 422 (INVALID_INPUT)
+[w34]   scanCaseNumber: 200 (success); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED)
+[w34]   recoverSession: 202 (success); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED); 404 (NOT_FOUND); 409 (INVALID_STATE); 422 (INVALID_INPUT)
+[w34]   addSessionMarker: 204 (success); 400 (INVALID_JSON); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED); 404 (NOT_FOUND); 409 (INVALID_STATE); 422 (INVALID_INPUT)
+[w34]   addSessionNote: 204 (success); 400 (INVALID_JSON); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED); 404 (NOT_FOUND); 409 (INVALID_STATE); 422 (INVALID_INPUT)
+[w34]   takeSessionSnapshot: 204 (success); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED); 404 (NOT_FOUND); 409 (INVALID_STATE); 422 (INVALID_INPUT)
+[w34]   acknowledgeSessionSummary: 204 (success); 401 (NOT_SIGNED_IN); 403 (NOT_PERMITTED); 422 (INVALID_INPUT)
+[w34]   listSessionHistory: 200 (history.db.test.ts); 401 (NOT_SIGNED_IN); 403 (DEVICE_REVOKED); 422 (INVALID_INPUT)
+
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 32 scanCaseNumber and 37 acknowledgeSessionSummary: one hosted action, no session named or needed > 37: the {id} is the action's argument; 204 and SUMMARY_ACKNOWLEDGED for the session sealed last; a repeat and another ID are 204 with nothing stored and the same revision 11ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 32 scanCaseNumber and 37 acknowledgeSessionSummary: one hosted action, no session named or needed > 37 with no session sealed yet: 204, nothing stored 2ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 38 listSessionHistory: what needs no database > 422 for a query the schema refuses and for a cursor that is no position of this list; no statement is sent 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > 38 listSessionHistory: what needs no database > M14: a statement that fails: 503 NOT_READY, one error line under the key err and one persistent entry; neither holds the statement, a parameter, the DETAIL or the driver's message 6ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > a unit that could not be run or committed, and what the log holds > 503 NOT_READY from the engine propagates on a command; no header of API-7; the state is as before 6ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > a unit that could not be run or committed, and what the log holds > an unexpected failure inside a unit is the generic 500 with no detail 4ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > a unit that could not be run or committed, and what the log holds > SR-48: the request log of the module's operations holds route patterns, codes and IDs; never a reason, a note, a label or a subject 5ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > API-1: the four design-book operations answer as the simulator's REST layer does > a recording with a warning, step by step: every status, error code and success body is the simulator's 24ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > API-1: the four design-book operations answer as the simulator's REST layer does > a blocked pre-check: 409 PRECHECK_BLOCKED on both, with the same text 6ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > API-1: the four design-book operations answer as the simulator's REST layer does > a short stop reason no longer differs (decision D94); where the server still differs from the simulator's REST layer, by the specification: who is refused first, and the SHAPE of a body before the session 6ms
+ ✓ |unit| src/modules/sessions/__tests__/routes.test.ts > MODG: every documented status of operations 24 to 38 was produced above, and every answer validated > the ledger of this file equals the registry, status for status 0ms
+
+ Test Files  3 passed (3)
+      Tests  168 passed (168)
+   Start at  17:18:33
+   Duration  1.42s (transform 44%, import 28%, tests 27%)
+
+## exit 0
+
+## 2. Row command, db project: DEMS_TEST_STEP=56b npm run test:db -w @dems/core-server -- --maxWorkers=2 --reporter=verbose src/modules/sessions
+## started 2026-10-04 17:18:35 WIB
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2 --reporter=verbose src/modules/sessions
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_56b_tmdomztn_
+[test:db] stale sweep: dropped 0; kept 3 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_56b_tmdomztn_tpl_schema: built in 79 ms (create 28 ms, hook 49 ms)
+[test:db] template dems_test_step_56b_tmdomztn_tpl_seed: built in 124 ms (create 44 ms, hook 79 ms)
+[test:db] bulk fixture: dems_test_step_56b_tmdomztn_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 26e251887c667e1e...; digest e58f1ae233811851...; build 148 ms, write 1140 ms, total 1291 ms
+ ✓ |db| src/modules/sessions/__tests__/operations.db.test.ts > the pre-check that blocks, the retry and the cancel (operations 25, 28, 29, 30, 31) > with the Core link offline the checks end with a block: start is 409 PRECHECK_BLOCKED, acknowledge has nothing to acknowledge; after the link is back a retry arms the session; a cancel from ARMED leaves no session and no history entry 1603ms
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > the fixture: 520 entries, sealed and incomplete, five without an evidence item; the engine rehydrated every one 1ms
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > with no query: the default page of 50, the newest first, and a cursor that names the 50th 3ms
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > pages of 200: 200, 200, 120, then no cursor; every session once, in the stored keyset order 8ms
+ ✓ |db| src/modules/sessions/__tests__/operations.db.test.ts > the pre-check that ends with a warning (operations 25 and 30) > 30 acknowledgePrecheckWarnings: 200 ARMED, PRECHECK_PASSED by the caller with the warnings counted; a second acknowledgement is 409 134ms
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > pages of 1: the same 520 sessions in the same order, none twice, none missing; only the last page has no cursor 239ms
+ ✓ |db| src/modules/sessions/__tests__/operations.db.test.ts > the pre-check that ends with a warning (operations 25 and 30) > 25 startSession with acknowledgeWarnings: ONE unit runs the acknowledgement and the start: one transaction, PRECHECK_PASSED and RECORDING_STARTED by the caller, one state change 130ms
+stdout | src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > the statement of a page: one read on the pool, by the keyset index; measured
+[w34] listSessionHistory on 520 rows, a page of 50 from the middle: median 0.77 ms, max 1.06 ms (whole request); plan: Limit  (cost=0.55..56.70 rows=51 width=191) / ->  Nested Loop Left Join  (cost=0.55..285.71 rows=259 width=191) / ->  Index Scan using session_history_ended_at_idx on session_history h  (cost=0.28..57.95 rows=259 width=174) / Index Cond: (ROW(ended_at, id) < ROW('1788086590000'::bigint, 'SES-20260830-0284'::text)) / ->  Index Scan using evidence_items_session_id_key on evidence_items e  (cost=0.28..0.88 rows=1 width=35) / Index Cond: (session_id = h.id)
+
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > pages of 7: the same 520 sessions in the same order, none twice, none missing; only the last page has no cursor 34ms
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > pages of 50: the same 520 sessions in the same order, none twice, none missing; only the last page has no cursor 9ms
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > pages of 199: the same 520 sessions in the same order, none twice, none missing; only the last page has no cursor 5ms
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > a page whose size divides the list exactly ends with a cursor, and the page after it is empty with none 7ms
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > each item is the entry of the engine's committed slice: the one mapping, with the evidence item of the session or null (MR-5) 8ms
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > a cursor is a position, not a row: one between two sessions continues after it, and one before the newest gives the whole first page 1ms
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > every role reads the history; nobody without a session does; a limit above the maximum is refused, not cut 32ms
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > listSessionHistory on 520 stored sessions > the statement of a page: one read on the pool, by the keyset index; measured 25ms
+ ✓ |db| src/modules/sessions/__tests__/operations.db.test.ts > 32 scanCaseNumber, and what a unit sends to PostgreSQL > 32: each scan answers the next case number of the day and reserves it in the stored counter; no audit row 111ms
+ ✓ |db| src/modules/sessions/__tests__/history.db.test.ts > the keyset when instants are equal, and a session that finishes while a client pages > three sessions that ended in the same millisecond are paged by their IDs: each once, whatever the page size; a session that finishes meanwhile is neither repeated nor shifts a later page 112ms
+ ✓ |db| src/modules/sessions/__tests__/operations.db.test.ts > 32 scanCaseNumber, and what a unit sends to PostgreSQL > a request that names another session: 404 from a unit that sends NO statement (the unit opens its transaction at its first write), stores nothing and runs no action; a refusal of the simulator costs four statements and a ROLLBACK 193ms
+stdout | src/modules/sessions/__tests__/operations.db.test.ts > 32 scanCaseNumber, and what a unit sends to PostgreSQL > the measured round trips of one command (addSessionMarker): one transaction, the statements of the engine row's recipe
+[w34] one command through HTTP (addSessionMarker), statements on unit-of-work connections: the engine's unit, 11 statements in one transaction: BEGIN ISOLATION LEVEL READ COMMITTED | SELECT seq, hash FROM public.audit_chain_loc | SELECT set_config('statement_timeout', $1, t | select "id", "username", "rank", "name", "di | insert into "audit_log" ("seq", "id", "at",  | insert into "events" ("seq", "id", "at", "ty | UPDATE public.engine_counters SET next_value | update "engine_counters" set "next_value" =  | update "engine_counters" set "next_value" =  | update "active_session" set "marker_count" = | COMMIT; before it, when the clock moved since the caller's last POST, the identity module's activity unit of 5 statements; takeSessionSnapshot x30 (whole request, stages included) wall time: median 1.51 ms, min 1.19 ms, max 3.59 ms
+
+ ✓ |db| src/modules/sessions/__tests__/operations.db.test.ts > 32 scanCaseNumber, and what a unit sends to PostgreSQL > the measured round trips of one command (addSessionMarker): one transaction, the statements of the engine row's recipe 194ms
+ ✓ |db| src/modules/sessions/__tests__/operations.db.test.ts > one error precedence through the real stages against PostgreSQL (spec §7.3 lines 8 and 10; decision D94) > a stop whose reason is absent or too short: 404 for a session that is not open, 409 for one that is not recording, then 422 INVALID_REASON from the hosted action; a note without text the same way; nothing is stored by any of them; the shape of a body is 422 INVALID_INPUT before the engine 190ms
+ ✓ |db| src/modules/sessions/__tests__/operations.db.test.ts > who may call, through the real stages 4 and 6 against PostgreSQL > a TECHNICIAN is refused 403 NOT_PERMITTED with exactly one ACCESS_DENIED row by the guard; nobody without a session is 401 with no row; the recording is untouched; every role reads the monitor 146ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > create: 201 CREATE, SESSION_CREATED by the caller; the same input again is 200 with created false and no row 12ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > AC-B-49: another create while the session is open is 409 SESSION_ACTIVE, names the open session and stores nothing 2ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > getCurrentSession: the open session as the contract writes it, for every role 3ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > start from CREATE: 202 PRECHECK and no audit row (NONE-P); the engine arms the session by itself 22ms
+stdout | src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > AC-B-50: ANOTHER operator stops the recording with a reason of five characters: 202 STOPPING, RECORDING_STOPPED names that operator
+[w34] AC-B-50: session SES-20261001-0024 created by OPR-001, stopped by OPR-002 with a reason of 5 characters: 202 STOPPING, row RECORDING_STOPPED actor OPR-002; four characters: 422 INVALID_REASON, no row
+
+stdout | src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > the audit sequence of the journey is the shared simulator's for the same journey
+[w34] journey through HTTP against PostgreSQL, beside the shared simulator (session SES-20261001-0024; 11 audit rows, 11 without the integrity stream):
+[w34]   step                                    status  revision  state      audit rows stored (server) | (simulator)
+[w34]   createSession                           201     4         CREATE     SESSION_CREATED | SESSION_CREATED
+[w34]   createSession (equal input)             200     4         CREATE     - | -
+[w34]   createSession (other input)             409     4         CREATE     - | -
+[w34]   startSession (from CREATE)              202     5         PRECHECK   - | -
+[w34]   (the eight checks resolve)              -       17        ARMED      PRECHECK_PASSED | PRECHECK_PASSED
+[w34]   startSession (from ARMED)               200     18        RECORDING  RECORDING_STARTED | RECORDING_STARTED
+[w34]   (recording)                             -       21        RECORDING  - | WRITE_VERIFIED
+[w34]   addSessionMarker                        204     22        RECORDING  MARKER_ADDED | MARKER_ADDED
+[w34]   addSessionNote                          204     23        RECORDING  NOTE_ADDED | NOTE_ADDED
+[w34]   takeSessionSnapshot                     204     24        RECORDING  SNAPSHOT_TAKEN | SNAPSHOT_TAKEN
+[w34]   stopSession (four characters)           422     24        RECORDING  - | -
+[w34]   stopSession (by another operator)       202     25        STOPPING   RECORDING_STOPPED | RECORDING_STOPPED
+[w34]   (stopping, finalisation, seal)          -       52        SEALED     EVIDENCE_SEALED | EVIDENCE_SEALED
+[w34]   acknowledgeSessionSummary               204     53        SEALED     SUMMARY_ACKNOWLEDGED | SUMMARY_ACKNOWLEDGED
+[w34]   acknowledgeSessionSummary (repeat)      204     53        SEALED     - | -
+[w34]   acknowledgeSessionSummary (another ID)  204     53        SEALED     - | -
+[w34]   createSession (after the seal)          201     54        CREATE     SESSION_CREATED | SESSION_CREATED
+[w34]   cancelSession                           204     55        none       SESSION_CANCELLED | SESSION_CANCELLED
+
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > start from ARMED: 200 RECORDING, RECORDING_STARTED by the caller 12ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > marker, note, snapshot: 204 each, one row each, by the caller; the note text is in the session and not in its row 10ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > AC-B-50: a reason of four characters is 422 INVALID_REASON, decided by the hosted action after the session and its state; nothing is stored and the recording goes on 5ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > AC-B-50: ANOTHER operator stops the recording with a reason of five characters: 202 STOPPING, RECORDING_STOPPED names that operator 4ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > finalize: the engine seals by itself; the rows have no actor; the sealed evidence item exists 43ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > summary: the sealed session stays the current one, with its evidence item and the times of the recording 1ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > acknowledge: 204 and SUMMARY_ACKNOWLEDGED once; a repeat and another ID are 204 with no row (the one {id} that never answers 404) 6ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > history: the session is the newest entry, SEALED, with its evidence item 1ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > the next create replaces the sealed session (201), and a cancel leaves the Core idle (204, SESSION_CANCELLED) 7ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > after the journey: the stored chain verifies over all rows, the tables hold the engine's committed state, and nothing failed 10ms
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > one recording, from create to history (spec §7.8) > the audit sequence of the journey is the shared simulator's for the same journey 12ms
+stdout | src/modules/sessions/__tests__/journey.db.test.ts > the recovery after a restart fault (spec §8.6; operation 33) > a session that was RECORDING when the process stopped is in FAULT after the start; recover answers 202 RECOVERY and the engine closes it as INCOMPLETE
+[w34] recovery: RECORDING at the stop (epoch 1) -> boot (epoch 2): FAULT_RAISED POWER_FAIL at the last committed instant, no actor; recover 202 RECOVERY: SYSTEM_BOOT, RECOVERY_STARTED (OPR-002), FAULT_CLEARED; then SESSION_INCOMPLETE, RECOVERY_COMPLETED; history INCOMPLETE, evidence RECORDED | simulator: SYSTEM_BOOT, RECOVERY_STARTED, FAULT_CLEARED; SESSION_INCOMPLETE, RECOVERY_COMPLETED
+
+ ✓ |db| src/modules/sessions/__tests__/journey.db.test.ts > the recovery after a restart fault (spec §8.6; operation 33) > a session that was RECORDING when the process stopped is in FAULT after the start; recover answers 202 RECOVERY and the engine closes it as INCOMPLETE 205ms
+stdout | src/modules/sessions/__tests__/concurrency.db.test.ts > AC-B-49: two creates at the same moment > different input, 40 rounds: one 201 and one 409 SESSION_ACTIVE every time; one stored session, one SESSION_CREATED row, and the refusal names the winner's session
+[w34] AC-B-49: 40 rounds of two simultaneous creates with different input: 40 x (201, 409 SESSION_ACTIVE), never two sessions; winners OPR-001 24, OPR-002 16; a tick of the engine queued beside them in 20 rounds
+
+ ✓ |db| src/modules/sessions/__tests__/concurrency.db.test.ts > AC-B-49: two creates at the same moment > different input, 40 rounds: one 201 and one 409 SESSION_ACTIVE every time; one stored session, one SESSION_CREATED row, and the refusal names the winner's session 212ms
+ ✓ |db| src/modules/sessions/__tests__/concurrency.db.test.ts > AC-B-49: two creates at the same moment > equal input, 20 rounds: one 201 and one 200 with created false, the same session in both answers, one row 73ms
+ ✓ |db| src/modules/sessions/__tests__/concurrency.db.test.ts > AC-B-49: two creates at the same moment > eight creates at once, four from each operator: one 201 and seven 409 9ms
+ ✓ |db| src/modules/sessions/__tests__/concurrency.db.test.ts > AC-B-49: two creates at the same moment > a create and a cancel of the open session at the same moment: whichever unit runs first, the Core ends with at most one session and every answer is a documented one 31ms
+ ✓ |db| src/modules/sessions/__tests__/concurrency.db.test.ts > AC-B-49: two creates at the same moment > after all rounds: the chain verifies over every row, the tables hold the committed state, and no unit failed 12ms
+
+ Test Files  4 passed (4)
+      Tests  42 passed (42)
+   Start at  17:18:35
+   Duration  5.27s (tests 79%, import 12%, transform 9%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 89 ms; 0 remain with the run prefix dems_test_step_56b_tmdomztn_
+## exit 0
+
+## 3. Whole unit project: npm run test -w @dems/core-server -- --maxWorkers=2
+## started 2026-10-04 17:18:59 WIB
+> vitest run --project unit --maxWorkers=2
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+ ❯ |unit| src/db/fixtures/__tests__/audit-details.test.ts (18 tests | 18 skipped) 246ms
+ FAIL  |unit| src/db/fixtures/__tests__/audit-details.test.ts [ src/db/fixtures/__tests__/audit-details.test.ts ]
+TypeError: simulatorAuditRows is not a function
+ ❯ src/db/fixtures/__tests__/audit-details.test.ts:67:27
+ Test Files  1 failed | 139 passed (140)
+      Tests  3565 passed | 18 skipped (3583)
+   Start at  17:18:59
+   Duration  24.40s (import 61%, tests 34%, transform 4%, worker 1%)
+npm error command sh -c vitest run --project unit --maxWorkers=2
+## exit 1
+
+## 4. Whole db project: DEMS_TEST_STEP=56b npm run test:db -w @dems/core-server -- --maxWorkers=2
+## started 2026-10-04 17:19:24 WIB
+> vitest run --project db --maxWorkers=2
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_56b_tmdooc8n_
+[test:db] stale sweep: dropped 0; kept 3 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+ ❯ |db| src/modules/pairing/__tests__/secrets.db.test.ts (11 tests | 1 failed) 404ms
+   ❯ AC-B-29: the log of the same lifecycle, captured at level trace (5)
+     × rule M14: the two failing statements are in the log as an error with its code, and nothing of a statement, a parameter or a hash 3ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  |db| src/modules/pairing/__tests__/secrets.db.test.ts > AC-B-29: the log of the same lifecycle, captured at level trace > rule M14: the two failing statements are in the log as an error with its code, and nothing of a statement, a parameter or a hash
+AssertionError: expected undefined to match object { …(2) }
+ ❯ src/modules/pairing/__tests__/secrets.db.test.ts:319:18
+ Test Files  1 failed | 107 passed (108)
+      Tests  1 failed | 1538 passed | 1 skipped (1540)
+   Start at  17:19:24
+   Duration  97.45s (tests 82%, import 17%, transform 1%)
+[test:db] forced drops that needed a retry: 1 (1 refusal(s) with SQLSTATE 42501 while a backend that the owner role may not end, such as an autovacuum worker, was on the database; each drop then went through)
+[test:db] teardown: dropped 8 database(s) in 212 ms; 0 remain with the run prefix dems_test_step_56b_tmdooc8n_
+npm error command sh -c vitest run --project db --maxWorkers=2
+## exit 1
+
+## 5. Typecheck: npm run typecheck -w @dems/core-server
+## started 2026-10-04 17:21:02 WIB
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+## exit 0
+
+## 6. Lint: npm run lint -w @dems/core-server
+## started 2026-10-04 17:21:06 WIB
+> @dems/core-server@0.2.0 lint
+> oxlint
+## exit 0
+## ended 17:21:07
+
+## 7. P11 re-run of the two files of other rows that were red in blocks 3 and 4 (each file alone, once)
+## 7a. npm run test -w @dems/core-server -- --maxWorkers=2 src/db/fixtures/__tests__/audit-details.test.ts
+## started 2026-10-04 17:21:31 WIB
+> vitest run --project unit --maxWorkers=2 src/db/fixtures/__tests__/audit-details.test.ts
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+ Test Files  1 passed (1)
+      Tests  35 passed (35)
+   Start at  17:21:32
+## exit 0
+## 7b. DEMS_TEST_STEP=56b npm run test:db -w @dems/core-server -- --maxWorkers=2 src/modules/pairing/__tests__/secrets.db.test.ts
+## started 2026-10-04 17:21:33 WIB
+> vitest run --project db --maxWorkers=2 src/modules/pairing/__tests__/secrets.db.test.ts
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+   Start at  17:21:33
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 212 ms; 0 remain with the run prefix dems_test_step_56b_tmdorxd3_
+## exit 0

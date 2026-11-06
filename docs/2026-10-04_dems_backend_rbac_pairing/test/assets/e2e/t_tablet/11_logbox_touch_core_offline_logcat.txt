@@ -1,0 +1,29 @@
+10-06 09:52:29.700 I/ReactNativeJS( 4280): [DEMS-LIVE] POST /api/v1/auth/touch - -
+10-06 09:52:29.709 W/ReactNativeJS( 4280): '[runtime]', { timestamp: '2026-10-06T02:52:29.704Z',
+10-06 09:52:29.709 W/ReactNativeJS( 4280):   level: 'warn',
+10-06 09:52:29.709 W/ReactNativeJS( 4280):   source: 'live.client',
+10-06 09:52:29.709 W/ReactNativeJS( 4280):   message: 'No answer within 8000 ms. The command may or may not have been applied.',
+10-06 09:52:29.709 W/ReactNativeJS( 4280):   context: 
+10-06 09:52:29.709 W/ReactNativeJS( 4280):    { operationId: 'touchSession',
+10-06 09:52:29.709 W/ReactNativeJS( 4280):      method: 'POST',
+10-06 09:52:29.709 W/ReactNativeJS( 4280):      path: '/api/v1/auth/touch',
+10-06 09:52:29.709 W/ReactNativeJS( 4280):      kind: 'TIMEOUT',
+10-06 09:52:29.709 W/ReactNativeJS( 4280):      status: null,
+10-06 09:52:29.709 W/ReactNativeJS( 4280):      requestId: null,
+10-06 09:52:29.709 W/ReactNativeJS( 4280):      skippedBefore: 0 },
+10-06 09:52:29.709 W/ReactNativeJS( 4280):   correlationId: 'Lmuw2r1is' }
+10-06 09:52:29.729 E/ReactNativeJS( 4280): '[runtime]', { timestamp: '2026-10-06T02:52:29.725Z',
+10-06 09:52:29.729 E/ReactNativeJS( 4280):   level: 'error',
+10-06 09:52:29.729 E/ReactNativeJS( 4280):   source: 'live.action.touch',
+10-06 09:52:29.729 E/ReactNativeJS( 4280):   message: 'The Core server is unreachable (CORE_OFFLINE).',
+10-06 09:52:29.729 E/ReactNativeJS( 4280):   stack: 'Error: The Core server is unreachable (CORE_OFFLINE).\n    at logLiveReport (<bundle-url>
+10-06 09:52:29.729 E/ReactNativeJS( 4280):   context: 
+10-06 09:52:29.729 E/ReactNativeJS( 4280):    { action: 'touch',
+10-06 09:52:29.729 E/ReactNativeJS( 4280):      errorName: 'LiveTransportError',
+10-06 09:52:29.729 E/ReactNativeJS( 4280):      operationId: 'touchSession',
+10-06 09:52:29.729 E/ReactNativeJS( 4280):      status: null,
+10-06 09:52:29.729 E/ReactNativeJS( 4280):      reason: 'CORE_OFFLINE',
+10-06 09:52:29.729 E/ReactNativeJS( 4280):      requestId: null,
+10-06 09:52:29.729 E/ReactNativeJS( 4280):      link: 'ONLINE',
+10-06 09:52:29.729 E/ReactNativeJS( 4280):      errorCode: 'TIMEOUT' },
+10-06 09:52:29.729 E/ReactNativeJS( 4280):   correlationId: 'Lmuw2r1is' }

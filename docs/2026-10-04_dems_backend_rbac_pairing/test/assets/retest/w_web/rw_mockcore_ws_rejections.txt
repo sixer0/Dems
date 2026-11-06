@@ -1,0 +1,7 @@
+# mock-core (127.0.0.1:4400) log excerpt: start line and the WebSocket upgrades of this row (time UTC, reqId, message, origin, status). Source .cache/manual/mock-core.log
+2026-10-06T05:50:12.093Z Server listening at http://127.0.0.1:4400
+2026-10-06T05:51:38.359Z req-3 GET /ws origin=http://127.0.0.1:5178 ws origin rejected status=403
+2026-10-06T05:51:38.373Z req-4 GET /ws origin=http://127.0.0.1:5178 ws origin rejected status=403
+2026-10-06T05:51:39.274Z req-5 GET /ws origin=http://127.0.0.1:5178 ws origin rejected status=403
+2026-10-06T05:51:40.356Z req-6 GET /ws origin=http://127.0.0.1:5178 ws origin rejected status=403
+2026-10-06T05:51:42.565Z req-7 GET /ws origin=http://127.0.0.1:5178 ws origin rejected status=403

@@ -1,0 +1,2 @@
+nav /
+wait page-dashboard

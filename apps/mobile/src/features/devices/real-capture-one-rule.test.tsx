@@ -1,0 +1,961 @@
+// Fix wave L, closing pass L-Z, item 3 - the mobile leftovers of THE ONE RULE (decision 5 of
+// implementation/155): on a Core in its own capture a screen states the Core's own fact, "Not reported",
+// or nothing; a block that still shows values of the simulator's model carries the "Synthetic demo
+// values" chip. The SIMULATED lane is unchanged and pinned by the controls of this file.
+//
+// | What stood there on a real-capture Core | Rule | Held |
+// |---|---|---|
+// | the microphone lines of the selector read "USB" for a generated tone | `statedTransportOf`: no transport word for `adapter: FAKE` | "the selector's microphone lines" |
+// | camera detail: "Dual-lens IP camera DL-2", firmware, "PoE CAM 1", "1080p ... H.265", Mbps | `detailFactsOf` = GENERATED: named "Generated test source"; the format is the selector line's profile or "Not reported"; no model value | "camera detail" |
+// | microphone detail: "Channel 1", "32 dB", "48 V ON", the converter, "read-only in this demo" | GENERATED: the same; the CLIP latch and the recording state stay | "microphone detail" |
+// | a source of another adapter, the PoE switch, the indicator, the derived health series | MODEL_VALUES: "Not reported" (I4) in place of the model's values, no chip (audit row 198, D52; was: drawn under the chip) | "blocks of model values" |
+// | the tablet row | its own link facts, no chip (row 198; web row 107) | "blocks of model values" |
+// | Devices list: the room / "Channel n" under a generated source; the "Other devices" section | "Generated test source"; no chip; PoE switch and indicator read "Not reported" (row 198) | "the list" |
+// | a registered generated camera's "Model" row ("FAKE-CAM-1") | not drawn | "the list" |
+//
+// The REAL devices route files over a real test simulator whose `captureDevices` slice holds what a Core
+// in real capture sends; Live mode is stood in for by its read member (as `camera-no-preview.test.tsx`).
+// Both layouts. NOT proven here: a device and a real Core (re-check).
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import './testing/devices-test-setup';
+import '@/navigation/testing/router-harness';
+
+import { act, fireEvent, screen, within } from '@testing-library/react-native';
+import { AUDIO_FRAME_NOT_MEASURED_EXAMPLE, DIAGNOSTIC_NOT_REPORTED_EXAMPLE } from '@dems/shared/api';
+import { en } from '@dems/shared/i18n';
+import { clearCaptureWarningTransition, createSim, isLevelNotMeasured, isOwnCaptureCoreState, ownCaptureCoreFactsTransition, raiseCaptureWarningTransition, type SimState } from '@dems/shared/sim';
+import { micRows, statedTransportOf } from '@/features/capture-selector/capture-selector-model';
+import { getMissingKeys, resetMissingKeys } from '@/i18n';
+import { resetMotionStateForTests } from '@/motion';
+import { deviceMicLevelKind } from './device-mic-meter';
+import { cameraDetailFactsOf, deviceStatus, detailFactsOf, relayWords } from './devices-model';
+import { sourceRowLine } from './use-devices-data';
+import { cameraCaptureFaultOf, STREAM_FACTS_NOT_STATED, statedTrackOf, storedStreamFactsOf } from './stream-facts';
+import { PLATFORM_CHECK_IDS, diagnosticNotReported, summaryOf } from './diagnostics-sheet';
+import { registeredStateTone } from './registered-device-rows';
+import { renderDevicesApp, settle, type DevicesHarness } from './testing/devices-harness';
+
+/** What `useMobileLive()` answers: null = Simulated client mode; an object = Live. */
+let mockLive: { client: { call: () => Promise<unknown> } } | null = null;
+jest.mock('@/runtime', () => {
+  const actual = jest.requireActual<typeof import('@/runtime')>('@/runtime');
+  return { ...actual, useMobileLive: () => mockLive };
+});
+
+beforeEach(() => {
+  mockLive = null;
+  resetMissingKeys();
+});
+afterEach(() => expect(getMissingKeys()).toEqual([]));
+
+type Device = SimState['captureDevices']['devices'][number];
+type Mark = Partial<Pick<Device, 'sourceClass' | 'adapter'>>;
+const FAKE: Mark = { sourceClass: 'DEVELOPMENT', adapter: 'FAKE' };
+const PRODUCTION: Mark = { sourceClass: 'PRODUCTION', adapter: 'ONVIF_RTSP' };
+const ALL_FAKE = { 'CAM-01': FAKE, 'CAM-02': FAKE, 'CAM-03': FAKE, 'CAM-04': FAKE, 'MIC-01': FAKE, 'MIC-02': FAKE, 'MIC-03': FAKE, 'MIC-04': FAKE } as const; // D60/D61 (2026-11-04): the built-in set is the eight sources of the four-track, four-channel plane
+const WINDOWS = ['tabletLandscape', 'phonePortrait'] as const;
+const CHIP = 'Synthetic demo values';
+/** Words of the simulator's model that a generated source must not be described with. */
+const MODEL_WORDS = /Dual-lens|DL-2|UM-1|3\.8\.14|PoE CAM 1|1080p|H\.265|Mbps|32 dB|48 V|Channel \d|read-only in this demo|USB/;
+
+function mark(h: Pick<DevicesHarness, 'sim'>, marks: Readonly<Record<string, Mark>>): void {
+  act(() => h.sim.store.setState((s) => ({ captureDevices: { ...s.captureDevices, devices: s.captureDevices.devices.map((device) => ({ ...device, ...(marks[device.id] ?? {}) })) } })));
+}
+/** The selector lines state the profile a Core in real capture gives its generated cameras. */
+function profile(h: Pick<DevicesHarness, 'sim'>, code: string): void {
+  act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, cameras: s.captureConfig.cameras.map((line) => ({ ...line, profile: code })) } as SimState['captureConfig'] })));
+}
+const live = () => {
+  mockLive = { client: { call: async () => ({ ok: false, status: 503, error: { code: 'NOT_READY' } }) } };
+};
+/** Every string drawn inside a node, and the labels a screen reader gets (never the fibre itself). */
+type Drawn = { readonly children: readonly (Drawn | string)[]; readonly props: Readonly<Record<string, unknown>> };
+function drawn(node: Drawn | string): string {
+  if (typeof node === 'string') return node;
+  const label = typeof node.props.accessibilityLabel === 'string' ? `${node.props.accessibilityLabel} ` : '';
+  return `${label}${node.children.map(drawn).join(' ')}`;
+}
+const text = (testID: string): string => drawn(screen.getByTestId(testID) as unknown as Drawn);
+const chips = (): number => screen.queryAllByTestId(/^synthetic-values-/).length;
+/** Audit row 198 (M3-10 R3; D52): "Not reported" (register I4) in place of a block of model values. */
+const NOT_REPORTED = en.system.noProducer;
+const notices = (): number => screen.queryAllByTestId(/^no-producer-/).length;
+
+describe('the two rules (pure)', () => {
+  it('`detailFactsOf`: SIMULATED off a real-capture Core; GENERATED for `adapter: FAKE`; MODEL_VALUES for everything else on such a Core', () => {
+    expect(detailFactsOf(false, 'FAKE')).toBe('SIMULATED');
+    expect(detailFactsOf(false, null)).toBe('SIMULATED');
+    expect(detailFactsOf(true, 'FAKE')).toBe('GENERATED');
+    for (const adapter of ['ONVIF_RTSP', 'LOCAL_DEVICE', 'USB_AUDIO', null, undefined]) expect(detailFactsOf(true, adapter)).toBe('MODEL_VALUES');
+  });
+
+  // ── Task 4 row W4 (review 060c R-02, R-04; 060b S-01): a camera's own rule and the stored stream facts ──
+  it('W4 - `cameraDetailFactsOf`: SIMULATED off a real-capture Core; GENERATED for `adapter: FAKE`; STATED (never the model\'s values) for every other camera on such a Core', () => {
+    expect(cameraDetailFactsOf(false, 'ONVIF_RTSP')).toBe('SIMULATED');
+    expect(cameraDetailFactsOf(false, null)).toBe('SIMULATED');
+    expect(cameraDetailFactsOf(true, 'FAKE')).toBe('GENERATED');
+    for (const adapter of ['ONVIF_RTSP', 'LOCAL_DEVICE', null, undefined]) expect(cameraDetailFactsOf(true, adapter)).toBe('STATED');
+  });
+
+  it('W4 - `storedStreamFactsOf`: a stored profile code states its picture, rate and codec as the Core reads it; anything else states nothing', () => {
+    // The Core's own answers for the same codes (`cameraStreamFactsOf`, `apps/core-server/src/modules/devices/status.ts`); the web holds the same cases.
+    expect(storedStreamFactsOf('H264_1080P25')).toEqual({ resolution: '1080p', fps: 25, codec: 'H.264' });
+    expect(storedStreamFactsOf('H264_720P30')).toEqual({ resolution: '720p', fps: 30, codec: 'H.264' });
+    expect(storedStreamFactsOf('HEVC_2160P')).toEqual({ resolution: '2160p', fps: null, codec: 'HEVC' });
+    expect(storedStreamFactsOf('HEVC_2560X1920P')).toEqual({ resolution: '2560x1920', fps: null, codec: 'HEVC' });
+    expect(storedStreamFactsOf('H264_2560X1920P15')).toEqual({ resolution: '2560x1920', fps: 15, codec: 'H.264' });
+    for (const code of ['STANDARD_1080P25', 'HEVC_2160P25_MAIN', '', null, undefined, 7, 'h264_1080p25', 'H264_1920X1080P25', 'H264_50P25', 'H264_1080P999', 'AV1_1080P25']) {
+      expect(storedStreamFactsOf(code)).toEqual(STREAM_FACTS_NOT_STATED);
+    }
+  });
+
+  it('W4 - `statedTrackOf`: the line\'s stored statement and the fault the Core reports; no line states nothing', () => {
+    const idle = createSim({ scenario: 'idle', storage: null }).store.getState();
+    const first = (line: { readonly trackId?: unknown }): boolean => line.trackId === 'VIDEO-01';
+    const lines = (change: object): SimState => ({ ...idle, captureConfig: { ...idle.captureConfig, cameras: idle.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, ...change } : line)) } as SimState['captureConfig'] });
+    expect(statedTrackOf(lines({ profile: 'HEVC_2160P' }), first)).toEqual({ resolution: '2160p', fps: null, codec: 'HEVC', fault: null });
+    expect(statedTrackOf(lines({ profile: 'STANDARD' }), first)).toEqual({ ...STREAM_FACTS_NOT_STATED, fault: null });
+    expect(statedTrackOf({ ...idle, captureConfig: { ...idle.captureConfig, cameras: [] } }, first)).toEqual({ ...STREAM_FACTS_NOT_STATED, fault: null });
+    expect(statedTrackOf(lines({ streamState: 'LOST' }), first).fault).toBe('STREAM_LOST');
+    expect(statedTrackOf(lines({ online: false }), first).fault).toBe('NOT_REACHABLE');
+    expect(statedTrackOf({ ...idle, cameras: idle.cameras.map((camera) => (camera.id === 'VIDEO-01' ? { ...camera, lens: 'FAULT' as const } : camera)) }, first).fault).toBe('NO_SIGNAL');
+    // CONTROL: the other track is not touched by the first one's fault.
+    expect(statedTrackOf(lines({ streamState: 'LOST' }), (line) => line.trackId === 'VIDEO-02').fault).toBeNull();
+  });
+
+  // Audit row 191 (M3-08 R3): the fault of the device behind the line comes from the ONE source reader (`slotSourceOf`).
+  it('row 191 - `statedTrackOf`: a stated `reach: NOT_REACHABLE` is the track\'s "Not reachable"; REACHABLE and no reach state no fault; a device the registry does not hold is not reachable', () => {
+    const idle = createSim({ scenario: 'idle', storage: null }).store.getState();
+    const first = (line: { readonly trackId?: unknown }): boolean => line.trackId === 'VIDEO-01';
+    const camera1 = idle.captureConfig.cameras.find((line) => line.trackId === 'VIDEO-01')!.deviceId;
+    const reach = (value: 'REACHABLE' | 'NOT_REACHABLE' | null): SimState => ({ ...idle, captureDevices: { ...idle.captureDevices, devices: idle.captureDevices.devices.map((device) => (device.id === camera1 ? { ...device, reach: value, checkedAt: null } : device)) } });
+    expect(statedTrackOf(reach('NOT_REACHABLE'), first).fault).toBe('NOT_REACHABLE');
+    expect(statedTrackOf(reach('REACHABLE'), first).fault).toBeNull();
+    expect(statedTrackOf(reach(null), first).fault).toBeNull();
+    expect(statedTrackOf({ ...idle, captureDevices: { ...idle.captureDevices, devices: idle.captureDevices.devices.filter((device) => device.id !== camera1) } }, first).fault).toBe('NOT_REACHABLE');
+    // CONTROL: the other track's source is not touched.
+    expect(statedTrackOf(reach('NOT_REACHABLE'), (line) => line.trackId === 'VIDEO-02').fault).toBeNull();
+  });
+
+  // Audit row 191 (M3-08 R3/R4, S62 acceptance): the built-in row's status and word over the one source reader, on an own-capture Core.
+  it('row 191 - own capture: NOT_REACHABLE gives FAULT; no `reach` gives "Not checked"; REACHABLE gives the row\'s state', () => {
+    const idle = createSim({ scenario: 'idle', storage: null }).store.getState();
+    const camera1 = idle.captureConfig.cameras.find((line) => line.trackId === 'VIDEO-01')!.deviceId;
+    const own = (reachOf: 'REACHABLE' | 'NOT_REACHABLE' | null, change: Partial<SimState> = {}): SimState => ({
+      ...idle,
+      ...change,
+      captureDevices: {
+        ...idle.captureDevices,
+        devices: idle.captureDevices.devices.map((device) => ({ ...device, sourceClass: 'PRODUCTION', adapter: device.kind === 'CAMERA' ? 'ONVIF_RTSP' : 'USB_AUDIO', checkedAt: null, reach: device.id === camera1 ? reachOf : null })),
+      } as SimState['captureDevices'],
+    });
+    const word = (state: SimState): string | undefined => sourceRowLine(state, 'CAM-01', true)?.split('|')[0];
+    // NOT_REACHABLE: FAULT (the danger word stands under it).
+    expect(deviceStatus(own('NOT_REACHABLE'), 'CAM-01')).toBe('FAULT');
+    expect(word(own('NOT_REACHABLE'))).toBe('common.developmentRoster.notReachable');
+    // No reach (after a Core restart): not a fault, and never READY in words - "Not checked" (C11).
+    expect(deviceStatus(own(null), 'CAM-01')).toBe('ONLINE');
+    expect(word(own(null))).toBe('features.capture-selector.sourceState.notChecked');
+    // REACHABLE: the row's own state - ready, or the track's own fault.
+    expect(deviceStatus(own('REACHABLE'), 'CAM-01')).toBe('ONLINE');
+    expect(word(own('REACHABLE'))).toBe('common.developmentRoster.reachable');
+    expect(deviceStatus(own('REACHABLE', { cameras: idle.cameras.map((camera) => (camera.id === 'VIDEO-01' ? { ...camera, lens: 'FAULT' as const } : camera)) }), 'CAM-01')).toBe('FAULT');
+    // CONTROL: the other tracks read their own sources; Simulated client mode draws no source word.
+    expect(deviceStatus(own('NOT_REACHABLE'), 'CAM-02')).toBe('ONLINE');
+    expect(sourceRowLine(own('NOT_REACHABLE'), 'CAM-01', false)).toBeNull();
+  });
+
+  // Task 4 row W5 (review 060d Q-01). Seen RED on the mutation "`cameraCaptureFaultOf` answers null for every camera".
+  it('W5 (Q-01) - `statedTrackOf`: an ACTIVE capture fault the Core raised about the line\'s camera is the track\'s fault although the line reads LIVE; it goes when the Core clears it', () => {
+    const recording = createSim({ scenario: 'recording', storage: null }).store.getState();
+    const first = (line: { readonly trackId?: unknown }): boolean => line.trackId === 'VIDEO-01';
+    const deviceId = recording.captureConfig.cameras.find((line) => line.trackId === 'VIDEO-01')!.deviceId;
+    const warning = { code: 'CAPTURE_FAULT', subject: deviceId, reason: 'CAMERA_STREAM_ENDED' } as Parameters<typeof raiseCaptureWarningTransition>[2];
+    expect(statedTrackOf(recording, first).fault).toBeNull();
+    const raised = raiseCaptureWarningTransition(recording, recording.clock.now, warning);
+    expect(cameraCaptureFaultOf(raised.alerts, deviceId)).toBe('STREAM_LOST');
+    expect(statedTrackOf(raised, first).fault).toBe('STREAM_LOST');
+    expect(statedTrackOf(raised, (line) => line.trackId === 'VIDEO-02').fault).toBeNull();
+    // A fault of the capture as a whole names no track; an advisory (`SYSTEM`) alert about the camera is no fault.
+    expect(statedTrackOf(raiseCaptureWarningTransition(recording, recording.clock.now, { ...warning, subject: null } as unknown as typeof warning), first).fault).toBeNull();
+    expect(statedTrackOf({ ...recording, alerts: raised.alerts.map((alert) => (alert.kind === 'CAPTURE_FAULT' ? { ...alert, kind: 'SYSTEM' as const } : alert)) }, first).fault).toBeNull();
+    const cleared = clearCaptureWarningTransition(raised, raised.clock.now, warning);
+    expect(cameraCaptureFaultOf(cleared.alerts, deviceId)).toBeNull();
+    expect(statedTrackOf(cleared, first).fault).toBeNull();
+  });
+
+  it('`statedTransportOf`: no transport word for a generated source; every other line keeps what the selector states', () => {
+    expect(statedTransportOf('USB', 'FAKE')).toBeNull();
+    expect(statedTransportOf('USB', 'USB_AUDIO')).toBe('USB');
+    expect(statedTransportOf('USB', 'LOCAL_DEVICE')).toBe('USB');
+    // A Core in simulated capture and Simulated mode name no adapter: unchanged.
+    expect(statedTransportOf('USB', null)).toBe('USB');
+    expect(statedTransportOf('USB', undefined)).toBe('USB');
+    expect(statedTransportOf('', null)).toBeNull();
+  });
+
+  it('`micRows`: the row of a generated microphone carries no transport and no model; the control row keeps both', () => {
+    const h = renderDevicesApp();
+    const base = h.sim.store.getState();
+    h.app.unmount();
+    const registry = (marks: Readonly<Record<string, Mark>>) => ({ ...base.captureDevices, devices: base.captureDevices.devices.map((device) => ({ ...device, ...(marks[device.id] ?? {}) })) });
+    const generated = micRows(base.captureConfig, registry(ALL_FAKE));
+    expect(generated.map((row) => [row.inputId, row.model, row.transport])).toEqual([
+      ['MIC-01', null, null],
+      ['MIC-02', null, null],
+      ['MIC-03', null, null], // D61 (2026-11-04): four simultaneous channels — four rows
+      ['MIC-04', null, null], // D61
+    ]);
+    const simulated = micRows(base.captureConfig, registry({}));
+    expect(simulated.map((row) => row.transport)).toEqual(['USB', 'USB', 'USB', 'USB']); // D61: four lines
+    expect(simulated.every((row) => typeof row.model === 'string' && row.model !== '')).toBe(true);
+  });
+});
+
+describe.each(WINDOWS)('a Core in real capture on %s', (window) => {
+  it('the selector\'s microphone lines: no "USB", no model for a generated source', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    mark(h, ALL_FAKE);
+    await settle();
+    for (const input of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) { // D61 (2026-11-04): all four channels of the plane
+      const row = text(`capture-selector-row-${input}`);
+      expect(row).not.toMatch(/USB|UM-1|condenser/);
+      // Nothing is left to say under the input's name: the detail line is not drawn empty.
+      expect(screen.queryByTestId(`capture-selector-detail-${input}`)?.props.children ?? '').toBe('');
+    }
+  });
+
+  it('camera detail of a generated source: "Generated test source", the selector line\'s profile, no model value and no chip', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-02' });
+    mark(h, ALL_FAKE);
+    profile(h, 'H264_720P30');
+    await settle();
+    const overview = screen.getByTestId('device-overview');
+    expect(within(screen.getByTestId('device-fact-source')).getByText('Generated test source')).toBeTruthy();
+    expect(within(screen.getByTestId('device-fact-format')).getByText('H264_720P30')).toBeTruthy();
+    expect(screen.queryByTestId('device-fact-port')).toBeNull();
+    expect(drawn(overview as unknown as Drawn)).not.toMatch(MODEL_WORDS);
+    expect(within(overview).queryByText(CHIP)).toBeNull();
+    expect(screen.queryByTestId('synthetic-values-camera')).toBeNull();
+  });
+
+  it('camera detail of a generated source whose line states no profile: "Not reported", never the model\'s resolution', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-01' });
+    mark(h, ALL_FAKE);
+    profile(h, '');
+    await settle();
+    expect(within(screen.getByTestId('device-fact-format')).getByText('Not reported')).toBeTruthy();
+    expect(text('device-overview')).not.toMatch(MODEL_WORDS);
+  });
+
+  it('microphone detail of a generated source: no channel, gain, phantom power, converter or "read-only" note; the CLIP latch and the source stay', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/MIC-01' });
+    mark(h, ALL_FAKE);
+    await settle();
+    expect(within(screen.getByTestId('device-fact-source')).getByText('Generated test source')).toBeTruthy();
+    expect(screen.getByTestId('device-fact-clip')).toBeTruthy();
+    expect(screen.queryByTestId('device-fact-gain')).toBeNull();
+    expect(screen.queryByTestId('device-fact-phantom')).toBeNull();
+    expect(text('device-overview')).not.toMatch(MODEL_WORDS);
+    expect(screen.queryByText(/read-only in this demo/)).toBeNull();
+    expect(screen.queryByTestId('synthetic-values-microphone')).toBeNull();
+  });
+
+  // Task 4 row W4 (review 060c R-02), PIN MOVED - the camera half of this case. It pinned, for a PRODUCTION camera
+  // (`ONVIF_RTSP`) on a Core in real capture, the chip "Synthetic demo values" over the simulator's record and the fact
+  // "PoE CAM 1": simulator values shown in LIVE mode. A production camera now draws only what the Core states - no model
+  // value, so no chip. The microphone half below is unchanged.
+  // Audit row 198 (M3-10 R3), PIN MOVED citing D52 - the microphone half: it pinned the chip over the model's gain. On a
+  // Core in its own capture no chip is drawn and the model's channel, gain, phantom power and converter read I4.
+  it('a production camera draws only what the Core states (no model value, no chip); a microphone of another adapter reads "Not reported" for its model values, with no chip (row 198, D52)', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-01' });
+    mark(h, { ...ALL_FAKE, 'CAM-01': PRODUCTION, 'MIC-02': { sourceClass: 'PRODUCTION', adapter: 'USB_AUDIO' } });
+    profile(h, 'HEVC_2160P');
+    await settle();
+    expect(screen.queryByTestId('synthetic-values-camera')).toBeNull();
+    expect(screen.queryByTestId('device-fact-port')).toBeNull();
+    expect(screen.queryByTestId('device-fact-source')).toBeNull();
+    // STATED FACTS: the stored stream statement of the camera's selector line, read as the Core reads it - no rate for a code that states none.
+    expect(within(screen.getByTestId('device-fact-format')).getByText('2160p • HEVC')).toBeTruthy();
+    expect(text('device-overview')).not.toMatch(MODEL_WORDS);
+    expect(text('device-overview')).not.toMatch(/25 fps|H\.264|9 Mbps/);
+    // The slice this screen was given still holds the simulator's record: it is what must not be read.
+    expect(h.sim.store.getState().cameras.find((camera) => camera.deviceId === 'CAM-01')).toMatchObject({ resolution: '1080p', fps: 25, codec: 'H.264', bitrateMbps: 9 });
+
+    // NULL FACTS: a line whose code is no stream statement - "Not stated", never the model's resolution and never the raw code.
+    profile(h, 'STANDARD');
+    await settle();
+    expect(within(screen.getByTestId('device-fact-format')).getByText(en.common.devices.cameraFormatNotStated)).toBeTruthy();
+    expect(text('device-overview')).not.toMatch(MODEL_WORDS);
+
+    // A FAULT the Core reports (the line's stream is lost): the fault stands in the place of the stored facts.
+    profile(h, 'H264_720P30');
+    await settle();
+    expect(within(screen.getByTestId('device-fact-format')).getByText('720p • 30 fps • H.264')).toBeTruthy();
+    act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, cameras: s.captureConfig.cameras.map((line) => (line.deviceId === 'CAM-01' ? { ...line, streamState: 'LOST' } : line)) } as SimState['captureConfig'] })));
+    await settle();
+    expect(within(screen.getByTestId('device-fact-format')).getByText(en.devices.selector.stream.LOST)).toBeTruthy();
+    expect(text('device-fact-format')).not.toMatch(/720p|30 fps/);
+    h.app.unmount();
+
+    live();
+    const m = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/MIC-02' });
+    mark(m, { ...ALL_FAKE, 'MIC-02': { sourceClass: 'PRODUCTION', adapter: 'USB_AUDIO' } });
+    await settle();
+    expect(chips()).toBe(0);
+    expect(screen.queryByText(CHIP)).toBeNull();
+    for (const fact of ['device-fact-channel', 'device-fact-gain', 'device-fact-phantom', 'device-fact-adc']) expect(text(fact)).toMatch(NOT_REPORTED);
+    expect(text('device-overview')).not.toMatch(/32 dB|48 V|Channel \d/);
+    expect(screen.queryByText(/read-only in this demo/)).toBeNull();
+    // The Core's own facts of the microphone stay: its status and the CLIP latch.
+    expect(screen.getByTestId('device-fact-status')).toBeTruthy();
+    expect(screen.getByTestId('device-fact-clip')).toBeTruthy();
+  });
+
+  // Audit row 198 (M3-10 R3), PIN MOVED citing D52 (tablet half of web U-10, rows 104/107): these blocks carried the chip
+  // over the model's values. Now the values are not drawn: "Not reported" (I4) in their place, and no chip anywhere.
+  it('blocks of model values read "Not reported" with no chip: the PoE switch (overview, status chip, derived health series), the indicator; the tablet row keeps its own link facts (row 198, D52)', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/POE-SWITCH' });
+    mark(h, ALL_FAKE);
+    await settle();
+    expect(screen.getByTestId('no-producer-poe')).toHaveTextContent(NOT_REPORTED);
+    expect(screen.queryByTestId('device-fact-ports')).toBeNull();
+    expect(text('device-detail-status')).toMatch(NOT_REPORTED);
+    fireEvent.press(screen.getByTestId('device-tab-health'));
+    await settle();
+    expect(screen.getByTestId('no-producer-health')).toHaveTextContent(NOT_REPORTED);
+    expect(screen.queryByTestId('device-health')).toBeNull();
+    expect(chips()).toBe(0);
+    h.app.unmount();
+
+    live();
+    const relay = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/REC-INDICATOR' });
+    mark(relay, ALL_FAKE);
+    await settle();
+    expect(screen.getByTestId('no-producer-relay')).toHaveTextContent(NOT_REPORTED);
+    expect(screen.queryByTestId('device-fact-lamp')).toBeNull();
+    expect(text('device-detail-status')).toMatch(NOT_REPORTED);
+    expect(chips()).toBe(0);
+    relay.app.unmount();
+
+    live();
+    const tablet = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/TABLET' });
+    mark(tablet, ALL_FAKE);
+    await settle();
+    expect(screen.getByTestId('device-overview')).toBeTruthy();
+    expect(screen.queryByTestId('no-producer-tablet')).toBeNull();
+    expect(text('device-detail-status')).not.toMatch(NOT_REPORTED);
+    expect(chips()).toBe(0);
+    tablet.app.unmount();
+  });
+
+  // Audit row 198 (M3-10 R3), PIN MOVED citing D52: the "Other devices" section carried the chip; now no section does,
+  // and the PoE switch and the indicator rows read "Not reported" themselves (web row 107). The tablet row stays.
+  it('the list: a generated source is named as that under its name; no section carries the chip; the PoE switch and the indicator read "Not reported" (row 198, D52)', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    mark(h, ALL_FAKE);
+    await settle();
+    for (const id of ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) { // D61 (2026-11-04): all four channels carry the chip's name
+      const label = String(screen.getByTestId(`device-row-${id}`).props.accessibilityLabel);
+      expect(label).toMatch(/Generated test source/);
+      // D61 (2026-11-04): the channel word IS the row's name now ("Channel 1 (transcribed)") - what stays hidden is the room role.
+      expect(label).not.toMatch(/Interview Room|Interviewer|Subject/);
+    }
+    expect(chips()).toBe(0);
+    expect(screen.queryByText(CHIP)).toBeNull();
+    for (const id of ['POE-SWITCH', 'REC-INDICATOR']) {
+      expect(text(`device-status-${id}`)).toMatch(NOT_REPORTED);
+      expect(String(screen.getByTestId(`device-row-${id}`).props.accessibilityLabel)).toMatch(NOT_REPORTED);
+    }
+    expect(text('device-status-TABLET')).not.toMatch(NOT_REPORTED);
+  });
+});
+
+// ── Audit row 198 (M3-10 R3; D52, register I4; tablet half of web U-10, rows 104/107) ───────────────────────────────
+// A Core in its own capture by the ONE reader (`isOwnCaptureCoreState`: `time.hostClock` / `security.platformNotReported`),
+// here with NO source class on its devices (so the picture rule alone would not see it): no "Synthetic demo values" chip
+// anywhere, the model's values read "Not reported" - and the measured microphone level, a real reading, stays.
+describe.each(WINDOWS)('row 198 - a Core in its own capture (the one reader) on %s', (window) => {
+  const ownCapture = (h: Pick<DevicesHarness, 'sim'>) => act(() => h.sim.store.setState((s) => ownCaptureCoreFactsTransition(s)));
+
+  it('the PoE switch: I4 in place of the overview and the derived health series, I4 on the status chip, no chip', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/POE-SWITCH' });
+    ownCapture(h);
+    await settle();
+    expect(isOwnCaptureCoreState(h.sim.store.getState())).toBe(true);
+    expect(screen.getByTestId('no-producer-poe')).toHaveTextContent(NOT_REPORTED);
+    expect(screen.queryByTestId('device-fact-ports')).toBeNull();
+    expect(text('device-detail-status')).toMatch(NOT_REPORTED);
+    fireEvent.press(screen.getByTestId('device-tab-health'));
+    await settle();
+    expect(screen.getByTestId('no-producer-health')).toHaveTextContent(NOT_REPORTED);
+    expect(chips()).toBe(0);
+    expect(screen.queryByText(CHIP)).toBeNull();
+  });
+
+  it('a microphone: channel, gain, phantom power and converter read I4; the measured level (meter and health line) stays', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/MIC-01' });
+    ownCapture(h);
+    act(() => h.sim.store.setState((s) => ({ audio: { ...s.audio, inputs: { ...s.audio.inputs, 'MIC-01': { seq: 1, at: 1, dbfs: -18, peak: -18, clip: false, noSignal: false } } } as SimState['audio'] })));
+    await settle();
+    for (const fact of ['device-fact-channel', 'device-fact-gain', 'device-fact-phantom', 'device-fact-adc']) expect(text(fact)).toMatch(NOT_REPORTED);
+    expect(text('device-overview')).not.toMatch(/32 dB|48 V ON/);
+    expect(screen.queryByText(/read-only in this demo/)).toBeNull();
+    // THE EXCEPTION: the measured level is a real reading.
+    expect((screen.getByTestId('device-detail-meter').props.accessibilityValue as { text: string }).text).toMatch(/^-\d+ dBFS$/);
+    fireEvent.press(screen.getByTestId('device-tab-health'));
+    await settle();
+    expect(screen.getByTestId('device-health')).toBeTruthy();
+    expect(screen.queryByTestId('no-producer-health')).toBeNull();
+    expect(chips()).toBe(0);
+  });
+
+  it('the list: no section chip; the PoE switch and the indicator read I4; the tablet row keeps its word', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    ownCapture(h);
+    await settle();
+    expect(chips()).toBe(0);
+    for (const id of ['POE-SWITCH', 'REC-INDICATOR']) expect(text(`device-status-${id}`)).toMatch(NOT_REPORTED);
+    expect(text('device-status-TABLET')).not.toMatch(NOT_REPORTED);
+  });
+
+  it('CONTROL: the same Core without the own-capture facts (a Core in SIMULATED capture) keeps the model values and no I4', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/MIC-01' });
+    await settle();
+    expect(isOwnCaptureCoreState(h.sim.store.getState())).toBe(false);
+    expect(within(screen.getByTestId('device-fact-gain')).getByText('32 dB')).toBeTruthy();
+    expect(notices()).toBe(0);
+    expect(chips()).toBe(0);
+  });
+});
+
+// Fix wave M (re-check 70 finding G70d-02): ONE wording rule for a capture source - the Devices LIST rows and the
+// detail chip / "Status" row read "Online" at rest beside "Not checked" for the same source, and the microphone
+// lines kept the simulator's room roles ("MIC 1 – Interviewer", "MIC 2 – Subject").
+describe.each(WINDOWS)('G70d-02 - the Devices rows and the detail of a selected source on a Core in real capture, %s', (window) => {
+  const SOURCES = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02'] as const;
+  const record = (h: Pick<DevicesHarness, 'sim'>) =>
+    act(() => h.sim.store.setState((s) => ({ session: { ...(s.session ?? ({} as NonNullable<SimState['session']>)), id: 'SES-TEST-0001', state: 'RECORDING', captureConfig: s.captureConfig } as unknown as SimState['session'] })));
+
+  it('at rest every row says "Not checked" (chip and label), never "Online"; the microphone lines are named by their role in force', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    mark(h, ALL_FAKE);
+    await settle();
+    for (const id of SOURCES) {
+      expect(text(`device-status-${id}`)).toMatch(/Not checked/);
+      expect(text(`device-status-${id}`)).not.toMatch(/Online/);
+      const label = String(screen.getByTestId(`device-row-${id}`).props.accessibilityLabel);
+      expect(label).toMatch(/Not checked/);
+      expect(label).not.toMatch(/Online|Interviewer|Subject/);
+    }
+    // PIN MOVED by audit row 229 (F1, D247; was D61's "MIC 1 · Channel 1 (transcribed)"): the row is the pair SLOT, named by the
+    // selector's pair words, over the input it holds - here its own id, since the roster does not list a built-in on its own line.
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/^Mic 1 \(Camera 1\), MIC-01 · Generated test source, /);
+    expect(String(screen.getByTestId('device-row-MIC-02').props.accessibilityLabel)).toMatch(/^Mic 2 \(Camera 2\), MIC-02 · Generated test source, /);
+    // The selector in force names the line: with the two transcription channels traded the names follow.
+    act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, mics: s.captureConfig.mics.map((line) => ({ ...line, channel: line.channel === 'MIC-01' ? 'MIC-02' : line.channel === 'MIC-02' ? 'MIC-01' : line.channel })) } as SimState['captureConfig'] })));
+    await settle();
+    // Row 229 (pin moved): the slot keeps its pair words; the INPUT it holds follows (and is now a roster row, so no id here).
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/^Mic 1 \(Camera 1\), MIC 2 · Generated test source, /);
+    expect(String(screen.getByTestId('device-row-MIC-02').props.accessibilityLabel)).toMatch(/^Mic 2 \(Camera 2\), MIC 1 · Generated test source, /);
+  });
+
+  it('a checked fact of the Core: "Reachable"; a camera on a line while a session records: "Live"', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    mark(h, ALL_FAKE);
+    act(() => h.sim.store.setState((s) => ({ captureDevices: { ...s.captureDevices, devices: s.captureDevices.devices.map((device) => (device.id === 'CAM-01' ? { ...device, checkedAt: 1 } : device)) } as SimState['captureDevices'] })));
+    await settle();
+    expect(text('device-status-CAM-01')).toMatch(/Reachable/);
+    expect(text('device-status-CAM-02')).toMatch(/Not checked/);
+    record(h);
+    await settle();
+    expect(text('device-status-CAM-01')).toMatch(/Live/);
+    expect(text('device-status-CAM-02')).toMatch(/Live/);
+    expect(text('device-status-MIC-01')).not.toMatch(/Online|Not checked/);
+  });
+
+  it.each(['CAM-01', 'MIC-02'] as const)('the detail of %s: the chip and the "Status" row say "Not checked"; the name carries no room role', async (id) => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: `/devices/${id}` });
+    mark(h, ALL_FAKE);
+    await settle();
+    expect(text('device-detail-status')).toMatch(/Not checked/);
+    expect(text('device-detail-status')).not.toMatch(/Online/);
+    expect(text('device-fact-status')).toMatch(/Not checked/);
+    expect(text('device-fact-status')).not.toMatch(/Online/);
+    expect(screen.queryByText(/Interviewer|– Subject/)).toBeNull();
+    if (id === 'MIC-02') expect(screen.getAllByText('Mic 2 (Camera 2)').length).toBeGreaterThan(0); // row 229 (pin moved; was D61 "MIC 2 · Channel 2"): the pair words, never the room role
+  });
+});
+
+// ── Audit row 229 (M3 cycle 2, F1 + F6; D247; M3-08 E1; web twin W4-2 / D226) ─────────────────────────────────────────
+// The bench of row 66's judging (test/12_m3_ui_tablet.md §7 F1): the Core lists ONVIF cameras CAM-03..06 on VIDEO-01..04
+// and USB microphones MIC-03..06 on channels 1-4; the simulator's model still holds its FAKE CAM-01/02 / MIC-01/02 rows.
+// Before: MIC-03/04 drawn twice (built-in rows by input id + roster), MIC 1 – Interviewer / MIC 2 – Subject drawn for the
+// unused model mics, channels 3/4 without a row, and the built-in camera detail reading the fixed CAM-0N.
+describe.each(WINDOWS)('row 229 - the Devices list per slot, each Core device once, the detail of the slot (F1) on %s', (window) => {
+  const BENCH_CAMERAS = ['CAM-03', 'CAM-04', 'CAM-05', 'CAM-06'] as const;
+  const BENCH_MICS = ['MIC-03', 'MIC-04', 'MIC-05', 'MIC-06'] as const;
+  const bench = (h: Pick<DevicesHarness, 'sim'>, change: (config: SimState['captureConfig']) => SimState['captureConfig'] = (config) => config) =>
+    act(() =>
+      h.sim.store.setState((s) => {
+        const camera = s.captureDevices.devices.find((device) => device.kind === 'CAMERA')!;
+        const mic = s.captureDevices.devices.find((device) => device.kind === 'MIC')!;
+        const devices = [
+          ...BENCH_CAMERAS.map((id) => ({ ...camera, id, sourceClass: 'PRODUCTION', adapter: 'ONVIF_RTSP', checkedAt: null, reach: null })),
+          ...BENCH_MICS.map((id) => ({ ...mic, id, sourceClass: 'PRODUCTION', adapter: 'USB_AUDIO', checkedAt: null, reach: null })),
+        ];
+        const config = {
+          ...s.captureConfig,
+          cameras: s.captureConfig.cameras.map((line, index) => ({ ...line, deviceId: BENCH_CAMERAS[index] ?? line.deviceId })),
+          mics: s.captureConfig.mics.map((line, index) => ({ ...line, inputId: BENCH_MICS[index] ?? line.inputId, deviceId: BENCH_MICS[index] ?? line.deviceId })),
+        } as SimState['captureConfig'];
+        return { captureDevices: { ...s.captureDevices, devices } as SimState['captureDevices'], captureConfig: change(config) };
+      }),
+    );
+  const label = (id: string): string => String(screen.getByTestId(id).props.accessibilityLabel);
+  /** The ROWS (built-in slot rows and roster rows; one per row id) of the camera and audio sections that name `id` in their text or label. */
+  const namingRows = (id: string): string[] => {
+    const named = new RegExp(`(^|[^-\\w])${id}($|[^-\\w])`);
+    const rows = new Map<string, string>();
+    for (const section of ['devices-section-cameras', 'devices-section-audio']) {
+      for (const row of within(screen.getByTestId(section)).queryAllByTestId(/^(device-row|registered-device-row)-(CAM|MIC)-\d+$/)) {
+        const key = String(row.props.testID);
+        if (!rows.has(key)) rows.set(key, drawn(row as unknown as Drawn));
+      }
+    }
+    return [...rows].filter(([, words]) => named.test(words)).map(([key]) => key);
+  };
+  const occurrences = (id: string): number => namingRows(id).length;
+
+  it('Audio inputs: one row per pair slot, "Mic N (Camera N)" over the input it holds; no FAKE MIC-01/02, no room role; each Core device id appears once', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    bench(h);
+    await settle();
+    const audio = screen.getByTestId('devices-section-audio');
+    for (const [index, slot] of (['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const).entries()) {
+      const n = index + 1;
+      const input = BENCH_MICS[index]!;
+      // The pair words and the input's own name - the name the roster row of that device carries.
+      expect(label(`device-row-${slot}`)).toMatch(new RegExp(`^Mic ${n} \\(Camera ${n}\\), ${text(`registered-device-name-${input}`)}, `));
+      expect(label(`device-row-${slot}`)).not.toMatch(/Online|Interviewer|Subject|Channel \d/);
+      expect(text(`device-status-${slot}`)).toMatch(/Not checked/);
+    }
+    expect(within(audio).queryByText(/Interviewer|Subject/)).toBeNull();
+    // The model's unused FAKE MIC-01/02 (and CAM-01/02) are drawn nowhere: not as rows, not by name, not by id.
+    for (const id of ['MIC-01', 'MIC-02', 'CAM-01', 'CAM-02']) {
+      expect(screen.queryByTestId(`registered-device-row-${id}`)).toBeNull();
+      expect(occurrences(id)).toBe(0);
+    }
+    expect(within(audio).queryAllByText(/^MIC [12]$/)).toHaveLength(0);
+    // M3-08 E1: every device of the Core's list appears EXACTLY once across the slot rows and the roster.
+    // The slot rows name the input, not the id: the id is the roster row's (M3-08 R1 lists a built-in id off its own line).
+    for (const id of [...BENCH_CAMERAS, ...BENCH_MICS]) expect(namingRows(id)).toEqual([`registered-device-row-${id}`]);
+  });
+
+  it('a slot without an input reads "Not assigned"; a built-in on its OWN line is named by its id in the slot row, once (the roster omits it)', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    bench(h, (config) => ({ ...config, mics: config.mics.map((line) => (line.channel === 'MIC-04' ? { ...line, deviceId: null } : line)) }) as SimState['captureConfig']);
+    await settle();
+    expect(label('device-row-MIC-04')).toMatch(/^Mic 4 \(Camera 4\), Not assigned, /);
+    expect(occurrences('MIC-06')).toBe(1); // no longer on a line: its roster row only
+    // The seed's own lines (CAM-01 on VIDEO-01 ... MIC-04 on channel 4), all of a class: every id once, in its slot row.
+    h.app.unmount();
+    live();
+    const own = renderDevicesApp({ user: 'rina.wijaya', window });
+    mark(own, ALL_FAKE);
+    await settle();
+    const ids = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'];
+    expect(ids.map((id) => namingRows(id))).toEqual(ids.map((id) => [`device-row-${id}`]));
+  });
+
+  it.each([
+    ['CAM-01', 'CAM-03', 'Feeds Camera 1'],
+    ['CAM-03', 'CAM-05', 'Feeds Camera 3'],
+    ['MIC-01', 'MIC-03', 'Feeds Microphone 1 (transcribed)'],
+    ['MIC-04', 'MIC-06', 'Feeds Microphone 4'],
+  ] as readonly (readonly [string, string, string])[])('the detail of built-in %s shows the device its slot holds (%s) and "Used as", never the fixed id', async (builtIn, assigned, usedAs) => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: `/devices/${builtIn}` });
+    bench(h);
+    await settle();
+    expect(screen.getByTestId('device-detail-id')).toHaveTextContent(assigned);
+    expect(text('device-fact-device-id')).toMatch(assigned);
+    expect(text('device-fact-used-as')).toMatch(usedAs);
+  });
+
+  // Audit row 235 (M3 cycle 2; D255, R230-1 of row 230): the camera hero's preview follows the TRACK of the detail, so it
+  // shows the camera the selector assigns that track - never the seed's fixed CAM-0N (`cameraId` CAM-N is framing only).
+  it.each([
+    ['CAM-01', 'VIDEO-01', 'CAM-03'],
+    ['CAM-02', 'VIDEO-02', 'CAM-04'],
+    ['CAM-03', 'VIDEO-03', 'CAM-05'],
+    ['CAM-04', 'VIDEO-04', 'CAM-06'],
+  ] as readonly (readonly [string, string, string])[])('row 235 - the camera hero of built-in %s (%s) previews the camera assigned to that track (%s)', async (builtIn, track, assigned) => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: `/devices/${builtIn}` });
+    bench(h);
+    await settle();
+    const feed = text('device-detail-feed');
+    expect(feed).toMatch(new RegExp(`(^|[^-\\w])${assigned}($|[^-\\w])`));
+    // Not the fixed id of the route, unless the selector put that very camera on the track.
+    if (assigned !== builtIn) expect(feed).not.toMatch(new RegExp(`(^|[^-\\w])${builtIn}($|[^-\\w])`));
+    // The selector moves the track to another camera: the hero follows it.
+    const other = BENCH_CAMERAS.find((id) => id !== assigned)!;
+    act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, cameras: s.captureConfig.cameras.map((line) => (line.trackId === track ? { ...line, deviceId: other } : line.deviceId === other ? { ...line, deviceId: assigned } : line)) } as SimState['captureConfig'] })));
+    await settle();
+    expect(text('device-detail-feed')).toMatch(new RegExp(`(^|[^-\\w])${other}($|[^-\\w])`));
+  });
+});
+
+// Audit row 229 (F6; M3-10 R3, row 198's no-producer rule): the PoE switch's icon caption read the model's "Active" while its chip said "Not reported".
+describe.each(WINDOWS)('row 229 - the PoE switch icon caption under the no-producer rule (F6) on %s', (window) => {
+  const label = (id: string): string => String(screen.getByTestId(id).props.accessibilityLabel);
+  it('own capture: the caption reads "Not reported", as the chip; CONTROL simulated: the model word', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/POE-SWITCH' });
+    act(() => h.sim.store.setState((s) => ownCaptureCoreFactsTransition(s)));
+    await settle();
+    expect(screen.getByTestId('device-detail-icon-state')).toHaveTextContent(NOT_REPORTED);
+    expect(text('device-detail-status')).toMatch(NOT_REPORTED);
+    h.app.unmount();
+
+    renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/POE-SWITCH' });
+    await settle();
+    expect(screen.getByTestId('device-detail-icon-state')).toHaveTextContent('Active');
+    expect(screen.getByTestId('device-detail-id')).toHaveTextContent('POE-SWITCH');
+  });
+
+  it('CONTROL simulated: the built-in rows and details keep the model names and the built-in ids', async () => {
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    await settle();
+    expect(label('device-row-MIC-01')).toMatch(/MIC 1 – Interviewer/);
+    expect(within(screen.getByTestId('devices-section-audio')).queryByText(/^Mic 1 \(Camera 1\)$/)).toBeNull();
+    h.app.unmount();
+    renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-01' });
+    await settle();
+    expect(screen.getByTestId('device-detail-id')).toHaveTextContent('CAM-01');
+    expect(screen.queryByTestId('device-fact-used-as')).toBeNull();
+  });
+});
+
+describe.each(WINDOWS)('CONTROL - the simulated lane on %s is what it was', (window) => {
+  it('Simulated client mode: the model values, no chip, the transport word on the selector line - also when the state names an adapter', async () => {
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-01' });
+    await settle();
+    expect(within(screen.getByTestId('device-fact-port')).getByText('PoE CAM 1')).toBeTruthy();
+    expect(text('device-overview')).toMatch(/Dual-lens|DL-2/);
+    expect(screen.queryByTestId('device-fact-source')).toBeNull();
+    expect(chips()).toBe(0);
+    h.app.unmount();
+
+    const m = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/MIC-01' });
+    // Even a state that names the generated adapter: Simulated mode is not a Core in its own capture.
+    mark(m, ALL_FAKE);
+    await settle();
+    expect(within(screen.getByTestId('device-fact-gain')).getByText('32 dB')).toBeTruthy();
+    expect(within(screen.getByTestId('device-fact-phantom')).getByText('48 V ON')).toBeTruthy();
+    expect(screen.getByText(/read-only in this demo/)).toBeTruthy();
+    expect(chips()).toBe(0);
+    expect(notices()).toBe(0); // row 198 CONTROL: no "Not reported" block on the simulated lane
+    m.app.unmount();
+
+    const list = renderDevicesApp({ user: 'rina.wijaya', window });
+    await settle();
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/Channel 1/);
+    // Fix wave M (G70d-02) CONTROL: the simulated lane keeps "Online" and the room's names.
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/MIC 1 – Interviewer/);
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/Online/);
+    expect(text('device-status-CAM-01')).toMatch(/Online/);
+    expect(text('capture-selector-row-MIC-01')).toMatch(/USB/);
+    expect(chips()).toBe(0);
+    // Row 198 CONTROL: the PoE switch and the indicator keep their model words on the simulated lane.
+    expect(String(screen.getByTestId('device-row-REC-INDICATOR').props.accessibilityLabel)).toBe('Recording Indicator, Lamp off');
+    expect(text('device-status-POE-SWITCH')).not.toMatch(NOT_REPORTED);
+    list.app.unmount();
+  });
+
+  it('Live, a Core in SIMULATED capture (no device states a class): the model values, no chip', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/POE-SWITCH' });
+    await settle();
+    expect(screen.getByTestId('device-fact-ports')).toBeTruthy();
+    expect(chips()).toBe(0);
+    expect(notices()).toBe(0); // row 198 CONTROL
+    h.app.unmount();
+
+    live();
+    renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-02' });
+    await settle();
+    expect(within(screen.getByTestId('device-fact-port')).getByText('PoE CAM 1')).toBeTruthy();
+    expect(screen.queryByTestId('device-fact-source')).toBeNull();
+    expect(chips()).toBe(0);
+  });
+});
+
+// ── Fix wave J (judging session; sub-driver J-P3) ─────────────────────────────────────────────────────────
+// JT-03 / JW-04 mobile half: no synthetic Core fact as real on the Devices screens of a Core in its own capture
+// (the diagnostics rows over hardware it does not read, the derived "Link quality" of a generated source), and
+// ONE security statement ("Not reported", the words of Home's chip). JW-08 mobile half: a microphone at rest is
+// "— dBFS", "Not measured" - never "No signal". Each with its CONTROL on the simulated lane.
+describe('fix wave J - the pure rules', () => {
+  it('JT-03 `diagnosticNotReported`: the Core\'s own row (J-S 5 example) and, on a Core that states `platformNotReported`, a PASS over hardware it does not read', () => {
+    expect(diagnosticNotReported(DIAGNOSTIC_NOT_REPORTED_EXAMPLE, false)).toBe(true);
+    for (const id of PLATFORM_CHECK_IDS) expect(diagnosticNotReported({ id, status: 'PASS' }, true)).toBe(true);
+    // A negative fact is never hidden; a check the Core does read keeps its verdict.
+    expect(diagnosticNotReported({ id: 'STORAGE', status: 'FAIL' }, true)).toBe(false);
+    expect(diagnosticNotReported({ id: 'CPU', status: 'PASS' }, true)).toBe(false);
+    // CONTROL: the simulated Core states nothing - every row is its verdict.
+    for (const id of [...PLATFORM_CHECK_IDS, 'CPU']) expect(diagnosticNotReported({ id, status: 'PASS' }, false)).toBe(false);
+  });
+
+  it('JT-03 `summaryOf`: a "Not reported" row is no pass and no warning - "Every reported check passed · 4 checks are not reported by this Core"', () => {
+    const t = (key: string, options?: Record<string, unknown>) => `${key}${options?.count === undefined ? '' : `#${String(options.count)}`}${options?.summary === undefined ? '' : `[${String(options.summary)}|${String(options.notReported)}]`}`;
+    const check = (id: string, status: 'PASS' | 'WARN' | 'FAIL', rule?: string) => ({ id, label: id, status, detail: null, ...(rule === undefined ? {} : { params: { rule } }) });
+    const run = (checks: ReturnType<typeof check>[]) => ({ checks, completedAt: 1 }) as unknown as Parameters<typeof summaryOf>[0];
+    const own = run([check('CPU', 'PASS'), check('STORAGE', 'WARN', 'NOT_REPORTED'), check('FAN', 'WARN', 'NOT_REPORTED'), check('NETWORK', 'PASS'), check('SECURITY', 'PASS')]);
+    expect(summaryOf(own, 'k', t, true)).toBe('features.devices.diagnostics.summaryJoin[features.devices.diagnostics.reportedPassed|features.devices.diagnostics.notReported#4]');
+    // The rows the Core marked itself are never counted as warnings, also before the client knows the platform member.
+    expect(summaryOf(own, 'k', t, false)).toBe('features.devices.diagnostics.summaryJoin[features.devices.diagnostics.reportedPassed|features.devices.diagnostics.notReported#2]');
+    expect(summaryOf(run([check('CPU', 'FAIL'), check('SECURITY', 'PASS')]), 'k', t, true)).toMatch(/system\.diagnostics\.failed#1/);
+    // CONTROL: the simulated lane.
+    expect(summaryOf(run([check('CPU', 'PASS'), check('SECURITY', 'PASS')]), 'k', t, false)).toBe('system.diagnostics.passed');
+    expect(summaryOf(run([check('CPU', 'PASS'), check('FAN', 'WARN')]), 'k', t, false)).toBe('system.diagnostics.warned#1');
+  });
+
+  it('JW-08 `deviceMicLevelKind`: "No signal" only when the Core STATES it; a flat / absent / not-measured frame is NOT_MEASURED', () => {
+    expect(deviceMicLevelKind({ state: 'OK', frameFlat: true, notMeasured: false })).toBe('NOT_MEASURED');
+    expect(deviceMicLevelKind({ state: 'OK', frameFlat: false, notMeasured: isLevelNotMeasured(AUDIO_FRAME_NOT_MEASURED_EXAMPLE) })).toBe('NOT_MEASURED');
+    expect(deviceMicLevelKind({ state: 'OK', frameFlat: false, notMeasured: false })).toBe('LEVEL');
+    expect(deviceMicLevelKind({ state: 'NO_SIGNAL', frameFlat: true, notMeasured: false })).toBe('NO_SIGNAL');
+  });
+
+  it('JA2-33 `relayWords`: lit only while a session records; "Lamp off" at rest; a fault keeps its word', () => {
+    expect(relayWords('ACTIVE', false)).toEqual({ key: 'features.devices.other.lampOff', lit: false, fault: false });
+    expect(relayWords('ACTIVE', true)).toEqual({ key: 'devices.other.recordingLamp', lit: true, fault: false });
+    expect(relayWords('FAULT', true)).toMatchObject({ lit: false, fault: true });
+  });
+
+  it('JT-14 `registeredStateTone`: ONE colour for "Not checked" (neutral), whether the camera is on a line or not', () => {
+    expect(registeredStateTone('READY', false)).toBe('default');
+    expect(registeredStateTone('READY', true)).toBe('success');
+  });
+});
+
+describe.each(WINDOWS)('fix wave J - a Core in real capture on %s', (window) => {
+  const ownCapture = (h: Pick<DevicesHarness, 'sim'>) => act(() => h.sim.store.setState((s) => ({ security: { ...s.security, platformNotReported: true } })));
+  const frame = (h: Pick<DevicesHarness, 'sim'>, input: string, patch: Record<string, unknown>) =>
+    act(() => h.sim.store.setState((s) => ({ audio: { ...s.audio, inputs: { ...s.audio.inputs, [input]: { seq: 1, at: 1, dbfs: -90, peak: -90, clip: false, noSignal: true, ...patch } } } as SimState['audio'] })));
+
+  it('JT-03 diagnostics: SMART, fan, network / PoE and security read "Not reported" (the words of Home\'s security chip) - no PASS; the checks the Core reads keep theirs', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-01' });
+    mark(h, ALL_FAKE);
+    ownCapture(h);
+    await settle();
+    fireEvent.press(screen.getByTestId('device-action-diagnostics'));
+    await settle();
+    h.run(6_000);
+    await settle();
+    for (const id of PLATFORM_CHECK_IDS) {
+      expect(screen.getByTestId(`device-diagnostics-${id}-NOT_REPORTED`)).toHaveTextContent(en.common.platformNotReported.value);
+      expect(screen.queryByTestId(`device-diagnostics-${id}-PASS`)).toBeNull();
+      expect(String(screen.getByTestId(`device-diagnostics-${id}`).props.accessibilityLabel)).toMatch(/, Not reported$/);
+    }
+    expect(screen.getByTestId('device-diagnostics-CPU-PASS')).toBeTruthy();
+    expect(text('device-diagnostics-summary')).toMatch(/Every reported check passed · 4 checks are not reported by this Core/);
+    expect(text('device-diagnostics-sheet')).not.toMatch(/All checks passed/);
+    // JA2-16: the sheet says it is modal.
+    expect(screen.getByTestId('device-diagnostics-sheet').props.accessibilityViewIsModal).toBe(true);
+  });
+
+  it('JT-03 Health of a generated camera: no "Link quality" figure, no derived chart - "Not reported"', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-01' });
+    mark(h, ALL_FAKE);
+    await settle();
+    fireEvent.press(screen.getByTestId('device-tab-health'));
+    await settle();
+    expect(text('device-health-not-reported')).toMatch(/Not reported/);
+    expect(screen.queryByTestId('device-health')).toBeNull();
+    expect(screen.queryByText(/Link quality|Derived from the Core/)).toBeNull();
+  });
+
+  it('JW-08 microphone detail at rest: "— dBFS" and "Not measured", never "No signal"; the Core\'s own NO_SIGNAL state is still said', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/MIC-01' });
+    mark(h, ALL_FAKE);
+    frame(h, 'MIC-01', AUDIO_FRAME_NOT_MEASURED_EXAMPLE);
+    await settle();
+    expect(screen.getByTestId('device-detail-meter-readout')).toHaveTextContent('— dBFS');
+    expect(text('device-detail-meter-not-measured')).toMatch(/Not measured/);
+    expect((screen.getByTestId('device-detail-meter').props.accessibilityValue as { text: string }).text).toBe('— dBFS');
+    expect(text('device-detail-meter-plate')).not.toMatch(/no signal/i);
+    // A flat frame without the member (a Core that booted before J-S 6): the same.
+    frame(h, 'MIC-01', { noSignal: true });
+    await settle();
+    expect(text('device-detail-meter-plate')).not.toMatch(/no signal/i);
+    // The Core states the fault for the microphone: the fault word.
+    act(() => h.sim.store.setState((s) => ({ mics: s.mics.map((mic) => (mic.deviceId === 'MIC-01' ? { ...mic, state: 'NO_SIGNAL' } : mic)) } as Pick<SimState, 'mics'>)));
+    await settle();
+    expect((screen.getByTestId('device-detail-meter').props.accessibilityValue as { text: string }).text).toMatch(/no signal/i);
+  });
+
+  it.each(['off', 'default'] as const)('JA2-34 motion=%s: the large meter\'s clock is not stopped by the test switch and its readout is the input\'s level', async (linkMotion) => {
+    resetMotionStateForTests({ linkMotion });
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/MIC-02' });
+    mark(h, ALL_FAKE);
+    frame(h, 'MIC-02', { dbfs: -18, peak: -18, noSignal: false });
+    await settle();
+    const meter = screen.getByTestId('device-detail-meter');
+    expect((meter.props.accessibilityValue as { text: string }).text).toMatch(/^-\d+ dBFS$/);
+    expect(JSON.stringify(meter.props.accessibilityValue)).not.toMatch(/-90|-60 dBFS/);
+    resetMotionStateForTests();
+  });
+
+  it('JA2-33 / JA2-13 the list: the indicator says "Lamp off" (no "Active"), this device is "Device Control", the PoE row\'s label has no empty middle; JT-14 chips take no touch', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    mark(h, ALL_FAKE);
+    await settle();
+    const relay = String(screen.getByTestId('device-row-REC-INDICATOR').props.accessibilityLabel);
+    // Audit row 198 (M3-10 R3), PIN MOVED citing D52: on a Core in its own capture the indicator has no producer - it
+    // reads "Not reported" (I4), and still never "Active"; the lamp is not lit. Simulated lane: "Lamp off" (CONTROL below).
+    expect(relay).toBe(`Recording Indicator, ${NOT_REPORTED}`);
+    expect(screen.queryByTestId('device-rec-lamp-lit')).toBeNull();
+    expect(String(screen.getByTestId('device-row-TABLET').props.accessibilityLabel)).toMatch(/^Device Control, /);
+    expect(String(screen.getByTestId('device-row-POE-SWITCH').props.accessibilityLabel)).not.toMatch(/, ,/);
+    expect(text('devices-list')).not.toMatch(/[Tt]ablet/);
+    expect(screen.getByTestId('device-row-source-wrap-CAM-01').props.pointerEvents).toBe('none');
+    // The whole row is the target.
+    fireEvent.press(screen.getByTestId('device-row-CAM-02'));
+    await settle();
+    expect(screen.getByTestId(window === 'phonePortrait' ? 'device-detail-screen' : 'device-detail-pane')).toBeTruthy();
+  });
+});
+
+describe.each(WINDOWS)('fix wave J CONTROL - the simulated lane on %s is what it was', (window) => {
+  it('diagnostics: eight PASS rows and "All checks passed"; Health: the derived line; the microphone: its meter with a level', async () => {
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-01' });
+    await settle();
+    fireEvent.press(screen.getByTestId('device-action-diagnostics'));
+    await settle();
+    h.run(6_000);
+    await settle();
+    for (const id of [...PLATFORM_CHECK_IDS, 'CPU', 'CAMERA', 'AUDIO', 'TIME']) expect(screen.getByTestId(`device-diagnostics-${id}-PASS`)).toBeTruthy();
+    expect(text('device-diagnostics-summary')).toMatch(/All checks passed/);
+    expect(screen.queryByText('Not reported')).toBeNull();
+    h.app.unmount();
+
+    const c = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-01' });
+    await settle();
+    fireEvent.press(screen.getByTestId('device-tab-health'));
+    await settle();
+    expect(screen.getByTestId('device-health')).toBeTruthy();
+    expect(screen.queryByTestId('device-health-not-reported')).toBeNull();
+    c.app.unmount();
+
+    const m = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/MIC-01' });
+    act(() => m.sim.store.setState((s) => ({ audio: { ...s.audio, inputs: { ...s.audio.inputs, 'MIC-01': { seq: 1, at: 1, dbfs: -18, peak: -18, clip: false, noSignal: false } } } as SimState['audio'] })));
+    await settle();
+    expect(screen.queryByTestId('device-detail-meter-readout')).toBeNull();
+    expect((screen.getByTestId('device-detail-meter').props.accessibilityValue as { text: string }).text).toMatch(/^-\d+ dBFS$/);
+  });
+
+  // Task 4 row 171 (site M6; decision C18 (2); D61 of 2026-11-04 generalized D137): the input of a meter channel is its line, by the lookup of row 164.
+  it('task 4 row 171: a microphone whose channel has NO line (the selector holds the channel-1 line alone) - the meter reads no frame: "— dBFS" and "Not measured", never the level of MIC-01', async () => {
+    const m = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/MIC-02' }); // D61: the card of the CHANNELLESS device says it
+    act(() =>
+      m.sim.store.setState((s) => ({
+        audio: { ...s.audio, inputs: { ...s.audio.inputs, 'MIC-01': { seq: 1, at: 1, dbfs: -18, peak: -18, clip: false, noSignal: false } } } as SimState['audio'],
+        captureConfig: { ...s.captureConfig, mics: s.captureConfig.mics.filter((line) => line.channel === 'MIC-01') } as SimState['captureConfig'], // D61 (2026-11-04): the lone line is the transcribed channel; channel 2 has none
+      })),
+    );
+    await settle();
+    // The frame of MIC-01 with a level is still in the slice; the channel without its line has no input to read.
+    expect(m.sim.store.getState().audio.inputs['MIC-01']?.dbfs).toBe(-18);
+    expect(screen.getByTestId('device-detail-meter-readout')).toHaveTextContent('— dBFS');
+    expect(text('device-detail-meter-not-measured')).toMatch(/Not measured/);
+    expect((screen.getByTestId('device-detail-meter').props.accessibilityValue as { text: string }).text).toBe('— dBFS');
+    expect(text('device-detail-meter-plate')).not.toMatch(/-18|no signal/i);
+  });
+
+  it('JA2-26: a latched clip with NO session says "No session is recording." and names "Reset clip" with a way to it; while a session records it says "Recording continues on the Core."', async () => {
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    act(() => h.sim.store.setState((s) => ({ mics: s.mics.map((mic) => (mic.deviceId === 'MIC-02' ? { ...mic, clipLatched: true } : mic)) } as Pick<SimState, 'mics'>)));
+    await settle();
+    const alert = text('devices-attention');
+    expect(alert).toMatch(/No session is recording\./);
+    expect(alert).not.toMatch(/Recording continues/);
+    expect(text('devices-attention-clip-remedy')).toMatch(/open MIC 2 and press "Reset clip"/);
+    fireEvent.press(screen.getByTestId('devices-attention-open-clip'));
+    await settle();
+    expect(screen.getByTestId('device-clip-reset')).toBeTruthy();
+    expect(text('device-clip-remedy')).toMatch(/"Reset clip" clears the mark/);
+    h.app.unmount();
+
+    const r = renderDevicesApp({ user: 'rina.wijaya', window, recording: true });
+    act(() => r.sim.store.setState((s) => ({ mics: s.mics.map((mic) => (mic.deviceId === 'MIC-02' ? { ...mic, clipLatched: true } : mic)) } as Pick<SimState, 'mics'>)));
+    await settle();
+    expect(text('devices-attention')).toMatch(/Recording continues on the Core\./);
+    expect(text('devices-attention')).not.toMatch(/No session is recording/);
+  });
+
+  it('RBAC (one rule): Restart is disabled with "Requires the Technician role" for an investigator; Diagnostics and Test signal (DIAGNOSTICS_RUN) are enabled for every role of today', async () => {
+    renderDevicesApp({ user: 'budi.santoso', window, initialUrl: '/devices/CAM-01' });
+    await settle();
+    const disabled = (id: string) => (screen.getByTestId(id).props.accessibilityState as { disabled?: boolean } | undefined)?.disabled === true;
+    expect(disabled('device-action-restart')).toBe(true);
+    expect(text('device-restart-hint')).toMatch(/Requires the Technician role/);
+    expect(disabled('device-action-diagnostics')).toBe(false);
+    expect(disabled('device-action-test-signal')).toBe(false);
+    expect(screen.queryByTestId('device-diagnostics-hint')).toBeNull();
+  });
+});
+
+// JA2-N10 (headline 5): "Camera search is not available on this Core yet." with "Retry" on a SIMULATED Core led
+// nowhere. The stand-in Core of this file answers every call 503 (`live()`), as lane 1 answers the search.
+describe('fix wave J - camera search answered "unavailable"', () => {
+  it('a SIMULATED Core (Live, no device states a class): the sentence for what it is, NO Retry, the search control disabled with that sentence', async () => {
+    live();
+    renderDevicesApp({ user: 'rina.wijaya' });
+    await settle();
+    fireEvent.press(screen.getByTestId('camera-search-action'));
+    await settle();
+    expect(text('camera-search-simulated-core')).toMatch(/This Core is simulated: it has no camera search\. Camera search is a function of a Core in real capture\./);
+    expect(screen.queryByTestId('camera-search-retry')).toBeNull();
+    expect(screen.queryByTestId('camera-search-unavailable')).toBeNull();
+    expect(text('camera-search')).not.toMatch(/\byet\b|connects to nothing/);
+    const action = screen.getByTestId('camera-search-action');
+    expect((action.props.accessibilityState as { disabled?: boolean }).disabled).toBe(true);
+    expect(String(action.props.accessibilityHint)).toMatch(/This Core is simulated/);
+  });
+
+  it('CONTROL - a Core in real capture that answers 503: "not available right now" WITH Retry (it may come back)', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya' });
+    mark(h, ALL_FAKE);
+    await settle();
+    fireEvent.press(screen.getByTestId('camera-search-action'));
+    await settle();
+    expect(text('camera-search-unavailable')).toMatch(/Camera search is not available on this Core right now\./);
+    expect(screen.getByTestId('camera-search-retry')).toBeTruthy();
+    expect(screen.queryByTestId('camera-search-simulated-core')).toBeNull();
+  });
+});

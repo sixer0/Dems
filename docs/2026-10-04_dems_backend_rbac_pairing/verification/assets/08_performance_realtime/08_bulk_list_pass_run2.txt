@@ -1,0 +1,105 @@
+10:17:44
+10:17  up 5 days, 17:30, 2 users, load averages: 6.69 6.06 5.83
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_local_tmip5l0v_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_local_tmip5l0v_tpl_schema: built in 92 ms (create 36 ms, hook 54 ms)
+[test:db] template dems_test_local_tmip5l0v_tpl_seed: built in 164 ms (create 61 ms, hook 103 ms)
+[test:db] bulk fixture: dems_test_local_tmip5l0v_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 26e251887c667e1e...; digest e58f1ae233811851...; build 193 ms, write 1296 ms, total 1494 ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > the bulk template: what is stored and what the engine holds > 5,000 fixture audit rows and the rows of the boot and the sign-ins; 3,649 events; 25 lineage rows; the engine's rings hold 1,000 and 500
+[w39] bulk clone after boot and three sign-ins: 5004 audit rows stored, 1000 in the engine's ring; 3653 events stored, 500 in the ring; 25 lineage rows
+
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > the first call verifies ALL stored rows in one pass: view over the ring of 1,000, stored over the table, the newest 20 of 25 lineage rows
+[w39] full verification of 5004 stored rows: the whole call 39 ms (view over 1,000 ring rows, stored over 5004, lineage); the digest check alone over 5004 rows 20 ms (synchronous); the same call with nothing to verify 7 ms
+
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > the lineage: 25 chains were discarded; the answer holds the newest 20, newest first, and lineageTotal 25
+[w39] bulk lineage: 25 stored, 20 returned (reset numbers 25 down to 6), lineageTotal 25
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > the bulk template: what is stored and what the engine holds > 5,000 fixture audit rows and the rows of the boot and the sign-ins; 3,649 events; 25 lineage rows; the engine's rings hold 1,000 and 500 3ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > the bulk template: what is stored and what the engine holds > in sequence order `at` descends exactly once: the reason every assertion here goes by seq 9ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > the first call verifies ALL stored rows in one pass: view over the ring of 1,000, stored over the table, the newest 20 of 25 lineage rows 77ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > the lineage: 25 chains were discarded; the answer holds the newest 20, newest first, and lineageTotal 25 7ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > after k appended rows a call reads exactly k of the 5,000+: 7, then 1, then none
+[w39] bulk, incremental: 7 appended -> 7 audit row(s) read, the whole call 7 ms
+
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > after k appended rows a call reads exactly k of the 5,000+: 7, then 1, then none
+[w39] bulk, incremental: 1 appended -> 1 audit row(s) read, the whole call 6 ms
+
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > after k appended rows a call reads exactly k of the 5,000+: 7, then 1, then none
+[w39] bulk, incremental: 0 appended -> 0 audit row(s) read, the whole call 6 ms
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > after k appended rows a call reads exactly k of the 5,000+: 7, then 1, then none 24ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > ASCENDING, while rows are appended: every original row exactly once, in chain order, and a tail that is the appended rows, gap-free up to the head of the last page
+[w39] paging proof, ASC: 5012 rows at the start, 35 appended during the walk; 26 pages of 200 returned 5047 rows, sequences 1..5047 each once; totals reported 5012 -> 5047
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > ASCENDING, while rows are appended: every original row exactly once, in chain order, and a tail that is the appended rows, gap-free up to the head of the last page 204ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > DESCENDING, while rows are appended: exactly the rows that existed at the first page, newest first, each once; rows appended later lie before the first page
+[w39] paging proof, DESC: 5047 rows at the first page, 40 appended during the walk; 26 pages returned sequences 5047..1 each once; totals reported 5047 -> 5087
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > DESCENDING, while rows are appended: exactly the rows that existed at the first page, newest first, each once; rows appended later lie before the first page 99ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > a walk over a count that is an exact multiple of the page size ends on a FULL page without a cursor: no empty page
+[w39] 5200 rows = 26 full pages of 200; the last page has no cursor and no page is empty
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > a walk over a count that is an exact multiple of the page size ends on a FULL page without a cursor: no empty page 92ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > other page sizes give the same list: 199 (whole walk) and 1, 7, 50 (the default) for the first pages and across the ring's edge 92ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > the filters at volume: category, type, actor, session and evidence give exactly the stored rows that match, in both orders
+[w39] bulk, audit rows by category: {"AUTH":619,"SESSION":2539,"EVIDENCE":832,"DEVICE":551,"SECURITY":262,"STORAGE":105,"PAIRING":241,"SYSTEM":51}
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > the filters at volume: category, type, actor, session and evidence give exactly the stored rows that match, in both orders 105ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 63 at volume > a walk in pages of 200 returns every stored event once, by seq, although the engine's ring holds 500
+[w39] bulk events: 3653 stored, walked in 19 pages of 200, each once
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 63 at volume > a walk in pages of 200 returns every stored event once, by seq, although the engine's ring holds 500 43ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 63 at volume > the three filters at volume give exactly the stored events that match 67ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operations 58 and 61 at volume: the STORED chain, not the ring > an export answers the STORED rows it covers; the simulator's row counts the ring (finding of this row)
+[w39] bulk export: the answer says rows 5200 (the stored chain); the AUDIT_EXPORTED row's details say rows 1000 (the engine's ring)
+
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > no secret in any answer of the lists at volume (rule 6) > every page of the audit list and of the events, and the status, hold nothing secret-shaped
+[w39] secret scan, bulk clone: 48 answers, 3119807 characters, 0 findings
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operations 58 and 61 at volume: the STORED chain, not the ring > getSecurityStatus answers the stored head and total 1ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operations 58 and 61 at volume: the STORED chain, not the ring > an export answers the STORED rows it covers; the simulator's row counts the ring (finding of this row) 13ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > no secret in any answer of the lists at volume (rule 6) > every page of the audit list and of the events, and the status, hold nothing secret-shaped 104ms
+
+ Test Files  1 passed (1)
+      Tests  15 passed (15)
+   Start at  10:17:45
+   Duration  4.94s (tests 74%, transform 17%, import 9%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 59 ms; 0 remain with the run prefix dems_test_local_tmip5l0v_
+10:17  up 5 days, 17:30, 2 users, load averages: 6.55 6.04 5.83

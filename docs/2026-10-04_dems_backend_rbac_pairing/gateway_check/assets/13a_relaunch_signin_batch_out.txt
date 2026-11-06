@@ -1,0 +1,29 @@
+21:09:36.533 batch start; device time 10-06 21:09:36.000; host load 8.79
+21:09:36.702 mark relaunch at 21:09:36.702
+21:09:36.828 force-stopped the app
+21:09:37.805 slept 1500 ms
+21:09:39.742 deep link demsdemo:///login?core=LIVE&motion=off
+21:10:01.271 slept 12000 ms
+21:10:13.797 mCurrentFocus=Window{71668f0 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+21:10:13.996 declared screen login
+21:10:14.081 screencap c01_login_after_relaunch.png 21:10:14.081..21:10:14.899
+21:10:15.079 mark signin1 at 21:10:15.079
+21:10:15.154 tap 539,1184
+21:10:15.418 slept 900 ms
+21:10:16.452 username typed (budi.santoso, INVESTIGATOR); inputType 0x0
+21:10:26.164 slept 600 ms
+21:10:26.868 tap 539,1342
+21:10:27.326 slept 1500 ms
+21:10:28.916 focused true; keyguard false; inputType 0x80081
+21:10:30.249 password typed (not shown); inputType 0x80081
+21:10:31.239 slept 400 ms
+21:10:31.718 key 66
+21:10:32.169 signin 200 at device 10-06 21:10:32.002 (POST /api/v1/auth/sign-in 200)
+21:10:33.076 slept 5000 ms
+21:10:40.105 declared screen home
+21:10:40.316 screencap c02_after_signin.png 21:10:40.316..21:10:44.170
+21:10:46.105 w1: HeadlessChrome/153.0.8010.12 headless=true pid 18584 devtools 127.0.0.1:62858 (OS-assigned, listener owned by pid 18584), fresh profile in TMPDIR
+21:10:46.937 nav /login load=true
+21:10:51.093 signin andi.pratama (SUPERVISOR) dashboard after 1189 ms
+21:10:58.461 nav /session load=true
+21:11:01.817 ids => ["page-session-monitor"]

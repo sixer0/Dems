@@ -1,0 +1,3468 @@
+--- a/apps/core-web/src/components/composed/dbfs-meter.tsx (pre-image)
++++ b/apps/core-web/src/components/composed/dbfs-meter.tsx
+@@ -1,5 +1,5 @@
+ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+-import { Button, Chip } from '@heroui/react'
++import { Button, Chip, toast } from '@heroui/react'
+ import {
+   AnimatePresence,
+   motion,
+@@ -9,12 +9,16 @@
+   type MotionValue,
+   type Transition,
+ } from 'motion/react'
++import type { TFunction } from 'i18next'
+ import { useTranslation } from 'react-i18next'
+ import type { AudioTrackId } from '@dems/shared/domain'
+-import { useAudioChannel, useSimActions, useSimInstance, type AudioFrame } from '@dems/shared/sim'
++import { settle, useCoreActions, type CoreActions } from '@dems/shared/live'
++import { useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim'
+ import { motion as tokens } from '@dems/shared/tokens'
+ import { reportMeterFrame, tween, useMotionPolicy } from '@/motion'
++import { useCoreErrorPresenter } from '@/lib/core-errors'
+ import { cn } from '@/lib/utils'
++import { webErrorSink } from '@/runtime'
+ import {
+   ariaValueNow,
+   createFrameGate,
+@@ -66,6 +70,45 @@
+ }
+ 
+ /** Writes into the text node React rendered (so a later React update edits the same node). */
++/** The fixed sentence of the meter's own record when a clip reset fails for a reason the presenter left to it. */
++const CLIP_RESET_FAILED_RECORD = 'A clip latch reset from an audio meter was not carried out.'
++
++/**
++ * The CLIP chip's reset (plan row W0, item 4; decision D154 DN-3, finding F-3 of W65): the simulator's
++ * action in Simulated mode, operation 52 `resetMicClip` in Live mode, consumed through `settle` in both
++ * (rule 1 of the page rows). A refusal goes to the refusal presenter first (rule 2: a 403, an outage, a
++ * time-out and a 429 have its words); what it leaves to the meter (a 400 or 422 the operator cannot
++ * correct) gets the console's generic sentence and one record in the page's own log — a fixed
++ * message and the cause's name, code and status, never its text (CPW1-8). A simulator never refuses a
++ * reset, so Simulated mode is unchanged.
++ */
++function resetClip(
++  actions: CoreActions,
++  channel: AudioTrackId,
++  presentCoreError: ReturnType<typeof useCoreErrorPresenter>,
++  t: TFunction,
++): void {
++  settle(() => actions.resetClip(channel), {
++    fail: (error) => {
++      if (presentCoreError(error) !== null) return
++      const { code, status } = typeof error === 'object' && error !== null ? (error as { code?: unknown; status?: unknown }) : {}
++      webErrorSink.report({
++        level: 'error',
++        source: 'components/composed.DbfsMeter.resetClip',
++        message: CLIP_RESET_FAILED_RECORD,
++        at: Date.now(),
++        context: {
++          channel,
++          errorName: error instanceof Error ? error.name : typeof error,
++          ...(typeof code === 'string' || typeof code === 'number' ? { code } : {}),
++          ...(typeof status === 'number' ? { status } : {}),
++        },
++      })
++      toast.danger(t('common.errors.generic'))
++    },
++  })
++}
++
+ function setText(element: HTMLElement, text: string) {
+   const node = element.firstChild
+   if (node && node.nodeType === Node.TEXT_NODE) {
+@@ -140,7 +183,8 @@
+   const { t } = useTranslation()
+   const m = useMotionPolicy()
+   const sim = useSimInstance()
+-  const actions = useSimActions()
++  const actions = useCoreActions()
++  const presentCoreError = useCoreErrorPresenter()
+   const vertical = (orientation ?? (variant === 'large' ? 'vertical' : 'horizontal')) === 'vertical'
+   const layout = LAYOUT[variant]
+ 
+@@ -357,7 +401,7 @@
+               variant="ghost"
+               aria-label={`${t('session.audio.clipReset')}: ${accessibleName}`}
+               className="h-auto min-w-0 p-0"
+-              onPress={() => actions.resetClip(channel)}
++              onPress={() => resetClip(actions, channel, presentCoreError, t)}
+             >
+               <Chip
+                 color="danger"
+--- a/apps/core-web/src/components/media/camera-feed.math.ts (pre-image)
++++ b/apps/core-web/src/components/media/camera-feed.math.ts
+@@ -88,10 +88,15 @@
+   return formatDate(epochMs, 'YYYY-MM-DD  HH:mm:ss  [UTC]Z')
+ }
+ 
+-/** Bottom OSD line of the procedural feed (step 92 live-loop wording; DEMO per P13). */
+-export function osdLabel(cameraId: VideoTrackId): string {
++/**
++ * Bottom OSD line of the procedural feed (step 92 live-loop wording; DEMO per P13). With the Core's
++ * data (`liveData`, Live mode) the line keeps the DEMO marking and drops LIVE: the picture is the
++ * bundled demo still (decision MS-1), not the Core's camera, and in Live mode the word "live" names
++ * the server's data only (04_client_integration_spec §3.2; plan row W0, item 7).
++ */
++export function osdLabel(cameraId: VideoTrackId, liveData = false): string {
+   const n = cameraId.slice(-2)
+-  return `CAM-${n} | ${cameraId} | LIVE | DEMO`
++  return liveData ? `CAM-${n} | ${cameraId} | BUNDLED DEMO` : `CAM-${n} | ${cameraId} | LIVE | DEMO`
+ }
+ 
+ /**
+--- a/apps/core-web/src/components/media/camera-feed.tsx (pre-image)
++++ b/apps/core-web/src/components/media/camera-feed.tsx
+@@ -1,5 +1,6 @@
+ import {
+   useCallback,
++  useContext,
+   useEffect,
+   useImperativeHandle,
+   useMemo,
+@@ -12,6 +13,8 @@
+ import { AnimatePresence, motion, useInView, usePageInView, type Transition } from 'motion/react'
+ import { useTranslation } from 'react-i18next'
+ import type { VideoTrackId } from '@dems/shared/domain'
++import { CoreMode, coreModeOf } from '@dems/shared/live'
++import { SimContext } from '@dems/shared/sim'
+ import { motion as tokens } from '@dems/shared/tokens'
+ import { GlowLayer, tween, useAmbientLoop, useMotionPolicy } from '@/motion'
+ import { cn } from '@/lib/utils'
+@@ -131,6 +134,12 @@
+   ref,
+ }: CameraFeedProps) {
+   const { t } = useTranslation()
++  // Live mode (plan row W0, item 7; 04_client_integration_spec §3.2): the camera's state is the Core's,
++  // the picture is still the bundled demo loop (decision MS-1). The component's own words say so: the
++  // procedural OSD line and the default accessible name do not call that picture live. The line burnt
++  // into the bundled loop's frames cannot be changed here (decision for the controller, W0 report).
++  const sim = useContext(SimContext)
++  const liveData = sim !== null && coreModeOf(sim) === CoreMode.LIVE
+   const m = useMotionPolicy()
+   const liveMedia = useMemo(() => liveVideo(cameraId), [cameraId])
+   const videoSrc = src === undefined ? (liveMedia?.src ?? null) : src
+@@ -237,9 +246,14 @@
+     if (mode !== 'procedural') return undefined
+     const canvas = canvasRef.current
+     if (!canvas) return undefined
+-    const feed = createProceduralFeed(canvas, cameraId, () => {
+-      feed?.paint(performance.now(), { animate: false, now: readNow() })
+-    })
++    const feed = createProceduralFeed(
++      canvas,
++      cameraId,
++      () => {
++        feed?.paint(performance.now(), { animate: false, now: readNow() })
++      },
++      liveData,
++    )
+     if (!feed) return undefined
+     feedRef.current = feed
+     const applySize = () => {
+@@ -254,7 +268,7 @@
+       feed.destroy()
+       if (feedRef.current === feed) feedRef.current = null
+     }
+-  }, [mode, cameraId, readNow])
++  }, [mode, cameraId, readNow, liveData])
+ 
+   useEffect(() => {
+     if (mode !== 'procedural' || !visible) return undefined
+@@ -315,7 +329,7 @@
+   const dimTransition = m.transitions.crossFade
+   const mediaHover = variant === 'tile' ? m.interactions.mediaTile.whileHover : undefined
+   const recording = recordingSince !== null
+-  const imageLabel = ariaLabel ?? `${t(`common.tracks.${cameraId}`)} · ${t('session.feed.title')}`
++  const imageLabel = ariaLabel ?? `${t(`common.tracks.${cameraId}`)} · ${t(liveData ? 'session.feed.bundledPicture' : 'session.feed.title')}`
+   const chipSize = variant === 'feed' ? 'md' : 'sm'
+ 
+   return (
+--- a/apps/core-web/src/components/media/procedural-feed.ts (pre-image)
++++ b/apps/core-web/src/components/media/procedural-feed.ts
+@@ -139,6 +139,8 @@
+   canvas: HTMLCanvasElement,
+   cameraId: VideoTrackId,
+   onStillReady?: () => void,
++  /** Live mode: the OSD line says what is true of a bundled picture (`osdLabel`, plan row W0, item 7). */
++  liveData = false,
+ ): ProceduralFeed | null {
+   const context = canvas.getContext('2d')
+   if (!context) return null
+@@ -188,7 +190,7 @@
+     ctx.font = `600 ${size}px ${'"JetBrains Mono Variable", ui-monospace, monospace'}`
+     ctx.textAlign = 'center'
+     ctx.textBaseline = 'bottom'
+-    const lines = [osdTimestamp(now), osdLabel(cameraId)]
++    const lines = [osdTimestamp(now), osdLabel(cameraId, liveData)]
+     let y = height - size * 0.9
+     for (let i = lines.length - 1; i >= 0; i -= 1) {
+       const text = lines[i] ?? ''
+--- a/apps/core-web/src/features/dashboard/devices-panel.tsx (pre-image)
++++ b/apps/core-web/src/features/dashboard/devices-panel.tsx
+@@ -1,16 +1,17 @@
+-import { useCallback, useEffect, useMemo, useRef, useState, type Key, type ReactNode } from 'react'
++import { useCallback, useMemo, type Key, type ReactNode } from 'react'
+ import { Button, Description, Dropdown, Label, Spinner, toast } from '@heroui/react'
+ import { useNavigate } from '@tanstack/react-router'
+ import { motion } from 'motion/react'
+ import { Activity, Cpu, EllipsisVertical, Info, Mic, RotateCw } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+ import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain'
+-import { CoreMode, LIVE_PENDING_REVEAL_MS, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
++import { CoreMode, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
+ import { DeviceCommand, Permission, selectCan, useSim, type SimState } from '@dems/shared/sim'
+ import { motion as tokens, type StatusTone } from '@dems/shared/tokens'
+ import { DbfsMeter } from '@/components/composed'
+ import { CameraFeed } from '@/components/media'
+ import { useCoreErrorPresenter } from '@/lib/core-errors'
++import { usePendingControl } from '@/lib/pending-control'
+ import { useMotionPolicy } from '@/motion'
+ import { DashPanel, PanelLink } from './dash-panel'
+ import { requiredRoleFor, TONE_TEXT_CLASS } from './dashboard-model'
+@@ -65,24 +66,6 @@
+ /** The fixed sentence of the page's own record when a command fails for a reason the presenter left to the page. */
+ const COMMAND_FAILED_RECORD = 'A device command of the Dashboard was not carried out.'
+ 
+-/**
+- * Whether the pending look of a control is shown: only after it has been busy for `delayMs`
+- * (LB-1, "busy at once, spinner late"). A command that settles sooner never changes the look, and
+- * in Simulated mode the command settles before the press returns, so nothing changes there.
+- */
+-function usePendingReveal(busy: boolean, delayMs: number): boolean {
+-  const [revealed, setRevealed] = useState(false)
+-  useEffect(() => {
+-    if (!busy) return undefined
+-    const timer = setTimeout(() => setRevealed(true), delayMs)
+-    return () => {
+-      clearTimeout(timer)
+-      setRevealed(false)
+-    }
+-  }, [busy, delayMs])
+-  return busy && revealed
+-}
+-
+ interface DeviceCommandControl {
+   /** True from the press until the command settled (LB-1: further presses are ignored meanwhile). */
+   readonly busy: boolean
+@@ -113,11 +96,9 @@
+   const actions = useCoreActions()
+   const presentCoreError = useCoreErrorPresenter()
+   const words = COMMAND_WORDS[useCoreMode()]
+-  const m = useMotionPolicy()
+-  // LB-1: the flag answers the next press at once; the state drives the look.
+-  const inFlight = useRef(false)
+-  const [busy, setBusy] = useState(false)
+-  const showPending = usePendingReveal(busy, LIVE_PENDING_REVEAL_MS * m.timeScale)
++  // LB-1: the shared pending control (`@/lib/pending-control`, plan row W0) ignores the next press at
++  // once and reveals the spinner late; a command that settles in the press changes nothing.
++  const { busy, pending: showPending, run } = usePendingControl()
+ 
+   const onAction = useCallback(
+     (key: Key) => {
+@@ -125,26 +106,22 @@
+         void navigate({ to: '/devices' })
+         return
+       }
+-      if (inFlight.current) return
+       const command = key === 'test' ? DeviceCommand.TEST_SIGNAL : DeviceCommand.RESTART
+-      inFlight.current = true
+-      setBusy(true)
+-      settle(() => actions.deviceCommand(deviceId, command), {
+-        ok: () => {
+-          toast.success(t(words[command], { name }))
+-        },
+-        fail: (error) => {
+-          if (presentCoreError(error) !== null) return
+-          reportDashboardError('features/dashboard.DeviceMenu', error, COMMAND_FAILED_RECORD, { deviceId, command })
+-          toast.danger(t('dashboard.devices.commandFailed'))
+-        },
+-        done: () => {
+-          inFlight.current = false
+-          setBusy(false)
+-        },
++      run((release) => {
++        settle(() => actions.deviceCommand(deviceId, command), {
++          ok: () => {
++            toast.success(t(words[command], { name }))
++          },
++          fail: (error) => {
++            if (presentCoreError(error) !== null) return
++            reportDashboardError('features/dashboard.DeviceMenu', error, COMMAND_FAILED_RECORD, { deviceId, command })
++            toast.danger(t('dashboard.devices.commandFailed'))
++          },
++          done: release,
++        })
+       })
+     },
+-    [actions, deviceId, name, navigate, presentCoreError, t, words],
++    [actions, deviceId, name, navigate, presentCoreError, run, t, words],
+   )
+   return { busy, showPending, onAction }
+ }
+--- a/apps/core-web/src/features/dashboard/report.ts (pre-image)
++++ b/apps/core-web/src/features/dashboard/report.ts
+@@ -1,5 +1,7 @@
+ /**
+- * Where a failure of a Dashboard control is written (backend task, plan row W63).
++ * Where a failure of a page control is written (backend task, plan row W63; the one helper since plan
++ * row W0, item 8 — finding F70-5, decision D156: `features/devices/report.ts` was a copy of this file
++ * and now binds its own prefix here).
+  *
+  * The console has no client-log endpoint (predecessor decisions D3, D4, D41(g)), so the record goes
+  * to the page's own log, `webErrorSink` of `@/runtime`: kept in memory, printed to the console in a
+@@ -10,7 +12,7 @@
+  * The discipline of `components/shell/shell-report.ts` and `features/login/report.ts` (finding
+  * CPW1-8, decision D144(1)): `message` is the caller's fixed sentence, never the text of the
+  * error, which is not trusted to be free of input; the cause is named by its class, code and
+- * status; `context` holds non-secret facts of the caller (a device ID, a command name).
++ * status; `context` holds non-secret facts of the caller (a device ID, a command name, a channel).
+  */
+ import { webErrorSink, type ErrorSink } from '@/runtime'
+ 
+@@ -24,14 +26,52 @@
+   }
+ }
+ 
+-let sequence = 0
++export interface PageReporter {
++  /** A correlation ID per failed control action (`<prefix>-<time>-<n>`), so its records can be joined. */
++  readonly newCorrelationId: () => string
++  /**
++   * Writes one record to the page's own log. Never throws (the sink does not). `sink` is for tests;
++   * a page passes nothing.
++   */
++  readonly report: (
++    source: string,
++    error: unknown,
++    message: string,
++    context?: Record<string, string | number | boolean | null>,
++    level?: 'error' | 'warn',
++    sink?: Pick<ErrorSink, 'report'>,
++  ) => void
++}
+ 
+-/** A correlation ID per failed control action (`dash-<time>-<n>`), so its records can be joined. */
+-export function newDashboardCorrelationId(): string {
+-  sequence += 1
+-  return `dash-${Date.now().toString(36)}-${sequence}`
++/** The reporter of one page: its correlation IDs start with `prefix` and count on their own. */
++export function createPageReporter(prefix: string): PageReporter {
++  let sequence = 0
++  const newCorrelationId = (): string => {
++    sequence += 1
++    return `${prefix}-${Date.now().toString(36)}-${sequence}`
++  }
++  const report: PageReporter['report'] = (source, error, message, context = {}, level = 'error', sink = webErrorSink) => {
++    sink.report({
++      level,
++      source,
++      message,
++      at: Date.now(),
++      context: {
++        ...context,
++        errorName: error instanceof Error ? error.name : typeof error,
++        ...causeFacts(error),
++        correlationId: newCorrelationId(),
++      },
++    })
++  }
++  return { newCorrelationId, report }
+ }
+ 
++const dashboard = createPageReporter('dash')
++
++/** A correlation ID per failed control action of the Dashboard (`dash-<time>-<n>`). */
++export const newDashboardCorrelationId = dashboard.newCorrelationId
++
+ /**
+  * Writes one record of level `error` to the page's own log. Never throws (the sink does not).
+  * `sink` is for tests; the page passes nothing.
+@@ -43,16 +83,5 @@
+   context: Record<string, string | number | boolean | null> = {},
+   sink: Pick<ErrorSink, 'report'> = webErrorSink,
+ ): void {
+-  sink.report({
+-    level: 'error',
+-    source,
+-    message,
+-    at: Date.now(),
+-    context: {
+-      ...context,
+-      errorName: error instanceof Error ? error.name : typeof error,
+-      ...causeFacts(error),
+-      correlationId: newDashboardCorrelationId(),
+-    },
+-  })
++  dashboard.report(source, error, message, context, 'error', sink)
+ }
+--- a/apps/core-web/src/features/devices/audio-input-card.tsx (pre-image)
++++ b/apps/core-web/src/features/devices/audio-input-card.tsx
+@@ -1,4 +1,4 @@
+-import { useCallback, useRef, useState } from 'react'
++import { useCallback, useRef } from 'react'
+ import { Button, Chip, Spinner, Tooltip, toast } from '@heroui/react'
+ import { AnimatePresence, motion } from 'motion/react'
+ import { Lock, RotateCcw } from 'lucide-react'
+@@ -9,11 +9,11 @@
+ import { selectMicById, useAudioChannel, useSim, type AudioFrame } from '@dems/shared/sim'
+ import { DbfsMeter, formatDbfsValue, METER_THRESHOLDS } from '@/components/composed'
+ import { useCoreErrorPresenter } from '@/lib/core-errors'
++import { usePendingControl } from '@/lib/pending-control'
+ import { useMotionPolicy } from '@/motion'
+ import { useDevicePending } from './context'
+ import { DeviceMenu, IdentifyRing } from './device-menu'
+ import { useDeviceLabels } from './labels'
+-import { usePendingReveal } from './live'
+ import { deviceStatus, STATUS_SEVERITY, STATUS_TONE } from './model'
+ import { reportDevicesError } from './report'
+ import { MIC_DEVICE, type RearPortId } from './sim-adapter'
+@@ -53,9 +53,8 @@
+   const deviceId = MIC_DEVICE[channel]
+   // LB-1: the kebab's Button drops `aria-busy`, so the head that holds it carries it.
+   const commandBusy = useDevicePending(deviceId)
+-  const resetting = useRef(false)
+-  const [resetBusy, setResetBusy] = useState(false)
+-  const showResetPending = usePendingReveal(resetBusy)
++  // LB-1: the shared pending control (`@/lib/pending-control`, plan row W0).
++  const { busy: resetBusy, pending: showResetPending, run: runReset } = usePendingControl()
+   const mic = useSim((s) => selectMicById(s, channel))
+   const status = useSim((s) => deviceStatus(s, deviceId))
+   const fullName = labels.fullName(deviceId)
+@@ -66,27 +65,21 @@
+   const noSignal = status === 'NO_SIGNAL'
+ 
+   const resetClip = () => {
+-    // LB-1: one reset at a time; a press while one is out sends nothing.
+-    if (resetting.current) return
+-    resetting.current = true
+-    let settled = false
+-    settle(() => actions.resetClip(channel), {
+-      ok: () => {
+-        toast.success(t('devices.actions.clipReset', { name }))
+-      },
+-      fail: (error) => {
+-        if (presentCoreError(error) !== null) return
+-        reportDevicesError('features/devices.resetClip', error, CLIP_RESET_FAILED_RECORD, { channel })
+-        toast.danger(t('devices.actions.failed'))
+-      },
+-      done: () => {
+-        settled = true
+-        resetting.current = false
+-        setResetBusy(false)
+-      },
++    // LB-1: one reset at a time; a press while one is out sends nothing. A Simulated reset settles
++    // in the press, so nothing of the control changes.
++    runReset((release) => {
++      settle(() => actions.resetClip(channel), {
++        ok: () => {
++          toast.success(t('devices.actions.clipReset', { name }))
++        },
++        fail: (error) => {
++          if (presentCoreError(error) !== null) return
++          reportDevicesError('features/devices.resetClip', error, CLIP_RESET_FAILED_RECORD, { channel })
++          toast.danger(t('devices.actions.failed'))
++        },
++        done: release,
++      })
+     })
+-    // A Live reset is out: show it. A Simulated one has settled already, so nothing changes.
+-    if (!settled) setResetBusy(true)
+   }
+ 
+   return (
+--- a/apps/core-web/src/features/devices/camera-tile.tsx (pre-image)
++++ b/apps/core-web/src/features/devices/camera-tile.tsx
+@@ -8,6 +8,7 @@
+ import { useDeviceActions, useDevicePending } from './context'
+ import { DeviceMenu, IdentifyRing } from './device-menu'
+ import { useDeviceLabels } from './labels'
++import { useDeviceWords } from './live'
+ import { deviceStatus, STATUS_SEVERITY, STATUS_TONE } from './model'
+ import { CAMERA_DEVICE, CAMERA_POE_PORT } from './sim-adapter'
+ import { StatusChip, StatusDot } from './status-chip'
+@@ -32,6 +33,7 @@
+  */
+ export function CameraTile({ cameraId, lens }: CameraTileProps) {
+   const { t } = useTranslation()
++  const words = useDeviceWords()
+   const m = useMotionPolicy()
+   const labels = useDeviceLabels()
+   const { open } = useDeviceActions()
+@@ -91,7 +93,8 @@
+           formatLabel={t('common.devices.cameraFormat', { resolution, fps })}
+           recordingSince={null}
+           noSignal={status === 'FAULT'}
+-          ariaLabel={t('devices.cameras.feedAria', { name })}
++          // Live mode: the picture is the bundled demo loop, not a live preview (plan row W0, item 7).
++          ariaLabel={t(words.feedAria, { name })}
+         />
+         <IdentifyRing deviceId={deviceId} />
+       </button>
+--- a/apps/core-web/src/features/devices/device-drawer.tsx (pre-image)
++++ b/apps/core-web/src/features/devices/device-drawer.tsx
+@@ -22,6 +22,7 @@
+ import { DATE_PATTERNS, EMPTY_DATE_TEXT, formatDate, useRetryCooldown } from '@dems/shared/realtime'
+ import {
+   DEVICE_IDENTITY,
++  DeviceCommand,
+   Permission,
+   selectCameraById,
+   selectMicById,
+@@ -513,7 +514,9 @@
+ 
+ /**
+  * The detail cell from codes only (type, fault kind, command, link state), never the simulator's
+- * English text (m4). The command words follow the data mode (§3.2, plan row W70).
++ * English text (m4). The command words follow the data mode (§3.2, plan row W70). An Identify row
++ * reads "Identify (blink)", the menu's own word, in both modes (plan row W0, item 6: finding F70-1,
++ * decision D156 — before W0 every command that was not a test signal read as a restart).
+  */
+ function logDetail(row: AuditRow, t: TFunction, words: DeviceWords): string {
+   const kind = typeof row.details.kind === 'string' ? (row.details.kind as FaultKind) : null
+@@ -523,7 +526,9 @@
+     case 'AUDIT_CHAIN_DISCONTINUITY':
+       return kind ? t(`common.faultKind.${kind}`) : EMPTY_DATE_TEXT
+     case 'DEVICE_COMMAND':
+-      return row.details.command === 'TEST_SIGNAL' ? t(words.testSignal) : t(words.restart)
++      if (row.details.command === DeviceCommand.TEST_SIGNAL) return t(words.testSignal)
++      if (row.details.command === DeviceCommand.IDENTIFY) return t('common.deviceMenu.identify')
++      return t(words.restart)
+     case 'TABLET_LINK_CHANGED':
+       return typeof row.details.state === 'string' ? t(`common.tabletLinkState.${row.details.state as TabletLinkState}`) : EMPTY_DATE_TEXT
+     default:
+--- a/apps/core-web/src/features/devices/device-menu.tsx (pre-image)
++++ b/apps/core-web/src/features/devices/device-menu.tsx
+@@ -4,9 +4,10 @@
+ import { Activity, EllipsisVertical, Info, Lightbulb, RotateCcw } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+ import { Permission, selectCan, useSim } from '@dems/shared/sim'
++import { usePendingReveal } from '@/lib/pending-control'
+ import { useMotionPolicy } from '@/motion'
+ import { useDeviceActions, useIdentify, type DeviceAction } from './context'
+-import { usePendingReveal, useDeviceWords } from './live'
++import { useDeviceWords } from './live'
+ import { selectIsRecordingNow } from './model'
+ import { COMMANDABLE, IDENTIFY_BLINKS, IDENTIFY_PERIOD_MS, type DeviceId } from './sim-adapter'
+ 
+--- a/apps/core-web/src/features/devices/live.ts (pre-image)
++++ b/apps/core-web/src/features/devices/live.ts
+@@ -7,15 +7,13 @@
+  * |--------|------------|
+  * | `DEVICE_WORDS`, `useDeviceWords()` | The i18n keys of the words that say "simulated" in Simulated mode, and their Live twins (§3.2: a Live screen shows the Core's data and never says "simulated") |
+  * | `DEVICE_COMMAND_OF` | The device command a kebab item sends |
+- * | `usePendingReveal(busy)` | LB-1 "busy at once, spinner late": true once a control has been busy for `LIVE_PENDING_REVEAL_MS` (scaled by the motion policy) |
+  *
+- * In Simulated mode a command settles before the press returns, so no control is ever busy and
+- * nothing of this changes the look of the page.
++ * The late reveal of a busy control (LB-1) is the console's one implementation,
++ * `usePendingReveal` of `@/lib/pending-control` (plan row W0); the page keeps its keyed in-flight
++ * set (one command per device, several devices at once) in `index.tsx`.
+  */
+-import { useEffect, useState } from 'react'
+-import { CoreMode, LIVE_PENDING_REVEAL_MS, useCoreMode } from '@dems/shared/live'
++import { CoreMode, useCoreMode } from '@dems/shared/live'
+ import { DeviceCommand } from '@dems/shared/sim'
+-import { useMotionPolicy } from '@/motion'
+ import type { DeviceAction } from './context'
+ 
+ /** The words per data mode. Simulated mode keeps the predecessor's keys, unchanged. */
+@@ -27,6 +25,7 @@
+     restarted: 'devices.actions.restarted',
+     lcdLabel: 'devices.front.lcdLabel',
+     samples: 'devices.drawer.health.samples',
++    feedAria: 'devices.cameras.feedAria',
+   },
+   [CoreMode.LIVE]: {
+     testSignal: 'devices.live.menu.testSignal',
+@@ -35,6 +34,7 @@
+     restarted: 'devices.live.actions.restarted',
+     lcdLabel: 'devices.live.lcdLabel',
+     samples: 'devices.live.samples',
++    feedAria: 'devices.live.feedAria',
+   },
+ } as const
+ 
+@@ -51,24 +51,3 @@
+   identify: DeviceCommand.IDENTIFY,
+   restart: DeviceCommand.RESTART,
+ } as const satisfies Record<Exclude<DeviceAction, 'details'>, DeviceCommand>
+-
+-/**
+- * Whether the pending look of a busy control is shown: only after it has been busy for
+- * `LIVE_PENDING_REVEAL_MS`, scaled by the motion policy as every other duration (LB-1). A command
+- * that settles sooner never changes the look; the spinner then replaces the control's icon, so
+- * nothing moves.
+- */
+-export function usePendingReveal(busy: boolean): boolean {
+-  const m = useMotionPolicy()
+-  const delayMs = LIVE_PENDING_REVEAL_MS * m.timeScale
+-  const [revealed, setRevealed] = useState(false)
+-  useEffect(() => {
+-    if (!busy) return undefined
+-    const timer = setTimeout(() => setRevealed(true), delayMs)
+-    return () => {
+-      clearTimeout(timer)
+-      setRevealed(false)
+-    }
+-  }, [busy, delayMs])
+-  return busy && revealed
+-}
+--- a/apps/core-web/src/features/devices/report.ts (pre-image)
++++ b/apps/core-web/src/features/devices/report.ts
+@@ -1,59 +1,19 @@
+ /**
+- * Where a failure of a Devices & Inputs control is written (backend task, plan row W70).
+- *
+- * The console has no client-log endpoint (predecessor decisions D3, D4, D41(g)), so the record goes
+- * to the page's own log, `webErrorSink` of `@/runtime`: kept in memory, printed to the console in a
+- * dev build (the place `logDevicesError` writes to), never sent anywhere and never put in web
+- * storage. In Live mode the Live source also reports every rejected action itself (CL-24); this
+- * record is the page's own, for the branch the refusal presenter left to the page.
+- *
+- * The discipline of `components/shell/shell-report.ts` and `features/login/report.ts` (finding
+- * CPW1-8, decision D144(1)): `message` is the caller's fixed sentence, never the text of the error,
+- * which is not trusted to be free of input; the cause is named by its class, code and status;
+- * `context` holds non-secret facts of the caller (a device ID, a command name, a channel).
++ * Where a failure of a Devices & Inputs control is written (backend task, plan row W70): the page's
++ * own log through the console's one page-report helper, `createPageReporter` of
++ * `features/dashboard/report.ts` (plan row W0, item 8 — finding F70-5, decision D156: this file was a
++ * copy of that one). The record's discipline is written there: a fixed sentence, the cause by its
++ * class, code and status, never its text; non-secret facts of the caller in `context`.
+  */
+-import { webErrorSink, type ErrorSink } from '@/runtime'
++import { createPageReporter } from '@/features/dashboard/report'
+ 
+-/** The facts that identify a cause without quoting it: its code and its status, when it has them. */
+-function causeFacts(error: unknown): Record<string, string | number> {
+-  if (typeof error !== 'object' || error === null) return {}
+-  const { code, status } = error as { code?: unknown; status?: unknown }
+-  return {
+-    ...(typeof code === 'string' || typeof code === 'number' ? { code } : {}),
+-    ...(typeof status === 'number' ? { status } : {}),
+-  }
+-}
++const devices = createPageReporter('dev')
+ 
+-let sequence = 0
+-
+ /** A correlation ID per failed control action (`dev-<time>-<n>`), so its records can be joined. */
+-export function newDevicesCorrelationId(): string {
+-  sequence += 1
+-  return `dev-${Date.now().toString(36)}-${sequence}`
+-}
++export const newDevicesCorrelationId = devices.newCorrelationId
+ 
+ /**
+- * Writes one record to the page's own log. Never throws (the sink does not). `sink` is for tests;
+- * the page passes nothing.
++ * Writes one record to the page's own log: `(source, error, message, context?, level = 'error', sink?)`.
++ * Never throws (the sink does not). `sink` is for tests; the page passes nothing.
+  */
+-export function reportDevicesError(
+-  source: string,
+-  error: unknown,
+-  message: string,
+-  context: Record<string, string | number | boolean | null> = {},
+-  level: 'error' | 'warn' = 'error',
+-  sink: Pick<ErrorSink, 'report'> = webErrorSink,
+-): void {
+-  sink.report({
+-    level,
+-    source,
+-    message,
+-    at: Date.now(),
+-    context: {
+-      ...context,
+-      errorName: error instanceof Error ? error.name : typeof error,
+-      ...causeFacts(error),
+-      correlationId: newDevicesCorrelationId(),
+-    },
+-  })
+-}
++export const reportDevicesError = devices.report
+--- a/apps/core-web/src/features/evidence/detail-page.tsx (pre-image)
++++ b/apps/core-web/src/features/evidence/detail-page.tsx
+@@ -9,6 +9,7 @@
+ import { formatUtcOffset } from '@dems/shared/realtime'
+ import { Permission, selectCan, useSim, type EvidenceItem } from '@dems/shared/sim'
+ import { useRouteEnterDelay } from '@/components/shell/shell-motion-context'
++import { deferEffectStart } from '@/lib/effect-start'
+ import { useMotionPolicy } from '@/motion'
+ import { EvidenceStatusChip, SubjectTypeChip } from './chips'
+ import { copyText } from './clipboard'
+@@ -104,11 +105,10 @@
+     runRef.current = verification.run
+   })
+   // The start waits one task, so React StrictMode's simulated unmount cancels the first start instead
+-  // of sending a second verification to the Core in Live mode (plan row W69).
++  // of sending a second verification to the Core in Live mode (plan row W69; the shared helper, W0).
+   useEffect(() => {
+     if (!autoVerify.current) return undefined
+-    const start = setTimeout(() => void runRef.current(), 0)
+-    return () => clearTimeout(start)
++    return deferEffectStart(() => void runRef.current())
+   }, [])
+ 
+   // Header flight from the clicked row (H-M1 stored-rect fallback of the R5 shared element). The
+--- a/apps/core-web/src/features/evidence/export-wizard.tsx (pre-image)
++++ b/apps/core-web/src/features/evidence/export-wizard.tsx
+@@ -31,6 +31,8 @@
+ import { Stepper, type StepperStep } from '@/components/composed/stepper'
+ import { TransitionPanel } from '@/components/ui/transition-panel'
+ import { useCoreErrorPresenter } from '@/lib/core-errors'
++import { deferEffectStart } from '@/lib/effect-start'
++import { usePendingControl } from '@/lib/pending-control'
+ import { useMotionPolicy } from '@/motion'
+ import { CheckList } from './check-list'
+ import { VerdictChip } from './chips'
+@@ -53,7 +55,6 @@
+ import { logEvidenceError, newCorrelationId } from './log'
+ import { byteSize, shortHash, type EvidenceRow } from './model'
+ import { latestAuditRowFor } from './sim-adapter'
+-import { usePendingAction } from './use-pending-action'
+ import { useEvidenceVerification, type VerifyState } from './use-verification'
+ 
+ export interface ExportWizardProps {
+@@ -102,8 +103,8 @@
+   const actions = useCoreActions()
+   const live = useCoreMode() === CoreMode.LIVE
+   const presentCoreError = useCoreErrorPresenter()
+-  const authorising = usePendingAction()
+-  const exporting = usePendingAction()
++  const authorising = usePendingControl()
++  const exporting = usePendingControl()
+   const assets = useEvidenceAssets()
+   const operator = useSim(selectOperator)
+   const canExport = useSim((s) => selectCan(s, Permission.EVIDENCE_EXPORT))
+@@ -617,11 +618,9 @@
+   })
+   // §19.3 rule 3: the source is verified as soon as this step opens (once per mount). The start
+   // waits one task, so React StrictMode's simulated unmount (every dev build, where Live mode lives)
+-  // cancels the first start instead of sending a second verification to the Core (plan row W69).
+-  useEffect(() => {
+-    const start = setTimeout(() => void runRef.current(), 0)
+-    return () => clearTimeout(start)
+-  }, [])
++  // cancels the first start instead of sending a second verification to the Core (plan row W69; the
++  // shared helper, W0).
++  useEffect(() => deferEffectStart(() => void runRef.current()), [])
+ 
+   useEffect(() => {
+     onState(row.id, state)
+--- a/apps/core-web/src/features/evidence/metadata-tab.tsx (pre-image)
++++ b/apps/core-web/src/features/evidence/metadata-tab.tsx
+@@ -4,6 +4,7 @@
+ import { motion } from 'motion/react'
+ import { FileJson, FileX, FolderTree } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
++import { CoreMode, useCoreMode } from '@dems/shared/live'
+ import { getDemoEvidenceDocuments, MANIFEST_FIELDS, PACKAGE_ITEM_FILES, type PackageItemKey } from '@dems/shared/demo-data'
+ import { formatUtcOffset } from '@dems/shared/realtime'
+ import { toWibIso } from '@dems/shared/sim'
+@@ -31,11 +32,14 @@
+  *   `EvidenceItem.markers` / `notes`, step 54, are empty for the dataset items).
+  * - Raw documents: `manifest.json`, `metadata.json` and `signature.sig` exactly as stored (from
+  *   `getDemoEvidenceDocuments`), and the audit extract loaded on demand from the package.
+- * Items without a package show the simulator's record, labelled SIMULATED.
++ * Items without a package show the simulator's record, labelled SIMULATED. In Live mode the record is
++ * the Core server's: it is labelled "Core record" and says so, never "simulated" (04_client_integration_spec
++ * §3.2; plan row W0, item 9, decision D158).
+  */
+ export function MetadataTab({ row }: MetadataTabProps) {
+   const { t } = useTranslation()
+   const m = useMotionPolicy()
++  const live = useCoreMode() === CoreMode.LIVE
+   const { load } = useEvidenceAssets()
+   const pkg = row.pkg
+   const documents = useMemo(() => (pkg ? getDemoEvidenceDocuments(pkg.evidenceSuffix) : null), [pkg])
+@@ -79,10 +83,11 @@
+   }
+ 
+   if (!pkg || !documents) {
+-    const simulated = JSON.stringify(
++    const record = JSON.stringify(
+       {
+-        simulated: true,
+-        note: 'SIMULATED record from the in-browser simulator; no DEMO package joins this item.',
++        ...(live
++          ? { record: 'CORE', note: "The Core server's record of this item; no DEMO package joins it." }
++          : { simulated: true, note: 'SIMULATED record from the in-browser simulator; no DEMO package joins this item.' }),
+         evidenceId: row.item.id,
+         sessionId: row.item.sessionId,
+         caseNumber: row.item.caseNumber,
+@@ -102,12 +107,12 @@
+       2,
+     )
+     return (
+-      <div className="evi-metadata" data-testid="evidence-metadata" data-package="simulated">
++      <div className="evi-metadata" data-testid="evidence-metadata" data-package={live ? 'core' : 'simulated'}>
+         <EmptyState className="evi-empty evi-empty-inline">
+           <FileX className="size-6 text-foreground-2" aria-hidden="true" />
+           <p className="evi-empty-title">{t('evidence.metadata.noPackage')}</p>
+         </EmptyState>
+-        <JsonView text={simulated} label={t('evidence.metadata.simulatedRecord')} />
++        <JsonView text={record} label={t(live ? 'evidence.live.coreRecord' : 'evidence.metadata.simulatedRecord')} />
+       </div>
+     )
+   }
+--- a/apps/core-web/src/features/evidence/preview-card.tsx (pre-image)
++++ b/apps/core-web/src/features/evidence/preview-card.tsx
+@@ -2,6 +2,7 @@
+ import { AnimatePresence, motion } from 'motion/react'
+ import { ArrowRight, FileVideo, MousePointerClick, Share2 } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
++import { CoreMode, useCoreMode } from '@dems/shared/live'
+ import { formatUtcOffset } from '@dems/shared/realtime'
+ import { useMotionPolicy } from '@/motion'
+ import { EvidenceStatusChip, SubjectTypeChip } from './chips'
+@@ -25,12 +26,14 @@
+ /**
+  * Sticky preview beside the table (research/04 §5.1 "Detail preview (sticky) 4"; mobile MB 6 header
+  * block): VIDEO-01 poster from the package, ID and time range, the key-values, the package line
+- * (DEMO manifest digest, or "simulated" when no package joins), Open details and Export.
++ * (DEMO manifest digest, or "simulated" when no package joins; in Live mode "the Core server's record",
++ * plan row W0, item 9, decision D158), Open details and Export.
+  * The content cross-fades between rows (`base`).
+  */
+ export function EvidencePreview({ row, onOpen, onExport }: EvidencePreviewProps) {
+   const { t } = useTranslation()
+   const m = useMotionPolicy()
++  const live = useCoreMode() === CoreMode.LIVE
+   const { urlFor } = useEvidenceAssets()
+ 
+   return (
+@@ -106,10 +109,10 @@
+             </dl>
+ 
+             <Separator />
+-            <p className="evi-preview-package" data-package={row.pkg ? 'demo' : 'simulated'}>
++            <p className="evi-preview-package" data-package={row.pkg ? 'demo' : live ? 'core' : 'simulated'}>
+               {row.pkg
+                 ? t('evidence.preview.packageLine', { digest: shortHash(row.pkg.signature.signedDigest) })
+-                : t('evidence.preview.noPackage')}
++                : t(live ? 'evidence.live.noPackage' : 'evidence.preview.noPackage')}
+             </p>
+ 
+             <div className="evi-preview-actions">
+--- a/apps/core-web/src/features/evidence/use-archive.ts (pre-image)
++++ b/apps/core-web/src/features/evidence/use-archive.ts
+@@ -15,7 +15,7 @@
+  * | Anything else | the existing failure toast and one record | the same |
+  *
+  * Every error goes to the presenter first (rule 2 of the page rows). While the archive is out the
+- * caller's container carries `aria-busy` and a second press is ignored (`usePendingAction`); the
++ * caller's container carries `aria-busy` and a second press is ignored (`usePendingControl`); the
+  * menu itself closes at the press (the kit's `Dropdown` does that on every action).
+  */
+ import { useCallback } from 'react'
+@@ -24,20 +24,20 @@
+ import { settle, useCoreActions } from '@dems/shared/live'
+ import { SimTransitionError } from '@dems/shared/sim'
+ import { useCoreErrorPresenter } from '@/lib/core-errors'
++import { usePendingControl, type PendingControl } from '@/lib/pending-control'
+ import { logEvidenceError, newCorrelationId } from './log'
+-import { usePendingAction, type PendingAction } from './use-pending-action'
+ 
+ export interface ArchiveAction {
+   /** Archives one item; ignored while an archive is out. `source` names the call site in a record. */
+   readonly archive: (evidenceId: string, source: 'list' | 'detail') => void
+-  readonly control: PendingAction
++  readonly control: PendingControl
+ }
+ 
+ export function useArchiveEvidence(): ArchiveAction {
+   const { t } = useTranslation()
+   const actions = useCoreActions()
+   const presentCoreError = useCoreErrorPresenter()
+-  const control = usePendingAction()
++  const control = usePendingControl()
+   const { run } = control
+ 
+   const archive = useCallback(
+--- a/apps/core-web/src/features/evidence/use-pending-action.ts (pre-image)
++++ b/apps/core-web/src/features/evidence/use-pending-action.ts (removed)
+@@ -1,96 +0,0 @@
+-/**
+- * "Busy at once, spinner late" for one control of the Evidence page (backend task
+- * 04_client_integration_spec §8.1 LB-1, LB-2; AC-C-57, AC-C-58; plan row W69).
+- *
+- * | Phase | From | What the control shows | A press |
+- * |-------|------|------------------------|---------|
+- * | idle | — | its own look | runs the action |
+- * | busy | the press | no visual change; the nearest container carries `aria-busy="true"` | is ignored: one action per control |
+- * | pending | `LIVE_PENDING_REVEAL_MS` after the press (time-scaled by the motion policy) | the kit's own pending state (`isPending`, the `Spinner` in place of the icon), so nothing moves | is ignored |
+- *
+- * The caller passes `run` a function that starts the action and hands `release` to `settle`'s
+- * `done`. In Simulated mode the action settles before `run` returns (`settle`, CL-25): no phase is
+- * set and no timer is started, so the control looks and behaves exactly as before.
+- *
+- * Where `aria-busy` goes (finding F63-2, decision D152): the kit's `Button` (React Aria's) passes
+- * only `data-*`, `id` and a fixed list of attributes to the element, so an `aria-busy` prop never
+- * reaches the DOM. Each caller puts `busy` on the nearest plain container of the control instead
+- * (the action row of the header, the wizard's step panel, the table's wrapper).
+- *
+- * `key` names what the action is about (an evidence ID), so a table can mark the row whose
+- * action is out; one action at a time per hook.
+- */
+-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+-import { LIVE_PENDING_REVEAL_MS } from '@dems/shared/live'
+-import { useMotionPolicy } from '@/motion'
+-
+-export interface PendingAction {
+-  /** From the press until the action settled: further presses are ignored. */
+-  readonly busy: boolean
+-  /** Busy for longer than the reveal time: the control shows the kit's pending state. */
+-  readonly pending: boolean
+-  /** What the action in flight is about (`run`'s `key`), or `null`. */
+-  readonly key: string | null
+-  /**
+-   * Starts one action unless one is in flight. `start` gets `release`, which must run once when
+-   * the action settled (pass it as `settle`'s `done`). Returns whether it started.
+-   */
+-  readonly run: (start: (release: () => void) => void, key?: string) => boolean
+-}
+-
+-type Phase = 'idle' | 'busy' | 'pending'
+-
+-export function usePendingAction(): PendingAction {
+-  const { timeScale } = useMotionPolicy()
+-  const revealMs = useRef(LIVE_PENDING_REVEAL_MS * timeScale)
+-  const inFlight = useRef(false)
+-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+-  const [phase, setPhase] = useState<Phase>('idle')
+-  const [key, setKey] = useState<string | null>(null)
+-
+-  useEffect(
+-    () => () => {
+-      if (timer.current !== null) clearTimeout(timer.current)
+-      timer.current = null
+-    },
+-    [],
+-  )
+-
+-  // Read by `run` (an event handler); kept current outside render.
+-  useLayoutEffect(() => {
+-    revealMs.current = LIVE_PENDING_REVEAL_MS * timeScale
+-  }, [timeScale])
+-
+-  const run = useCallback((start: (release: () => void) => void, actionKey?: string): boolean => {
+-    if (inFlight.current) return false
+-    inFlight.current = true
+-    let released = false
+-    const release = (): void => {
+-      if (released) return
+-      released = true
+-      inFlight.current = false
+-      if (timer.current !== null) clearTimeout(timer.current)
+-      timer.current = null
+-      setPhase('idle')
+-      setKey(null)
+-    }
+-    try {
+-      start(release)
+-    } catch (error) {
+-      release()
+-      throw error
+-    }
+-    // Settled already (Simulated mode, or an action refused before it was sent): nothing to show.
+-    if (!released) {
+-      setPhase('busy')
+-      setKey(actionKey ?? null)
+-      timer.current = setTimeout(() => {
+-        timer.current = null
+-        setPhase('pending')
+-      }, revealMs.current)
+-    }
+-    return true
+-  }, [])
+-
+-  return { busy: phase !== 'idle', pending: phase === 'pending', key, run }
+-}
+--- a/apps/core-web/src/features/network-time/log.ts (pre-image)
++++ b/apps/core-web/src/features/network-time/log.ts
+@@ -1,16 +1,43 @@
+ /**
+- * The Network & Time page's structured error record (level, source, message, stack, context,
+- * timestamp). Mock-core has no client log endpoint (D3/D4, D41(g)), so the record goes to the dev
+- * console, as on the other pages. `context` never carries personal data: only IDs and enums.
++ * The Network & Time page's structured error record (level, source, message, context with the
++ * error's name and a correlation ID, timestamp).
++ *
++ * The console has no client-log endpoint (predecessor decisions D3, D4, D41(g)), so the record goes
++ * to the page's own log, `webErrorSink` of `@/runtime`: kept in memory in every build, printed to the
++ * console in a dev build (where this module's `console.error` wrote before), never sent anywhere and
++ * never put in web storage.
++ *
++ * The discipline of the other page logs (`features/storage/log.ts`, `features/session-monitor/log.ts`;
++ * finding CPW1-8, decision D144(1)); plan row W0, item 5 (finding F71-3, decision D155): `message` is a
++ * fixed sentence naming the step, never the text of the error, which is not trusted to be free of
++ * input; the cause is named by its class name only. `context` never carries personal data: only IDs
++ * and enums (the panel, React's component stack).
+  */
+-export function logNetworkTimeError(source: string, error: unknown, context: Record<string, unknown> = {}) {
+-  if (!import.meta.env.DEV) return
+-  console.error('[core-web] network-time', {
++import { webErrorSink, type ErrorSink } from '@/runtime'
++
++let sequence = 0
++
++/** A correlation ID per failed step (`nt-<time>-<n>`), so its records can be joined. */
++export function newNetworkTimeCorrelationId(): string {
++  sequence += 1
++  return `nt-${Date.now().toString(36)}-${sequence}`
++}
++
++/**
++ * Writes one record of level `error` to the page's own log. Never throws (the sink does not).
++ * `sink` is for tests; the page passes nothing.
++ */
++export function logNetworkTimeError(
++  source: string,
++  error: unknown,
++  context: Record<string, unknown> = {},
++  sink: Pick<ErrorSink, 'report'> = webErrorSink,
++): void {
++  sink.report({
+     level: 'error',
+     source: `NetworkTime.${source}`,
+-    message: error instanceof Error ? error.message : String(error),
+-    stack: error instanceof Error ? error.stack : undefined,
+-    context,
+-    timestamp: new Date().toISOString(),
++    message: `Network & Time: the step "${source}" did not complete.`,
++    at: Date.now(),
++    context: { ...context, errorName: error instanceof Error ? error.name : typeof error, correlationId: newNetworkTimeCorrelationId() },
+   })
+ }
+--- a/apps/core-web/src/features/session-monitor/action-bar.tsx (pre-image)
++++ b/apps/core-web/src/features/session-monitor/action-bar.tsx
+@@ -34,13 +34,13 @@
+ } from '@dems/shared/sim'
+ import type { CameraFeedHandle } from '@/components/media'
+ import { CoreErrorNoticeKind, useCoreErrorPresenter } from '@/lib/core-errors'
++import { usePendingControl } from '@/lib/pending-control'
+ import { useMotionPolicy } from '@/motion'
+ import { cn } from '@/lib/utils'
+ import { PANEL_BEAT_MS, usePanelVariants, useStaggerVariants } from './choreography'
+ import { useFlight } from './flight-context'
+ import { logSessionMonitorError } from './log'
+ import type { SessionPhase } from './model'
+-import { usePendingPress } from './use-pending-press'
+ 
+ /** Simulator input limits kept stable for steps 54/91 (D61): marker label 80, note 2000. */
+ export const MARKER_MAX = 80
+@@ -75,7 +75,7 @@
+  * outside RECORDING; the UI shows a toast and logs a structured record.
+  *
+  * Both data modes (plan row W65; [CS] §8.3 B-2, §8.4 C-1, C-2; LB-1 to LB-7): the four session
+- * commands run through `useCoreActions()` and `settle` (`usePendingPress`), and every error goes to
++ * commands run through `useCoreActions()` and `settle` (`usePendingControl`), and every error goes to
+  * the refusal presenter before the bar's own message. A simulator answers at once, so the bar
+  * behaves as before in Simulated mode; a Live result answers when the Core server did:
+  * - Marker: the popover closes and a chip appears at the button at the press (LB-4); the flight
+@@ -238,7 +238,7 @@
+   const presentCoreError = useCoreErrorPresenter()
+   const sim = useSimInstance()
+   const fly = useFlight()
+-  const press = usePendingPress()
++  const press = usePendingControl()
+   const [open, setOpen] = useState(false)
+   const [label, setLabel] = useState('')
+   /** LB-4: the chip shown at the button while a Live marker is out; `null` otherwise. */
+@@ -247,7 +247,7 @@
+ 
+   const submit = () => {
+     const text = label.trim().slice(0, MARKER_MAX)
+-    const sent = press.run(() => actions.addMarker(text || undefined), {
++    const sent = press.settle(() => actions.addMarker(text || undefined), {
+       onWait: () => setPendingChip(text || `Marker ${(sim.store.getState().session?.markerCount ?? 0) + 1}`),
+       ok: () => {
+         // C-1: read in `ok`, where the store already holds the new marker (CL-16).
+@@ -301,13 +301,13 @@
+             variant="outline"
+             className="sm-action"
+             isDisabled={!enabled}
+-            isPending={press.revealed}
++            isPending={press.pending}
+             data-busy={press.busy || undefined}
+             data-testid="sm-action-marker"
+             aria-describedby={enabled ? undefined : UNAVAILABLE_ID}
+           >
+             <ActionLabel
+-              icon={<PendingIcon pending={press.revealed}><MapPin className="size-5" /></PendingIcon>}
++              icon={<PendingIcon pending={press.pending}><MapPin className="size-5" /></PendingIcon>}
+               title={t('session.actions.addMarker.title')}
+               subtitle={t('session.actions.addMarker.subtitle')}
+             />
+@@ -344,7 +344,7 @@
+   const { t } = useTranslation()
+   const actions = useCoreActions()
+   const presentCoreError = useCoreErrorPresenter()
+-  const press = usePendingPress()
++  const press = usePendingControl()
+   const [open, setOpen] = useState(false)
+   const [text, setText] = useState('')
+   const [touched, setTouched] = useState(false)
+@@ -355,7 +355,7 @@
+     setTouched(true)
+     if (error) return
+     // LB-1: Save is busy until the settle; the drawer closes in `ok` and stays open with the text on a refusal.
+-    press.run(() => actions.addNote(trimmed), {
++    press.settle(() => actions.addNote(trimmed), {
+       ok: () => {
+         setOpen(false)
+         setText('')
+@@ -413,8 +413,8 @@
+                   <Button variant="ghost" onPress={() => setOpen(false)}>
+                     {t('common.actions.cancel')}
+                   </Button>
+-                  <Button type="submit" variant="primary" isPending={press.revealed} data-busy={press.busy || undefined} data-testid="sm-note-submit">
+-                    {press.revealed ? <Spinner size="sm" color="current" /> : null}
++                  <Button type="submit" variant="primary" isPending={press.pending} data-busy={press.busy || undefined} data-testid="sm-note-submit">
++                    {press.pending ? <Spinner size="sm" color="current" /> : null}
+                     {t('session.actions.sessionNote.submit')}
+                   </Button>
+                 </div>
+@@ -444,12 +444,12 @@
+   const presentCoreError = useCoreErrorPresenter()
+   const sim = useSimInstance()
+   const fly = useFlight()
+-  const press = usePendingPress()
++  const press = usePendingControl()
+ 
+   const capture = () => {
+     const image = feedRef.current?.snapshot() ?? null
+     let flashed = false
+-    press.run(() => actions.snapshot(), {
++    press.settle(() => actions.snapshot(), {
+       // LB-4: with a Live result the shutter flashes at the press; a simulator answers at once and
+       // flashes in `ok`, as before (and not at all on a refusal).
+       onWait: () => {
+@@ -483,14 +483,14 @@
+           variant="outline"
+           className="sm-action"
+           isDisabled={!enabled}
+-          isPending={press.revealed}
++          isPending={press.pending}
+           data-busy={press.busy || undefined}
+           onPress={capture}
+           data-testid="sm-action-snapshot"
+           aria-describedby={enabled ? undefined : UNAVAILABLE_ID}
+         >
+           <ActionLabel
+-            icon={<PendingIcon pending={press.revealed}><Camera className="size-5" /></PendingIcon>}
++            icon={<PendingIcon pending={press.pending}><Camera className="size-5" /></PendingIcon>}
+             title={t('session.actions.snapshot.title')}
+             subtitle={t('session.actions.snapshot.subtitle')}
+           />
+@@ -631,7 +631,7 @@
+   const { t } = useTranslation()
+   const actions = useCoreActions()
+   const presentCoreError = useCoreErrorPresenter()
+-  const press = usePendingPress()
++  const press = usePendingControl()
+   const [reason, setReason] = useState('')
+   const [touched, setTouched] = useState(false)
+   /** The reason text the Core refused with 422 (F59: the Core counts characters itself); the error shows while it is unchanged. */
+@@ -653,7 +653,7 @@
+     if (tooShort) return
+     const sent = trimmed
+     // LB-1: the confirm is busy until the settle; the dialog closes in `ok`.
+-    press.run(() => actions.stopRecording(sent), {
++    press.settle(() => actions.stopRecording(sent), {
+       ok: close,
+       fail: (caught) => {
+         const transition = caught instanceof SimTransitionError ? caught : null
+@@ -718,8 +718,8 @@
+               <Button variant="ghost" onPress={close} data-testid="sm-end-cancel">
+                 {t('session.actions.endSession.keepRecording')}
+               </Button>
+-              <Button type="submit" variant="danger" isPending={press.revealed} data-busy={press.busy || undefined} data-testid="sm-end-confirm">
+-                {press.revealed ? <Spinner size="sm" color="current" /> : null}
++              <Button type="submit" variant="danger" isPending={press.pending} data-busy={press.busy || undefined} data-testid="sm-end-confirm">
++                {press.pending ? <Spinner size="sm" color="current" /> : null}
+                 {t('session.actions.endSession.confirm')}
+               </Button>
+             </AlertDialog.Footer>
+--- a/apps/core-web/src/features/session-monitor/index.tsx (pre-image)
++++ b/apps/core-web/src/features/session-monitor/index.tsx
+@@ -37,6 +37,7 @@
+ import type { CameraFeedHandle } from '@/components/media'
+ import { TextShimmer } from '@/components/ui/text-shimmer'
+ import { useCoreErrorPresenter } from '@/lib/core-errors'
++import { usePendingControl } from '@/lib/pending-control'
+ import { useMotionPolicy } from '@/motion'
+ import { ActionBar } from './action-bar'
+ import { AudioPanel } from './audio-panel'
+@@ -53,7 +54,6 @@
+ import { StatusBanner } from './status-banner'
+ import { StoragePanel } from './storage-panel'
+ import { TimelinePanel } from './timeline-panel'
+-import { usePendingPress } from './use-pending-press'
+ import './session-monitor.css'
+ 
+ /** M-PG-SM t = 0: the title's TextEffect runs first, then TextShimmer sweeps once for 2 s (P8). */
+@@ -71,7 +71,7 @@
+   const m = useMotionPolicy()
+   const actions = useCoreActions()
+   const presentCoreError = useCoreErrorPresenter()
+-  const recovery = usePendingPress()
++  const recovery = usePendingControl()
+   const page = useSim(selectPageModel)
+   const rootRef = useRef<HTMLDivElement>(null)
+   const feedRef = useRef<CameraFeedHandle>(null)
+@@ -97,7 +97,7 @@
+   // refusal: the presenter's denied toast (SESSION_START), an outage or a limit; else the page's own.
+   const recover = () => {
+     const sessionId = page.sessionId
+-    recovery.run(() => actions.recover(), {
++    recovery.settle(() => actions.recover(), {
+       fail: (error) => {
+         logSessionMonitorError('recover', error, { sessionId })
+         if (presentCoreError(error) !== null) return
+@@ -121,7 +121,7 @@
+             icon={Monitor}
+             title={t('session.title')}
+             subtitle={t('session.subtitle')}
+-            status={<StatusBanner canStart={page.canStart} onRecover={recover} recoverBusy={recovery.busy} recoverPending={recovery.revealed} />}
++            status={<StatusBanner canStart={page.canStart} onRecover={recover} recoverBusy={recovery.busy} recoverPending={recovery.pending} />}
+             className="sm-header"
+           />
+         </div>
+@@ -139,7 +139,7 @@
+               stageRef={feedStageRef}
+               onRecover={recover}
+               recoverBusy={recovery.busy}
+-              recoverPending={recovery.revealed}
++              recoverPending={recovery.pending}
+             />
+           </PanelErrorBoundary>
+           <PanelErrorBoundary panel="M" areaClassName="sm-area-details">
+--- a/apps/core-web/src/features/session-monitor/live-feed-panel.tsx (pre-image)
++++ b/apps/core-web/src/features/session-monitor/live-feed-panel.tsx
+@@ -11,11 +11,11 @@
+ import { GlowRing } from '@/components/composed'
+ import { CameraFeed, RecIndicator, useSimSecond, type CameraFeedHandle } from '@/components/media'
+ import { useCoreErrorPresenter } from '@/lib/core-errors'
++import { usePendingControl } from '@/lib/pending-control'
+ import { useMotionPolicy } from '@/motion'
+ import { logSessionMonitorError } from './log'
+ import { selectFeed, type SessionPhase } from './model'
+ import { Panel } from './panel'
+-import { usePendingPress } from './use-pending-press'
+ 
+ const CAMERA_IDS: readonly VideoTrackId[] = ['VIDEO-01', 'VIDEO-02']
+ /** M-C-18: one white shutter flash, 0 → 0.85 → 0 in 180 ms (P8: a single flash). */
+@@ -72,7 +72,7 @@
+   const m = useMotionPolicy()
+   const actions = useCoreActions()
+   const presentCoreError = useCoreErrorPresenter()
+-  const cameraPress = usePendingPress()
++  const cameraPress = usePendingControl()
+   const feed = useSim(selectFeed)
+   const [pendingCamera, setPendingCamera] = useState<VideoTrackId | null>(null)
+   const selectedCamera = pendingCamera ?? feed.activeCameraId
+@@ -90,7 +90,7 @@
+     const next = [...keys][0]
+     if (next !== 'VIDEO-01' && next !== 'VIDEO-02') return
+     // LB-1: a second choice while the first is out is ignored (the toggle keeps the pending one).
+-    cameraPress.run(() => actions.setActiveCamera(next), {
++    cameraPress.settle(() => actions.setActiveCamera(next), {
+       onWait: () => setPendingCamera(next),
+       fail: (error) => {
+         logSessionMonitorError('LiveFeedPanel.switchCamera', error, { cameraId: next })
+--- a/apps/core-web/src/features/session-monitor/use-pending-press.ts (pre-image)
++++ b/apps/core-web/src/features/session-monitor/use-pending-press.ts (removed)
+@@ -1,95 +0,0 @@
+-/**
+- * One control's command in both data modes (plan row W65; backend task
+- * 04_client_integration_spec §8.1 LB-1, LB-4; §2.5 CL-25).
+- *
+- * The action runs through `settle` (`@dems/shared/live`), so the call site reads one shape in both
+- * modes. What this hook adds is the waiting state of the control that sent the command:
+- *
+- * | The action ...                          | `onWait` | `busy`                    | `revealed`                          |
+- * |-----------------------------------------|----------|---------------------------|-------------------------------------|
+- * | answers at once (the simulator, a Live binding that answers by itself) | not called | never set | never set |
+- * | answers later (a Live result)           | called once, right after the press | from the press until the settle | after `LIVE_PENDING_REVEAL_MS` (scaled by the motion policy) until the settle |
+- *
+- * So Simulated mode renders nothing new: a simulator answers before `run` returns, its handlers
+- * have run, and no state of this hook changed (the existing tests are the proof, CLG (a)).
+- *
+- * LB-1 "busy at once, spinner late": while a command of this control is out, a further press is
+- * ignored (`run` returns `false` and sends nothing); the control is marked `aria-busy` from the
+- * press, and shows the kit's pending state (a `Spinner` in place of its icon) only after the reveal
+- * time. LB-4: `onWait` is where an optimistic visual that changes no record starts (the marker chip
+- * at the button, the snapshot's shutter flash); the handlers end it.
+- */
+-import { useCallback, useEffect, useRef, useState } from 'react'
+-import { LIVE_PENDING_REVEAL_MS, settle, type SettleHandlers } from '@dems/shared/live'
+-import { useMotionPolicy } from '@/motion'
+-
+-export interface PendingPressHandlers<T> extends SettleHandlers<T> {
+-  /** The outcome is not known yet when the press returns (a Live result): start the optimistic visual here. */
+-  onWait?: () => void
+-}
+-
+-export interface PendingPress {
+-  /** A command of this control is out. */
+-  readonly busy: boolean
+-  /** `busy` for longer than the reveal time: the control shows the kit's pending state. */
+-  readonly revealed: boolean
+-  /**
+-   * `settle(action, handlers)`, unless a command of this control is still out. Returns `false`
+-   * when the press was ignored (nothing was sent, no handler runs).
+-   */
+-  readonly run: <T>(action: () => T | PromiseLike<T>, handlers: PendingPressHandlers<T>) => boolean
+-}
+-
+-export function usePendingPress(): PendingPress {
+-  const m = useMotionPolicy()
+-  const inFlight = useRef(false)
+-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+-  const [busy, setBusy] = useState(false)
+-  const [revealed, setRevealed] = useState(false)
+-  const revealMs = LIVE_PENDING_REVEAL_MS * m.timeScale
+-
+-  useEffect(
+-    () => () => {
+-      if (timer.current) clearTimeout(timer.current)
+-      timer.current = null
+-    },
+-    [],
+-  )
+-
+-  const run = useCallback(
+-    <T>(action: () => T | PromiseLike<T>, handlers: PendingPressHandlers<T>): boolean => {
+-      if (inFlight.current) return false
+-      inFlight.current = true
+-      let waiting = false
+-      let settled = false
+-      settle(action, {
+-        ...(handlers.ok ? { ok: handlers.ok } : {}),
+-        fail: handlers.fail,
+-        done: () => {
+-          settled = true
+-          inFlight.current = false
+-          if (timer.current) clearTimeout(timer.current)
+-          timer.current = null
+-          if (waiting) {
+-            setBusy(false)
+-            setRevealed(false)
+-          }
+-          handlers.done?.()
+-        },
+-      })
+-      if (!settled) {
+-        waiting = true
+-        setBusy(true)
+-        timer.current = setTimeout(() => {
+-          timer.current = null
+-          setRevealed(true)
+-        }, revealMs)
+-        handlers.onWait?.()
+-      }
+-      return true
+-    },
+-    [revealMs],
+-  )
+-
+-  return { busy, revealed, run }
+-}
+--- a/apps/core-web/src/features/session-new/index.tsx (pre-image)
++++ b/apps/core-web/src/features/session-new/index.tsx
+@@ -76,6 +76,8 @@
+ import { Stepper, type StepperStatus, type StepperStep } from '@/components/composed/stepper'
+ import { PageHeader, useRouteEnterDelay } from '@/components/shell'
+ import { useCoreErrorPresenter } from '@/lib/core-errors'
++import { deferEffectStart } from '@/lib/effect-start'
++import { usePendingControl } from '@/lib/pending-control'
+ import { TransitionPanel } from '@/components/ui/transition-panel'
+ import { GlowLayer, useMotionPolicy } from '@/motion'
+ import { CancelDialog } from './cancel-dialog'
+@@ -96,7 +98,6 @@
+ } from './model'
+ import { ReadyStep, type ReadySummary } from './ready-step'
+ import { scanCaseNumber } from './sim-adapter'
+-import { usePendingControl } from './use-pending-control'
+ import './session-new.css'
+ 
+ const route = getRouteApi('/_app/session/new')
+@@ -223,21 +224,26 @@
+ 
+   // A session left in CREATE (a reload between create and precheck) starts its gate on step 2.
+   // FC-7: in Live mode the state leaves CREATE only when the delta arrives, so the effect can run
+-  // again before that; the in-flight marker of the session lets exactly one request out.
++  // again before that; the in-flight marker of the session lets exactly one request out. F69-1
++  // (plan row W0): the start waits one task (`deferEffectStart`), so StrictMode's second set-up
++  // cannot send a second pre-check — in Simulated mode the marker is already cleared by then.
+   useEffect(() => {
+-    if (step !== 2 || sessionState !== SessionState.CREATE || sessionId === null) return
+-    if (precheckInFlight.current === sessionId) return
++    if (step !== 2 || sessionState !== SessionState.CREATE || sessionId === null) return undefined
++    if (precheckInFlight.current === sessionId) return undefined
+     const id = sessionId
+-    precheckInFlight.current = id
+-    settle(() => actions.beginPrecheck(), {
+-      fail: (error) => {
+-        logSessionNew('error', 'beginPrecheck.resume', error, { sessionId: id, correlationId: correlation.current })
+-        if (presentCoreError(error) !== null) return
+-        toast.danger(t('sessionNew.errors.precheck'))
+-      },
+-      done: () => {
+-        if (precheckInFlight.current === id) precheckInFlight.current = null
+-      },
++    return deferEffectStart(() => {
++      if (precheckInFlight.current === id) return
++      precheckInFlight.current = id
++      settle(() => actions.beginPrecheck(), {
++        fail: (error) => {
++          logSessionNew('error', 'beginPrecheck.resume', error, { sessionId: id, correlationId: correlation.current })
++          if (presentCoreError(error) !== null) return
++          toast.danger(t('sessionNew.errors.precheck'))
++        },
++        done: () => {
++          if (precheckInFlight.current === id) precheckInFlight.current = null
++        },
++      })
+     })
+   }, [step, sessionState, actions, sessionId, t, presentCoreError])
+ 
+--- a/apps/core-web/src/features/session-new/use-pending-control.ts (pre-image)
++++ b/apps/core-web/src/features/session-new/use-pending-control.ts
+@@ -1,97 +1,3 @@
+-/**
+- * "Busy at once, spinner late" for one control of the Start New Session page (backend task
+- * 04_client_integration_spec §8.1 LB-1; AC-C-57, AC-C-58; plan row W64).
+- *
+- * | Phase | From | What the control shows | A press |
+- * |-------|------|------------------------|---------|
+- * | idle | — | its own look | runs the command |
+- * | busy | the press | no visual change; `aria-busy="true"` on the control | is ignored: one command per control |
+- * | pending | `LIVE_PENDING_REVEAL_MS` after the press (time-scaled by the motion policy) | the kit's own pending state: `isPending`, and the `Spinner` in place of the control's icon, so nothing moves | is ignored |
+- *
+- * The caller passes `run` a function that starts the command and hands `release` to `settle`'s
+- * `done`. In Simulated mode the command settles before `run` returns (`settle`, CL-25): no phase
+- * is ever set and no timer is started, so the control looks and behaves exactly as before.
+- *
+- * `aria-busy` is written through `ref`: the kit's `Button` (React Aria's) passes only `data-*`, `id`
+- * and a fixed list of attributes to the element, so an `aria-busy` prop would never reach the DOM.
+- * React does not manage that attribute on the element, so nothing else writes or removes it.
+- */
+-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+-import { LIVE_PENDING_REVEAL_MS } from '@dems/shared/live'
+-import { useMotionPolicy } from '@/motion'
+-
+-export type PendingPhase = 'idle' | 'busy' | 'pending'
+-
+-export interface PendingControl {
+-  /** From the press until the command settled: further presses are ignored. */
+-  readonly busy: boolean
+-  /** Busy for longer than the reveal time: the control shows the kit's pending state. */
+-  readonly pending: boolean
+-  /**
+-   * Starts one command unless this control has one in flight. `start` gets `release`, which must
+-   * run once when the command settled (pass it as `settle`'s `done`). Returns whether it started.
+-   */
+-  readonly run: (start: (release: () => void) => void) => boolean
+-  /** For the control's element: carries `aria-busy` while a command is in flight. */
+-  readonly ref: RefObject<HTMLButtonElement | null>
+-}
+-
+-export function usePendingControl(): PendingControl {
+-  const { timeScale } = useMotionPolicy()
+-  const revealMs = useRef(LIVE_PENDING_REVEAL_MS * timeScale)
+-  const ref = useRef<HTMLButtonElement | null>(null)
+-  const inFlight = useRef(false)
+-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+-  const [phase, setPhase] = useState<PendingPhase>('idle')
+-
+-  useEffect(
+-    () => () => {
+-      if (timer.current !== null) clearTimeout(timer.current)
+-      timer.current = null
+-    },
+-    [],
+-  )
+-
+-  // Read by `run` (an event handler); kept current outside render.
+-  useLayoutEffect(() => {
+-    revealMs.current = LIVE_PENDING_REVEAL_MS * timeScale
+-  }, [timeScale])
+-
+-  useLayoutEffect(() => {
+-    const element = ref.current
+-    if (element === null) return
+-    if (phase === 'idle') element.removeAttribute('aria-busy')
+-    else element.setAttribute('aria-busy', 'true')
+-  }, [phase])
+-
+-  const run = useCallback((start: (release: () => void) => void): boolean => {
+-    if (inFlight.current) return false
+-    inFlight.current = true
+-    let released = false
+-    const release = (): void => {
+-      if (released) return
+-      released = true
+-      inFlight.current = false
+-      if (timer.current !== null) clearTimeout(timer.current)
+-      timer.current = null
+-      setPhase('idle')
+-    }
+-    try {
+-      start(release)
+-    } catch (error) {
+-      release()
+-      throw error
+-    }
+-    // Settled already (Simulated mode, or a command refused before it was sent): nothing to show.
+-    if (!released) {
+-      setPhase('busy')
+-      timer.current = setTimeout(() => {
+-        timer.current = null
+-        setPhase('pending')
+-      }, revealMs.current)
+-    }
+-    return true
+-  }, [])
+-
+-  return { busy: phase !== 'idle', pending: phase === 'pending', run, ref }
+-}
++// Plan row W0, item 2: the one pending-control hook now lives in `@/lib/pending-control` (this folder's
++// page imports it from there); this line keeps the folder's file that W64's tests read.
++export { usePendingControl, type PendingControl } from '@/lib/pending-control'
+--- a/apps/core-web/src/features/storage/manage-drawer.tsx (pre-image)
++++ b/apps/core-web/src/features/storage/manage-drawer.tsx
+@@ -1,8 +1,8 @@
+-import { useCallback, useEffect, useRef, useState } from 'react'
++import { useCallback, useState } from 'react'
+ import { Alert, Button, Description, Drawer, Label, ListBox, Select, Spinner, Switch, toast } from '@heroui/react'
+ import { Layers, Lock } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+-import { CoreMode, LIVE_PENDING_REVEAL_MS, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
++import { CoreMode, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
+ import {
+   Permission,
+   RetentionPolicyId,
+@@ -13,7 +13,7 @@
+   type StoragePolicy,
+ } from '@dems/shared/sim'
+ import { useCoreErrorPresenter } from '@/lib/core-errors'
+-import { useMotionPolicy } from '@/motion'
++import { usePendingControl } from '@/lib/pending-control'
+ import { logStorageError } from './log'
+ import { THRESHOLDS } from './model'
+ 
+@@ -37,24 +37,6 @@
+   onOpenChange: (open: boolean) => void
+ }
+ 
+-/**
+- * Whether the pending look of a control is shown: only after it has been busy for `delayMs`
+- * (LB-1, "busy at once, spinner late"). A command that settles sooner never changes the look, and
+- * in Simulated mode the command settles before the press returns, so nothing changes there.
+- */
+-function usePendingReveal(busy: boolean, delayMs: number): boolean {
+-  const [revealed, setRevealed] = useState(false)
+-  useEffect(() => {
+-    if (!busy) return undefined
+-    const timer = setTimeout(() => setRevealed(true), delayMs)
+-    return () => {
+-      clearTimeout(timer)
+-      setRevealed(false)
+-    }
+-  }, [busy, delayMs])
+-  return busy && revealed
+-}
+-
+ interface ApplyPolicyControl {
+   /** True from the press until the command settled (LB-1: further presses are ignored meanwhile). */
+   readonly busy: boolean
+@@ -85,34 +67,28 @@
+   const actions = useCoreActions()
+   const presentCoreError = useCoreErrorPresenter()
+   const applied = APPLIED_WORDS[useCoreMode()]
+-  const m = useMotionPolicy()
+-  // LB-1: the flag answers the next press at once; the state drives the look.
+-  const inFlight = useRef(false)
+-  const [busy, setBusy] = useState(false)
+-  const showPending = usePendingReveal(busy, LIVE_PENDING_REVEAL_MS * m.timeScale)
++  // LB-1: the shared pending control (`@/lib/pending-control`, plan row W0) ignores the next press at
++  // once and reveals the spinner late; a command that settles in the press changes nothing.
++  const { busy, pending: showPending, run } = usePendingControl()
+ 
+   const apply = useCallback(
+     (policy: Pick<StoragePolicy, 'retentionPolicy' | 'autoArchive'>) => {
+-      if (inFlight.current) return
+-      inFlight.current = true
+-      setBusy(true)
+-      settle(() => actions.setStoragePolicy({ retentionPolicy: policy.retentionPolicy, autoArchive: policy.autoArchive }), {
+-        ok: () => {
+-          toast.success(t(applied))
+-          onApplied()
+-        },
+-        fail: (error) => {
+-          if (presentCoreError(error) !== null) return
+-          logStorageError('ManageStorageDrawer.apply', error, { retentionPolicy: policy.retentionPolicy })
+-          toast.danger(t('storage.manage.failed'))
+-        },
+-        done: () => {
+-          inFlight.current = false
+-          setBusy(false)
+-        },
++      run((release) => {
++        settle(() => actions.setStoragePolicy({ retentionPolicy: policy.retentionPolicy, autoArchive: policy.autoArchive }), {
++          ok: () => {
++            toast.success(t(applied))
++            onApplied()
++          },
++          fail: (error) => {
++            if (presentCoreError(error) !== null) return
++            logStorageError('ManageStorageDrawer.apply', error, { retentionPolicy: policy.retentionPolicy })
++            toast.danger(t('storage.manage.failed'))
++          },
++          done: release,
++        })
+       })
+     },
+-    [actions, applied, onApplied, presentCoreError, t],
++    [actions, applied, onApplied, presentCoreError, run, t],
+   )
+   return { busy, showPending, apply }
+ }
+--- a/packages/shared/src/i18n/en/devices.ts (pre-image)
++++ b/packages/shared/src/i18n/en/devices.ts
+@@ -325,6 +325,8 @@
+       restarted: '{{name}} restarted',
+     },
+     lcdLabel: 'Local status display, page {{page}}',
++    /** The camera picture's accessible name: the bundled demo loop (MS-1), not the Core's camera (plan row W0, item 7). */
++    feedAria: '{{name}}, bundled demo picture',
+     samples_one: '{{count}} sample',
+     samples_other: 'Last {{count}} samples',
+     /** The tablet row of the device drawer in Live mode (note G6): the web console does not pair. */
+--- a/packages/shared/src/i18n/en/evidence.ts (pre-image)
++++ b/packages/shared/src/i18n/en/evidence.ts
+@@ -322,6 +322,8 @@
+   live: {
+     /** An item's values as the Core server holds them (no bundled demo package belongs to it). */
+     coreRecord: 'Core record',
++    /** The preview card's package line for an item without a bundled demo package (plan row W0, item 9; decision D158). */
++    noPackage: "No DEMO package for this item: the Core server's record only.",
+     /** Operation 40 did not answer: whether a bundled package belongs to the item is unknown, so none is shown. */
+     mediaUnavailable: 'Media reference unavailable',
+     verify: {
+--- a/packages/shared/src/i18n/en/session.ts (pre-image)
++++ b/packages/shared/src/i18n/en/session.ts
+@@ -69,6 +69,8 @@
+   /** L: live feed overlays. */
+   feed: {
+     title: 'LIVE SESSION FEED',
++    /** Live mode: the accessible name of the camera picture, which is the bundled demo loop (MS-1), not the Core's camera (plan row W0, item 7). */
++    bundledPicture: 'Bundled demo picture',
+     cameraLabel: '{{camera}} - {{room}}',
+     rec: 'REC',
+     preview: 'PREVIEW',
+--- a/apps/core-web/src/lib/effect-start.ts (new)
++++ b/apps/core-web/src/lib/effect-start.ts
+@@ -0,0 +1,35 @@
++/**
++ * The one way to start a Core command (or a query refresh) from an effect (plan row W0, item 1;
++ * finding F69-1, decision D158 DC-2).
++ *
++ * The console renders under React StrictMode (`main.tsx`), and Live mode exists only in dev builds,
++ * where StrictMode runs every effect twice on mount (set-up, clean-up, set-up). A command sent from
++ * the set-up is therefore sent TWICE in every Live session; in Simulated mode the simulator answers
++ * inside the first set-up, so a guard kept in a ref is already cleared when the second one runs.
++ *
++ * `deferEffectStart(start)` schedules `start` one task later and returns the clean-up that cancels
++ * it. StrictMode's clean-up runs before that task, so only the second set-up's start remains: one
++ * command. A production build (no double run) starts one task later than a synchronous call, which
++ * no operator can see.
++ *
++ * Use it as the effect's return value, after the effect's own conditions:
++ *
++ * ```ts
++ * useEffect(() => {
++ *   if (!wanted) return undefined
++ *   return deferEffectStart(() => {
++ *     settle(() => actions.verify(id), { fail: (error) => { if (presentCoreError(error) !== null) return; ... } })
++ *   })
++ * }, [wanted, id])
++ * ```
++ *
++ * A change of the effect's dependencies within that task cancels the pending start and schedules
++ * the new one, so a guard that must hold for the command itself (an in-flight marker) is checked and
++ * set inside `start`. `start` handles its own failures (`settle`'s `fail`, the presenter first):
++ * nothing here catches. `src/test/live-strict-mode-starts.test.tsx` fails the workspace when a file
++ * under `features/` starts a command from an effect without returning this helper.
++ */
++export function deferEffectStart(start: () => void): () => void {
++  const handle = setTimeout(start, 0)
++  return () => clearTimeout(handle)
++}
+--- a/apps/core-web/src/lib/pending-control.ts (new)
++++ b/apps/core-web/src/lib/pending-control.ts
+@@ -0,0 +1,153 @@
++/**
++ * "Busy at once, spinner late" — the ONE pending-control hook of the console (plan row W0, item 2;
++ * decision D153 ruling 5; backend task 04_client_integration_spec §8.1 LB-1, LB-2, LB-4; AC-C-57,
++ * AC-C-58). It replaces the copies of W63 (`dashboard/devices-panel.tsx`), W64
++ * (`session-new/use-pending-control.ts`), W65 (`session-monitor/use-pending-press.ts`), W69
++ * (`evidence/use-pending-action.ts`), W70 (`devices/live.ts`, `devices/audio-input-card.tsx`) and
++ * W71 (`storage/manage-drawer.tsx`).
++ *
++ * | Phase | From | What the control shows | A press |
++ * |-------|------|------------------------|---------|
++ * | idle | — | its own look | runs the command |
++ * | busy | the press | no visual change; `aria-busy="true"` on the element of `ref` (when the caller attaches it) | is ignored: one command per control (`run` returns `false`, nothing is sent) |
++ * | pending | `LIVE_PENDING_REVEAL_MS` after the press, scaled by the motion policy | the kit's own pending state (`isPending`, the `Spinner` in place of the icon), so nothing moves | is ignored |
++ *
++ * A command that settles before the press returns — every command in Simulated mode (`settle` runs
++ * a plain value's handlers before it returns, CL-25) — changes no state of this hook: no phase, no
++ * key, no timer, no `onWait`. Simulated screens therefore look and behave exactly as before.
++ *
++ * Two ways in, one state:
++ * - `run(start, key?)`: `start` gets `release` and starts the command itself, so the call site keeps
++ *   rule 1's literal shape `settle(() => actions.x(…), { ok, fail, done: release })` (the static
++ *   rules of the page rows look for it), or runs several settles in order and calls `release` once
++ *   at the end (the export wizard).
++ * - `settle(action, handlers)`: the same as `settle` from `@dems/shared/live` on this control, plus
++ *   `onWait` — called once right after the press when the outcome is not known yet (a Live result):
++ *   where an optimistic visual that changes no record starts (LB-4). `handlers.done` runs after the
++ *   control is released.
++ *
++ * The busy mark (finding F63-2, W0 item 3): the kit's `Button` (`@heroui/react` over React Aria's
++ * `Button`) passes only `data-*`, `id` and a fixed list of attributes to the element, so an
++ * `aria-busy` PROP never reaches the DOM. `ref` writes the attribute on the pressed control itself
++ * (LB-1 as written, decision D153 ruling 1); React does not manage it, so nothing else writes or
++ * removes it. A caller that marks a container instead reads `busy`.
++ *
++ * `key` names what the command is about (an evidence ID), so a table can mark the row whose command
++ * is out; one command at a time per hook. A list of controls that may each have one command out at
++ * the same time (the Devices page: one per device) keeps its own keyed in-flight set and takes the
++ * late reveal from `usePendingReveal(busy)` below.
++ */
++import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
++import { LIVE_PENDING_REVEAL_MS, settle as settleResult, type SettleHandlers } from '@dems/shared/live'
++import { useMotionPolicy } from '@/motion'
++
++export interface PendingHandlers<T> extends SettleHandlers<T> {
++  /** The outcome is not known yet when the press returns (a Live result): start the optimistic visual here (LB-4). */
++  onWait?: () => void
++}
++
++export interface PendingControl {
++  /** From the press until the command settled: further presses are ignored. */
++  readonly busy: boolean
++  /** Busy for longer than the reveal time: the control shows the kit's pending state. */
++  readonly pending: boolean
++  /** What the command in flight is about (`key` of `run`), or `null`. */
++  readonly key: string | null
++  /**
++   * Starts one command unless this control has one in flight. `start` gets `release`, which must run
++   * once when the command settled (pass it as `settle`'s `done`). Returns whether it started.
++   */
++  readonly run: (start: (release: () => void) => void, key?: string) => boolean
++  /** `settle(action, handlers)` on this control, unless a command of it is out. Returns whether it was sent. */
++  readonly settle: <T>(action: () => T | PromiseLike<T>, handlers: PendingHandlers<T>) => boolean
++  /** For the pressed control's element: carries `aria-busy="true"` while a command is in flight. */
++  readonly ref: RefObject<HTMLButtonElement | null>
++}
++
++/**
++ * Whether the pending look of a busy control is shown: only after it has been busy for
++ * `LIVE_PENDING_REVEAL_MS`, scaled by the motion policy as every other duration (LB-1). A command
++ * that settles sooner never changes the look.
++ */
++export function usePendingReveal(busy: boolean): boolean {
++  const { timeScale } = useMotionPolicy()
++  const delayMs = LIVE_PENDING_REVEAL_MS * timeScale
++  const [revealed, setRevealed] = useState(false)
++  useEffect(() => {
++    if (!busy) return undefined
++    const timer = setTimeout(() => setRevealed(true), delayMs)
++    return () => {
++      clearTimeout(timer)
++      setRevealed(false)
++    }
++  }, [busy, delayMs])
++  return busy && revealed
++}
++
++export function usePendingControl(): PendingControl {
++  const ref = useRef<HTMLButtonElement | null>(null)
++  const inFlight = useRef(false)
++  const [busy, setBusy] = useState(false)
++  const [key, setKey] = useState<string | null>(null)
++  const pending = usePendingReveal(busy)
++
++  useLayoutEffect(() => {
++    const element = ref.current
++    if (element === null) return
++    if (busy) element.setAttribute('aria-busy', 'true')
++    else element.removeAttribute('aria-busy')
++  }, [busy])
++
++  const begin = useCallback((start: (release: () => void) => void, actionKey: string | undefined, onWait: (() => void) | undefined): boolean => {
++    if (inFlight.current) return false
++    inFlight.current = true
++    let released = false
++    let waiting = false
++    const release = (): void => {
++      if (released) return
++      released = true
++      inFlight.current = false
++      if (waiting) {
++        setBusy(false)
++        setKey(null)
++      }
++    }
++    try {
++      start(release)
++    } catch (error) {
++      release()
++      throw error
++    }
++    // Settled already (Simulated mode, or a command refused before it was sent): nothing to show.
++    if (!released) {
++      waiting = true
++      setBusy(true)
++      setKey(actionKey ?? null)
++      onWait?.()
++    }
++    return true
++  }, [])
++
++  const run = useCallback((start: (release: () => void) => void, actionKey?: string): boolean => begin(start, actionKey, undefined), [begin])
++
++  const settle = useCallback(
++    <T,>(action: () => T | PromiseLike<T>, handlers: PendingHandlers<T>): boolean =>
++      begin(
++        (release) => {
++          settleResult(action, {
++            ...(handlers.ok ? { ok: handlers.ok } : {}),
++            fail: handlers.fail,
++            done: () => {
++              release()
++              handlers.done?.()
++            },
++          })
++        },
++        undefined,
++        handlers.onWait,
++      ),
++    [begin],
++  )
++
++  return { busy, pending, key, run, settle, ref }
++}
+--- a/apps/core-web/src/test/live-strict-mode-starts.test.tsx (new)
++++ b/apps/core-web/src/test/live-strict-mode-starts.test.tsx
+@@ -0,0 +1,396 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Plan row W0, item 1 (finding F69-1, decision D158 DC-2): a Core command started from a mount
++// effect must reach the Core ONCE under React StrictMode, which `main.tsx` renders and which runs
++// every effect twice on mount in every dev build — where Live mode lives. The one way is
++// `deferEffectStart` (`lib/effect-start.ts`), returned by the effect.
++//
++// | Case | Where it is proven |
++// |------|--------------------|
++// | The helper: one task later; the clean-up cancels; under StrictMode one start where a direct call starts two | "the helper" |
++// | Session New, the B-6 resume effect, Simulated mode: one `beginPrecheck`, no failure toast (two before W0) | "Session New resume, Simulated" |
++// | Session New, the B-6 resume effect, Live mode: one request | `live-session-new-precheck.test.tsx` "StrictMode runs the effect twice" (W64, unchanged) |
++// | Evidence, the list's Verify hand-off and the wizard's source check: one request each | `live-evidence-verify.test.tsx` "StrictMode" (W69, unchanged) |
++// | Safe by construction — Evidence detail, operation 40 in a query: one request | "safe cases" |
++// | Safe by construction — the device drawer's paired list, operation 19 in a query, and its ref-guarded refresh: one request | "safe cases" |
++// | No file under `features/` starts a command from an effect without returning the helper | "the static guard" (with positive and negative controls) |
++import { StrictMode, useEffect } from 'react'
++import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
++import { toast } from '@heroui/react'
++import { QueryClient } from '@tanstack/react-query'
++import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
++import { readdirSync, readFileSync, statSync } from 'node:fs'
++import { join, resolve } from 'node:path'
++import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
++import { en } from '@dems/shared/i18n'
++import type { SocketLike } from '@dems/shared/realtime'
++import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, OPERATOR_IDS, type Sim } from '@dems/shared/sim'
++import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
++import { EV, findDetailBody, installJsdomStubs, openLiveEvidence } from '@/features/evidence/__tests__/live-evidence-bed'
++import { FORM_INPUT, stubMediaForJsdom, toastsWith } from '@/features/session-new/__tests__/live-session-new-bed'
++import { resetCoreErrorPresenter } from '@/lib/core-errors'
++import { deferEffectStart } from '@/lib/effect-start'
++import { createAppRouter } from '@/router'
++import { webErrorSink } from '@/runtime'
++import { createLiveTestBed, SUPERVISOR_SESSION, type LiveTestBed } from '@/runtime/testing/live-harness'
++
++vi.setConfig({ testTimeout: 40_000 })
++
++class SilentSocket implements SocketLike {
++  readyState = 0
++  onopen: SocketLike['onopen'] = null
++  onmessage: SocketLike['onmessage'] = null
++  onclose: SocketLike['onclose'] = null
++  onerror: SocketLike['onerror'] = null
++  close() {
++    this.readyState = 3
++  }
++}
++
++const AS_OF = Date.parse('2026-10-01T03:00:00.000Z')
++const sims: Sim[] = []
++const beds: LiveTestBed[] = []
++
++/** A Simulated page load under StrictMode (as `main.tsx` renders it), the simulator prepared by `prepare`. */
++function mountSimulated(path: string, prepare: (sim: Sim) => void): Sim {
++  const clock = createManualClock(AS_OF)
++  const authStorage = createMemoryAuthStorage()
++  authStorage.save({ operatorId: OPERATOR_IDS.BUDI, issuedAt: AS_OF })
++  const sim = createSim({ scenario: 'idle', storage: null, authStorage, visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined, clock })
++  sims.push(sim)
++  prepare(sim)
++  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
++  const router = createAppRouter({ sim, queryClient, socketFactory: () => new SilentSocket() }, { history: createMemoryHistory({ initialEntries: [path] }) })
++  render(
++    <StrictMode>
++      <RouterProvider router={router} />
++    </StrictMode>,
++  )
++  return sim
++}
++
++const originalMatchMedia = window.matchMedia
++/** Empties the kit's toast queue, which is one per page and outlives a test (F76-9). */
++async function clearToasts(): Promise<void> {
++  window.matchMedia = (() => ({ matches: true })) as unknown as typeof window.matchMedia
++  toast.clear()
++  window.matchMedia = originalMatchMedia
++  const queue = toast.getQueue() as { getExitingKeys?: () => ReadonlySet<string> }
++  if ((queue.getExitingKeys?.().size ?? 0) > 0) await new Promise((resolve) => setTimeout(resolve, 350))
++  resetCoreErrorPresenter()
++}
++
++let restoreMedia: () => void = () => undefined
++beforeAll(() => {
++  restoreMedia = stubMediaForJsdom()
++})
++afterAll(() => restoreMedia())
++
++beforeEach(async () => {
++  await clearToasts()
++  webErrorSink.clear()
++  window.localStorage.clear()
++  window.sessionStorage.clear()
++  window.sessionStorage.setItem(SHELL_INTRO_STORAGE_KEY, '1')
++})
++
++afterEach(async () => {
++  cleanup()
++  await clearToasts()
++  for (const sim of sims.splice(0)) sim.stop()
++  for (const bed of beds.splice(0)) bed.dispose()
++  vi.useRealTimers()
++  vi.restoreAllMocks()
++})
++
++describe('the helper: `deferEffectStart` starts one task later and its clean-up cancels', () => {
++  it('nothing runs in the call; the start runs after one task', () => {
++    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
++    const start = vi.fn()
++    deferEffectStart(start)
++    expect(start).not.toHaveBeenCalled()
++    vi.advanceTimersByTime(0)
++    expect(start).toHaveBeenCalledTimes(1)
++  })
++
++  it('set-up, clean-up, set-up (what StrictMode does on mount): ONE start', () => {
++    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
++    const start = vi.fn()
++    const first = deferEffectStart(start)
++    first()
++    const second = deferEffectStart(start)
++    vi.runAllTimers()
++    expect(start).toHaveBeenCalledTimes(1)
++    // The clean-up after the start is harmless.
++    second()
++    expect(start).toHaveBeenCalledTimes(1)
++  })
++
++  it('under StrictMode a mount effect that returns the helper starts once; the same effect calling directly starts twice (the control)', async () => {
++    const helped = vi.fn()
++    const direct = vi.fn()
++    function Helped() {
++      useEffect(() => deferEffectStart(helped), [])
++      return null
++    }
++    function Direct() {
++      useEffect(() => {
++        direct()
++      }, [])
++      return null
++    }
++    render(
++      <StrictMode>
++        <Helped />
++        <Direct />
++      </StrictMode>,
++    )
++    await new Promise((resolve) => setTimeout(resolve, 20))
++    expect(direct).toHaveBeenCalledTimes(2)
++    expect(helped).toHaveBeenCalledTimes(1)
++  })
++})
++
++describe('Session New resume, Simulated: the B-6 resume effect starts ONE pre-check under StrictMode', () => {
++  it('a session left in CREATE, the page opened at step 2: one `beginPrecheck`, no failure toast, the gate runs', async () => {
++    let calls = 0
++    const sim = mountSimulated('/session/new?step=2', (prepared) => {
++      const created = prepared.actions.createSession({ ...FORM_INPUT, investigatorId: OPERATOR_IDS.BUDI })
++      if (!created.ok) throw new Error(`the simulator could not create a session: ${created.reason}`)
++      const original = prepared.actions.beginPrecheck.bind(prepared.actions)
++      vi.spyOn(prepared.actions, 'beginPrecheck').mockImplementation(() => {
++        calls += 1
++        original()
++      })
++    })
++    const page = await screen.findByTestId('page-session-new', {}, { timeout: 20_000 })
++    await waitFor(() => expect(page).toHaveAttribute('data-step', '2'))
++    await waitFor(() => expect(sim.store.getState().session?.state).toBe('PRECHECK'))
++    // Well past the one task the start waits: still one.
++    await new Promise((resolve) => setTimeout(resolve, 50))
++    expect(calls).toBe(1)
++    expect(toastsWith(en.sessionNew.errors.precheck)).toHaveLength(0)
++    expect(webErrorSink.records().filter((record) => record.source.includes('beginPrecheck'))).toEqual([])
++  })
++})
++
++describe('safe cases: a query started on mount is fetched once under StrictMode (TanStack Query shares one fetch)', () => {
++  it('Evidence detail: operation 40 (`getEvidence`) is requested ONCE', async () => {
++    installJsdomStubs()
++    const opened = await openLiveEvidence(`/evidence/${EV.sealed}`, { strict: true })
++    beds.push(opened.bed)
++    await findDetailBody()
++    await opened.bed.flush()
++    expect(opened.bed.fake.log.requestsOf('getEvidence')).toHaveLength(1)
++  })
++
++  it('the device drawer: operation 19 (`listPairedDevices`) is requested ONCE when the drawer mounts; the ref-guarded refresh sends nothing on mount', async () => {
++    installJsdomStubs()
++    const bed = createLiveTestBed({ session: SUPERVISOR_SESSION })
++    beds.push(bed)
++    bed.fake.answerFromExample('listPairedDevices')
++    const page = await bed.load()
++    await bed.mount(page, '/devices', { strict: true })
++    await screen.findByTestId('page-devices', {}, { timeout: 15_000 })
++    fireEvent.click(await screen.findByTestId('other-TABLET'))
++    const drawer = await screen.findByTestId('device-drawer')
++    await waitFor(() => expect(within(drawer).getByTestId('drawer-paired-summary')).toBeInTheDocument())
++    await bed.flush()
++    expect(bed.fake.log.requestsOf('listPairedDevices')).toHaveLength(1)
++  })
++})
++
++// ── The static guard ──────────────────────────────────────────────────────────────────────────
++//
++// Reads the code (comments and quoted strings removed) of every production `.ts`/`.tsx` file under
++// `src/features/**` (test folders excluded), finds every `useEffect`, `useLayoutEffect` and
++// `useInsertionEffect` call, and fails when its callback names a Core call OUTSIDE the argument of
++// `deferEffectStart(...)`, or names one only inside it but does not return the helper.
++
++const FEATURES = resolve(import.meta.dirname, '../features')
++
++/** What starts a Core command or query: an action, an operation, a query refresh, a call through a ref, the actions handed to a helper. */
++const CORE_CALL =
++  /\bsettle\s*\(|\bactions\s*\.\s*[A-Za-z_$][\w$]*\s*\(|\bclient\s*\.\s*call\s*\(|\b(?:invalidateQueries|refetchQueries|resetQueries|fetchQuery|prefetchQuery|ensureQueryData|refetch|mutate|mutateAsync)\s*\(|(?<![\w$.])fetch\s*\(|\.current\s*\(|[(,]\s*actions\s*[,)]/
++
++/**
++ * Effects that name a Core call and are safe without the helper, each with its reason. Matched by
++ * file and the token found; a new effect in the same file with another token is not covered.
++ */
++const ALLOWED: readonly { file: string; token: string; why: string }[] = [
++  {
++    file: 'devices/device-drawer.tsx',
++    token: 'invalidateQueries(',
++    why: 'CONTRACT-GAP-W70-1 refresh: the ref starts at the mount value of `tabletLink.changedAt`, so the mount run and StrictMode\'s second run send nothing; a later change runs once (no remount)',
++  },
++  {
++    file: 'system/sim-adapter.ts',
++    token: 'actions.updateSettings(',
++    why: 'W76\'s folder, not yet in Live mode: a ref-guarded seed of local console preferences into the simulator (`useSimActions`); W76 routes it through the helper or keeps this entry with its own reason',
++  },
++]
++
++function productionFiles(dir: string): string[] {
++  return readdirSync(dir).flatMap((name) => {
++    const path = join(dir, name)
++    if (statSync(path).isDirectory()) return name === '__tests__' || name === 'testing' ? [] : productionFiles(path)
++    return /\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name) && !name.endsWith('.d.ts') ? [path] : []
++  })
++}
++
++/** Comments and quoted strings blanked (line breaks kept, so line numbers stay true). */
++function code(text: string): string {
++  return text
++    .replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ' '))
++    .replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1')
++    .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
++    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
++}
++
++/** The text from `open` (an index just after an opening parenthesis) to its closing one. */
++function balanced(text: string, open: number): string {
++  let depth = 1
++  let index = open
++  while (index < text.length && depth > 0) {
++    const char = text[index]
++    if (char === '(') depth += 1
++    else if (char === ')') depth -= 1
++    index += 1
++  }
++  return text.slice(open, index - 1)
++}
++
++/** The callback text with every `deferEffectStart(...)` argument removed. */
++function outsideHelper(body: string): string {
++  let rest = body
++  let at = rest.search(/\bdeferEffectStart\s*\(/)
++  while (at >= 0) {
++    const open = rest.indexOf('(', at) + 1
++    const inner = balanced(rest, open)
++    rest = `${rest.slice(0, at)}HELPER${rest.slice(open + inner.length + 1)}`
++    at = rest.search(/\bdeferEffectStart\s*\(/)
++  }
++  return rest
++}
++
++interface Finding {
++  line: number
++  token: string
++  problem: 'outside the helper' | 'the helper is not returned'
++}
++
++/** Every effect of `source` that starts a Core call the wrong way. */
++function findings(source: string): Finding[] {
++  const text = code(source)
++  const found: Finding[] = []
++  for (const match of text.matchAll(/\buse(?:Layout|Insertion)?Effect\s*\(/g)) {
++    const start = (match.index ?? 0) + match[0].length
++    // The callback only: the dependency list names `actions` without calling anything.
++    const body = balanced(text, start).replace(/,\s*\[[^[\]]*\]\s*,?\s*$/, '')
++    const line = text.slice(0, match.index).split('\n').length
++    const outside = outsideHelper(body).match(CORE_CALL)
++    if (outside) {
++      found.push({ line, token: outside[0].replace(/\s+/g, ''), problem: 'outside the helper' })
++      continue
++    }
++    const inside = body.match(CORE_CALL)
++    if (inside && !/(?:\breturn\s+|=>\s*)deferEffectStart\s*\(/.test(body)) {
++      found.push({ line, token: inside[0].replace(/\s+/g, ''), problem: 'the helper is not returned' })
++    }
++  }
++  return found
++}
++
++/** The findings of `files` that no entry of `allowed` names, as `file:line token — problem`. */
++function offendingIn(files: readonly { file: string; text: string }[], allowed: typeof ALLOWED): string[] {
++  const offending: string[] = []
++  for (const { file, text } of files) {
++    for (const finding of findings(text)) {
++      if (allowed.some((entry) => entry.file === file && entry.token === finding.token)) continue
++      offending.push(`${file}:${finding.line} ${finding.token} — ${finding.problem}`)
++    }
++  }
++  return offending
++}
++
++describe('the static guard: a file under `features/` starts a Core call from an effect only by returning `deferEffectStart`', () => {
++  const files = productionFiles(FEATURES).map((path) => ({ file: path.slice(FEATURES.length + 1).split('\\').join('/'), text: readFileSync(path, 'utf8') }))
++
++  it('reads every page folder', () => {
++    expect(files.length).toBeGreaterThan(150)
++    expect(files.map(({ file }) => file)).toEqual(
++      expect.arrayContaining(['session-new/index.tsx', 'evidence/detail-page.tsx', 'evidence/export-wizard.tsx', 'devices/device-drawer.tsx', 'dashboard/devices-panel.tsx', 'storage/manage-drawer.tsx', 'network-time/index.tsx', 'session-monitor/integrity-panel.tsx']),
++    )
++  })
++
++  it('positive controls: each shape that sends twice under StrictMode, or hides how, is found', () => {
++    // The Session New resume effect before W0: a ref-guarded settle in the set-up.
++    expect(findings(`useEffect(() => {
++      if (precheckInFlight.current === sessionId) return
++      precheckInFlight.current = id
++      settle(() => actions.beginPrecheck(), { fail: () => undefined })
++    }, [id])`)).toEqual([{ line: 1, token: 'settle(', problem: 'outside the helper' }])
++    // W69's hand-rolled deferral: safe, but not the one way (a copy per folder is what W0 removes).
++    expect(findings(`useEffect(() => {
++      const start = setTimeout(() => void runRef.current(), 0)
++      return () => clearTimeout(start)
++    }, [])`)).toEqual([{ line: 1, token: '.current(', problem: 'outside the helper' }])
++    expect(findings(`useLayoutEffect(() => { void live.client.call('getEvidence', input) }, [])`)[0]?.token).toBe('client.call(')
++    expect(findings(`useEffect(() => { void query.refetch() }, [])`)[0]?.token).toBe('refetch(')
++    expect(findings(`useEffect(() => { queryClient.invalidateQueries({ queryKey }) }, [key])`)[0]?.token).toBe('invalidateQueries(')
++    expect(findings(`useEffect(function seed() { actions.updateSettings(stored) }, [actions])`)[0]?.token).toBe('actions.updateSettings(')
++    expect(findings(`useEffect(() => { scanCaseNumber(actions, getState, onError) }, [])`)[0]?.token).toBe('(actions,')
++    expect(findings(`useEffect(() => { recordPackageVerification(state, actions) }, [state])`)[0]?.token).toBe(',actions)')
++    expect(findings(`useEffect(() => { void fetch('/api/v1/health') }, [])`)[0]?.token).toBe('fetch(')
++    // The helper called but not returned: StrictMode's clean-up cannot cancel it.
++    expect(findings(`useEffect(() => { deferEffectStart(() => settle(() => actions.verify(id), handlers)) }, [])`)).toEqual([
++      { line: 1, token: 'settle(', problem: 'the helper is not returned' },
++    ])
++    // A command beside a returned helper is still a command in the set-up.
++    expect(findings(`useEffect(() => {
++      settle(() => actions.addNote(text), handlers)
++      return deferEffectStart(() => undefined)
++    }, [])`)[0]).toMatchObject({ token: 'settle(', problem: 'outside the helper' })
++  })
++
++  it('negative controls: the helper returned, and effects that start no Core call, are not found', () => {
++    expect(findings(`useEffect(() => deferEffectStart(() => void runRef.current()), [])`)).toEqual([])
++    expect(findings(`useEffect(() => {
++      if (step !== 2 || sessionId === null) return undefined
++      const id = sessionId
++      return deferEffectStart(() => {
++        if (precheckInFlight.current === id) return
++        settle(() => actions.beginPrecheck(), { fail: (error) => { if (presentCoreError(error) !== null) return } })
++      })
++    }, [step, sessionId])`)).toEqual([])
++    expect(findings(`useEffect(() => {
++      const timer = setTimeout(() => setRevealed(true), delayMs)
++      return () => clearTimeout(timer)
++    }, [busy])`)).toEqual([])
++    expect(findings(`useEffect(() => { toast.success(t('common.actions.retry')) }, [count])`)).toEqual([])
++    // The dependency list names the actions object; that starts nothing.
++    expect(findings(`useEffect(() => { setReady(true) }, [step, actions, sessionId])`)).toEqual([])
++    // A comment or a string that names a call is no call.
++    expect(findings(`useEffect(() => {
++      // settle(() => actions.verify(id)) is what the button does
++      setLabel('actions.verify(id)')
++    }, [])`)).toEqual([])
++    // A call of the same name outside an effect is an event handler: not this guard's business.
++    expect(findings(`const onPress = () => settle(() => actions.verify(id), handlers)`)).toEqual([])
++  })
++
++  it('the allowed list covers its own file and token only (a control on two made-up files)', () => {
++    const shape = 'useEffect(() => { void queryClient.invalidateQueries({ queryKey }) }, [key])'
++    const allowed = [{ file: 'a/allowed.tsx', token: 'invalidateQueries(', why: 'a made-up entry of this control, long enough to pass the length rule' }]
++    expect(offendingIn([{ file: 'a/allowed.tsx', text: shape }], allowed)).toEqual([])
++    expect(offendingIn([{ file: 'b/other.tsx', text: shape }], allowed)).toEqual(['b/other.tsx:1 invalidateQueries( — outside the helper'])
++    expect(offendingIn([{ file: 'a/allowed.tsx', text: 'useEffect(() => { void query.refetch() }, [])' }], allowed)).toEqual(['a/allowed.tsx:1 refetch( — outside the helper'])
++  })
++
++  it('every production file of `features/` holds the rule (the allowed list names each exception and why)', () => {
++    expect(offendingIn(files, ALLOWED)).toEqual([])
++    for (const entry of ALLOWED) expect(entry.why.length, entry.file).toBeGreaterThan(40)
++  })
++})
+--- a/apps/core-web/src/test/live-pending-control.test.tsx (new)
++++ b/apps/core-web/src/test/live-pending-control.test.tsx
+@@ -0,0 +1,435 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Plan row W0, item 2 (decision D153 ruling 5): the one pending-control hook, `@/lib/pending-control`,
++// on its own (backend task 04_client_integration_spec §8.1 LB-1, LB-2, LB-4; AC-C-57, AC-C-58). The
++// page behaviour is proven where it always was, unchanged: W64's fake-timer test
++// (`live-session-new-pending.test.tsx`), W65's, W69's, W63's, W70's and W71's pending tests.
++//
++// | Criterion | Where |
++// |-----------|-------|
++// | A command that settles in the press (Simulated mode) changes nothing: no state, no render, no mark, no `onWait` | "settled in the press" |
++// | The press guard: one command per control; a second press sends nothing and returns `false` | "the press guard" |
++// | The reveal: no spinner at 300 ms, the spinner at 500 ms (the 420 ms token), scaled by the motion policy | "the reveal" |
++// | The busy mark: `aria-busy="true"` on the element of `ref` from the press until the release, nothing else touched | "the busy mark" |
++// | `settle(action, handlers)`: the shared `settle`, `onWait` once when the outcome is not known, `done` after the release | "the settle entry" |
++// | `key`, a start that throws, an unmount while busy | "edges" |
++// | Item 3: the kit's `Button` drops an `aria-busy` prop (so the mark is written through `ref`) | "item 3" |
++// | The old copies are gone: no page folder holds its own press guard + late reveal | "one copy" |
++import { readdirSync, readFileSync, statSync } from 'node:fs'
++import { join, resolve } from 'node:path'
++import { act, cleanup, render, renderHook } from '@testing-library/react'
++import { useEffect, type ReactNode } from 'react'
++import { afterEach, describe, expect, it, vi } from 'vitest'
++import { Button } from '@heroui/react'
++import { LIVE_PENDING_REVEAL_MS } from '@dems/shared/live'
++import { usePendingControl, usePendingReveal, type PendingControl } from '@/lib/pending-control'
++import { MotionPolicyContext, STATIC_MOTION_POLICY } from '@/motion/use-motion-policy'
++
++afterEach(() => {
++  cleanup()
++  vi.useRealTimers()
++})
++
++/** The control rendered with its `ref` on a real button; `onCommit` gets it after every commit. */
++function Host({ onCommit }: { onCommit: (control: PendingControl) => void }) {
++  const control = usePendingControl()
++  const { ref } = control
++  useEffect(() => {
++    onCommit(control)
++  })
++  return (
++    <button type="button" ref={ref} data-testid="control">
++      icon
++    </button>
++  )
++}
++
++/** A control on a real button, the latest value of the hook, how often the host committed, and every committed (busy, pending). */
++function mountControl(timeScale = 1) {
++  const seen: { control: PendingControl | null; renders: number; history: { busy: boolean; pending: boolean }[] } = { control: null, renders: 0, history: [] }
++  const onCommit = (control: PendingControl) => {
++    seen.control = control
++    seen.renders += 1
++    seen.history.push({ busy: control.busy, pending: control.pending })
++  }
++  const wrapper = ({ children }: { children: ReactNode }) => (
++    <MotionPolicyContext.Provider value={{ ...STATIC_MOTION_POLICY, timeScale }}>{children}</MotionPolicyContext.Provider>
++  )
++  const view = render(<Host onCommit={onCommit} />, { wrapper })
++  const button = view.getByTestId('control')
++  return { seen, button, control: () => seen.control!, view }
++}
++
++async function advance(ms: number) {
++  await act(async () => {
++    await vi.advanceTimersByTimeAsync(ms)
++  })
++}
++
++describe('settled in the press (every Simulated command): nothing of the control changes', () => {
++  it('`run` with a start that releases at once: started, no state, no new render, no mark', () => {
++    const { seen, button, control } = mountControl()
++    const before = seen.renders
++    let started = false
++    act(() => {
++      started = control().run((release) => release(), 'EV-1')
++    })
++    expect(started).toBe(true)
++    expect(seen.renders).toBe(before)
++    expect(control().busy).toBe(false)
++    expect(control().pending).toBe(false)
++    expect(control().key).toBeNull()
++    expect(button).not.toHaveAttribute('aria-busy')
++  })
++
++  it('`settle` with a plain value: `ok` and `done` run in the press, `onWait` never, no new render', () => {
++    const { seen, control } = mountControl()
++    const before = seen.renders
++    const order: string[] = []
++    act(() => {
++      control().settle(() => 42, {
++        ok: (value) => order.push(`ok ${value}`),
++        fail: () => order.push('fail'),
++        done: () => order.push('done'),
++        onWait: () => order.push('wait'),
++      })
++    })
++    expect(order).toEqual(['ok 42', 'done'])
++    expect(seen.renders).toBe(before)
++  })
++
++  it('a refusal thrown in the press goes to `fail`, then `done`; a second press is accepted at once', () => {
++    const { control } = mountControl()
++    const order: string[] = []
++    act(() => {
++      control().settle(
++        () => {
++          throw new Error('refused')
++        },
++        { fail: (error) => order.push(`fail ${(error as Error).message}`), done: () => order.push('done') },
++      )
++    })
++    let again = false
++    act(() => {
++      again = control().run((release) => release())
++    })
++    expect(order).toEqual(['fail refused', 'done'])
++    expect(again).toBe(true)
++  })
++})
++
++describe('the press guard: one command per control', () => {
++  it('while a command is out, a second `run` and a second `settle` return `false` and start nothing', () => {
++    const { control } = mountControl()
++    let release: () => void = () => undefined
++    act(() => {
++      control().run((done) => {
++        release = done
++      })
++    })
++    const second = vi.fn()
++    let accepted = true
++    act(() => {
++      accepted = control().run(second)
++    })
++    expect(accepted).toBe(false)
++    expect(second).not.toHaveBeenCalled()
++    const action = vi.fn(() => 1)
++    act(() => {
++      accepted = control().settle(action, { fail: () => undefined })
++    })
++    expect(accepted).toBe(false)
++    expect(action).not.toHaveBeenCalled()
++    act(() => release())
++    act(() => {
++      accepted = control().run((done) => done())
++    })
++    expect(accepted).toBe(true)
++  })
++
++  it('a release called twice frees the control once (the second call changes nothing)', () => {
++    const { control } = mountControl()
++    let release: () => void = () => undefined
++    act(() => {
++      control().run((done) => {
++        release = done
++      })
++    })
++    act(() => release())
++    let holder: () => void = () => undefined
++    act(() => {
++      control().run((done) => {
++        holder = done
++      })
++    })
++    expect(control().busy).toBe(true)
++    // The FIRST command's release, called again: the second command stays out.
++    act(() => release())
++    expect(control().busy).toBe(true)
++    act(() => holder())
++    expect(control().busy).toBe(false)
++  })
++})
++
++describe('the reveal: busy at once, the spinner after the token, scaled by the motion policy', () => {
++  it('the token is 420 ms, between the 300 ms and 500 ms checkpoints of W64', () => {
++    expect(LIVE_PENDING_REVEAL_MS).toBe(420)
++  })
++
++  it('busy at once; not pending at 300 ms (or at 419 ms); pending at 420 ms; both cleared by the release', async () => {
++    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
++    const { control } = mountControl()
++    let release: () => void = () => undefined
++    act(() => {
++      control().run((done) => {
++        release = done
++      })
++    })
++    expect(control().busy).toBe(true)
++    expect(control().pending).toBe(false)
++    await advance(300)
++    expect(control().pending).toBe(false)
++    await advance(119)
++    expect(control().pending).toBe(false)
++    await advance(1)
++    expect(control().pending).toBe(true)
++    act(() => release())
++    expect(control().busy).toBe(false)
++    expect(control().pending).toBe(false)
++  })
++
++  it('the spinner leaves in the same commit as the command: no committed state is pending without being busy', async () => {
++    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
++    const { seen, control } = mountControl()
++    let release: () => void = () => undefined
++    act(() => {
++      control().run((done) => {
++        release = done
++      })
++    })
++    await advance(500)
++    expect(control().pending).toBe(true)
++    act(() => release())
++    await advance(0)
++    expect(seen.history.some((state) => state.pending)).toBe(true)
++    expect(seen.history.filter((state) => state.pending && !state.busy)).toEqual([])
++    expect(seen.history.at(-1)).toEqual({ busy: false, pending: false })
++  })
++
++  it('an answer after 50 ms: never pending', async () => {
++    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
++    const { control } = mountControl()
++    let release: () => void = () => undefined
++    const pendingSeen: boolean[] = []
++    act(() => {
++      control().run((done) => {
++        release = done
++      })
++    })
++    await advance(50)
++    act(() => release())
++    for (let step = 0; step < 10; step += 1) {
++      await advance(100)
++      pendingSeen.push(control().pending)
++    }
++    expect(pendingSeen.every((value) => !value)).toBe(true)
++  })
++
++  it('proof mode (time scale 2): pending only at 840 ms', async () => {
++    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
++    const { control } = mountControl(2)
++    act(() => {
++      control().run(() => undefined)
++    })
++    await advance(839)
++    expect(control().pending).toBe(false)
++    await advance(1)
++    expect(control().pending).toBe(true)
++  })
++
++  it('`usePendingReveal(busy)` on its own (the Devices page\'s keyed list): false while idle, true only after the token', async () => {
++    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
++    const { result, rerender } = renderHook(({ busy }: { busy: boolean }) => usePendingReveal(busy), { initialProps: { busy: false } })
++    await advance(1_000)
++    expect(result.current).toBe(false)
++    rerender({ busy: true })
++    await advance(419)
++    expect(result.current).toBe(false)
++    await advance(1)
++    expect(result.current).toBe(true)
++    rerender({ busy: false })
++    expect(result.current).toBe(false)
++    rerender({ busy: true })
++    expect(result.current).toBe(false)
++  })
++})
++
++describe('the busy mark: `aria-busy` on the pressed control through `ref`', () => {
++  it('set at the press, removed at the release; the control\'s content and other attributes untouched', () => {
++    const { button, control } = mountControl()
++    const content = button.innerHTML
++    const attributes = () => Array.from(button.attributes).map((attribute) => attribute.name).filter((name) => name !== 'aria-busy').sort()
++    const others = attributes()
++    let release: () => void = () => undefined
++    act(() => {
++      control().run((done) => {
++        release = done
++      })
++    })
++    expect(button).toHaveAttribute('aria-busy', 'true')
++    expect(button.innerHTML).toBe(content)
++    expect(attributes()).toEqual(others)
++    act(() => release())
++    expect(button).not.toHaveAttribute('aria-busy')
++    expect(attributes()).toEqual(others)
++  })
++})
++
++describe('item 3 (F63-2): why the mark goes through `ref` and not through a prop', () => {
++  it('the kit\'s `Button` (`@heroui/react` over React Aria) drops an `aria-busy` prop; a `data-*` prop and the ref reach the element', () => {
++    const view = render(
++      <Button aria-busy data-probe="kept">
++        Save
++      </Button>,
++    )
++    const element = view.getByRole('button')
++    expect(element).not.toHaveAttribute('aria-busy')
++    expect(element).toHaveAttribute('data-probe', 'kept')
++    // If this ever fails, the kit forwards the prop: the hook may then return it instead of the ref.
++  })
++})
++
++describe('the settle entry', () => {
++  it('a Live result: `onWait` once right after the press; `ok` then `done` on the answer; `done` sees the control free', async () => {
++    const { control } = mountControl()
++    const order: string[] = []
++    let answer: (value: string) => void = () => undefined
++    const result = new Promise<string>((resolve) => {
++      answer = resolve
++    })
++    act(() => {
++      control().settle(() => result, {
++        ok: (value) => order.push(`ok ${value}`),
++        fail: () => order.push('fail'),
++        done: () => {
++          order.push('done')
++          // The control is released before `done`: a press from here is accepted.
++          order.push(`accepted ${String(control().run((release) => release()))}`)
++        },
++        onWait: () => order.push('wait'),
++      })
++    })
++    expect(order).toEqual(['wait'])
++    expect(control().busy).toBe(true)
++    await act(async () => {
++      answer('PASS')
++      await result
++    })
++    expect(order).toEqual(['wait', 'ok PASS', 'done', 'accepted true'])
++    expect(control().busy).toBe(false)
++  })
++
++  it('a Live refusal: `fail` then `done`, the control free again', async () => {
++    const { control } = mountControl()
++    const order: string[] = []
++    let refuse: (error: Error) => void = () => undefined
++    const result = new Promise<never>((_, reject) => {
++      refuse = reject
++    })
++    act(() => {
++      control().settle(() => result, { fail: (error) => order.push(`fail ${(error as Error).message}`), done: () => order.push('done') })
++    })
++    await act(async () => {
++      refuse(new Error('403'))
++      await result.catch(() => undefined)
++    })
++    expect(order).toEqual(['fail 403', 'done'])
++    expect(control().busy).toBe(false)
++  })
++})
++
++describe('edges', () => {
++  it('`key` names the command out, and is cleared with it', () => {
++    const { control } = mountControl()
++    let release: () => void = () => undefined
++    act(() => {
++      control().run((done) => {
++        release = done
++      }, 'EV-20260929-0001')
++    })
++    expect(control().key).toBe('EV-20260929-0001')
++    act(() => release())
++    expect(control().key).toBeNull()
++  })
++
++  it('a start that throws frees the control and the error reaches the caller', () => {
++    const { control } = mountControl()
++    expect(() =>
++      act(() => {
++        control().run(() => {
++          throw new Error('boom')
++        })
++      }),
++    ).toThrow('boom')
++    let accepted = false
++    act(() => {
++      accepted = control().run((release) => release())
++    })
++    expect(accepted).toBe(true)
++    expect(control().busy).toBe(false)
++  })
++
++  it('an unmount while busy leaves no timer behind', async () => {
++    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
++    const { control, view } = mountControl()
++    act(() => {
++      control().run(() => undefined)
++    })
++    view.unmount()
++    expect(vi.getTimerCount()).toBe(0)
++  })
++})
++
++describe('one copy: no page folder holds its own "busy at once, spinner late"', () => {
++  const FEATURES = resolve(import.meta.dirname, '../features')
++  const files = (dir: string): string[] =>
++    readdirSync(dir).flatMap((name) => {
++      const path = join(dir, name)
++      if (statSync(path).isDirectory()) return name === '__tests__' ? [] : files(path)
++      return /\.(ts|tsx)$/.test(name) && !/\.test\./.test(name) ? [path] : []
++    })
++  const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1')
++  const LANDED = ['dashboard', 'session-new', 'session-monitor', 'evidence', 'devices', 'storage', 'network-time']
++
++  it('the landed page folders read `LIVE_PENDING_REVEAL_MS` nowhere (the reveal is `@/lib/pending-control`\'s)', () => {
++    const readers = LANDED.flatMap((folder) => files(join(FEATURES, folder)))
++      .filter((path) => /\bLIVE_PENDING_REVEAL_MS\b/.test(code(readFileSync(path, 'utf8'))))
++      .map((path) => path.slice(FEATURES.length + 1))
++    expect(readers).toEqual([])
++  })
++
++  it('the hooks of W64, W65, W69 are gone or point at the shared one; every caller imports `@/lib/pending-control`', () => {
++    const all = files(FEATURES).map((path) => ({ file: path.slice(FEATURES.length + 1), text: code(readFileSync(path, 'utf8')) }))
++    expect(all.map(({ file }) => file)).not.toContain('session-monitor/use-pending-press.ts')
++    expect(all.map(({ file }) => file)).not.toContain('evidence/use-pending-action.ts')
++    expect(all.find(({ file }) => file === 'session-new/use-pending-control.ts')?.text.trim()).toBe(
++      "export { usePendingControl, type PendingControl } from '@/lib/pending-control'",
++    )
++    const callers = all.filter(({ text }) => /\busePendingControl\(\)|\busePendingReveal\(/.test(text)).map(({ file }) => file).sort()
++    expect(callers).toEqual([
++      'dashboard/devices-panel.tsx',
++      'devices/audio-input-card.tsx',
++      'devices/device-menu.tsx',
++      'evidence/export-wizard.tsx',
++      'evidence/use-archive.ts',
++      'session-monitor/action-bar.tsx',
++      'session-monitor/index.tsx',
++      'session-monitor/live-feed-panel.tsx',
++      'session-new/index.tsx',
++      'storage/manage-drawer.tsx',
++    ])
++    for (const file of callers) expect(all.find((entry) => entry.file === file)?.text, file).toMatch(/from '@\/lib\/pending-control'/)
++  })
++})
+--- a/apps/core-web/src/test/live-meter-clip-reset.test.tsx (new)
++++ b/apps/core-web/src/test/live-meter-clip-reset.test.tsx
+@@ -0,0 +1,174 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Plan row W0, item 4 (decision D154 DN-3; finding F-3 of W65): the CLIP chip of the shared meter
++// (`components/composed/dbfs-meter.tsx`) resets the latch through `settle` (rule 1), and a Live refusal
++// reaches the refusal presenter first (rule 2). Before W0 the press ignored the result of
++// `resetClip`, so a refused operation 52 showed nothing and left an unhandled rejection. Simulated
++// mode is the meter's own test (`components/composed/__tests__/dbfs-meter.test.tsx`), unchanged.
++//
++// | Case | Where |
++// |------|-------|
++// | Success: one `resetMicClip` with the channel, nothing worded by the meter | "success" |
++// | 403 FORBIDDEN (operation 52 needs a session only): the presenter's denied toast, no record of the meter | "refusal" |
++// | The contract's 403 `originNotAllowed`: the presenter names the address to open | "refusal" |
++// | Outage: the presenter's offline sentence | "outage" |
++// | A refusal the presenter leaves (422): the generic sentence and one record with a fixed message | "left to the meter" |
++import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
++import { toast } from '@heroui/react'
++import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
++import { en } from '@dems/shared/i18n'
++import { refusal } from '@dems/shared/live/testing'
++import type { AudioFrame } from '@dems/shared/sim'
++import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
++import { resetCoreErrorPresenter } from '@/lib/core-errors'
++import { webErrorSink } from '@/runtime'
++import { createLiveTestBed, INVESTIGATOR_SESSION, LIVE_TEST_ORIGIN, type LivePage, type LiveTestBed } from '@/runtime/testing/live-harness'
++
++configure({ asyncUtilTimeout: 8_000 })
++vi.setConfig({ testTimeout: 25_000 })
++
++const DENIED = en.common.rbac.deniedTitle
++const OFFLINE = en.common.coreErrors.offline
++const GENERIC = en.common.errors.generic
++const METER_SOURCE = 'components/composed.DbfsMeter.resetClip'
++
++const originalMatchMedia = window.matchMedia
++/** Empties the kit's toast queue, which is one per page and outlives a test (F76-9). */
++async function clearToasts() {
++  window.matchMedia = (() => ({ matches: true })) as unknown as typeof window.matchMedia
++  toast.clear()
++  window.matchMedia = originalMatchMedia
++  const queue = toast.getQueue() as { getExitingKeys?: () => ReadonlySet<string> }
++  if ((queue.getExitingKeys?.().size ?? 0) > 0) await new Promise((resolve) => setTimeout(resolve, 350))
++}
++const toastTexts = (): string[] => Array.from(document.querySelectorAll('[data-slot="toast"]')).map((element) => element.textContent ?? '')
++const toastWith = (text: string) => toastTexts().filter((entry) => entry.includes(text))
++
++let bed: LiveTestBed | undefined
++const requests = (operationId: string) => bed!.fake.log.requestsOf(operationId)
++const meterRecords = () => webErrorSink.records().filter((record) => record.source === METER_SOURCE)
++
++const frame = (at: number, clip: boolean): AudioFrame => ({ seq: 0, at, dbfs: clip ? -0.2 : -24, peak: clip ? -0.2 : -21, clip, noSignal: false })
++
++/** Devices & Inputs in Live mode; the Core's `meters` frame lights the CLIP latch of MIC 1's meter. */
++async function liveMeterClipped(): Promise<{ bed: LiveTestBed; page: LivePage; reset: HTMLElement }> {
++  const created = createLiveTestBed({ session: INVESTIGATOR_SESSION })
++  bed = created
++  const page = await created.load()
++  await created.mount(page, '/devices')
++  await screen.findByTestId('page-devices')
++  const socket = page.sockets.filter((connection) => connection.principal === 'OPERATOR' && connection.state === 'OPEN').at(-1)
++  if (!socket) throw new Error('the page holds no open operator socket')
++  const t0 = created.fake.clock.now()
++  act(() => {
++    socket.meters({ channels: { 'AUDIO-01': frame(t0, true), 'AUDIO-02': frame(t0, false) } })
++  })
++  const card = await screen.findByTestId('audio-input-AUDIO-01')
++  const meter = within(card).getByTestId('dbfs-meter')
++  await waitFor(() => expect(meter).toHaveAttribute('data-clip', 'latched'))
++  return { bed: created, page, reset: within(meter).getByRole('button', { name: /^Reset clip: / }) }
++}
++
++const originalPlay = HTMLMediaElement.prototype.play
++const originalPause = HTMLMediaElement.prototype.pause
++const originalGetContext = HTMLCanvasElement.prototype.getContext
++beforeAll(() => {
++  HTMLCanvasElement.prototype.getContext = (() => null) as unknown as HTMLCanvasElement['getContext']
++  HTMLMediaElement.prototype.play = (() => Promise.resolve()) as unknown as HTMLMediaElement['play']
++  HTMLMediaElement.prototype.pause = (() => undefined) as unknown as HTMLMediaElement['pause']
++  Element.prototype.getAnimations ??= function getAnimations() {
++    return []
++  }
++})
++afterAll(() => {
++  HTMLCanvasElement.prototype.getContext = originalGetContext
++  HTMLMediaElement.prototype.play = originalPlay
++  HTMLMediaElement.prototype.pause = originalPause
++})
++
++beforeEach(() => {
++  resetCoreErrorPresenter()
++  webErrorSink.clear()
++  window.localStorage.clear()
++  window.sessionStorage.clear()
++  window.sessionStorage.setItem(SHELL_INTRO_STORAGE_KEY, '1')
++})
++
++afterEach(async () => {
++  cleanup()
++  await clearToasts()
++  bed?.dispose()
++  bed = undefined
++  vi.restoreAllMocks()
++})
++
++describe('success', () => {
++  it('one `resetMicClip` with the channel; the meter words nothing and writes no record', async () => {
++    const { bed } = await liveMeterClipped()
++    bed.fake.answerFromExample('resetMicClip')
++    fireEvent.click((await liveMeterReset()))
++    await waitFor(() => expect(requests('resetMicClip')).toHaveLength(1))
++    expect(requests('resetMicClip')[0]).toMatchObject({ method: 'POST', path: '/api/v1/audio/clip/reset' })
++    expect(requests('resetMicClip')[0]?.body).toEqual({ channel: 'AUDIO-01' })
++    await bed.flush()
++    expect(toastWith(GENERIC)).toHaveLength(0)
++    expect(meterRecords()).toHaveLength(0)
++  })
++})
++
++describe('refusal (rule 2: the presenter first)', () => {
++  it('a 403 FORBIDDEN is the presenter\'s denied toast; no generic sentence, no record of the meter', async () => {
++    const { bed, reset } = await liveMeterClipped()
++    bed.fake.answerOnce('resetMicClip', refusal(403, 'FORBIDDEN', 'Refused.'))
++    fireEvent.click(reset)
++    await waitFor(() => expect(toastWith(DENIED)).toHaveLength(1))
++    expect(toastWith(GENERIC)).toHaveLength(0)
++    expect(meterRecords()).toHaveLength(0)
++    expect(requests('resetMicClip')).toHaveLength(1)
++  })
++
++  it('the contract\'s 403 `originNotAllowed` names the address to open (WT-2a)', async () => {
++    const { bed, reset } = await liveMeterClipped()
++    bed.fake.answerOnce('resetMicClip', bed.fake.example('resetMicClip', 403, 'originNotAllowed'))
++    fireEvent.click(reset)
++    const expected = en.common.coreErrors.originNotAllowed.replace('{{address}}', LIVE_TEST_ORIGIN)
++    await waitFor(() => expect(toastWith(expected)).toHaveLength(1))
++    expect(toastWith(GENERIC)).toHaveLength(0)
++  })
++})
++
++describe('outage (LB-6)', () => {
++  it('a request that gets no answer shows the presenter\'s offline sentence, and nothing of the meter', async () => {
++    const { bed, reset } = await liveMeterClipped()
++    bed.fake.failOnce('resetMicClip')
++    fireEvent.click(reset)
++    await waitFor(() => expect(toastWith(OFFLINE)).toHaveLength(1))
++    expect(toastWith(GENERIC)).toHaveLength(0)
++    expect(meterRecords()).toHaveLength(0)
++  })
++})
++
++describe('left to the meter', () => {
++  it('a 422 the presenter leaves: the generic sentence and ONE record with a fixed message and the cause\'s facts, never its text', async () => {
++    const { bed, reset } = await liveMeterClipped()
++    vi.spyOn(console, 'error').mockImplementation(() => undefined)
++    bed.fake.answerOnce('resetMicClip', bed.fake.example('resetMicClip', 422, 'invalidInput'))
++    fireEvent.click(reset)
++    await waitFor(() => expect(toastWith(GENERIC)).toHaveLength(1))
++    const records = meterRecords()
++    expect(records).toHaveLength(1)
++    expect(records[0]).toMatchObject({ level: 'error', message: 'A clip latch reset from an audio meter was not carried out.' })
++    expect(records[0]?.context).toMatchObject({ channel: 'AUDIO-01' })
++    expect(records[0]?.context?.errorName).toEqual(expect.any(String))
++    expect(records[0]?.stack).toBeUndefined()
++    expect(JSON.stringify(records[0])).not.toMatch(/Invalid input|The request body/i)
++  })
++})
++
++/** The reset button of the meter, read again (the chip re-renders when the latch frame repeats). */
++async function liveMeterReset(): Promise<HTMLElement> {
++  const meter = within(screen.getByTestId('audio-input-AUDIO-01')).getByTestId('dbfs-meter')
++  return within(meter).findByRole('button', { name: /^Reset clip: / })
++}
+--- a/apps/core-web/src/test/live-w0-page-logs.test.tsx (new)
++++ b/apps/core-web/src/test/live-w0-page-logs.test.tsx
+@@ -0,0 +1,119 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Plan row W0, items 5 and 8: the page logs of Network & Time (finding F71-3, decision D155) and of
++// the Dashboard and Devices & Inputs (finding F70-5, decision D156).
++//
++// | Criterion | Where |
++// |-----------|-------|
++// | Item 5: a Network & Time record goes to the page's own sink, with a fixed sentence and the error's name; never its text, never the console directly | "item 5" |
++// | Item 8: one page-report helper; the Dashboard and Devices records keep their shapes and their own correlation prefixes; Devices holds no copy | "item 8" |
++import { readFileSync } from 'node:fs'
++import { resolve } from 'node:path'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import type { ErrorRecord } from '@/runtime'
++import { webErrorSink } from '@/runtime'
++import { createPageReporter, newDashboardCorrelationId, reportDashboardError } from '@/features/dashboard/report'
++import { newDevicesCorrelationId, reportDevicesError } from '@/features/devices/report'
++import { logNetworkTimeError } from '@/features/network-time/log'
++
++const FEATURES = resolve(import.meta.dirname, '../features')
++const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1')
++const SECRET = 'subject Rudi Hartono, case LP/2026/1001-0101'
++
++beforeEach(() => {
++  webErrorSink.clear()
++})
++
++afterEach(() => {
++  vi.restoreAllMocks()
++})
++
++describe('item 5: Network & Time writes to the page\'s own sink (F71-3)', () => {
++  it('one record: the fixed sentence, the error\'s name, the caller\'s context, a correlation ID; no text, no stack', () => {
++    const records: ErrorRecord[] = []
++    const error = new TypeError(SECRET)
++    logNetworkTimeError('PanelBoundary', error, { panel: 'offset', componentStack: '\n    at OffsetPanel' }, { report: (record) => records.push(record as ErrorRecord) })
++    expect(records).toHaveLength(1)
++    const [record] = records
++    expect(record).toMatchObject({
++      level: 'error',
++      source: 'NetworkTime.PanelBoundary',
++      message: 'Network & Time: the step "PanelBoundary" did not complete.',
++    })
++    expect(record?.context).toMatchObject({ panel: 'offset', errorName: 'TypeError' })
++    expect(String(record?.context?.correlationId)).toMatch(/^nt-[0-9a-z]+-\d+$/)
++    expect(record?.stack).toBeUndefined()
++    expect(typeof record?.at).toBe('number')
++    expect(JSON.stringify(record)).not.toContain('Rudi')
++    expect(JSON.stringify(record)).not.toContain('LP/2026')
++  })
++
++  it('by default the record lands in `webErrorSink`; a non-Error is named by its type', () => {
++    logNetworkTimeError('chart', 'a thrown string with the subject Rudi')
++    const records = webErrorSink.records().filter((record) => record.source === 'NetworkTime.chart')
++    expect(records).toHaveLength(1)
++    expect(records[0]?.context).toMatchObject({ errorName: 'string' })
++    expect(JSON.stringify(records[0])).not.toContain('Rudi')
++  })
++
++  it('the module names no console and no text of the error (the static form of the rule)', () => {
++    const log = code(readFileSync(resolve(FEATURES, 'network-time/log.ts'), 'utf8'))
++    expect(log).toMatch(/webErrorSink/)
++    expect(log).not.toMatch(/console\./)
++    expect(log).not.toMatch(/error\.message|String\(error\)|error\.stack|import\.meta\.env\.DEV/)
++  })
++})
++
++describe('item 8: one page-report helper for the Dashboard and Devices & Inputs (F70-5)', () => {
++  /** A refusal of the shape the presenter leaves to a page: class, code and status, and a text that must not be logged. */
++  const refused = Object.assign(new Error(SECRET), { name: 'SimTransitionError', code: 'RECORDING_ACTIVE', status: 409 })
++
++  it('the Dashboard\'s record: level error, the caller\'s fixed sentence, the cause by class, code and status, a `dash-` correlation ID', () => {
++    const records: ErrorRecord[] = []
++    reportDashboardError('features/dashboard.DeviceMenu', refused, 'A device command of the Dashboard was not carried out.', { deviceId: 'CAM-01' }, {
++      report: (record) => records.push(record as ErrorRecord),
++    })
++    expect(records).toHaveLength(1)
++    expect(records[0]).toMatchObject({ level: 'error', source: 'features/dashboard.DeviceMenu', message: 'A device command of the Dashboard was not carried out.' })
++    expect(records[0]?.context).toMatchObject({ deviceId: 'CAM-01', errorName: 'SimTransitionError', code: 'RECORDING_ACTIVE', status: 409 })
++    expect(String(records[0]?.context?.correlationId)).toMatch(/^dash-[0-9a-z]+-\d+$/)
++    expect(records[0]?.stack).toBeUndefined()
++    expect(JSON.stringify(records[0])).not.toContain('Rudi')
++  })
++
++  it('the Devices record has the same shape with a `dev-` correlation ID, and its level can be `warn`', () => {
++    const records: ErrorRecord[] = []
++    const sink = { report: (record: unknown) => records.push(record as ErrorRecord) }
++    reportDevicesError('features/devices.run', refused, 'A device command of Devices & Inputs was not carried out.', { deviceId: 'CAM-01' }, 'error', sink)
++    reportDevicesError('features/devices.pairedDevices', 'not an error', 'The device registry could not be read.', {}, 'warn', sink)
++    expect(records).toHaveLength(2)
++    expect(records[0]?.context).toMatchObject({ deviceId: 'CAM-01', errorName: 'SimTransitionError', code: 'RECORDING_ACTIVE', status: 409 })
++    expect(String(records[0]?.context?.correlationId)).toMatch(/^dev-[0-9a-z]+-\d+$/)
++    expect(records[1]).toMatchObject({ level: 'warn' })
++    expect(records[1]?.context).toMatchObject({ errorName: 'string' })
++    expect(JSON.stringify(records)).not.toContain('Rudi')
++  })
++
++  it('by default both write to `webErrorSink`; each page counts its correlation IDs on its own', () => {
++    reportDashboardError('features/dashboard.x', new Error('a'), 'Fixed.')
++    reportDevicesError('features/devices.x', new Error('b'), 'Fixed.')
++    expect(webErrorSink.records().map((record) => record.source)).toEqual(['features/dashboard.x', 'features/devices.x'])
++    const reporter = createPageReporter('test')
++    expect(reporter.newCorrelationId()).toMatch(/^test-[0-9a-z]+-1$/)
++    expect(reporter.newCorrelationId()).toMatch(/^test-[0-9a-z]+-2$/)
++    expect(newDashboardCorrelationId()).toMatch(/^dash-/)
++    expect(newDevicesCorrelationId()).toMatch(/^dev-/)
++  })
++
++  it('one copy: only `dashboard/report.ts` writes to a sink; `devices/report.ts` binds its prefix to the helper', () => {
++    const dashboard = code(readFileSync(resolve(FEATURES, 'dashboard/report.ts'), 'utf8'))
++    const devices = code(readFileSync(resolve(FEATURES, 'devices/report.ts'), 'utf8'))
++    expect(dashboard).toMatch(/export function createPageReporter\(/)
++    expect(dashboard).toMatch(/sink\.report\(/)
++    expect(devices).not.toMatch(/sink\.report\(|webErrorSink|function causeFacts/)
++    expect(devices).toMatch(/createPageReporter\('dev'\)/)
++    for (const text of [dashboard, devices]) expect(text).not.toMatch(/console\.|error\.message|String\(error\)|\.stack/)
++  })
++})
+--- a/apps/core-web/src/test/live-w0-device-log.test.tsx (new)
++++ b/apps/core-web/src/test/live-w0-device-log.test.tsx
+@@ -0,0 +1,153 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Plan row W0, item 6 (finding F70-1, decision D156): the Log tab of the device drawer words an
++// Identify row as "Identify (blink)" — the device menu's own word — in both data modes. Before W0
++// every DEVICE_COMMAND that was not a test signal read "Restart (simulated)" / "Restart". This is the
++// ONE deliberate change of a Simulated screen in row W0.
++//
++// | Mode | Where |
++// |------|-------|
++// | Simulated: the simulator's own Identify row reads "Identify (blink)"; a test signal and a restart keep their words | "Simulated" |
++// | Live: the Core's Identify row reads "Identify (blink)"; no "Restart", no "simulated" | "Live" |
++import { cleanup, configure, fireEvent, render, screen, within } from '@testing-library/react'
++import { toast } from '@heroui/react'
++import { QueryClient } from '@tanstack/react-query'
++import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
++import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
++import { en } from '@dems/shared/i18n'
++import type { SocketLike } from '@dems/shared/realtime'
++import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, DeviceCommand, OPERATOR_IDS, type Sim } from '@dems/shared/sim'
++import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
++import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
++import { resetCoreErrorPresenter } from '@/lib/core-errors'
++import { createAppRouter } from '@/router'
++import { webErrorSink } from '@/runtime'
++import { createLiveTestBed, SUPERVISOR_SESSION, type LiveTestBed } from '@/runtime/testing/live-harness'
++
++configure({ asyncUtilTimeout: 8_000 })
++vi.setConfig({ testTimeout: 25_000 })
++
++const IDENTIFY = en.common.deviceMenu.identify
++const DEMO_NOW = Date.parse('2026-10-01T10:00:00+07:00')
++
++class SilentSocket implements SocketLike {
++  readyState = 0
++  onopen: SocketLike['onopen'] = null
++  onmessage: SocketLike['onmessage'] = null
++  onclose: SocketLike['onclose'] = null
++  onerror: SocketLike['onerror'] = null
++  close() {
++    this.readyState = 3
++  }
++}
++
++const originalMatchMedia = window.matchMedia
++async function clearToasts() {
++  window.matchMedia = (() => ({ matches: true })) as unknown as typeof window.matchMedia
++  toast.clear()
++  window.matchMedia = originalMatchMedia
++  const queue = toast.getQueue() as { getExitingKeys?: () => ReadonlySet<string> }
++  if ((queue.getExitingKeys?.().size ?? 0) > 0) await new Promise((resolve) => setTimeout(resolve, 350))
++}
++
++const sims: Sim[] = []
++let bed: LiveTestBed | undefined
++
++/** A simulator signed in as a TECHNICIAN (Restart needs DEVICE_MANAGE), on a manual clock that never ticks by itself. */
++function technicianSim(): Sim {
++  const authStorage = createMemoryAuthStorage()
++  authStorage.save({ operatorId: OPERATOR_IDS.RINA, issuedAt: DEMO_NOW })
++  const sim = createSim({ clock: createManualClock(DEMO_NOW), scenario: 'idle', storage: null, authStorage, visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined })
++  sims.push(sim)
++  return sim
++}
++
++/** Opens Camera 1's drawer on its Log tab and returns the Log's table. */
++async function cameraLog(): Promise<HTMLElement> {
++  fireEvent.click(await screen.findByRole('button', { name: 'Open details for Camera 1' }))
++  const drawer = await screen.findByTestId('device-drawer')
++  fireEvent.click(within(drawer).getByRole('tab', { name: 'Log' }))
++  return within(drawer).findByTestId('device-log')
++}
++
++/** The Log's detail cells (the third column), top to bottom. */
++const detailCells = (log: HTMLElement) => within(log).getAllByRole('row').slice(1).map((row) => within(row).getAllByRole('gridcell').at(-1)?.textContent ?? '')
++
++const originalPlay = HTMLMediaElement.prototype.play
++const originalPause = HTMLMediaElement.prototype.pause
++const originalGetContext = HTMLCanvasElement.prototype.getContext
++beforeAll(() => {
++  HTMLCanvasElement.prototype.getContext = (() => null) as unknown as HTMLCanvasElement['getContext']
++  HTMLMediaElement.prototype.play = (() => Promise.resolve()) as unknown as HTMLMediaElement['play']
++  HTMLMediaElement.prototype.pause = (() => undefined) as unknown as HTMLMediaElement['pause']
++  Element.prototype.getAnimations ??= function getAnimations() {
++    return []
++  }
++})
++afterAll(() => {
++  HTMLCanvasElement.prototype.getContext = originalGetContext
++  HTMLMediaElement.prototype.play = originalPlay
++  HTMLMediaElement.prototype.pause = originalPause
++})
++
++beforeEach(() => {
++  resetMissingI18nKeys()
++  resetCoreErrorPresenter()
++  webErrorSink.clear()
++  window.localStorage.clear()
++  window.sessionStorage.clear()
++  window.sessionStorage.setItem(SHELL_INTRO_STORAGE_KEY, '1')
++})
++
++afterEach(async () => {
++  cleanup()
++  await clearToasts()
++  for (const sim of sims.splice(0)) sim.stop()
++  bed?.dispose()
++  bed = undefined
++  vi.restoreAllMocks()
++})
++
++describe('Simulated: the drawer Log words each device command by its own name', () => {
++  it('an Identify row reads "Identify (blink)"; the test signal and the restart keep their Simulated words', async () => {
++    const sim = technicianSim()
++    sim.actions.deviceCommand('CAM-01', DeviceCommand.TEST_SIGNAL)
++    sim.actions.deviceCommand('CAM-01', DeviceCommand.IDENTIFY)
++    sim.actions.deviceCommand('CAM-01', DeviceCommand.RESTART)
++    const router = createAppRouter(
++      { sim, queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }), socketFactory: () => new SilentSocket() },
++      { history: createMemoryHistory({ initialEntries: ['/devices'] }) },
++    )
++    render(<RouterProvider router={router} />)
++    await screen.findByTestId('page-devices', {}, { timeout: 15_000 })
++    const cells = detailCells(await cameraLog())
++    expect(cells).toEqual(expect.arrayContaining([IDENTIFY, en.common.deviceMenu.testSignal, en.common.deviceMenu.restart]))
++    expect(cells.filter((cell) => cell === IDENTIFY)).toHaveLength(1)
++    expect(cells.filter((cell) => cell === en.common.deviceMenu.restart)).toHaveLength(1)
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++})
++
++describe('Live: the Core\'s Identify row reads "Identify (blink)"', () => {
++  it('no "Restart" and no "simulated" for an Identify row of the Core', async () => {
++    // The Core's own engine records one Identify of CAM-01 (the row the served state holds).
++    const source = technicianSim()
++    source.actions.deviceCommand('CAM-01', DeviceCommand.IDENTIFY)
++    const row = source.store.getState().audit.rows.at(-1)!
++    expect(row.details.command).toBe(DeviceCommand.IDENTIFY)
++    const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
++    bed = created
++    created.core.served = { ...created.core.served, audit: { ...created.core.served.audit, rows: [...created.core.served.audit.rows, row] } }
++    const page = await created.load()
++    await created.mount(page, '/devices')
++    await screen.findByTestId('page-devices', {}, { timeout: 15_000 })
++    const log = await cameraLog()
++    const cells = detailCells(log)
++    expect(cells).toContain(IDENTIFY)
++    expect(cells).not.toContain(en.devices.live.menu.restart)
++    expect(log.textContent ?? '').not.toMatch(/simulat/i)
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++})
+--- a/apps/core-web/src/test/live-w0-camera-words.test.tsx (new)
++++ b/apps/core-web/src/test/live-w0-camera-words.test.tsx
+@@ -0,0 +1,184 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Plan row W0, item 7 (finding F70-4, decision D156): in Live mode the camera feed's OWN words say
++// what is true (04_client_integration_spec §3.2; decision MS-1): the camera's state is the Core's,
++// the picture is the bundled demo loop. The component-made words change in Live mode only:
++//
++// | Word | Simulated (unchanged) | Live |
++// |------|-----------------------|------|
++// | The procedural fallback's burnt-in OSD line (`osdLabel`) | `CAM-01 \| VIDEO-01 \| LIVE \| DEMO` | `CAM-01 \| VIDEO-01 \| BUNDLED DEMO` |
++// | The picture's default accessible name | "Camera 1 · LIVE SESSION FEED" | "Camera 1 · Bundled demo picture" |
++// | The Devices camera tile's own name (`features/devices/camera-tile.tsx`) | "Live preview, Camera 1" | "Camera 1, bundled demo picture" |
++//
++// The line burnt into the frames of the bundled MP4 loops ("… LIVE | DEMO") is pixels of a frozen asset
++// (P13) and is NOT changed by W0: it is a decision for the controller (W0 report, item 7).
++import { cleanup, configure, render, screen } from '@testing-library/react'
++import { toast } from '@heroui/react'
++import { QueryClient } from '@tanstack/react-query'
++import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { en } from '@dems/shared/i18n'
++import type { SocketLike } from '@dems/shared/realtime'
++import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, OPERATOR_IDS, SimProvider } from '@dems/shared/sim'
++import { createTestSim } from '@/components/composed/__tests__/test-utils'
++import { CameraFeed } from '@/components/media'
++import { osdLabel } from '@/components/media/camera-feed.math'
++import { createProceduralFeed } from '@/components/media/procedural-feed'
++import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
++import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
++import { resetCoreErrorPresenter } from '@/lib/core-errors'
++import { createAppRouter } from '@/router'
++import { createLiveTestBed, SUPERVISOR_SESSION, type LiveTestBed } from '@/runtime/testing/live-harness'
++
++configure({ asyncUtilTimeout: 8_000 })
++vi.setConfig({ testTimeout: 25_000 })
++
++const DEMO_NOW = Date.parse('2026-10-01T10:00:00+07:00')
++const SIMULATED_NAME = `${en.common.tracks['VIDEO-01']} · ${en.session.feed.title}`
++const LIVE_NAME = `${en.common.tracks['VIDEO-01']} · ${en.session.feed.bundledPicture}`
++
++class SilentSocket implements SocketLike {
++  readyState = 0
++  onopen: SocketLike['onopen'] = null
++  onmessage: SocketLike['onmessage'] = null
++  onclose: SocketLike['onclose'] = null
++  onerror: SocketLike['onerror'] = null
++  close() {
++    this.readyState = 3
++  }
++}
++
++const originalMatchMedia = window.matchMedia
++async function clearToasts() {
++  window.matchMedia = (() => ({ matches: true })) as unknown as typeof window.matchMedia
++  toast.clear()
++  window.matchMedia = originalMatchMedia
++  const queue = toast.getQueue() as { getExitingKeys?: () => ReadonlySet<string> }
++  if ((queue.getExitingKeys?.().size ?? 0) > 0) await new Promise((resolve) => setTimeout(resolve, 350))
++}
++
++/** A 2D context that records every `fillText` and answers every other call with another recorder. */
++function recordingContext(texts: string[]): CanvasRenderingContext2D {
++  const recorder: ProxyHandler<object> = {
++    get(_target, property) {
++      if (property === 'fillText') return (text: string) => texts.push(text)
++      return () => new Proxy({}, recorder)
++    },
++    set: () => true,
++  }
++  return new Proxy({}, recorder) as CanvasRenderingContext2D
++}
++
++let bed: LiveTestBed | undefined
++
++beforeEach(() => {
++  resetMissingI18nKeys()
++  resetCoreErrorPresenter()
++  window.localStorage.clear()
++  window.sessionStorage.clear()
++  window.sessionStorage.setItem(SHELL_INTRO_STORAGE_KEY, '1')
++})
++
++afterEach(async () => {
++  cleanup()
++  await clearToasts()
++  bed?.dispose()
++  bed = undefined
++  vi.restoreAllMocks()
++})
++
++describe('the procedural OSD line (`osdLabel`)', () => {
++  it('Simulated keeps its line; Live keeps DEMO (P13) and drops LIVE', () => {
++    expect(osdLabel('VIDEO-01')).toBe('CAM-01 | VIDEO-01 | LIVE | DEMO')
++    expect(osdLabel('VIDEO-02', false)).toBe('CAM-02 | VIDEO-02 | LIVE | DEMO')
++    expect(osdLabel('VIDEO-01', true)).toBe('CAM-01 | VIDEO-01 | BUNDLED DEMO')
++    expect(osdLabel('VIDEO-02', true)).not.toMatch(/\bLIVE\b/)
++    expect(osdLabel('VIDEO-02', true)).toMatch(/\bDEMO\b/)
++  })
++
++  it('the painter writes the line of its mode on the canvas', () => {
++    for (const [liveData, expected] of [
++      [false, 'CAM-01 | VIDEO-01 | LIVE | DEMO'],
++      [true, 'CAM-01 | VIDEO-01 | BUNDLED DEMO'],
++    ] as const) {
++      const texts: string[] = []
++      const context = recordingContext(texts)
++      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => recordingContext([])) as unknown as HTMLCanvasElement['getContext'])
++      const canvas = { width: 0, height: 0, getContext: () => context } as unknown as HTMLCanvasElement
++      const feed = createProceduralFeed(canvas, 'VIDEO-01', undefined, liveData)
++      expect(feed).not.toBeNull()
++      feed!.resize(640, 360)
++      feed!.paint(0, { animate: false, now: Date.parse('2026-10-01T03:00:00.000Z') })
++      expect(texts).toContain(expected)
++      feed!.destroy()
++      vi.restoreAllMocks()
++    }
++  })
++})
++
++describe('the picture\'s default accessible name', () => {
++  it('Simulated (a simulator in the context, or none): "Camera 1 · LIVE SESSION FEED", unchanged', () => {
++    const sim = createTestSim()
++    const view = render(
++      <SimProvider sim={sim}>
++        <CameraFeed cameraId="VIDEO-01" />
++      </SimProvider>,
++    )
++    expect(screen.getByRole('img', { name: SIMULATED_NAME })).toBeInTheDocument()
++    view.unmount()
++    render(<CameraFeed cameraId="VIDEO-01" />)
++    expect(screen.getByRole('img', { name: SIMULATED_NAME })).toBeInTheDocument()
++    sim.stop()
++  })
++
++  it('Live (the Live source in the context, as on the Session Monitor): "Camera 1 · Bundled demo picture"; the picture is not called a live feed', async () => {
++    const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
++    bed = created
++    const page = await created.load()
++    render(
++      <SimProvider sim={page.runtime.sim}>
++        <CameraFeed cameraId="VIDEO-01" variant="feed" />
++      </SimProvider>,
++    )
++    expect(screen.getByRole('img', { name: LIVE_NAME })).toBeInTheDocument()
++    expect(screen.queryAllByRole('img', { name: new RegExp(en.session.feed.title) })).toEqual([])
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++
++  it('Devices & Inputs, its camera tiles\' own name: "Live preview, Camera 1" in Simulated mode (unchanged), "Camera 1, bundled demo picture" in Live mode', async () => {
++    const authStorage = createMemoryAuthStorage()
++    authStorage.save({ operatorId: OPERATOR_IDS.ANDI, issuedAt: DEMO_NOW })
++    const sim = createSim({ clock: createManualClock(DEMO_NOW), scenario: 'idle', storage: null, authStorage, visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined })
++    const router = createAppRouter(
++      { sim, queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }), socketFactory: () => new SilentSocket() },
++      { history: createMemoryHistory({ initialEntries: ['/devices'] }) },
++    )
++    const simulated = render(<RouterProvider router={router} />)
++    await screen.findByTestId('page-devices', {}, { timeout: 15_000 })
++    expect(screen.getByRole('img', { name: en.devices.cameras.feedAria.replace('{{name}}', 'Camera 1') })).toBeInTheDocument()
++    simulated.unmount()
++    sim.stop()
++
++    const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
++    bed = created
++    const page = await created.load()
++    await created.mount(page, '/devices')
++    await screen.findByTestId('page-devices', {}, { timeout: 15_000 })
++    expect(screen.getByRole('img', { name: en.devices.live.feedAria.replace('{{name}}', 'Camera 1') })).toBeInTheDocument()
++    expect(screen.queryAllByRole('img', { name: /Live preview/ })).toEqual([])
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++
++  it('a caller\'s own accessible name is kept in both modes', () => {
++    const sim = createTestSim()
++    render(
++      <SimProvider sim={sim}>
++        <CameraFeed cameraId="VIDEO-01" ariaLabel="Camera 1 preview" />
++      </SimProvider>,
++    )
++    expect(screen.getByRole('img', { name: 'Camera 1 preview' })).toBeInTheDocument()
++    sim.stop()
++  })
++})
+--- a/apps/core-web/src/test/live-w0-evidence-words.test.tsx (new)
++++ b/apps/core-web/src/test/live-w0-evidence-words.test.tsx
+@@ -0,0 +1,126 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Plan row W0, item 9 (decision D158 DC-4): the two "simulated" labels on Live evidence items without
++// a package say what is true in Live mode — the values are the Core server's record — and Simulated
++// mode keeps its words (04_client_integration_spec §3.2). The export destinations and the signature
++// line stay "(simulated)" by D158 DC-4 and are not touched.
++//
++// | Place | Simulated (unchanged) | Live |
++// |-------|-----------------------|------|
++// | Metadata tab, the record's label | "Simulated evidence record" | "Core record" |
++// | Metadata tab, the record's first members | `"simulated": true`, "SIMULATED record from the in-browser simulator …" | `"record": "CORE"`, "The Core server's record of this item …" |
++// | Preview card, the package line | "No DEMO package for this item: simulated data only." | "No DEMO package for this item: the Core server's record only." |
++import { cleanup, render, screen, within } from '@testing-library/react'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { en } from '@dems/shared/i18n'
++import { SimProvider, type Sim } from '@dems/shared/sim'
++import { createTestSim } from '@/components/composed/__tests__/test-utils'
++import { MetadataTab } from '@/features/evidence/metadata-tab'
++import { buildEvidenceRow } from '@/features/evidence/model'
++import { EvidencePreview } from '@/features/evidence/preview-card'
++import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
++import { clearToasts, EV, findDetailBody, installJsdomStubs, openLiveEvidence, type LiveEvidence } from '@/features/evidence/__tests__/live-evidence-bed'
++import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
++import { resetCoreErrorPresenter } from '@/lib/core-errors'
++import { createLiveTestBed, SUPERVISOR_SESSION, type LiveTestBed } from '@/runtime/testing/live-harness'
++
++vi.setConfig({ testTimeout: 40_000 })
++const UI = { timeout: 15_000 }
++
++let opened: LiveEvidence | undefined
++let bed: LiveTestBed | undefined
++const sims: Sim[] = []
++
++beforeEach(() => {
++  resetMissingI18nKeys()
++  resetCoreErrorPresenter()
++  window.localStorage.clear()
++  window.sessionStorage.clear()
++  window.sessionStorage.setItem(SHELL_INTRO_STORAGE_KEY, '1')
++  installJsdomStubs()
++})
++
++afterEach(async () => {
++  cleanup()
++  await clearToasts()
++  opened?.bed.dispose()
++  opened = undefined
++  bed?.dispose()
++  bed = undefined
++  for (const sim of sims.splice(0)) sim.stop()
++  vi.restoreAllMocks()
++})
++
++/** The first evidence row of `sim` (the caller drops its package: an item no DEMO package joins). */
++function rowWithoutPackage(sim: Sim) {
++  const state = sim.store.getState()
++  const item = state.evidence[0]
++  if (!item) throw new Error('the state holds no evidence item')
++  return buildEvidenceRow(item, state.operators)
++}
++
++describe('Simulated mode keeps its words', () => {
++  it('the Metadata tab: "Simulated evidence record" with `"simulated": true`; the preview: "simulated data only"', () => {
++    const sim = createTestSim()
++    sims.push(sim)
++    const row = { ...rowWithoutPackage(sim), pkg: null }
++    render(
++      <SimProvider sim={sim}>
++        <MetadataTab row={row} />
++        <EvidencePreview row={row} onOpen={() => undefined} onExport={() => undefined} />
++      </SimProvider>,
++    )
++    const metadata = screen.getByTestId('evidence-metadata')
++    expect(metadata).toHaveAttribute('data-package', 'simulated')
++    expect(within(metadata).getByRole('region', { name: en.evidence.metadata.simulatedRecord })).toBeInTheDocument()
++    expect(metadata.textContent).toContain('"simulated": true')
++    expect(metadata.textContent).toContain('SIMULATED record from the in-browser simulator; no DEMO package joins this item.')
++    const line = screen.getByTestId('evidence-preview').querySelector('.evi-preview-package')!
++    expect(line).toHaveAttribute('data-package', 'simulated')
++    expect(line).toHaveTextContent(en.evidence.preview.noPackage)
++  })
++})
++
++describe('Live mode: the Core server\'s record is called so', () => {
++  it('the Metadata tab of the detail page (operation 40 answers NONE): "Core record", `"record": "CORE"`, no "simulated" word', async () => {
++    opened = await openLiveEvidence(`/evidence/${EV.sealed7}?tab=metadata`)
++    await findDetailBody()
++    const metadata = await screen.findByTestId('evidence-metadata', {}, UI)
++    expect(metadata).toHaveAttribute('data-package', 'core')
++    expect(within(metadata).getByRole('region', { name: en.evidence.live.coreRecord })).toBeInTheDocument()
++    expect(within(metadata).queryByRole('region', { name: en.evidence.metadata.simulatedRecord })).not.toBeInTheDocument()
++    const record = JSON.parse(within(metadata).getByRole('region', { name: en.evidence.live.coreRecord }).textContent ?? '') as Record<string, unknown>
++    expect(record.record).toBe('CORE')
++    expect(record.note).toBe("The Core server's record of this item; no DEMO package joins it.")
++    expect(record).not.toHaveProperty('simulated')
++    // The record's values are the Core's (the served item). Its signature member is the Core's own
++    // value, which the contract calls simulated (D158 DC-4: truthful, not touched).
++    expect(record.evidenceId).toBe(EV.sealed7)
++    const { signature: _signature, ...ownWords } = record
++    expect(JSON.stringify(ownWords)).not.toMatch(/simulat/i)
++    // Outside the record, the tab says nothing of a simulation either.
++    const outside = (metadata.textContent ?? '').replace(within(metadata).getByRole('region').textContent ?? '', '')
++    expect(outside).not.toMatch(/simulat/i)
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++
++  it('the preview card: "the Core server\'s record only", no "simulated" word', async () => {
++    const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
++    bed = created
++    const page = await created.load()
++    // An item no DEMO package joins (a session recorded on the Core); the served dataset's items all join one.
++    const row = { ...rowWithoutPackage(page.runtime.sim), pkg: null }
++    render(
++      <SimProvider sim={page.runtime.sim}>
++        <EvidencePreview row={row} onOpen={() => undefined} onExport={() => undefined} />
++      </SimProvider>,
++    )
++    const line = screen.getByTestId('evidence-preview').querySelector('.evi-preview-package')!
++    expect(line).toHaveAttribute('data-package', 'core')
++    expect(line).toHaveTextContent(en.evidence.live.noPackage)
++    expect(line.textContent ?? '').not.toMatch(/simulat/i)
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++})

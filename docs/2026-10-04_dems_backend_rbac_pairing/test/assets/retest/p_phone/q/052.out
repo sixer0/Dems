@@ -1,0 +1,35 @@
+13:21:48.888 mark k04 at 13:21:48.888
+13:21:48.958 nav / load=true
+13:21:52.193 wait page-dashboard present: 1 ms (at 13:21:52.194)
+13:21:52.254 press start-new-session ok at 13:21:52.284
+13:21:52.338 wait page-session-new present: 40 ms (at 13:21:52.378)
+13:21:52.424 slept 2000 ms
+13:21:54.479 press sn-scan ok at 13:21:54.500
+13:21:54.546 slept 800 ms
+13:21:55.410 press sn-subject-TERSANGKA ok at 13:21:55.416
+13:21:55.472 slept 300 ms
+13:21:55.837 type into [data-testid="sn-subject-name"]: "RP setup for technician check"
+13:21:55.926 slept 500 ms
+13:21:56.516 press sn-next ok at 13:21:56.518
+13:21:56.572 slept 4000 ms
+13:22:00.676 screenshot 102_p5_web_setup_session_created.png 13:22:00.676..13:22:00.814
+13:22:00.907 api GET /api/v1/session/current => {"status":200,"body":{"session":{"id":"SES-20261006-0037","state":"ARMED","caseNumber":"LP/2026/1006-0021","subjectType":"TERSANGKA","subjectName":"RP setup for technician check","investigatorId":"OPR-002","investigatorName":"AKP Andi Pratama","room":"Interview Room 1","profileId":"STANDARD_1080P25","createdAt":"2026-10-06T13:21:56.825+07:00","startedAt":null,"stoppedAt":null,"sealedAt":null,"elapsedMs":0,"bytesWritten":0,"evidenceId":null,"precheck":{"outcome":"PASS","items":[{"id":"CORE","status":"PASS","value":"ONLINE","reason":null},{"id":"LENS_1","status":"PASS","value":"READY","reason":null},{"id":"LENS_2","status":"PASS","value":"READY","reason":null},{"id":"MIC_1","status":"PASS","value":"READY","reason":null},{"id":"MIC_2","status":"PASS","value":"READY","reason":null},{"id":"STORAGE","status":"PASS","value":"READY","reason":null},{"id":"TIME","status":"PASS","value":"GNSS","reason":null},{"id":"SECURITY","status":"PASS","value":"READY","reason":null}]},"fault":null},"serverTime":"2026-10-06T13:22:00.911+07:00"}}
+13:22:00.981 declared screen home
+13:22:01.060 screencap 103_p5_rina_home_continue_setup_locked.png 13:22:01.060..13:22:01.950
+13:22:02.070 tap 302,1239
+13:22:02.217 slept 2000 ms
+13:22:04.298 screencap 103b_p5_rina_home_after_press_continue_setup.png 13:22:04.298..13:22:04.949
+13:22:05.115 tap 324,2283
+13:22:05.348 slept 2500 ms
+13:22:07.887 declared screen sessions
+13:22:07.919 screencap 104_p5_rina_sessions_hub_continue_setup_locked.png 13:22:07.919..13:22:08.134
+13:22:08.191 ids(2): sessions-start@540,363 "Continue session setup" ; sessions-start-locked@540,467 "Requires the Investigator role"
+13:22:10.305 warnlog since 10-06 13:21:48.000 (0): 
+13:22:10.377 serverlog since k04 (7):
+    13:21:48.974 [socket closed]
+    13:21:49.094 [socket opened]
+    13:21:49.103 GET /api/v1/auth/session 200
+    13:21:54.506 POST /api/v1/session/case-number 200
+    13:21:56.837 POST /api/v1/session 201
+    13:21:56.869 POST /api/v1/session/:id/precheck 202
+    13:22:00.912 GET /api/v1/session/current 200

@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Copy-round web mutation check (rule M15: no file of the workspace tree is changed).
+
+Each mutation is ONE text replacement in ONE module, applied in memory by the transform plugin of
+vitest.mutation.config.mts (W0's pattern). A mutation is DETECTED when the named tests fail
+while the mutation was really applied (the plugin leaves a marker file under TMPDIR). The SHA-256 of
+every mutated file is taken before and after each batch.
+    python3 /Users/gsp-budi/Documents/DEMS/.cache/copy/mut/run_web.py check | run [ids]
+"""
+import hashlib, json, os, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+HERE = os.path.join(ROOT, '.cache/copy/mut')
+CONFIG = '.cache/copy/mut/vitest.mutation.config.mts'
+APPLIED = os.path.join(os.environ['TMPDIR'], 'copy-mut-applied')
+os.makedirs(APPLIED, exist_ok=True)
+SRC = 'apps/core-web/src/'
+
+SN_COPY = 'src/features/session-new/__tests__/copy-round-live-words.test.tsx'
+SA_COPY = 'src/features/security-audit/__tests__/copy-round-reason-note.test.ts'
+SA_EXPORT = 'src/test/live-security-audit-export.test.tsx'
+EV_COPY = 'src/features/evidence/__tests__/copy-round-metadata-media.test.tsx'
+EV_WORDS = 'src/test/live-w0-evidence-words.test.tsx'
+DV_COPY = 'src/features/devices/__tests__/copy-round-health-caption.test.tsx'
+
+M = []
+def m(mid, file, what, find, replace, tests):
+    M.append({'id': mid, 'file': SRC + file, 'what': what, 'find': find, 'replace': replace, 'tests': tests})
+
+# -- Item 1 (#89): sessionNew.live.* in the web console --
+m('C1W1', 'features/session-new/devices-step.tsx', 'Live meters hint falls back to the Simulated words', "t(live ? 'sessionNew.live.speakToTest' : 'sessionNew.devices.speakToTest')", "t('sessionNew.devices.speakToTest')", [SN_COPY])
+m('C1W2', 'features/session-new/devices-step.tsx', 'Simulated meters hint takes the Live words', "t(live ? 'sessionNew.live.speakToTest' : 'sessionNew.devices.speakToTest')", "t('sessionNew.live.speakToTest')", [SN_COPY])
+m('C1W3', 'features/session-new/info-step.tsx', 'Live scan label falls back to the Simulated words', "t(live ? 'sessionNew.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')", "t('sessionNew.info.caseNumber.scan')", [SN_COPY])
+m('C1W4', 'features/session-new/info-step.tsx', 'Simulated scan label takes the Live words', "t(live ? 'sessionNew.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')", "t('sessionNew.live.scanCaseNumber')", [SN_COPY])
+m('C1W5', 'features/session-new/index.tsx', 'the page does not pass `live` to step 1', "        scanRef={scanRef}\n        live={live}\n", "        scanRef={scanRef}\n", [SN_COPY])
+m('C1W6', 'features/session-new/info-step.tsx', 'the tooltip keeps the Simulated words (only the label moves)', "<Tooltip.Content placement=\"top\">{scanLabel}</Tooltip.Content>", "<Tooltip.Content placement=\"top\">{t('sessionNew.info.caseNumber.scan')}</Tooltip.Content>", [SN_COPY])
+
+def ms(mid, file, what, find, replace, tests):
+    M.append({'id': mid, 'file': file, 'what': what, 'find': find, 'replace': replace, 'tests': tests})
+
+# -- Item 6 (#94): the Simulated audit export note --
+ms('C6W1', 'packages/shared/src/i18n/en/security-audit.ts', 'the Simulated note says the old, untrue sentence again', "      reasonNote: 'Recorded by the simulator in the audit row of the export.',", "      reasonNote: 'Shown here only: the demo simulator does not record the export reason yet.',", [SA_COPY, SA_EXPORT])
+m('C6W2', 'features/security-audit/export-audit-dialog.tsx', 'Simulated mode shows the Live note', "{isLive ? t('securityAudit.live.exportAudit.reasonNote') : t('securityAudit.exportAudit.result.reasonNote')}", "{t('securityAudit.live.exportAudit.reasonNote')}", [SA_EXPORT])
+
+# -- Item 7 (#95): the Metadata tab when operation 40 does not answer --
+MT = 'features/evidence/metadata-tab.tsx'
+m('C7W1', MT, 'the empty state keeps "No DEMO package" when the reference is unavailable', "t(packageUnknown ? 'evidence.live.mediaUnavailable' : 'evidence.metadata.noPackage')", "t('evidence.metadata.noPackage')", [EV_COPY, EV_WORDS])
+m('C7W2', MT, 'the record keeps "no DEMO package joins it" when the reference is unavailable', "              note: packageUnknown\n", "              note: false\n", [EV_COPY, EV_WORDS])
+m('C7W3', MT, 'the prop is honoured in Simulated mode too', "  const packageUnknown = live && mediaUnavailable", "  const packageUnknown = mediaUnavailable", [EV_COPY, EV_WORDS])
+m('C7W4', MT, 'the unavailable words show whenever Live has no package (NONE as well)', "  const packageUnknown = live && mediaUnavailable", "  const packageUnknown = live", [EV_COPY, EV_WORDS])
+m('C7W5', 'features/evidence/detail-page.tsx', 'the page does not pass the media state to the tab', "<MetadataTab row={row} mediaUnavailable={media.status === 'unavailable'} />", "<MetadataTab row={row} />", [EV_COPY, EV_WORDS])
+
+# -- Item 2 (#90, decision D186): the shared Live health caption on the web --
+ms('C2W1', 'packages/shared/src/i18n/en/devices.ts', 'the shared Live caption says "Last N samples" again', "    samples_other: \"Derived from the Core's data · last {{count}} samples\",", "    samples_other: 'Last {{count}} samples',", [DV_COPY])
+m('C2W2', 'features/devices/live.ts', 'Live mode takes the Simulated caption', "    samples: 'devices.live.samples',", "    samples: 'devices.drawer.health.samples',", [DV_COPY])
+m('C2W3', 'features/devices/live.ts', 'Simulated mode takes the Live caption', "    samples: 'devices.drawer.health.samples',", "    samples: 'devices.live.samples',", [DV_COPY])
+
+def dump():
+    with open(os.path.join(HERE, 'mutations.json'), 'w', encoding='utf8') as handle:
+        json.dump([{k: mu[k] for k in ('id', 'file', 'find', 'replace')} for mu in M], handle, indent=1)
+
+def check():
+    dump()
+    bad = 0
+    for mu in M:
+        text = open(os.path.join(ROOT, mu['file']), encoding='utf8').read()
+        count = text.count(mu['find'])
+        if count != 1:
+            bad += 1
+            print(f"{mu['id']}: the text occurs {count} times in {mu['file']}")
+    ids = [mu['id'] for mu in M]
+    assert len(ids) == len(set(ids)), 'duplicate id'
+    print(f"{len(M)} mutations; texts that do not occur exactly once: {bad}")
+    return bad
+
+def digests(files):
+    return {f: hashlib.sha256(open(os.path.join(ROOT, f), 'rb').read()).hexdigest()[:16] for f in sorted(set(files))}
+
+def vitest(mid, tests):
+    env = dict(os.environ)
+    env['COPY_APPLIED_DIR'] = APPLIED
+    if mid: env['COPY_MUT'] = mid
+    else: env.pop('COPY_MUT', None)
+    started = time.time()
+    done = subprocess.run(['npx', 'vitest', 'run', '--config', CONFIG, '--maxWorkers=2', *tests], cwd=ROOT, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    summary = ' | '.join(line.strip() for line in out.splitlines() if line.strip().startswith(('Test Files', 'Tests ')))
+    first = next((line.strip() for line in out.splitlines() if line.strip().startswith(('×', 'FAIL'))), '')
+    return done.returncode, summary, first[:180], time.time() - started
+
+def run(ids, baseline):
+    if check(): sys.exit(2)
+    chosen = [mu for mu in M if not ids or mu['id'] in ids]
+    log = open(os.path.join(HERE, 'web_mutations.log'), 'a', encoding='utf8')
+    def say(line):
+        print(line, flush=True); log.write(line + '\n'); log.flush()
+    files = [mu['file'] for mu in chosen]
+    before = digests(files)
+    say(f"## {time.strftime('%Y-%m-%d %H:%M:%S WIB')} batch {[mu['id'] for mu in chosen]}")
+    if baseline:
+        tests = sorted({t for mu in chosen for t in mu['tests']})
+        code, summary, first, secs = vitest(None, tests)
+        say(f"baseline (no mutation) exit {code} {summary} ({secs:.0f} s) over {len(tests)} files")
+        if code != 0: sys.exit(3)
+    detected, survived, missing = [], [], []
+    for mu in chosen:
+        marker = os.path.join(APPLIED, mu['id'])
+        if os.path.exists(marker): os.remove(marker)
+        code, summary, first, secs = vitest(mu['id'], mu['tests'])
+        applied = os.path.exists(marker)
+        if not applied: missing.append(mu['id']); verdict = 'NOT APPLIED'
+        elif code != 0: detected.append(mu['id']); verdict = 'detected'
+        else: survived.append(mu['id']); verdict = 'SURVIVED'
+        say(f"{mu['id']} {verdict:11} {mu['what']} | {summary} | {first} ({secs:.0f} s)")
+        if os.path.exists(marker): os.remove(marker)
+    after = digests(files)
+    say(f"## {time.strftime('%Y-%m-%d %H:%M:%S WIB')} {len(chosen)} mutations: {len(detected)} detected, {len(survived)} survived {survived}, {len(missing)} not applied {missing}")
+    say(f"## the mutated files in the tree, before and after: {'identical' if before == after else 'CHANGED'}")
+    for f, h in after.items(): say(f"   {h}  {f}")
+
+if __name__ == '__main__':
+    if len(sys.argv) > 1 and sys.argv[1] == 'check': sys.exit(1 if check() else 0)
+    args = sys.argv[2:] if len(sys.argv) > 2 else []
+    baseline = '--baseline' in args
+    run([a for a in args if a != '--baseline'], baseline)

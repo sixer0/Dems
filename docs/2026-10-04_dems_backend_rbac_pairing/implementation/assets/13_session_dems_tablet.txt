@@ -1,0 +1,51 @@
+SESSION_START 07:15:38
+-- reverse rules BEFORE the session: [;]
+[device-session tablet 07:15:38] lock held; hard cap 600 s, until 07:25:38 (watchdog PID 20136)
+[device-session tablet 07:15:38] session serial: emulator-5556 (dems_tablet)
+[device-session tablet 07:15:38] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5556
+== dems_tablet emulator-5556 commands start 07:15:38; METRO_PORT=none; DEMS_CORE_HOST_PORT=<unset>
+-- reverse rules during the session (set by the helper)
+host-16 tcp:4400 tcp:4400
+
+-- user state: State: RUNNING_LOCKED; keyguard: isKeyguardShowing=true
+   (RUNNING_LOCKED = not unlocked since boot: run-as cannot reach the app's data folder; the package manager's ceDataInode / deDataInode are compared instead)
+-- host APK
+-rw-r--r--@ 1 gsp-budi  staff  324537405 Oct  4 07:07 /Users/gsp-budi/Documents/DEMS/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+sha256 d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec
+-- package BEFORE install
+codePath=/data/app/~~ZrHLRvB7Y_PFZb0z93GWHw==/com.dems.demo.tablet-xnqpT5qsGZtSPFIk0pQ7Lw==
+versionCode=1 minSdk=24 targetSdk=36
+versionName=0.1.0
+lastUpdateTime=2026-10-01 11:03:12
+signatures=PackageSignatures{dbffc10 version:2, signatures:[51ed3f60], past signatures:[]}
+pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
+User 0: ceDataInode=492664 deDataInode=278872 installed=true hidden=false suspended=false distractionFlags=0 stopped=true notLaunched=false enabled=0 instant=false virtual=false quarantined=false
+dataDir=/data/user/0/com.dems.demo.tablet
+firstInstallTime=2026-10-01 11:03:12
+run-as: couldn't stat /data/user/0/com.dems.demo.tablet: No such file or directory
+-- app data BEFORE install: 0 files, list sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+-- INSTALL_START 07:15:39: adb -s emulator-5556 install -r <app-debug.apk>
+Performing Streamed Install
+Success
+-- INSTALL_END 07:15:40
+-- package AFTER install
+codePath=/data/app/~~twrJ9Q9ZTwMa2G4lcb7DCA==/com.dems.demo.tablet-KW3_Kn39t_WWqA88aDDkng==
+versionCode=100 minSdk=24 targetSdk=36
+versionName=0.1.0
+lastUpdateTime=2026-10-04 07:15:40
+signatures=PackageSignatures{dbffc10 version:2, signatures:[51ed3f60], past signatures:[]}
+pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
+User 0: ceDataInode=492664 deDataInode=278872 installed=true hidden=false suspended=false distractionFlags=0 stopped=true notLaunched=false enabled=0 instant=false virtual=false quarantined=false
+dataDir=/data/user/0/com.dems.demo.tablet
+firstInstallTime=2026-10-01 11:03:12
+-- base.apk on the device: d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec  (host APK: d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec)
+run-as: couldn't stat /data/user/0/com.dems.demo.tablet: No such file or directory
+-- app data AFTER install (app not started yet): 0 files, list sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+   app data: IDENTICAL before and after the install
+-- pidof before launch: []
+== no Metro in this session; no launch
+[device-session tablet 07:15:40] session ended with status 0
+SESSION_EXIT=0 07:15:40
+-- reverse rules AFTER the session: [;]
+pidof after: []
+DONE

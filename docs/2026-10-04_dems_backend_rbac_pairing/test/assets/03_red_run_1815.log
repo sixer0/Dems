@@ -1,0 +1,291 @@
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db test/acceptance/contract.test.ts --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_74_tmdr9w5x_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_74_tmdr9w5x_tpl_schema: built in 82 ms (create 28 ms, hook 49 ms)
+[test:db] template dems_test_step_74_tmdr9w5x_tpl_seed: built in 132 ms (create 45 ms, hook 85 ms)
+stdout | test/acceptance/contract.test.ts > AC-B-10: every operation answers what the contract documents > area 5, evidence (operations 39 to 43), and the software update
+[w52] evidence: 15 items; states [null]; sealed by this file EV-20261001-0015; never sealed 
+
+[test:db] bulk fixture: dems_test_step_74_tmdr9w5x_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 26e251887c667e1e...; digest e58f1ae233811851...; build 134 ms, write 1125 ms, total 1262 ms
+stdout | test/acceptance/contract.test.ts > SC6: what the whole file received > AC-B-10, AC-B-14, SR-76: every answer validated against the contract and carried the five headers of OR-9; no 500; API-7 on every 2xx POST; the cookie rule
+[w52] answers received: 922; by status {"200":241,"201":11,"202":9,"204":25,"400":58,"401":123,"403":109,"404":21,"405":147,"409":23,"413":25,"422":93,"423":4,"429":3,"503":30}
+[w52] judged: {"contract":915,"headers":922,"jsonBodies":897,"api7":79,"cookieSet":8,"cookieCleared":1,"cookieNone":913}
+
+stdout | test/acceptance/contract.test.ts > SC6: what the whole file received > the error codes: every code the server answered is one the registry names for that operation and status, or a contract gap a row already reported
+[w52] code gap CONTRACT-GAP-W34-2: stopSession 422 answers INVALID_INPUT; the registry names ["INVALID_REASON"]
+[w52] code NOT NAMED (new): signInWithBiometric 403 answers DEVICE_NOT_PAIRED; the registry names ["DEVICE_REVOKED","ORIGIN_NOT_ALLOWED"]
+[w52] code NOT NAMED (new): reportBiometricFailure 403 answers DEVICE_NOT_PAIRED; the registry names ["DEVICE_REVOKED","ORIGIN_NOT_ALLOWED"]
+[w52] code gap CONTRACT-GAP-W32-3: getDeviceRegistration 403 answers DEVICE_NOT_PAIRED; the registry names ["DEVICE_REVOKED","ORIGIN_NOT_ALLOWED"]
+[w52] code gap CONTRACT-GAP-W32-3: unpairDevice 403 answers DEVICE_NOT_PAIRED; the registry names ["DEVICE_REVOKED","ORIGIN_NOT_ALLOWED"]
+[w52] code gap CONTRACT-GAP-W32-3: rotateDeviceCredential 403 answers DEVICE_NOT_PAIRED; the registry names ["DEVICE_REVOKED","ORIGIN_NOT_ALLOWED"]
+[w52] code gap CONTRACT-GAP-W35-2: exportEvidence 422 answers INVALID_INPUT; the registry names ["INVALID_REASON"]
+
+stdout | test/acceptance/contract.test.ts > SC6: what the whole file received > the coverage: every documented status of every operation was produced, or is listed with the reason why not
+[w52] coverage, operation by documented status (316 of 337 cells produced):
+[w52]   getServiceHealth: 200
+[w52]   createSession: 200; 201; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 409 SESSION_ACTIVE; 422 INVALID_INPUT
+[w52]   startSession: 200; 202; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT_FOUND; 409 INVALID_STATE|PRECHECK_BLOCKED|PRECHECK_RUNNING|PRECHECK_WARNINGS; 422 INVALID_INPUT
+[w52]   stopSession: 202; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT_FOUND; 409 INVALID_STATE; 422 INVALID_INPUT|INVALID_REASON
+[w52]   getCurrentSession: 200; 401 NOT_SIGNED_IN; 403 DEVICE_REVOKED|ORIGIN_NOT_ALLOWED
+[w52]   getDeviceHealth: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   getAudioStatus: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   getVideoStatus: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   getStorageStatus: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   exportEvidence: 202 NOT PRODUCED; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 FORBIDDEN; 404 NOT PRODUCED; 409 NOT PRODUCED; 422 INVALID_INPUT
+[w52]   signIn: 200; 400 INVALID_JSON; 401 INVALID_CREDENTIALS; 403 DEVICE_NOT_PAIRED; 422 INVALID_INPUT; 423 LOCKED
+[w52]   getSignInStatus: 200; 403 DEVICE_REVOKED
+[w52]   getAuthSession: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   signOut: 204; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 422 INVALID_INPUT
+[w52]   touchSession: 200; 401 NOT_SIGNED_IN; 403 DEVICE_REVOKED|ORIGIN_NOT_ALLOWED
+[w52]   setBiometricEnrollment: 200; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 DEVICE_NOT_PAIRED; 422 INVALID_INPUT
+[w52]   signInWithBiometric: 200; 400 INVALID_JSON; 401 INVALID_CREDENTIALS|NOT_SIGNED_IN; 403 DEVICE_NOT_PAIRED; 422 INVALID_INPUT; 423 LOCKED
+[w52]   reportBiometricFailure: 200; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 DEVICE_NOT_PAIRED; 422 INVALID_INPUT
+[w52]   getRoleMatrix: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   listUsers: 200; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED
+[w52]   assignUserRole: 200 NOT PRODUCED; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT PRODUCED; 409 NOT PRODUCED; 422 INVALID_INPUT
+[w52]   enableUser: 200 NOT PRODUCED; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT PRODUCED; 422 INVALID_INPUT
+[w52]   disableUser: 200 NOT PRODUCED; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT PRODUCED; 409 NOT PRODUCED; 422 INVALID_INPUT
+[w52]   issuePairingCode: 201; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED
+[w52]   getPairingCodeStatus: 200; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED
+[w52]   cancelPairingCode: 204; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED
+[w52]   redeemPairingCode: 201; 400 INVALID_JSON; 401 INVALID_CODE; 403 ORIGIN_NOT_ALLOWED; 422 INVALID_INPUT; 423 LOCKED
+[w52]   listPairedDevices: 200; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED
+[w52]   revokeDevice: 200; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT_FOUND; 409 INVALID_STATE; 422 INVALID_INPUT|INVALID_REASON
+[w52]   getDeviceRegistration: 200; 401 NOT_SIGNED_IN; 403 DEVICE_NOT_PAIRED|DEVICE_REVOKED
+[w52]   unpairDevice: 204; 401 NOT_SIGNED_IN; 403 DEVICE_NOT_PAIRED
+[w52]   rotateDeviceCredential: 200; 401 NOT_SIGNED_IN; 403 DEVICE_NOT_PAIRED
+[w52]   beginPrecheck: 202; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT_FOUND; 409 INVALID_STATE; 422 INVALID_INPUT
+[w52]   retryPrecheck: 202; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT_FOUND; 409 INVALID_STATE|PRECHECK_RUNNING; 422 INVALID_INPUT
+[w52]   acknowledgePrecheckWarnings: 200; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT_FOUND; 409 INVALID_STATE|PRECHECK_RUNNING; 422 INVALID_INPUT
+[w52]   cancelSession: 204; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT_FOUND; 409 INVALID_STATE; 422 INVALID_INPUT
+[w52]   scanCaseNumber: 200; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED
+[w52]   recoverSession: 202; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT_FOUND; 409 INVALID_STATE; 422 INVALID_INPUT
+[w52]   addSessionMarker: 204; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT_FOUND; 409 INVALID_STATE; 422 INVALID_INPUT
+[w52]   addSessionNote: 204; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT_FOUND; 409 INVALID_STATE; 422 INVALID_INPUT
+[w52]   takeSessionSnapshot: 204; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT_FOUND; 409 INVALID_STATE; 422 INVALID_INPUT
+[w52]   acknowledgeSessionSummary: 204; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 422 INVALID_INPUT
+[w52]   listSessionHistory: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 422 INVALID_INPUT
+[w52]   listEvidence: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 422 INVALID_INPUT
+[w52]   getEvidence: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 404 NOT PRODUCED; 422 NOT PRODUCED
+[w52]   verifyEvidence: 200 NOT PRODUCED; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 404 NOT PRODUCED; 422 NOT PRODUCED
+[w52]   archiveEvidence: 204 NOT PRODUCED; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT PRODUCED; 409 NOT PRODUCED; 422 NOT PRODUCED
+[w52]   getDeviceInventory: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   restartDevice: 204; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 404 NOT_FOUND; 409 COMMAND_UNSUPPORTED|RECORDING_ACTIVE; 422 INVALID_INPUT
+[w52]   testDeviceSignal: 204; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 404 NOT_FOUND; 409 COMMAND_UNSUPPORTED; 422 INVALID_INPUT
+[w52]   identifyDevice: 204; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 404 NOT_FOUND; 422 INVALID_INPUT
+[w52]   setActiveCamera: 204; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 422 INVALID_INPUT
+[w52]   resetMicClip: 204; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 422 INVALID_INPUT
+[w52]   getStorageDetail: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   setStoragePolicy: 200; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 422 INVALID_INPUT
+[w52]   getNetworkStatus: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   getTimeStatus: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   getSecurityStatus: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   listAuditRows: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 422 INVALID_INPUT
+[w52]   verifyAuditChain: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   exportAudit: 202; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 422 INVALID_INPUT|INVALID_REASON
+[w52]   exportLogs: 202; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 422 INVALID_INPUT|INVALID_REASON
+[w52]   listEvents: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 422 INVALID_INPUT
+[w52]   getSystemStatus: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   runDiagnostics: 202; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   restartServices: 200; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 409 SESSION_ACTIVE
+[w52]   startSoftwareUpdate: 202 NOT PRODUCED; 401 NOT_SIGNED_IN; 403 NOT_PERMITTED; 409 SESSION_ACTIVE
+[w52]   updateSettings: 200; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 422 INVALID_INPUT
+[w52]   listAlerts: 200; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED
+[w52]   acknowledgeAlert: 204; 401 NOT_SIGNED_IN; 403 ORIGIN_NOT_ALLOWED; 422 INVALID_INPUT
+[w52]   getDemoStatus: 200; 401 NOT_SIGNED_IN; 403 DEMO_DISABLED|NOT_PERMITTED
+[w52]   loadScenario: 200; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 DEMO_DISABLED|NOT_PERMITTED; 422 INVALID_INPUT
+[w52]   injectFault: 204; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 DEMO_DISABLED|NOT_PERMITTED; 404 NOT_FOUND; 422 INVALID_INPUT
+[w52]   clearFault: 204; 400 INVALID_JSON; 401 NOT_SIGNED_IN; 403 DEMO_DISABLED|NOT_PERMITTED; 422 INVALID_INPUT
+[w52]   resetDemo: 200; 401 NOT_SIGNED_IN; 403 DEMO_DISABLED|NOT_PERMITTED
+[w52] envelope-level statuses received per operation (documented once, not per operation): ["413","429","503"] on 29 operations
+
+ ❯ |db| test/acceptance/contract.test.ts (33 tests | 6 failed) 4507ms
+   ❯ AC-B-10: every operation answers what the contract documents (9)
+     × areas 2 and 3, the role matrix and administration (operations 10 to 14) 2ms
+     × area 5, evidence (operations 39 to 43), and the software update 3ms
+   ❯ SC6: what the whole file received (5)
+     × AC-B-10, AC-B-14, SR-76: every answer validated against the contract and carried the five headers of OR-9; no 500; API-7 on every 2xx POST; the cookie rule 0ms
+     × the error codes: every code the server answered is one the registry names for that operation and status, or a contract gap a row already reported 1ms
+     × the coverage: every documented status of every operation was produced, or is listed with the reason why not 2ms
+   ❯ the checks of this file fail when their input departs from the contract (2)
+     × an answer with a member the contract does not have, with a member missing, with another status, or with other headers is reported 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |db| test/acceptance/contract.test.ts > AC-B-10: every operation answers what the contract documents > areas 2 and 3, the role matrix and administration (operations 10 to 14)
+TypeError: entry.permissions is not iterable
+ ❯ test/acceptance/contract.test.ts:517:49
+    515|     // Known gap CONTRACT-GAP-6 (an example's order): the grants are t…
+    516|     const roles = bodyOf<{ roles: Array<{ role: OperatorRole; permissi…
+    517|     for (const entry of roles) expect([...entry.permissions].sort(), e…
+       |                                                 ^
+    518|     console.info(`[w52] gap CONTRACT-GAP-6: getRoleMatrix answers the …
+    519|     await expectCall(main, 'listUsers', supervisor, 'the operators', {…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  |db| test/acceptance/contract.test.ts > AC-B-10: every operation answers what the contract documents > area 5, evidence (operations 39 to 43), and the software update
+AssertionError: expected '' not to be '' // Object.is equality
+ ❯ test/acceptance/contract.test.ts:769:36
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  |db| test/acceptance/contract.test.ts > SC6: what the whole file received > AC-B-10, AC-B-14, SR-76: every answer validated against the contract and carried the five headers of OR-9; no 500; API-7 on every 2xx POST; the cookie rule
+AssertionError: expected 79 to be greater than 80
+ ❯ test/acceptance/contract.test.ts:1366:32
+    1364|     expect(counts[500] ?? 0).toBe(0);
+    1365|     expect(ledger.judged.headers).toBe(ledger.answers.length);
+    1366|     expect(ledger.judged.api7).toBeGreaterThan(80);
+       |                                ^
+    1367|     expect(ledger.judged.cookieSet).toBeGreaterThan(5);
+    1368|     expect(ledger.judged.cookieCleared).toBe(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  |db| test/acceptance/contract.test.ts > SC6: what the whole file received > the error codes: every code the server answered is one the registry names for that operation and status, or a contract gap a row already reported
+AssertionError: expected [ { …(4) }, { …(4) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "code": "DEVICE_NOT_PAIRED",
++     "named": [
++       "DEVICE_REVOKED",
++       "ORIGIN_NOT_ALLOWED",
++     ],
++     "operationId": "signInWithBiometric",
++     "status": 403,
++   },
++   {
++     "code": "DEVICE_NOT_PAIRED",
++     "named": [
++       "DEVICE_REVOKED",
++       "ORIGIN_NOT_ALLOWED",
++     ],
++     "operationId": "reportBiometricFailure",
++     "status": 403,
++   },
++ ]
+
+ ❯ test/acceptance/contract.test.ts:1377:21
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  |db| test/acceptance/contract.test.ts > SC6: what the whole file received > the coverage: every documented status of every operation was produced, or is listed with the reason why not
+AssertionError: expected [ 'exportEvidence 202', …(20) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "exportEvidence 202",
++   "exportEvidence 404",
++   "exportEvidence 409",
++   "assignUserRole 200",
++   "assignUserRole 404",
++   "assignUserRole 409",
++   "enableUser 200",
++   "enableUser 404",
++   "disableUser 200",
++   "disableUser 404",
++   "disableUser 409",
++   "getEvidence 404",
++   "getEvidence 422",
++   "verifyEvidence 200",
++   "verifyEvidence 404",
++   "verifyEvidence 422",
++   "archiveEvidence 204",
++   "archiveEvidence 404",
++   "archiveEvidence 409",
++   "archiveEvidence 422",
++   "startSoftwareUpdate 202",
++ ]
+
+ ❯ test/acceptance/contract.test.ts:1401:21
+    1399|     const missing = cells.filter((cell) => cell.codes === null && cell…
+    1400|     const stale = cells.filter((cell) => cell.codes !== null && cell.r…
+    1401|     expect(missing).toEqual([]);
+       |                     ^
+    1402|     expect(stale).toEqual([]);
+    1403|     // The primary success status of each of the 75 operations.
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  |db| test/acceptance/contract.test.ts > the checks of this file fail when their input departs from the contract > an answer with a member the contract does not have, with a member missing, with another status, or with other headers is reported
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ test/acceptance/contract.test.ts:1441:89
+    1439|     expect(validateCoreApiResponse('getServiceHealth', 200, body)).toE…
+    1440|     // Answers are strict (decision D64 DN-9): one member more is refu…
+    1441|     expect(validateCoreApiResponse('getServiceHealth', 200, { ...body,…
+       |                                                                                         ^
+    1442|     const { service: _service, ...withoutService } = body;
+    1443|     expect(validateCoreApiResponse('getServiceHealth', 200, withoutSer…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 27 passed (33)
+   Start at  18:15:32
+   Duration  5.94s (tests 85%, transform 10%, import 5%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 92 ms; 0 remain with the run prefix dems_test_step_74_tmdr9w5x_
+npm error Lifecycle script `test:db` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c vitest run --project db test/acceptance/contract.test.ts --maxWorkers=2

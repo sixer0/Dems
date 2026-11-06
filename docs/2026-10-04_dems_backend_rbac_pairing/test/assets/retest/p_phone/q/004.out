@@ -1,0 +1,26 @@
+12:46:11.201 mark a02 at 12:46:11.201
+12:46:11.251 declared screen home
+12:46:11.301 tap 540,1444
+12:46:11.502 slept 2000 ms
+12:46:13.531 screencap 04_home.png 12:46:13.531..12:46:13.786
+12:46:13.875 w1: HeadlessChrome/153.0.8010.12 headless=true pid 60346 devtools 127.0.0.1:53253 (OS-assigned, listener owned by pid 60346), fresh profile in TMPDIR
+12:46:14.267 nav /login load=true
+12:46:17.092 js => "LIVE"
+12:46:17.142 signin andi.pratama (SUPERVISOR) dashboard after 1089 ms
+12:46:20.412 api GET /api/v1/storage/status => {"status":200,"body":{"state":"READY","totalBytes":4000000000000,"usedBytes":807065137224,"freeBytes":3192934862776,"usedPercent":20,"estimatedRemainingMs":1401776281,"writeBytesPerSec":0,"bitrateMbps":18.3,"volumes":[{"id":"NVME-SYS","kind":"SYSTEM","label":"NVMe (system)","totalBytes":2000000000000,"usedBytes":212000000000},{"id":"HDD-EVIDENCE","kind":"EVIDENCE","label":"HDD (evidence)","totalBytes":4000000000000,"usedBytes":807065137224}],"retention":{"policy":"DAYS_90","days":90,"autoArchive":true}}}
+12:46:20.477 api GET /api/v1/session/history?limit=3 => {"status":200,"body":{"items":[{"id":"SES-20261006-0034","outcome":"SEALED","caseNumber":"LP/2026/1006-0018","subjectName":"Retest Back Guard","subjectType":"TERSANGKA","investigatorId":"OPR-001","room":"Interview Room 1","profileId":"STANDARD_1080P25","createdAt":1791258557897,"startedAt":1791258570849,"endedAt":1791258681033,"durationMs":110184,"sizeBytes":250974667,"evidenceId":"EV-20261006-0022","faultKind":null,"startTimeSource":"GNSS","endTimeSource":"GNSS"},{"id":"SES-20261006-0033","outcome":"SEALED","caseNumber":"LP/2026/1006-0017","subjectName":"SC3 Web Start Timed","subjectType":"TERSANGKA","investigatorId":"OPR-002","room":"Interview Room 1","profileId":"STANDARD_1080P25","createdAt":1791257477948,"startedAt":1791257507663,"endedAt":1791257579156,"durationMs":71493,"sizeBytes":162845167,"evidenceId":"EV-20261006-0021","faultKind":null,"startTimeSource":"GNSS","endTimeSource":"GNSS"},{"id":"SES-20261006-0032","outcome":"SEALED","caseNumber":"LP/2026/1006-0016","subjectName":"SC3 Phone Start","subjectType":"TERSANGKA","investigatorId":"OPR-001","room":"Interview Room 1","profileId":"STANDARD_1080P25","createdAt":1791257267403,"startedAt":1791257300907,"endedAt":1791257335644,"durationMs":34737,"sizeBytes":79123167,"evidenceId":"EV-20261006-0020","faultKind":null,"startTimeSource":"GNSS","endTimeSource":"GNSS"}],"nextCursor":"1791257335644-SES-20261006-0032"}}
+12:46:20.543 api GET /api/v1/session/current => {"status":200,"body":{"session":{"id":"SES-20261006-0034","state":"SEALED","caseNumber":"LP/2026/1006-0018","subjectType":"TERSANGKA","subjectName":"Retest Back Guard","investigatorId":"OPR-001","investigatorName":"AKP Budi Santoso","room":"Interview Room 1","profileId":"STANDARD_1080P25","createdAt":"2026-10-06T10:49:17.897+07:00","startedAt":"2026-10-06T10:49:30.849+07:00","stoppedAt":"2026-10-06T10:51:21.033+07:00","sealedAt":"2026-10-06T10:51:27.726+07:00","elapsedMs":110184,"bytesWritten":250974667,"evidenceId":"EV-20261006-0022","precheck":{"outcome":"PASS","items":[{"id":"CORE","status":"PASS","value":"ONLINE","reason":null},{"id":"LENS_1","status":"PASS","value":"READY","reason":null},{"id":"LENS_2","status":"PASS","value":"READY","reason":null},{"id":"MIC_1","status":"PASS","value":"READY","reason":null},{"id":"MIC_2","status":"PASS","value":"READY","reason":null},{"id":"STORAGE","status":"PASS","value":"READY","reason":null},{"id":"TIME","status":"PASS","value":"GNSS","reason":null},{"id":"SECURITY","status":"PASS","value":"READY","reason":null}]},"fault":null},"serverTime":"2026-10-06T12:46:20.546+07:00"}}
+12:46:20.610 api GET /api/v1/admin/users => {"status":200,"body":{"users":[{"id":"OPR-001","username":"budi.santoso","rank":"AKP","name":"Budi Santoso","displayName":"AKP Budi Santoso","initials":"BS","role":"INVESTIGATOR","enabled":true,"lastSignInAt":1791265545919,"activeSessions":1,"roleChangedAt":1791258226162},{"id":"OPR-002","username":"andi.pratama","rank":"AKP","name":"Andi Pratama","displayName":"AKP Andi Pratama","initials":"AP","role":"SUPERVISOR","enabled":true,"lastSignInAt":1791265577327,"activeSessions":1,"roleChangedAt":null},{"id":"OPR-003","username":"rina.wijaya","rank":null,"name":"Rina Wijaya","displayName":"Rina Wijaya","initials":"RW","role":"TECHNICIAN","enabled":true,"lastSignInAt":null,"activeSessions":0,"roleChangedAt":null}]}}
+12:46:20.661 warnlog since 10-06 12:46:10.000 (0): 
+12:46:20.839 serverlog since a02 (11):
+    12:46:14.821 [socket opened]
+    12:46:14.822 GET /api/v1/auth/session 401 NOT_SIGNED_IN
+    12:46:14.824 GET /api/v1/auth/status 200
+    12:46:14.975 GET /api/v1/health 200
+    12:46:17.335 POST /api/v1/auth/sign-in 200
+    12:46:17.355 [socket opened]
+    12:46:17.355 [socket closed]
+    12:46:20.420 GET /api/v1/storage/status 200
+    12:46:20.484 GET /api/v1/session/history 200
+    12:46:20.550 GET /api/v1/session/current 200
+    12:46:20.614 GET /api/v1/admin/users 200

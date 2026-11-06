@@ -1,0 +1,36 @@
+#!/bin/bash
+# wizard.sh <name>: Summary Done -> Home -> Start Session wizard up to Ready (session ARMED), web 5176 on /session.
+NAME=$1
+cat <<B
+mark $NAME
+p screen summary
+p tap 244 2252
+p waitlog sumack 15
+sleep 2500
+p screen home
+p tap 302 1239
+sleep 3000
+p screen session-new
+p tap 913 748
+sleep 900
+p tap 229 994
+sleep 700
+p tap 540 1309
+sleep 900
+p text RF PH $NAME
+sleep 800
+p key 111
+sleep 800
+p tap 540 2257
+p waitlog create 20
+p waitlog precheck 20
+sleep 7000
+p tap 540 2257
+sleep 2500
+w1 nav /session 2500
+w1 wait page-session-monitor present 15000
+w1 js document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state')
+p screen live
+load
+p clock
+B

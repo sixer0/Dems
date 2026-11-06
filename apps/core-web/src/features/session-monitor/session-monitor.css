@@ -1,0 +1,1528 @@
+/*
+ * Session Monitor (step 44; 01_specs §14.5.2; research/04 §3.2; mockup DEMS-SessionMonitor.png).
+ * Page-scoped styles: every selector starts with `.sm-` (or reaches kit parts inside an `.sm-`
+ * element), so nothing leaks to other pages. Only transform and opacity animate (§9.2, AC-72):
+ * glows are static shadows on layers whose opacity moves, and the kit ProgressBar fill is turned
+ * into a scaleX bar. Colours are the theme tokens (heroui-web.css).
+ */
+
+/* ── Page and grid (grid 6|3|3, 6×2, 5|4|3) ───────────────────────────────────────────── */
+.sm-page {
+  --sm-hairline: rgb(255 200 107 / 0.14);
+  --sm-inner: rgb(0 0 0 / 0.22);
+  --sm-card-pad: 14px;
+  gap: var(--shell-gutter);
+}
+
+.sm-grid {
+  display: grid;
+  gap: var(--shell-gutter);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'feed'
+    'details'
+    'integrity'
+    'audio'
+    'actions'
+    'timeline'
+    'inputs'
+    'storage'
+    'audit';
+}
+
+.sm-area-feed { grid-area: feed; }
+.sm-area-details { grid-area: details; }
+.sm-area-integrity { grid-area: integrity; }
+.sm-area-audio { grid-area: audio; }
+.sm-area-actions { grid-area: actions; }
+.sm-area-timeline { grid-area: timeline; }
+.sm-area-inputs { grid-area: inputs; }
+.sm-area-storage { grid-area: storage; }
+.sm-area-audit { grid-area: audit; }
+
+.sm-area-feed { min-height: 300px; }
+.sm-area-timeline,
+.sm-area-audit { min-height: 280px; }
+
+@media (min-width: 1024px) {
+  .sm-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-template-areas:
+      'feed feed feed feed feed details details details'
+      'integrity integrity integrity integrity audio audio audio audio'
+      'actions actions actions actions actions actions actions actions'
+      'timeline timeline timeline timeline timeline timeline timeline timeline'
+      'inputs inputs inputs inputs storage storage storage storage'
+      'audit audit audit audit audit audit audit audit';
+  }
+  .sm-area-feed { min-height: 340px; }
+}
+
+@media (min-width: 1280px) {
+  .sm-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-template-rows:
+      minmax(156px, 1.05fr)
+      minmax(136px, 0.95fr)
+      auto
+      minmax(146px, 1fr)
+      minmax(100px, 0.72fr);
+    grid-template-areas:
+      'feed feed feed feed feed feed details details details integrity integrity integrity'
+      'feed feed feed feed feed feed details details details audio audio audio'
+      'actions actions actions actions actions actions actions actions actions actions actions actions'
+      'timeline timeline timeline timeline timeline inputs inputs inputs inputs audit audit audit'
+      'timeline timeline timeline timeline timeline storage storage storage storage audit audit audit';
+  }
+  .sm-area-feed,
+  .sm-area-timeline,
+  .sm-area-audit { min-height: 0; }
+}
+
+/* Fix wave J (JW-18, headline 11): the page was FITTED into the window from 1280 x 760 up - five rows of fixed share.
+   At 1280 x 800 and 1440 x 900 its panels did not hold their content (cut headings, audit rows cut, storage labels
+   printed over each other), and a sentence that is not cut any more needs room at every width. The rows now keep a
+   MINIMUM and grow with their content; the page is at least as tall as <main> and scrolls when it is taller. */
+@media (min-width: 1280px) {
+  .sm-page {
+    min-height: calc(100dvh - var(--shell-topbar-h, 80px) - 2 * var(--shell-pad, 16px));
+  }
+  .sm-grid {
+    flex: 1 0 auto;
+    grid-template-rows:
+      minmax(210px, auto)
+      minmax(190px, auto)
+      auto
+      minmax(200px, auto)
+      minmax(150px, auto);
+  }
+}
+
+@media (min-width: 1600px) {
+  .sm-grid {
+    grid-template-rows:
+      minmax(250px, auto)
+      minmax(230px, auto)
+      auto
+      minmax(230px, auto)
+      minmax(170px, auto);
+  }
+}
+
+/* ── K: header, title shimmer and status banner ───────────────────────────────────────── */
+.sm-header-wrap {
+  flex: none;
+  min-width: 0;
+}
+
+.sm-header {
+  flex: none;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.sm-page .dems-page-title {
+  position: relative;
+}
+
+.sm-page .dems-page-title .sm-title-shimmer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  white-space: nowrap;
+  pointer-events: none;
+  background: none !important;
+  color: transparent;
+}
+
+.sm-title-shimmer > * {
+  --base-color: transparent !important;
+  --base-gradient-color: #fff4d6 !important;
+}
+
+.sm-banner {
+  --tone: var(--muted);
+  --tone-text: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: min(460px, 100%);
+  padding: 12px 20px 12px 18px;
+  border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--tone) 12%, transparent), transparent 70%),
+    rgb(21 14 7 / 0.72);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--tone) 16%, transparent);
+}
+
+.sm-banner[data-tone='success'] { --tone: var(--success); --tone-text: #4ade80; }
+.sm-banner[data-tone='warning'] { --tone: var(--warning); --tone-text: #fbbf24; }
+.sm-banner[data-tone='danger'] { --tone: var(--danger); --tone-text: #f87171; }
+.sm-banner[data-tone='accent'] { --tone: var(--accent); --tone-text: var(--accent); }
+.sm-banner[data-tone='sealed'] { --tone: #8b5cf6; --tone-text: #a78bfa; }
+.sm-banner[data-tone='default'] { --tone: #9ca3af; --tone-text: #d8cec6; }
+
+.sm-banner-dot {
+  position: relative;
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+
+.sm-banner-dot-core,
+.sm-banner-dot-glow,
+.sm-banner-dot-halo {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+}
+
+.sm-banner-dot-core {
+  background: radial-gradient(circle at 35% 35%, color-mix(in srgb, var(--tone) 60%, #fff), var(--tone) 60%);
+}
+
+.sm-banner-dot-glow {
+  box-shadow: 0 0 12px 3px color-mix(in srgb, var(--tone) 75%, transparent);
+}
+
+.sm-banner-dot-halo {
+  border: 2px solid var(--tone);
+}
+
+.sm-banner-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.sm-banner-title {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 22px;
+  letter-spacing: 0.06em;
+  color: var(--tone-text);
+}
+
+.sm-banner-detail {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+.sm-banner-cta {
+  margin-left: auto;
+  flex: none;
+}
+
+/* ── Panels ───────────────────────────────────────────────────────────────────────────── */
+.sm-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.sm-card {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px var(--sm-card-pad);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgb(255 159 61 / 0.07), rgb(255 159 61 / 0) 42%),
+    var(--surface);
+}
+
+/* Fix wave Q (CW-01): the title stood in ONE row with the DEMO mark and the header's control; in a narrow card the
+   row left it 20 px and it broke inside its words ("A / U / DI / O"). The row wraps: the title keeps the width of its
+   longest word at least, and the mark and the control go to the next line when the row is full. */
+.sm-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-height: 24px;
+  flex: none;
+}
+
+.sm-card-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--accent);
+  filter: drop-shadow(0 0 6px rgb(255 159 61 / 0.4));
+}
+
+.sm-card-title {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: min-content;
+  white-space: normal;
+  overflow-wrap: normal;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--foreground);
+}
+
+.sm-card-action {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sm-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.sm-card-link:hover { text-decoration: underline; }
+
+.sm-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sm-panel-fallback {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+}
+
+.sm-empty {
+  margin: auto 0;
+  padding: 16px 4px;
+  font-size: 13px;
+  color: var(--color-foreground-2, #d8cec6);
+  text-align: center;
+}
+
+.sm-dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.sm-dot-success { background: var(--success); box-shadow: 0 0 6px rgb(34 197 94 / 0.7); }
+.sm-dot-warning { background: var(--warning); box-shadow: 0 0 6px rgb(245 158 11 / 0.7); }
+.sm-dot-danger { background: var(--danger); box-shadow: 0 0 6px rgb(239 68 68 / 0.7); }
+.sm-dot-muted { background: #6b7280; }
+
+/* ── L: live feed ─────────────────────────────────────────────────────────────────────── */
+.sm-camera-switch .toggle-button {
+  font-size: 12px;
+}
+
+.sm-feed-body {
+  gap: 0;
+}
+
+.sm-feed-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 220px;
+  border-radius: 10px;
+}
+
+@media (min-width: 1280px) {
+  .sm-feed-stage { min-height: 0; }
+}
+
+.sm-feed-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+}
+
+.sm-feed-frame[data-idle] {
+  opacity: 0.42;
+  filter: saturate(0.55);
+}
+
+/* The step-92 loops burn a "CAM-0n | VIDEO-0n | LIVE | DEMO" line into their bottom edge. The
+   frame here is wider than 16:9, so the cover crop is anchored to the top: the ceiling stays (as
+   in the mockup) and the OSD line is cropped whole at every width instead of showing half-cut
+   behind the format chip. The fullscreen view (16:9) shows the full frame with its DEMO line. */
+.sm-feed:not(.sm-feed-full) video {
+  object-position: center top;
+}
+
+.sm-feed-icon-button {
+  min-width: 32px;
+  width: 32px;
+  height: 32px;
+  color: #fff;
+  background: rgb(0 0 0 / 0.55);
+}
+
+.sm-shutter {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: #fff;
+  pointer-events: none;
+}
+
+.sm-shutter[data-flash='border'] {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.sm-invitation-layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  border-radius: 10px;
+  background: radial-gradient(ellipse at center, rgb(11 13 15 / 0.35), rgb(11 13 15 / 0.8));
+}
+
+.sm-invitation {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'ring copy'
+    'ring actions';
+  align-items: center;
+  column-gap: 20px;
+  row-gap: 14px;
+  max-width: min(560px, 100%);
+  padding: 18px 22px;
+  border: 1px solid rgb(255 159 61 / 0.45);
+  border-radius: 14px;
+  /* Fix wave M (G89d-05): opaque - the tile under the card ("No preview / Camera 1 ...") showed through its text. */
+  background: rgb(25 16 8);
+  box-shadow: var(--shadow-glow-2);
+}
+
+.sm-invitation-ring { grid-area: ring; }
+.sm-invitation-copy { grid-area: copy; min-width: 0; }
+.sm-invitation-actions {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sm-invitation-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 24px;
+  color: var(--foreground);
+}
+
+.sm-invitation-body {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+.sm-fullscreen-container {
+  padding: 24px;
+}
+
+.sm-fullscreen-dialog {
+  width: min(96vw, calc(88vh * 16 / 9));
+  max-width: none;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.sm-fullscreen-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+/* ── M: session details ───────────────────────────────────────────────────────────────── */
+.sm-kv {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  margin: 0;
+  padding: 2px 12px;
+  border: 1px solid var(--sm-hairline);
+  border-radius: 8px;
+  background: var(--sm-inner);
+  overflow: hidden;
+}
+
+.sm-kv-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--sm-hairline);
+}
+
+.sm-kv-row:last-child { border-bottom: 0; }
+
+.sm-kv-label {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+.sm-kv-value {
+  margin: 0;
+  min-width: 0;
+  white-space: normal;
+    overflow-wrap: break-word;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--foreground);
+}
+
+/* AC-74 (step 45b, F45-04): Start Time and its UTC+07:00 label; the label wraps under the time. */
+.sm-kv-value-zoned {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  white-space: normal;
+}
+.sm-kv-time,
+.sm-kv-zone {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+    overflow-wrap: break-word;
+}
+.sm-kv-zone {
+  font-size: 11px;
+  line-height: 14px;
+  letter-spacing: 0.02em;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+.sm-duration {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+/* ── N: evidence integrity ────────────────────────────────────────────────────────────── */
+.sm-integrity-body { gap: 6px; }
+
+.sm-integrity-rows {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--sm-hairline);
+  border-radius: 8px;
+  background: var(--sm-inner);
+}
+
+.sm-checks {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  justify-content: space-around;
+  margin: 0;
+  padding: 0 10px;
+  list-style: none;
+}
+
+/* Fix wave Q (CW-01): the label took the width of its one line and left the value whatever remained - "SHA- / 256",
+   "(UTC+0 / 7:00)" in a narrow card. A short value keeps its one line (up to 58 % of the row) and the label wraps
+   between its words in what is left; neither column is ever narrower than its longest word. */
+.sm-check {
+  display: grid;
+  grid-template-columns: 18px minmax(min-content, 1fr) fit-content(58%);
+  align-items: center;
+  gap: 10px;
+  min-height: 24px;
+  border-bottom: 1px solid var(--sm-hairline);
+}
+
+.sm-check:last-child { border-bottom: 0; }
+
+.sm-check-icon { width: 18px; height: 18px; }
+.sm-check[data-status='pass'] .sm-check-icon { color: var(--success); filter: drop-shadow(0 0 4px rgb(34 197 94 / 0.55)); }
+.sm-check[data-status='warn'] .sm-check-icon { color: var(--warning); }
+.sm-check[data-status='fail'] .sm-check-icon { color: var(--danger); }
+.sm-check[data-status='idle'] .sm-check-icon { color: var(--muted); }
+
+.sm-check-label {
+  white-space: normal;
+  font-size: 13.5px;
+  color: var(--foreground);
+}
+
+.sm-check-value {
+  min-width: min-content;
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--color-foreground-2, #d8cec6);
+  white-space: normal;
+  overflow-wrap: normal;
+}
+
+/* Fix wave K (G89b-11): the capture checkpoints under the check rows - a label line, then one line per
+   fact, each on its own row of a one-column grid. Never the icon grid of a check row; never clipped:
+   the block keeps its height and the card body scrolls when the card is too short (1440 x 900). */
+.sm-checkpoints {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 2px;
+  flex: none;
+  padding: 2px 10px;
+}
+.sm-checkpoints .sm-check-label { white-space: normal; }
+.sm-checkpoints .sm-check-value { text-align: left; }
+/* Only where the block is drawn (a session of the Core's own capture): the simulated lane's card is untouched. */
+.sm-integrity-body:has(.sm-checkpoints) { overflow-y: auto; }
+.sm-integrity-body:has(.sm-checkpoints) .sm-integrity-rows { flex-shrink: 0; }
+/* Fix wave L (G89c-07): the cue of a card body that holds more than it shows. It stays at the lower edge while the body scrolls. */
+.sm-scroll-cue {
+  position: sticky;
+  bottom: 0;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 16px;
+  margin: 0 -2px -2px;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  /* An opaque strip of the card's own colour: the cue is never drawn over a row's text. */
+  background: #17100a;
+  border-top: 1px solid var(--sm-hairline);
+  pointer-events: none;
+}
+
+/* Fix wave M (G89d-06): the evidence item named by the closing sentence of a sealed session's card. */
+.sm-check-link { font-family: var(--font-mono); color: var(--link); text-underline-offset: 3px; white-space: nowrap; }
+.sm-check-link:hover { text-decoration: underline; }
+
+.sm-check[data-status='fail'] .sm-check-value { color: #f87171; }
+.sm-check[data-status='warn'] .sm-check-value { color: #fbbf24; }
+
+/* The verification sweep: a 1 px gold band at the layer's bottom edge, moved from the top of the
+   rows (-100%) to their bottom (0) by transform only. */
+.sm-sweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent) 30%, #fff4d6 50%, var(--accent) 70%, transparent) no-repeat;
+  background-size: 100% 1px;
+  background-position: 0 100%;
+}
+
+.sm-chain-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 26px;
+  padding: 0 2px;
+}
+
+.sm-chain-label {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sm-chain-hash {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+.sm-chain-status { display: inline-flex; align-items: center; }
+
+.sm-chain-button {
+  margin-left: auto;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+/* ── O: audio monitor ─────────────────────────────────────────────────────────────────── */
+/* Task 3 M5 (row 72): the body holds the warning, the two halves and the audio-source footer. */
+.sm-audio-wrap { gap: 6px; }
+
+.sm-audio-body {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sm-audio-name-text {
+  flex: none;
+  white-space: nowrap;
+}
+
+.sm-audio-role {
+  flex: none;
+  margin-left: auto;
+}
+
+/* Row 157: the transcribed half (Pair 1), fixed by pairing - no switchable ACTIVE source any more. */
+.sm-audio-half[data-transcribed='true'] { border-color: rgb(255 200 107 / 0.38); }
+
+.sm-audio-warning { flex: none; }
+
+.sm-audio-footer {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sm-audio-band {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.sm-audio-band-caption,
+.sm-audio-band-failed,
+.sm-audio-reason {
+  margin: 0;
+  white-space: normal;
+    overflow-wrap: break-word;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+.sm-audio-band-failed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sm-audio-half {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--sm-hairline);
+  border-radius: 8px;
+  background: var(--sm-inner);
+}
+
+.sm-audio-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--foreground);
+}
+
+.sm-audio-meter {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 0;
+}
+
+.sm-mic-ring,
+.sm-input-mic {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgb(255 159 61 / 0.55);
+  border-radius: 999px;
+  color: var(--accent);
+  background: radial-gradient(circle, rgb(255 159 61 / 0.16), transparent 70%);
+  box-shadow: 0 0 10px rgb(255 159 61 / 0.18);
+}
+
+/* ── P: action bar ────────────────────────────────────────────────────────────────────── */
+.sm-actions-wrap {
+  min-width: 0;
+}
+
+.sm-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--shell-gutter);
+  width: 100%;
+  padding: 0;
+}
+
+@media (min-width: 768px) {
+  .sm-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1280px) {
+  .sm-actions { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+.sm-action-slot {
+  display: flex;
+  min-width: 0;
+}
+
+/* LB-4 (plan row W65): the marker chip that waits at the button while a Live marker is out. */
+.sm-action-slot-anchored {
+  position: relative;
+}
+
+.sm-marker-pending {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.sm-marker-pending-chip {
+  display: inline-flex;
+  max-width: 220px;
+}
+
+.sm-action-unavailable {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sm-actions .sm-action {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  min-width: 0;
+  height: auto;
+  min-height: 62px;
+  padding: 10px 16px;
+  overflow: hidden;
+  border: 1px solid rgb(255 159 61 / 0.4);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgb(255 159 61 / 0.06), rgb(0 0 0 / 0.1)), var(--surface);
+  color: var(--foreground);
+  text-align: left;
+  text-decoration: none;
+  white-space: normal;
+}
+
+.sm-actions .sm-action:hover:not([data-disabled]) {
+  border-color: rgb(255 200 107 / 0.75);
+}
+
+.sm-actions .sm-action[data-disabled],
+.sm-actions .sm-action:disabled {
+  opacity: 0.45;
+}
+
+.sm-action-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--foreground);
+}
+
+.sm-action-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.sm-action-title {
+  white-space: normal;
+    overflow-wrap: break-word;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.sm-action-subtitle {
+  white-space: normal;
+    overflow-wrap: break-word;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+.sm-actions .sm-action-pause {
+  border-color: rgb(255 200 107 / 0.85);
+  background: linear-gradient(180deg, rgb(255 159 61 / 0.34), rgb(106 57 22 / 0.55));
+  box-shadow: var(--shadow-glow-2);
+}
+
+.sm-actions .sm-action-pause .sm-action-icon { color: var(--accent); }
+
+.sm-actions .sm-action-pause[data-selected] {
+  background: linear-gradient(180deg, rgb(255 200 107 / 0.5), rgb(160 90 30 / 0.6));
+}
+
+.sm-actions .sm-action-end {
+  border-color: rgb(239 68 68 / 0.6);
+  background: linear-gradient(180deg, rgb(239 68 68 / 0.3), rgb(127 29 29 / 0.38));
+  box-shadow: 0 0 16px rgb(239 68 68 / 0.18);
+}
+
+.sm-actions .sm-action-end .sm-action-icon { color: #f87171; }
+.sm-actions .sm-action-end .sm-action-title { color: #fecaca; }
+
+.sm-hold-fill {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgb(239 68 68 / 0.28), rgb(239 68 68 / 0.5));
+  pointer-events: none;
+}
+
+.sm-queue-badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #0b0d0f;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+.sm-popover-heading {
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sm-note-drawer {
+  width: min(440px, 92vw);
+  padding: 20px;
+}
+
+/* ── Q and T: scrolling lists ─────────────────────────────────────────────────────────── */
+.sm-scroll-body { gap: 0; }
+
+.sm-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+@media (min-width: 1280px) {
+  .sm-scroll { max-height: none; }
+}
+
+.sm-audit-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sm-audit-item {
+  border-bottom: 1px solid var(--sm-hairline);
+}
+
+.sm-audit-item:last-child { border-bottom: 0; }
+
+.sm-audit-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 8px 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.sm-audit-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+.sm-audit-message {
+  /* Fix wave Q (CW-01 sweep): the name of an audit row breaks between its words, never inside one. */
+  min-width: min-content;
+  white-space: normal;
+  overflow-wrap: normal;
+  color: var(--foreground);
+}
+
+.sm-audit-hash {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ── R: camera & input status ─────────────────────────────────────────────────────────── */
+.sm-inputs-grid {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /*
+   * Fix wave M (G89d-05): a row is never lower than a tile's content. With `minmax(0, 1fr)` the two rows
+   * of a 95 px body (1440 x 900) were 42 px for tiles of 60 px, and the microphone tiles were drawn over
+   * the lower border of the camera tiles. Where both rows do not fit, the card body scrolls (below).
+   */
+  grid-auto-rows: minmax(68px, 1fr);
+  gap: 10px;
+  min-height: 0;
+}
+
+/* The body of card R scrolls where its two rows do not fit; the cue of wave L says there is more below. */
+.sm-inputs-body { overflow-y: auto; }
+/* Never lower than its two rows (2 x 68 px + the row gap); it fills a taller body as before. The row gap is the
+   height of the cue, so the next row starts under the cue and no half line of it stands above the cue's edge. */
+.sm-inputs-body .sm-inputs-grid { flex: 1 0 152px; row-gap: 16px; }
+
+.sm-input-tile {
+  display: flex;
+  height: 100%;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 60px;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid var(--sm-hairline);
+  border-radius: 8px;
+}
+
+.sm-input-thumb {
+  width: 42%;
+  max-width: 108px;
+  flex: none;
+}
+
+/* Row W4-1 (L8, D231): the 108 x 61 px thumb has no room for the reach gate's "Try again" (its action slot); the feed of
+   the selected camera carries it, and opening the monitor re-checks each stale unreachable camera once. */
+.sm-input-thumb [data-testid^='camera-preview-try-again-'] {
+  display: none;
+}
+
+.sm-input-mic {
+  width: 36px;
+  height: 36px;
+  margin-left: 4px;
+}
+
+.sm-input-text {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sm-input-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--foreground);
+}
+
+.sm-input-state {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.sm-input-meta {
+  margin: 0;
+  white-space: normal;
+    overflow-wrap: break-word;
+  font-size: 12px;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+.sm-input-meter [data-meter-readout] {
+  white-space: nowrap;
+}
+
+.sm-input-meter {
+  margin-top: 2px;
+}
+
+/* ── S: storage during session ────────────────────────────────────────────────────────── */
+.sm-storage-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.sm-storage-ring {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  flex: none;
+}
+
+.sm-ring,
+.sm-ring .sm-ring-track {
+  width: 100%;
+  height: 100%;
+}
+
+/* M-C-03: the fill sweeps 900 ms `luxe` (stroke-dashoffset on a small SVG, §9.2). */
+.sm-ring .progress-circle__fill-circle {
+  transition:
+    stroke-dashoffset 900ms cubic-bezier(0.22, 1, 0.36, 1),
+    stroke 400ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.sm-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.sm-ring-value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
+
+.sm-ring-label {
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.sm-storage-free {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sm-storage-free-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  margin: 0;
+  line-height: 20px;
+}
+
+.sm-storage-free-main {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.sm-storage-free-total {
+  font-size: 13px;
+  color: var(--color-foreground-2, #d8cec6);
+  white-space: nowrap;
+}
+
+.sm-write-rate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sm-write-rate-label {
+  flex: none;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sm-sparkline {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+}
+
+.sm-storage-kv {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.sm-storage-kv > div {
+  display: grid;
+  grid-template-columns: 8px auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.sm-storage-kv > div::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.sm-storage-kv dt { color: var(--color-foreground-2, #d8cec6); }
+.sm-storage-kv dd { margin: 0; text-align: right; font-family: var(--font-mono); color: var(--foreground); }
+
+/* ── Finalization and recovery overlay ────────────────────────────────────────────────── */
+.sm-final-dialog {
+  width: min(540px, 94vw);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgb(255 159 61 / 0.08), transparent 40%),
+    var(--surface);
+  box-shadow: var(--overlay-shadow);
+}
+
+.sm-final-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Fix wave Q (CW-04): the DEMO mark of the seal dialog sits at the end of the header and keeps its width. */
+.sm-final-demo {
+  margin-left: auto;
+  flex: none;
+}
+
+.sm-final-icon {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--accent);
+  background: rgb(255 200 107 / 0.14);
+}
+
+.sm-final-icon[data-sealed] {
+  color: #a78bfa;
+  background: rgb(139 92 246 / 0.18);
+  transition: color 400ms, background-color 400ms;
+}
+
+.sm-final-icon-warning {
+  color: var(--warning);
+  background: rgb(245 158 11 / 0.14);
+}
+
+.sm-final-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.sm-final-subtitle {
+  font-size: 12px;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+.sm-final-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sm-final-progress {
+  display: grid;
+  gap: 6px;
+}
+
+.sm-final-progress-label {
+  font-size: 12px;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+/* The kit fill animates `width`; here it is a full-width bar scaled by transform (§9.2). */
+.sm-final-progress .progress-bar__fill {
+  width: 100% !important;
+  transform: scaleX(var(--sm-progress, 0));
+  transform-origin: left center;
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sm-final-stopping {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.sm-final-sealed {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 16px;
+  padding: 14px 16px;
+  border: 1px solid rgb(139 92 246 / 0.45);
+  border-radius: 12px;
+  background: rgb(139 92 246 / 0.08);
+}
+
+.sm-final-stamp-wrap {
+  position: relative;
+  display: inline-flex;
+  border-radius: 999px;
+}
+
+.sm-final-stamp .chip {
+  padding: 6px 16px;
+  font-size: 15px;
+  letter-spacing: 0.14em;
+}
+
+.sm-final-sealed-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.sm-final-sealed-meta {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+.sm-final-package {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px solid rgb(139 92 246 / 0.3);
+  font-size: 12.5px;
+}
+
+.sm-final-package > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sm-final-package-head {
+  align-items: center;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.sm-final-package dt { color: var(--color-foreground-2, #d8cec6); }
+.sm-final-package dd { margin: 0; color: var(--foreground); }
+
+.sm-final-package-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.sm-final-incomplete {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--foreground);
+}
+
+.sm-final-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ── Flights (M-C-17, M-C-18) ─────────────────────────────────────────────────────────── */
+.sm-flight-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+}
+
+.sm-flight {
+  position: fixed;
+}
+
+/* ── Density at 1280–1599 (1440 × 900) ────────────────────────────────────────────────── */
+@media (max-width: 1599px) {
+  .sm-page { --sm-card-pad: 12px; }
+  .sm-card { gap: 8px; padding-top: 10px; padding-bottom: 10px; }
+  .sm-card-title { font-size: 13.5px; letter-spacing: 0.07em; }
+  .sm-kv-label { font-size: 12px; }
+  .sm-kv-value { font-size: 13px; }
+  .sm-kv-row { min-height: 22px; padding: 2px 0; }
+  .sm-check-label { font-size: 12.5px; }
+  .sm-check-value { font-size: 11.5px; }
+  .sm-actions .sm-action { min-height: 54px; padding: 8px 12px; gap: 10px; }
+  .sm-action-title { font-size: 13.5px; }
+  .sm-action-subtitle { font-size: 11px; }
+  .sm-banner { padding: 10px 16px; min-width: min(400px, 100%); }
+  .sm-banner-title { font-size: 15px; }
+  .sm-banner-detail { font-size: 13px; }
+  .sm-audit-row { font-size: 12px; grid-template-columns: 8px 58px minmax(0, 1fr) auto; padding: 3px 2px; }
+  .sm-storage-ring { width: 72px; height: 72px; }
+  .sm-ring-value { font-size: 15px; }
+  .sm-storage-free-main { font-size: 15px; }
+  .sm-storage-free-total { font-size: 12px; }
+  .sm-storage-body { gap: 10px; }
+  .sm-storage-kv { font-size: 11.5px; }
+  /*
+   * Fix wave M (G89d-05 / G70d-05 (b)): since the audio-source footer (task 3 M5) the two halves have
+   * ~48 px of height here, not the ~76 px the 72 px meter of F45-05 was fitted to: the meter was drawn
+   * over the name above it and over "Audio source" below it, and the role chip pushed "MIC 1" out of
+   * its row. At this density each microphone is ONE ROW: its name (never the part that is cut), the
+   * role, the development mark as its icon (its words stay for a screen reader; the feed header and
+   * the Devices page say them in full), then a 16 px meter with its readout beside it.
+   */
+  .sm-mic-ring { display: none; }
+  .sm-audio-body { grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); gap: 4px; }
+  .sm-audio-half { flex-direction: row; align-items: center; gap: 6px; padding: 1px 6px; overflow: hidden; }
+  .sm-audio-name { flex: 1 1 auto; min-width: 0; gap: 5px; font-size: 11.5px; }
+  .sm-audio-name-text { flex: none; overflow: visible; }
+  .sm-audio-role { margin-left: 0; }
+  .sm-audio-name .dev-source-badge { flex: none; }
+  .sm-audio-name .dev-source-badge .chip__label,
+  .sm-audio-name .dev-source-kind { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .sm-audio-name .sm-dot { width: 6px; height: 6px; }
+  .sm-audio-meter { flex: none; gap: 4px; }
+  .sm-audio-meter [data-testid='dbfs-meter'],
+  .sm-audio-meter [data-testid='dbfs-meter'] > div { flex-direction: row; align-items: center; gap: 4px; }
+  .sm-audio-meter [data-testid='dbfs-meter'] [role='meter'] { height: 16px; gap: 2px; }
+  .sm-audio-meter [data-testid='dbfs-meter'] [data-meter-segment] { width: 3px; }
+  .sm-audio-meter [data-testid='dbfs-meter'] .text-h3 { font-size: 11.5px; line-height: 16px; white-space: nowrap; }
+  /* Details: a narrower label column, smaller values. */
+  .sm-kv-row { grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr); gap: 8px; }
+  .sm-kv-value { font-size: 12.5px; }
+  .sm-kv-value.font-mono { font-size: 12px; }
+  /* Actions: titles only (they may wrap to two lines); End Session keeps its hold hint. */
+  .sm-action-subtitle { display: none; }
+  .sm-actions .sm-action[data-hint] .sm-action-subtitle { display: block; }
+  .sm-action-title { white-space: normal; line-height: 16px; }
+  .sm-queue-badge { top: 4px; right: 4px; }
+  /* Inputs: smaller thumbnails and text. */
+  .sm-input-thumb { width: 36%; max-width: 84px; }
+  .sm-input-mic { width: 30px; height: 30px; }
+  .sm-input-name, .sm-input-meta, .sm-input-state { font-size: 11.5px; }
+  .sm-input-tile { gap: 8px; padding: 5px 8px 5px 5px; }
+}
+
+/* ── Reduced motion (§8): static final frames; information-carrying fills stay ────────── */
+:root[data-motion='reduced'] .sm-ring .progress-circle__fill-circle,
+:root[data-motion='reduced'] .sm-final-progress .progress-bar__fill {
+  transition: none;
+}
+
+/* Fix wave L (G75d-02): the retry of a blocked seal - on the banner (one line and the button) and in the seal dialog. */
+.sm-seal-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.sm-seal-retry-text {
+  font-size: 12px;
+  line-height: 1.3;
+  max-width: 34ch;
+  text-align: right;
+}
+.sm-seal-retry-dialog {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* Fix wave J (JW-18): at 1280 x 800 the storage card's ring, free space and the two figures stood in one row of
+   three columns and the labels were printed over each other. The figures go under the ring and the free space there,
+   and the inputs panel grows with its tiles, so nothing is drawn over anything and nothing scrolls sideways. */
+@media (max-width: 1439.98px) {
+  .sm-storage-body { grid-template-columns: auto minmax(0, 1fr); }
+  .sm-storage-kv { grid-column: 1 / -1; }
+  /* The four input tiles keep their two columns; their panel grows with them instead of scrolling inside itself. */
+  .sm-inputs-body { overflow: visible; }
+  .sm-inputs-body .sm-inputs-grid { flex: 0 0 auto; }
+}
+
+/* Fix wave J (JW-22): the link to the finished sessions under the page header. */
+.sm-history-link {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* Fix wave J (JW-07): the DEMO mark in a panel header and under the banner never pushes the title out. */
+.sm-card-demo { flex: none; }
+.sm-banner-demo { align-self: flex-start; margin-top: 2px; }

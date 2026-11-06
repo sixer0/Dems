@@ -1,0 +1,15 @@
+12:54:50.392 declared screen settings-maintenance
+12:54:50.448 key 4
+12:54:50.603 slept 2000 ms
+12:54:52.658 declared screen settings
+12:54:52.709 screencap 41_settings_back_from_maintenance.png 12:54:52.709..12:54:53.213
+12:54:53.379 tapid settings-row-storage at 540,1675 "Storage Management"
+12:54:56.275 slept 2500 ms
+12:54:58.812 declared screen x-storage
+12:54:58.844 screencap 42_settings_storage_management_row.png 12:54:58.844..12:54:59.048
+12:54:59.154 ids(2): screen-storage@540,1102 ; storage-header@540,216
+12:55:01.367 key 4
+12:55:01.453 slept 2500 ms
+12:55:04.020 declared screen x-after-back
+12:55:04.061 screencap 42b_after_back_from_storage_management.png 12:55:04.061..12:55:04.387
+12:55:04.489 ids(3): screen-settings@540,1102 ; settings-header@540,216 ; settings-header-back@95,216 "Back"

@@ -1,0 +1,25 @@
+2026-10-06T05:31:22.475Z browser pid 53575, HeadlessChrome/153.0.8010.12, CDP port 50719 (OS-assigned), owner verified (lsof + /json/version), profile rw_profile_hiYweY
+2026-10-06T05:31:22.509Z viewport 1440x900
+2026-10-06T05:31:22.509Z == page: Login (Live)
+2026-10-06T05:31:25.330Z loginLive: {"selector":{"dataMode":"LIVE","radios":["=false","=true"]},"stored":null,"coreMode":"LIVE"}
+2026-10-06T05:31:25.573Z screenshot p1_w1_4_sim_01_login_live_selector.png
+2026-10-06T05:31:26.719Z switchDialogToSim: "Switch to Simulated mode? You will be signed out and the console reloads. Simulated data and Live data are separate. Cancel Switch to Simulated mode"
+2026-10-06T05:31:26.922Z screenshot p1_w1_4_sim_02_switch_to_simulated_dialog.png
+2026-10-06T05:31:28.996Z == page: Login (Simulated)
+2026-10-06T05:31:31.499Z loginSimulated: {"selector":{"dataMode":"SIMULATED","radios":["=true","=false"]},"stored":"SIMULATED","coreMode":"SIMULATED","facts":{"href":"/login","title":"DEMS Edge Client · Core Console","page":["page-login"],"mode":null,"h1":"Sign in","toasts":[],"dialogs":[],"alerts":["Core service unreachable Core service unreachable at 127.0.0.1:4400. Retry"],"scrollWidth":1440,"clientWidth":1440}}
+2026-10-06T05:31:31.740Z screenshot p1_w1_4_sim_03_login_simulated.png
+2026-10-06T05:32:20.528Z sign-in andi.pratama: FAILED to reach the dashboard
+2026-10-06T05:32:20.529Z signedInSim: {"ok":false}
+2026-10-06T05:32:20.529Z == page: Evidence (Simulated)
+2026-10-06T05:32:20.529Z dashboardSimFacts: {"href":"/login","title":"DEMS Edge Client · Core Console","page":["page-login"],"mode":null,"h1":"Sign in","toasts":[],"dialogs":[],"alerts":["Core service unreachable Core service unreachable at 127.0.0.1:4400. Retry"],"scrollWidth":1440,"clientWidth":1440}
+2026-10-06T05:32:39.928Z simListIds: []
+2026-10-06T05:32:42.808Z simListIdsPage2: []
+2026-10-06T05:32:42.808Z simItem0012: null
+2026-10-06T05:32:42.808Z == page: Switch back to Live
+2026-10-06T05:32:51.376Z switchDialogToLive: {"indicatorClick":{"found":false},"text":null}
+2026-10-06T05:32:51.707Z screenshot p1_w1_4_sim_05_switch_to_live_dialog.png
+2026-10-06T05:32:53.211Z == page: Login (Live again)
+2026-10-06T05:32:55.714Z loginLiveAgain: {"selector":{"dataMode":"SIMULATED","radios":["=true","=false"]},"stored":"SIMULATED","coreMode":"SIMULATED","facts":{"href":"/login?redirect=%2Fevidence%3Fpage%3D2","title":"DEMS Edge Client · Core Console","page":["page-login"],"mode":null,"h1":"Sign in","toasts":[],"dialogs":[],"alerts":["Core service unreachable Core service unreachable at 127.0.0.1:4400. Retry"],"scrollWidth":1440,"clientWidth":1440}}
+2026-10-06T05:32:55.970Z screenshot p1_w1_4_sim_06_login_live_again.png
+2026-10-06T05:32:55.976Z consoleNetwork: {"Login (Live)":{"requests":511,"origins":{"http://127.0.0.1:5178":509,"blob:":2},"ws":["ws://127.0.0.1:5178/","ws://127.0.0.1:5178/ws","ws://127.0.0.1:5178/","ws://127.0.0.1:4400/ws","ws://127.0.0.1:4400/ws","ws://127.0.0.1:4400/ws"],"errors":[],"warnings":[],"exceptions":[],"log":["error network: Failed to load resource: the server responded with a status of 401 (Unauthorized) (/api/v1/auth/session)","warning network: WebSocket connection to 'ws://127.0.0.1:4400/ws' failed: WebSocket is closed before the connection is established. (/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts)","error network: WebSocket connection to 'ws://127.0.0.1:4400/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED (/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts)","error network: WebSocket connection to 'ws://127.0.0.1:4400/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED (/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts)"],"responses4xx":["401 GET /api/v1/auth/session"],"blocked":[]},"Login (Simulated)":{"requests":25,"origins":{"http://127.0.0.1:5178":25},"ws":["ws://127.0.0.1:4400/ws","ws://127.0.0.1:4400/ws","ws://127.0.0.1:4400/ws","ws://127.0.0.1:4400/ws","ws://127.0.0.1:4400/ws","ws://127.0.0.1:4400/ws","ws://127.0.0.1:4400/ws","ws://127.0.0.1:4400/ws"],"errors":[],"warnings":[],"exceptions":[],"log":["error network: WebSocket connectio
+2026-10-06T05:32:56.610Z browser closed (pid 53575), profile removed: true

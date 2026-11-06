@@ -1,0 +1,278 @@
+// W79 device check: Storage (site S2-6 settled on the Core: change the policy, then SET IT BACK) and
+// Network & Time, in LIVE mode and in SIMULATED mode, on the phone of lane 1, in one sitting.
+//   node --import tsx flow_w79.mts <serial> <out> <T0> <live|simulated>
+// Device rules (D164 DN-7, D125): the app is launched on `/login?core=…&motion=off` by the device
+// script, never `/` with `motion=`. Login, Summary and Home are NEVER dumped: Login uses W60's fixed
+// coordinates (phone portrait 1080 x 2424), and the first screen after the sign-in is never dumped
+// either — the flow deep-links to /storage and then STOPS at a gate with a screencap, and goes on only
+// when the operator of this run (the agent) has looked at it and written `gate_<name>.go` (`.abort`
+// stops the LIVE part). `uiautomator dump` runs only on Storage and Network & Time, each with a 20 s
+// limit. The app's biometric offer is declined by its "Not now" (`biometric-offer-decline`); "Enable" is
+// never pressed. Nothing is typed or tapped unless the app has the focus and no keyguard shows (exit 77).
+// The demo password is read from the shared dataset constant and never printed; it is only ever the
+// argument of one `adb shell input text` into the APP's own password field.
+import { execFileSync } from 'node:child_process';
+import { existsSync, writeFileSync } from 'node:fs';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../packages/shared/src/sim/dataset';
+
+const [serial, out, t0, phase] = process.argv.slice(2);
+if (!serial || !out || !t0 || (phase !== 'live' && phase !== 'simulated')) {
+  console.error('usage: flow_w79.mts <serial> <out> <T0> <live|simulated>');
+  process.exit(64);
+}
+const H = '/Users/gsp-budi/Documents/DEMS/.cache/w79';
+const BIG = { encoding: 'utf8' as const, maxBuffer: 256 * 1024 * 1024 };
+const adb = (...a: string[]): string => execFileSync('adb', ['-s', serial, ...a], BIG);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const jsLog = (): string => adb('logcat', '-d', '-T', t0, '-s', 'ReactNativeJS:V');
+const say = (text: string) => console.log(`-- ${new Date().toTimeString().slice(0, 8)} ${text}`);
+class Locked extends Error {
+  readonly code = 77;
+}
+const POLICY_ID: Record<string, string> = { '30 days': 'DAYS_30', '90 days': 'DAYS_90', '1 year': 'YEAR_1', 'Until case closure': 'CASE_CLOSURE' };
+
+function guard(): void {
+  const w = adb('shell', 'dumpsys', 'window');
+  if (!/isKeyguardShowing=false/.test(w) || !/mCurrentFocus=.*com\.dems\.demo\.tablet/.test(w)) throw new Locked('app not focused / keyguard');
+}
+function tapAt(x: number, y: number, what: string): void {
+  guard();
+  adb('shell', 'input', 'tap', String(x), String(y));
+  say(`tapped ${what} at ${x},${y}`);
+}
+function shot(name: string): void {
+  const png = execFileSync('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], { maxBuffer: BIG.maxBuffer });
+  writeFileSync(`${out}/79_phone_${name}.png`, png);
+  say(`screencap 79_phone_${name}.png (${png.length} bytes)`);
+}
+function core(pattern: RegExp): string[] {
+  return jsLog()
+    .split('\n')
+    .map((line) => /DEMS-LIVE\] (.*)$/.exec(line)?.[1] ?? '')
+    .filter((line) => line !== '' && pattern.test(line))
+    .map((line) => line.replace(/ [0-9a-f]{8}-[0-9a-f-]{27}$/, ''));
+}
+async function waitCore(pattern: RegExp, seconds: number, atLeast = 1): Promise<string[]> {
+  for (let waited = 0; waited < seconds; waited += 1) {
+    const lines = core(pattern);
+    if (lines.length >= atLeast) return lines;
+    await sleep(1000);
+  }
+  return core(pattern);
+}
+
+/** Waits for the agent's decision on the screencap of a gate: true = go on, false = abort or no answer in 120 s. */
+async function gate(name: string): Promise<boolean> {
+  shot(name);
+  say(`GATE ${name}: waiting for ${H}/gate_${name}.go or .abort (120 s)`);
+  for (let waited = 0; waited < 120; waited += 1) {
+    if (existsSync(`${H}/gate_${name}.go`)) {
+      say(`GATE ${name}: go`);
+      return true;
+    }
+    if (existsSync(`${H}/gate_${name}.abort`)) {
+      say(`GATE ${name}: abort`);
+      return false;
+    }
+    await sleep(1000);
+  }
+  say(`GATE ${name}: no answer in 120 s - abort`);
+  return false;
+}
+
+interface Box { l: number; t: number; r: number; b: number }
+interface Node { id: string | null; text: string; desc: string; box: Box }
+const unxml = (s: string): string => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#10;/g, ' ').replace(/&amp;/g, '&');
+/** One dump of the screen (Storage and Network & Time only); null when the screen does not go idle in 20 s. */
+function dump(): { nodes: Node[]; height: number } | null {
+  try {
+    execFileSync('adb', ['-s', serial, 'shell', 'uiautomator', 'dump', '/sdcard/w79.xml'], { ...BIG, timeout: 20_000 });
+  } catch {
+    say('dump: no idle state in 20 s');
+    return null;
+  }
+  const xml = adb('exec-out', 'cat', '/sdcard/w79.xml');
+  const nodes: Node[] = [];
+  let height = 0;
+  for (const [node] of xml.matchAll(/<node\b[^>]*>/g)) {
+    const bounds = / bounds="\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]"/.exec(node);
+    if (!bounds) continue;
+    const box = { l: Number(bounds[1]), t: Number(bounds[2]), r: Number(bounds[3]), b: Number(bounds[4]) };
+    height = Math.max(height, box.b);
+    const id = / resource-id="([^"]*)"/.exec(node)?.[1]?.replace(/^.*:id\//, '') || null;
+    nodes.push({ id, text: unxml(/ text="([^"]*)"/.exec(node)?.[1] ?? ''), desc: unxml(/ content-desc="([^"]*)"/.exec(node)?.[1] ?? ''), box });
+  }
+  return { nodes, height };
+}
+const byId = (d: { nodes: Node[] } | null, id: string): Node | undefined => d?.nodes.find((n) => n.id === id);
+/** The visible text under the node of `id` (its own text or content description, else its descendants' texts in box order). */
+function textUnder(d: { nodes: Node[] } | null, id: string): string {
+  const node = byId(d, id);
+  if (!node || !d) return '';
+  if (node.text) return node.text;
+  const inside = d.nodes.filter((n) => n !== node && n.text && n.box.l >= node.box.l && n.box.r <= node.box.r && n.box.t >= node.box.t && n.box.b <= node.box.b);
+  return inside.map((n) => n.text).join(' ') || node.desc;
+}
+/** Taps a node by its test ID; inside a sheet it swipes the sheet up until the node is fully on screen. */
+async function tapId(id: string, { tries = 5, swipe = false }: { tries?: number; swipe?: boolean } = {}): Promise<boolean> {
+  for (let attempt = 0; attempt < tries; attempt += 1) {
+    const d = dump();
+    const node = byId(d, id);
+    if (d && node && node.box.b > node.box.t && node.box.t >= 0 && node.box.b <= d.height - 8) {
+      tapAt(Math.round((node.box.l + node.box.r) / 2), Math.round((node.box.t + node.box.b) / 2), id);
+      return true;
+    }
+    if (swipe) {
+      guard();
+      adb('shell', 'input', 'swipe', '540', '1900', '540', '1300', '300');
+      say(`swiped the sheet up to reach ${id}`);
+    }
+    await sleep(800);
+  }
+  say(`no visible node ${id}`);
+  return false;
+}
+
+/** W60's sign-in on the app's own Login form, fixed coordinates (phone portrait 1080 x 2424). */
+async function signIn(username: string): Promise<void> {
+  const USER: [number, number] = [540, 1105];
+  const PASS: [number, number] = [540, 1265];
+  tapAt(...USER, 'the username field');
+  await sleep(1200);
+  tapAt(540, 2338, "the handwriting coach's Cancel (empty space when none)");
+  await sleep(800);
+  tapAt(...USER, 'the username field');
+  await sleep(600);
+  guard();
+  adb('shell', 'input', 'text', username);
+  say(`typed the operator username (${username})`);
+  await sleep(400);
+  tapAt(...PASS, 'the password field');
+  await sleep(600);
+  guard();
+  adb('shell', 'input', 'text', DEMO_OPERATOR_PASSWORD); // never printed
+  say('typed the demo password (not shown)');
+  await sleep(400);
+  guard();
+  adb('shell', 'input', 'keyevent', '66');
+  say("pressed the keypad's go key");
+}
+function link(url: string): void {
+  guard();
+  adb('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', url, 'com.dems.demo.tablet');
+  say(`deep link ${url}`);
+}
+/** Declines the biometric offer if it is up (by its test ID, "Not now"; never "Enable"). */
+async function declineOfferIfShown(): Promise<void> {
+  if (byId(dump(), 'biometric-offer-decline')) {
+    await tapId('biometric-offer-decline');
+    say('declined the biometric offer ("Not now")');
+    await sleep(1500);
+  } else say('no biometric offer on screen');
+}
+/** The open sheet's "Current: <policy> · auto-archive <on|off>" line. */
+function currentPolicy(): { line: string; id: string | null } {
+  const line = textUnder(dump(), 'storage-manage-current');
+  const label = /^Current: (.+?) · auto-archive (?:on|off)$/.exec(line)?.[1] ?? '';
+  return { line, id: POLICY_ID[label] ?? null };
+}
+function screenTexts(d: { nodes: Node[] } | null): string[] {
+  return d === null ? [] : d.nodes.flatMap((n) => [n.text, n.desc]).filter((t) => t !== '');
+}
+
+async function storageAndNetwork(mode: 'live' | 'simulated'): Promise<number> {
+  await declineOfferIfShown();
+  const d = dump();
+  say(`storage on screen: ring "${byId(d, 'storage-ring')?.desc ?? 'not found'}"; first activity row "${d?.nodes.find((n) => n.id === 'storage-activity-row')?.desc ?? 'none'}"`);
+  say(`texts saying "simulat" on Storage: ${screenTexts(d).filter((t) => /simulat/i.test(t)).length}`);
+  shot(`${mode}_storage`);
+  if (!(await tapId('storage-manage'))) return 1;
+  await sleep(2000);
+  const original = currentPolicy();
+  say(`sheet: "${original.line}" (policy ${original.id ?? 'unknown'})`);
+  shot(`${mode}_sheet`);
+
+  if (mode === 'live') {
+    if (original.id === null) return 1;
+    const target = original.id === 'YEAR_1' ? 'DAYS_90' : 'YEAR_1';
+    if (!(await tapId(`storage-manage-retention-${target}`, { swipe: true }))) return 1;
+    await sleep(600);
+    if (!(await tapId('storage-manage-apply', { swipe: true }))) return 1;
+    say(`S2-6 change to ${target}: ${(await waitCore(/POST \/api\/v1\/storage\/policy/, 15)).join(' | ') || 'NOT SEEN'}`);
+    await sleep(600);
+    shot('live_applied_toast');
+    await sleep(2500);
+    const after = dump();
+    say(`after the change: first activity row "${after?.nodes.find((n) => n.id === 'storage-activity-row')?.desc ?? 'none'}"; sheet open: ${byId(after, 'storage-manage-sheet') ? 'yes' : 'no'}`);
+    shot('live_storage_changed');
+
+    // SET IT BACK to what it was.
+    if (!(await tapId('storage-manage'))) return 1;
+    await sleep(2000);
+    if (!(await tapId(`storage-manage-retention-${original.id}`, { swipe: true }))) return 1;
+    await sleep(600);
+    if (!(await tapId('storage-manage-apply', { swipe: true }))) return 1;
+    say(`set back to ${original.id}: ${(await waitCore(/POST \/api\/v1\/storage\/policy/, 15, 2)).join(' | ') || 'NOT SEEN'}`);
+    await sleep(3000);
+    const back = dump();
+    say(`after the set back: first activity row "${back?.nodes.find((n) => n.id === 'storage-activity-row')?.desc ?? 'none'}"`);
+    if (!(await tapId('storage-manage'))) return 1;
+    await sleep(2000);
+    const restored = currentPolicy();
+    say(`sheet after the set back: "${restored.line}"; equal to before: ${restored.line === original.line && restored.line !== ''}`);
+    shot('live_sheet_set_back');
+  }
+  await tapId('storage-manage-close');
+  await sleep(1500);
+
+  link('demsdemo:///network-time');
+  await sleep(4000);
+  const nt = dump();
+  say(`network & time on screen: server "${textUnder(nt, 'network-time-server-value')}", source "${textUnder(nt, 'network-time-source-value')}", sync "${byId(nt, 'network-time-sync')?.desc ?? 'not found'}"`);
+  say(`texts saying "simulat" on Network & Time: ${screenTexts(nt).filter((t) => /simulat/i.test(t)).length}`);
+  shot(`${mode}_network_time`);
+  return 0;
+}
+
+async function live(): Promise<number> {
+  const supervisor = OPERATORS.find((o) => o.role === 'SUPERVISOR');
+  if (!supervisor) throw new Error('no SUPERVISOR in the dataset');
+  await sleep(6000);
+  shot('live_login');
+  await signIn(supervisor.username);
+  say(`the app's sign-in: ${(await waitCore(/POST \/api\/v1\/auth\/sign-in/, 30)).join(' | ') || 'NOT SEEN'}`);
+  await sleep(5000);
+  shot('live_after_signin');
+  link('demsdemo:///storage');
+  await sleep(4000);
+  if (!(await gate('live_storage_gate'))) return 2;
+  const status = await storageAndNetwork('live');
+  const log = jsLog();
+  say(`credential/token lines in the JS log (must be 0): ${log.split('\n').filter((l) => /dvc_|ses_|bio_/.test(l)).length}`);
+  say(`demo operations (must be 0): ${core(/\/api\/v1\/demo\//).length}; biometric enrolment requests (must be 0): ${core(/biometric/).length}`);
+  say(`storage or network reads by a screen (must be 0): ${core(/GET \/api\/v1\/(?:storage|network|time)\b/).length}`);
+  return status;
+}
+
+async function simulated(): Promise<number> {
+  const supervisor = OPERATORS.find((o) => o.role === 'SUPERVISOR');
+  if (!supervisor) throw new Error('no SUPERVISOR in the dataset');
+  await sleep(6000);
+  shot('simulated_login');
+  await signIn(supervisor.username);
+  await sleep(5000);
+  link('demsdemo:///storage');
+  await sleep(4000);
+  if (!(await gate('simulated_storage_gate'))) return 2;
+  const status = await storageAndNetwork('simulated');
+  say(`Core requests in SIMULATED mode (must be 0): ${jsLog().split('\n').filter((l) => l.includes('DEMS-LIVE]')).length}`);
+  return status;
+}
+
+(phase === 'live' ? live() : simulated()).then(
+  (status) => process.exit(status),
+  (error: unknown) => {
+    console.error(`-- failed: ${error instanceof Error ? error.message : 'unknown'}`);
+    process.exit(error instanceof Locked ? 77 : 1);
+  },
+);

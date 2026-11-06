@@ -1,0 +1,8 @@
+[AVFoundation indev @ 0x7f8a5c004a00] AVFoundation video devices:
+[AVFoundation indev @ 0x7f8a5c004a00] AVFoundation audio devices:
+[AVFoundation indev @ 0x7f8a5c004a00] [0] <b>DEMS</b> & <script>x()</script>
+[AVFoundation indev @ 0x7f8a5c004a00] [1] X</string><key>locationID</key><integer>34603008</integer><key>IORegistryEntryLocation</key><string>02100000
+[AVFoundation indev @ 0x7f8a5c004a00] [2] DEMS Hexa 6
+[in#0 @ 0x7f8a5c005100] Error opening input: Input/output error
+Error opening input file .
+Error opening input files: Input/output error

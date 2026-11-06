@@ -1,0 +1,779 @@
+# FX-M2b changes: the granted files against their rollback copies (.cache/rollback/FX-M2), then the new files in full
+--- a/apps/mobile/src/components/composed/nav/live-mini-bar.tsx
++++ b/apps/mobile/src/components/composed/nav/live-mini-bar.tsx
+@@ -1,7 +1,7 @@
+ import { useRouter } from 'expo-router';
+ import { PressableFeedback, Surface } from 'heroui-native';
+ import { ChevronRight } from 'lucide-react-native';
+-import { useEffect, useState } from 'react';
++import { useEffect } from 'react';
+ import { useTranslation } from 'react-i18next';
+ import { StyleSheet, Text, View } from 'react-native';
+ import Animated, {
+@@ -12,6 +12,7 @@
+   type EntryOrExitLayoutType,
+ } from 'react-native-reanimated';
+ import { useSafeAreaInsets } from 'react-native-safe-area-context';
++import { selectElapsedSeconds, useSim } from '@dems/shared/sim';
+ import { fontFamily, motion as motionTokens, palette, typography } from '@dems/shared/tokens';
+ import { RollingNumber } from '@/components/composed/rolling-number';
+ import { withAlpha } from '@/components/media/color';
+@@ -48,19 +49,22 @@
+   return builder.withInitialValues({ opacity: 0, translateY: MINI_BAR_DROP }).reduceMotion(ReduceMotion.System);
+ }
+ 
+-/** Whole seconds since the recording started (1 Hz, 04 §7.8 "timers and clocks 1 Hz"). */
++/** Whole seconds since the recording started (1 Hz, 04 §7.8 "timers and clocks 1 Hz"). Pure. */
+ export function elapsedSeconds(startedAtMs: number | null, nowMs: number): number {
+   if (startedAtMs === null || !Number.isFinite(startedAtMs)) return 0;
+   return Math.max(0, Math.floor((nowMs - startedAtMs) / 1000));
+ }
+ 
+-function useElapsedSeconds(startedAtMs: number | null): number {
+-  const [now, setNow] = useState(() => Date.now());
+-  useEffect(() => {
+-    const timer = setInterval(() => setNow(Date.now()), 1000);
+-    return () => clearInterval(timer);
+-  }, []);
+-  return elapsedSeconds(startedAtMs, now);
++/**
++ * E2E-P-3 (E-fix row FX-M2b; decision D201): the recording time on the STORE's clock
++ * (`selectElapsedSeconds`, which in Live mode follows the Core's clock), the one time source of Home's
++ * System Status timer, the monitor and the Sessions hub. The bar used to sample `Date.now()` on its own
++ * 1 s interval, started when it mounted: the device clock at an unrelated phase, so for part of each
++ * second it showed one second less than the Home card above it (captures 36b, 99f). Reading the store
++ * makes both timers change in the same store publish.
++ */
++function useRecordingSeconds(): number {
++  return useSim(selectElapsedSeconds);
+ }
+ 
+ /**
+@@ -76,7 +80,7 @@
+   const insets = useSafeAreaInsets();
+   const settings = useMotionSettings();
+   const policy = useMotionPolicy();
+-  const seconds = useElapsedSeconds(session.startedAtMs);
++  const seconds = useRecordingSeconds();
+   const pulsing = useAmbientLoop('mini-bar-rec', { active: true });
+   const dot = useSharedValue(1);
+ 
+--- a/apps/mobile/src/components/composed/nav/nav-item.tsx
++++ b/apps/mobile/src/components/composed/nav/nav-item.tsx
+@@ -1,11 +1,11 @@
+ import { useTabTrigger } from 'expo-router/ui';
+ import { PressableFeedback } from 'heroui-native';
+ import type { LucideIcon } from 'lucide-react-native';
+-import { useEffect } from 'react';
+-import { StyleSheet, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
+-import Animated, { interpolateColor, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
++import { useEffect, useState, type ReactNode } from 'react';
++import { StyleSheet, Text, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
++import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+ import { fontFamily, palette, typography } from '@dems/shared/tokens';
+-import { animateTiming, useHaptics, useMotionSettings, type HapticEvent } from '@/motion';
++import { animateTiming, durationMs, useHaptics, useMotionSettings, type HapticEvent, type MotionSettings } from '@/motion';
+ import type { TabName } from '@/navigation/routes';
+ 
+ /** Label placement of a navigation item (04_mobile_specs §2.3). */
+@@ -27,33 +27,60 @@
+ export const NAV_ICON_SIZE = 24;
+ 
+ /** Icon and label colour cross-fade (04 §7.5 M-MB-01: 240 ms). */
+-const COLOR_FADE_MS = 240;
++export const COLOR_FADE_MS = 240;
+ 
++/** How long the fading copy may stay before a React commit removes it (the fade, ×10 in proof mode, plus one frame budget). */
++export function colorFadeBudgetMs(m: MotionSettings): number {
++  return durationMs(COLOR_FADE_MS, m) + 60;
++}
++
++/** One cross-fade: the colours the item had before (`wasActive`), shown over the new ones while they fade out. */
++interface ColorFade {
++  readonly wasActive: boolean;
++  readonly id: number;
++}
++
+ /**
++ * E-fix row FX-M2b (E2E-P-1): the cross-fade of an item whose state changed, or null when settled.
++ * Reduced motion jumps (no fade). A React commit ends the fade after `colorFadeBudgetMs`, whatever
++ * the UI thread did.
++ */
++function useColorFade(active: boolean, m: MotionSettings): ColorFade | null {
++  const [seen, setSeen] = useState(active);
++  const [fade, setFade] = useState<ColorFade | null>(null);
++  if (seen !== active) {
++    setSeen(active);
++    setFade(m.policy === 'reduced' ? null : { wasActive: seen, id: (fade?.id ?? 0) + 1 });
++  }
++  useEffect(() => {
++    if (fade === null) return undefined;
++    const timer = setTimeout(() => setFade((current) => (current?.id === fade.id ? null : current)), colorFadeBudgetMs(m));
++    return () => clearTimeout(timer);
++  }, [fade, m]);
++  return fade;
++}
++
++/**
+  * One destination of the bottom bar or the rail (C-5, 04_mobile_specs §3.4): an `expo-router/ui`
+  * tab trigger (`useTabTrigger`, the documented hook behind `TabTrigger`) on a HeroUI Native
+- * `PressableFeedback`, with a Lucide icon and a label. The active state cross-fades a gold copy of
+- * the icon over the muted one and tints the label (M-MB-01); the travelling indicator itself is
+- * drawn by the bar or rail. It is a `tab` for TalkBack, labelled even when the label is hidden.
++ * `PressableFeedback`, with a Lucide icon and a label. It is a `tab` for TalkBack, labelled even
++ * when the label is hidden; the travelling indicator itself is drawn by the bar or rail.
++ *
++ * E-fix row FX-M2b (E2E-P-1, E2E-T-2; decision D201): the icon and the label used to be coloured by
++ * UI-thread animated styles only (a gold copy of the icon over a grey one, both opacities from one
++ * shared value). On the phone (90a) and the tablet (12_devices_blank) the label's colour followed a
++ * tab switch while the icon opacities did not: the new tab showed a gold label over a grey icon, the
++ * old tab a gold icon. Now the settled colours are plain React props of the `active` state (gold or
++ * grey), so the final state cannot be lost; M-MB-01's 240 ms cross-fade is a copy of the item in
++ * its previous colours laid over it and faded out on the UI thread, which React removes after
++ * `colorFadeBudgetMs` even if no frame of the fade ran.
+  */
+-export function NavItem({ name, label, icon: Icon, active, layout, haptic, onLayout, style }: NavItemProps) {
++export function NavItem({ name, label, icon, active, layout, haptic, onLayout, style }: NavItemProps) {
+   const { triggerProps } = useTabTrigger({ name });
+   const haptics = useHaptics();
+   const motion = useMotionSettings();
+-  const progress = useSharedValue(active ? 1 : 0);
++  const fade = useColorFade(active, motion);
+ 
+-  useEffect(() => {
+-    progress.set(animateTiming(active ? 1 : 0, COLOR_FADE_MS, 'standard', motion));
+-  }, [active, motion, progress]);
+-
+-  const goldIcon = useAnimatedStyle(() => ({ opacity: progress.get() }));
+-  const mutedIcon = useAnimatedStyle(() => ({ opacity: 1 - progress.get() }));
+-  const labelColor = useAnimatedStyle(() => ({
+-    color: interpolateColor(progress.get(), [0, 1], [palette.gray, palette.gold]),
+-  }));
+-
+-  const showLabel = layout !== 'rail-icon';
+-
+   return (
+     <PressableFeedback
+       testID={`nav-item-${name}`}
+@@ -68,33 +95,73 @@
+       onLongPress={triggerProps.onLongPress}
+       style={[styles.base, LAYOUT_STYLES[layout], style]}
+     >
+-      <View style={styles.icon} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+-        <Animated.View style={[StyleSheet.absoluteFill, styles.center, mutedIcon]}>
+-          <Icon size={NAV_ICON_SIZE} color={palette.gray} strokeWidth={1.75} />
+-        </Animated.View>
+-        <Animated.View style={[StyleSheet.absoluteFill, styles.center, goldIcon]}>
+-          <Icon size={NAV_ICON_SIZE} color={palette.gold} strokeWidth={2} />
+-        </Animated.View>
++      <NavItemFace testID={`nav-item-${name}-face`} icon={icon} label={label} active={active} layout={layout} />
++      {fade ? (
++        <FadingFace key={fade.id} motion={motion} layout={layout}>
++          <NavItemFace testID={`nav-item-${name}-fading`} icon={icon} label={label} active={fade.wasActive} layout={layout} />
++        </FadingFace>
++      ) : null}
++    </PressableFeedback>
++  );
++}
++
++interface NavItemFaceProps {
++  testID: string;
++  icon: LucideIcon;
++  label: string;
++  active: boolean;
++  layout: NavItemLayout;
++}
++
++/** The icon and the label in the colours of one state, as plain React props (no UI-thread value). */
++function NavItemFace({ testID, icon: Icon, label, active, layout }: NavItemFaceProps) {
++  const tint = active ? palette.gold : palette.gray;
++  return (
++    <>
++      <View testID={`${testID}-icon`} style={styles.icon} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
++        <Icon size={NAV_ICON_SIZE} color={tint} strokeWidth={active ? 2 : 1.75} />
+       </View>
+-      {showLabel ? (
+-        <Animated.Text
++      {layout !== 'rail-icon' ? (
++        <Text
++          testID={`${testID}-label`}
+           // Two lines under the icon in the 88 dp rail ("Network & Time"); one line elsewhere.
+           numberOfLines={layout === 'rail-below' ? 2 : 1}
+           maxFontSizeMultiplier={1.2}
+           importantForAccessibility="no"
+-          style={[layout === 'rail-inline' ? styles.labelInline : styles.labelBelow, labelColor]}
++          style={[layout === 'rail-inline' ? styles.labelInline : styles.labelBelow, { color: tint }]}
+         >
+           {label}
+-        </Animated.Text>
++        </Text>
+       ) : null}
+-    </PressableFeedback>
++    </>
+   );
+ }
+ 
++/**
++ * The previous colours laid exactly over the item (the same layout box) and faded from 1 to 0 in
++ * COLOR_FADE_MS on the UI thread. Hidden from TalkBack, never touchable.
++ */
++function FadingFace({ motion, layout, children }: { motion: MotionSettings; layout: NavItemLayout; children: ReactNode }) {
++  const opacity = useSharedValue(1);
++  useEffect(() => {
++    opacity.set(animateTiming(0, COLOR_FADE_MS, 'standard', motion));
++  }, [opacity, motion]);
++  const fadeStyle = useAnimatedStyle(() => ({ opacity: opacity.get() }));
++  return (
++    <Animated.View
++      pointerEvents="none"
++      importantForAccessibility="no-hide-descendants"
++      accessibilityElementsHidden
++      style={[styles.base, LAYOUT_STYLES[layout], StyleSheet.absoluteFill, fadeStyle]}
++    >
++      {children}
++    </Animated.View>
++  );
++}
++
+ const styles = StyleSheet.create({
+   base: { alignItems: 'center', justifyContent: 'center', minHeight: 48, minWidth: 48 },
+-  icon: { width: NAV_ICON_SIZE, height: NAV_ICON_SIZE },
+-  center: { alignItems: 'center', justifyContent: 'center' },
++  icon: { width: NAV_ICON_SIZE, height: NAV_ICON_SIZE, alignItems: 'center', justifyContent: 'center' },
+   labelBelow: {
+     marginTop: 4,
+     fontFamily: fontFamily.native.medium,
+--- a/apps/mobile/src/components/composed/nav/use-indicator.ts
++++ b/apps/mobile/src/components/composed/nav/use-indicator.ts
+@@ -1,63 +1,86 @@
+-import { useCallback, useEffect, useRef, useState } from 'react';
++import { useCallback, useEffect, useState } from 'react';
+ import type { LayoutChangeEvent, LayoutRectangle } from 'react-native';
+-import { useSharedValue, type SharedValue } from 'react-native-reanimated';
+-import { animateSpring, useMotionSettings } from '@/motion';
++import { slowSpringTiming, useMotionSettings, type MotionSettings } from '@/motion';
+ import type { TabName } from '@/navigation/routes';
+ 
++/** One trip of the indicator between two items (full motion only). `id` keys the travelling copy. */
++export interface IndicatorTravel {
++  readonly from: LayoutRectangle;
++  readonly to: LayoutRectangle;
++  readonly id: number;
++}
++
+ export interface IndicatorTrack {
+   /** Feed every item's `onLayout` here. */
+   onItemLayout(name: TabName, event: LayoutChangeEvent): void;
+-  /** The active item's frame, once measured. */
++  /**
++   * The active item's frame, once measured: where the indicator SETTLES. The bar and the rail draw
++   * the settled indicator from it with plain React styles, so its final place never depends on a
++   * UI-thread update.
++   */
+   readonly frame: LayoutRectangle | null;
+-  readonly x: SharedValue<number>;
+-  readonly y: SharedValue<number>;
+-  readonly width: SharedValue<number>;
+-  readonly height: SharedValue<number>;
++  /** While the indicator travels to a new item: the trip its travelling copy animates; null when settled. */
++  readonly travel: IndicatorTravel | null;
+ }
+ 
+ /**
+- * Drives the travelling active indicator of the bar and the rail (04_mobile_specs §7.5 M-MB-01):
+- * it measures the items and moves the indicator to the active one with the `indicator` spring
+- * (03M §2.3; proof mode ×10; reduced motion jumps). The first placement never animates, so the
+- * indicator does not fly in from the corner on mount or after a chrome swap.
++ * How long a trip may take before a React commit ends it, whatever the UI thread did: the
++ * `indicator` spring (380/36/1, ζ ≈ 0.92) is at rest well inside 600 ms; proof mode runs the trip as
++ * `slowSpringTiming` (×10).
+  */
++export const INDICATOR_TRAVEL_MS = 600;
++
++export function indicatorTravelBudgetMs(m: MotionSettings): number {
++  return m.slow ? (slowSpringTiming().duration ?? INDICATOR_TRAVEL_MS * 10) + 100 : INDICATOR_TRAVEL_MS;
++}
++
++function sameFrame(a: LayoutRectangle | null, b: LayoutRectangle | null): boolean {
++  if (a === null || b === null) return a === b;
++  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
++}
++
++/**
++ * Drives the travelling active indicator of the bar and the rail (04_mobile_specs §7.5 M-MB-01).
++ *
++ * E-fix row FX-M2b (E2E-P-1, E2E-T-2; decision D201): the indicator used to be ONE animated view
++ * whose place was a UI-thread transform. On the phone (90a) and on the tablet (12_devices_blank) the
++ * transform update of a tab switch was lost: the label had moved to the new tab, the indicator stayed
++ * on the old one. Now the settled indicator is drawn by React at `frame`, and a trip is only an
++ * overlay: the travelling copy (`IndicatorTravelLayer`) animates from the old frame to the new one
++ * with the `indicator` spring (proof mode ×10) and a React commit removes it after
++ * `indicatorTravelBudgetMs`, so the settled indicator shows at the right place even if every UI-thread
++ * update of the trip was lost. The first placement never travels (no flight from the corner on mount
++ * or after a chrome swap), and reduced motion jumps (no trip at all).
++ */
+ export function useIndicatorTrack(active: TabName | null): IndicatorTrack {
+   const motion = useMotionSettings();
+   const [frames, setFrames] = useState<Partial<Record<TabName, LayoutRectangle>>>({});
+-  const placed = useRef(false);
+-  const x = useSharedValue(0);
+-  const y = useSharedValue(0);
+-  const width = useSharedValue(0);
+-  const height = useSharedValue(0);
+ 
+   const onItemLayout = useCallback((name: TabName, event: LayoutChangeEvent) => {
+     const next = event.nativeEvent.layout;
+     setFrames((current) => {
+       const prev = current[name];
+-      if (prev && prev.x === next.x && prev.y === next.y && prev.width === next.width && prev.height === next.height) {
+-        return current;
+-      }
++      if (prev && sameFrame(prev, next)) return current;
+       return { ...current, [name]: next };
+     });
+   }, []);
+ 
+   const frame = active ? (frames[active] ?? null) : null;
+ 
++  // A new settled frame starts a trip from the previous one (adjusted during render, no effect).
++  const [placed, setPlaced] = useState<LayoutRectangle | null>(frame);
++  const [travel, setTravel] = useState<IndicatorTravel | null>(null);
++  if (!sameFrame(placed, frame)) {
++    setPlaced(frame);
++    setTravel(placed !== null && frame !== null && motion.policy !== 'reduced' ? { from: placed, to: frame, id: (travel?.id ?? 0) + 1 } : null);
++  }
++
++  // The trip ends on a React commit after its budget, whether or not the UI thread animated it.
+   useEffect(() => {
+-    if (frame === null) return;
+-    if (!placed.current) {
+-      placed.current = true;
+-      x.set(frame.x);
+-      y.set(frame.y);
+-      width.set(frame.width);
+-      height.set(frame.height);
+-      return;
+-    }
+-    x.set(animateSpring(frame.x, 'indicator', motion));
+-    y.set(animateSpring(frame.y, 'indicator', motion));
+-    width.set(animateSpring(frame.width, 'indicator', motion));
+-    height.set(animateSpring(frame.height, 'indicator', motion));
+-  }, [frame, motion, x, y, width, height]);
++    if (travel === null) return undefined;
++    const timer = setTimeout(() => setTravel((current) => (current?.id === travel.id ? null : current)), indicatorTravelBudgetMs(motion));
++    return () => clearTimeout(timer);
++  }, [travel, motion]);
+ 
+-  return { onItemLayout, frame, x, y, width, height };
++  return { onItemLayout, frame, travel };
+ }
+--- a/apps/mobile/src/components/composed/nav/bottom-tab-bar.tsx
++++ b/apps/mobile/src/components/composed/nav/bottom-tab-bar.tsx
+@@ -1,11 +1,11 @@
+ import { useTranslation } from 'react-i18next';
+-import { StyleSheet, View } from 'react-native';
+-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
++import { StyleSheet, View, type LayoutRectangle } from 'react-native';
+ import { useSafeAreaInsets } from 'react-native-safe-area-context';
+ import { derived, palette, statusSoft } from '@dems/shared/tokens';
+ import { NAV_DIMENSIONS } from '@/layout';
+ import { GlowLayer } from '@/motion';
+ import { TAB_DESTINATIONS, type TabName } from '@/navigation/routes';
++import { IndicatorTravelLayer, settledBoxStyle, type IndicatorBox } from './indicator-travel';
+ import { NavItem } from './nav-item';
+ import { useIndicatorTrack } from './use-indicator';
+ 
+@@ -21,6 +21,14 @@
+ /** The gold light streak on the bar's top edge above the active item (MB 2 tab bar). */
+ const STREAK = { width: 32, height: 2 } as const;
+ 
++/** The pill's and the streak's places for an item's frame (centred on the item). */
++function pillBox(frame: LayoutRectangle): IndicatorBox {
++  return { x: frame.x + (frame.width - PILL.width) / 2, y: PILL.top, width: PILL.width, height: PILL.height };
++}
++function streakBox(frame: LayoutRectangle): IndicatorBox {
++  return { x: frame.x + (frame.width - STREAK.width) / 2, y: 0, width: STREAK.width, height: STREAK.height };
++}
++
+ /**
+  * Phone bottom tab bar (C-5; 04_mobile_specs §2.3 compact; MB 2 (350–595, 495–530)): five
+  * destinations, 60 dp plus the bottom inset (it consumes that inset, so screens above it do not
+@@ -28,19 +36,17 @@
+  * on the top edge; both travel with the `indicator` spring and the pill's glow pulses e2 → e3 → e2
+  * on arrival (M-MB-01). It sits below the content, never over it, so it needs no blur (H-MB-03 is
+  * not exercised: the design-black surface is the fallback fill).
++ *
++ * E-fix row FX-M2b (E2E-P-1): the settled pill and streak are plain views placed by React at the
++ * active item; a trip draws travelling copies over them (`IndicatorTravelLayer`) and React removes
++ * them when the trip's budget is over, so the highlight always ends on the active tab.
+  */
+ export function BottomTabBar({ items, active }: BottomTabBarProps) {
+   const { t } = useTranslation();
+   const insets = useSafeAreaInsets();
+   const track = useIndicatorTrack(active);
++  const { frame, travel } = track;
+ 
+-  const pillStyle = useAnimatedStyle(() => ({
+-    transform: [{ translateX: track.x.get() + (track.width.get() - PILL.width) / 2 }],
+-  }));
+-  const streakStyle = useAnimatedStyle(() => ({
+-    transform: [{ translateX: track.x.get() + (track.width.get() - STREAK.width) / 2 }],
+-  }));
+-
+   return (
+     <View
+       testID="nav-bottom"
+@@ -58,12 +64,25 @@
+       ]}
+     >
+       <View style={styles.row}>
+-        {track.frame ? (
++        {frame ? (
+           <>
+-            <Animated.View pointerEvents="none" testID="nav-bottom-indicator" style={[styles.pill, pillStyle]}>
++            {/* Settled: React places it at the active item; hidden (not moved) while a copy travels. */}
++            <View
++              pointerEvents="none"
++              testID="nav-bottom-indicator"
++              style={[styles.pill, settledBoxStyle(pillBox(frame)), travel ? styles.hidden : null]}
++            >
+               <GlowLayer level={2} radius={PILL.radius} pulseKey={active ?? undefined} />
+-            </Animated.View>
+-            <Animated.View pointerEvents="none" style={[styles.streak, streakStyle]} />
++            </View>
++            <View pointerEvents="none" testID="nav-bottom-streak" style={[styles.streak, settledBoxStyle(streakBox(frame)), travel ? styles.hidden : null]} />
++            {travel ? (
++              <>
++                <IndicatorTravelLayer key={`pill-${travel.id}`} testID="nav-bottom-indicator-travel" from={pillBox(travel.from)} to={pillBox(travel.to)} style={styles.pill}>
++                  <GlowLayer level={2} radius={PILL.radius} />
++                </IndicatorTravelLayer>
++                <IndicatorTravelLayer key={`streak-${travel.id}`} from={streakBox(travel.from)} to={streakBox(travel.to)} style={styles.streak} />
++              </>
++            ) : null}
+           </>
+         ) : null}
+         {items.map((name) => {
+@@ -95,13 +114,14 @@
+   row: { flex: 1, flexDirection: 'row', alignItems: 'stretch' },
+   pill: {
+     position: 'absolute',
+-    top: PILL.top,
++    top: 0,
+     left: 0,
+     width: PILL.width,
+     height: PILL.height,
+     borderRadius: PILL.radius,
+     backgroundColor: statusSoft.accent,
+   },
++  hidden: { opacity: 0 },
+   streak: {
+     position: 'absolute',
+     top: 0,
+--- a/apps/mobile/src/components/composed/nav/nav-rail.tsx
++++ b/apps/mobile/src/components/composed/nav/nav-rail.tsx
+@@ -1,8 +1,7 @@
+ import { PressableFeedback } from 'heroui-native';
+ import { PanelLeftClose, PanelLeftOpen } from 'lucide-react-native';
+ import { useTranslation } from 'react-i18next';
+-import { StyleSheet, Text, View } from 'react-native';
+-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
++import { StyleSheet, Text, View, type LayoutRectangle } from 'react-native';
+ import { useSafeAreaInsets } from 'react-native-safe-area-context';
+ import { SvgXml } from 'react-native-svg';
+ import { TOPO_SVG } from '@dems/shared/brand';
+@@ -12,6 +11,7 @@
+ import type { NavChrome } from '@/layout';
+ import { GlowLayer } from '@/motion';
+ import { TAB_DESTINATIONS, type TabName } from '@/navigation/routes';
++import { IndicatorTravelLayer, settledBoxStyle, type IndicatorBox } from './indicator-travel';
+ import { NavItem, type NavItemLayout } from './nav-item';
+ import { useIndicatorTrack } from './use-indicator';
+ 
+@@ -36,6 +36,11 @@
+   return nav.labels === 'inline' ? 'rail-inline' : 'rail-below';
+ }
+ 
++/** The card covers the active item's frame. */
++function cardBox(frame: LayoutRectangle): IndicatorBox {
++  return { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
++}
++
+ /** Horizontal inset of the items and the active card inside the rail. */
+ const LIST_INSET = 8;
+ 
+@@ -48,20 +53,18 @@
+  * Active state (D49 web parity, token colours only): an inset card on `surface-tertiary` with a
+  * gold hairline and glow e2, travelling with the `indicator` spring and pulsing to e3 on arrival
+  * (M-MB-01). The extended rail carries the topographic texture and the version line at its foot.
++ *
++ * E-fix row FX-M2b (E2E-T-2, E2E-P-1): the settled card is a plain view placed by React on the
++ * active item; a trip draws a travelling copy over it (`IndicatorTravelLayer`) that React removes
++ * when the trip's budget is over, so the card never stays on the tab that was left (12_devices_blank).
+  */
+ export function NavRail({ items, active, nav, collapse }: NavRailProps) {
+   const { t } = useTranslation();
+   const insets = useSafeAreaInsets();
+-  const track = useIndicatorTrack(active);
++  const { frame, travel, onItemLayout } = useIndicatorTrack(active);
+   const layout = itemLayoutFor(nav);
+   const showHeader = layout !== 'rail-icon';
+ 
+-  const cardStyle = useAnimatedStyle(() => ({
+-    transform: [{ translateX: track.x.get() }, { translateY: track.y.get() }],
+-    width: track.width.get(),
+-    height: track.height.get(),
+-  }));
+-
+   return (
+     <View
+       testID="nav-rail"
+@@ -102,11 +105,17 @@
+       ) : null}
+ 
+       <View style={styles.list}>
+-        {track.frame ? (
+-          <Animated.View pointerEvents="none" testID="nav-rail-indicator" style={[styles.card, cardStyle]}>
++        {frame ? (
++          // Settled: React places it on the active item; hidden (not moved) while a copy travels.
++          <View pointerEvents="none" testID="nav-rail-indicator" style={[styles.card, settledBoxStyle(cardBox(frame)), travel ? styles.hidden : null]}>
+             <GlowLayer level={2} radius={radius.px.lg} pulseKey={active ?? undefined} />
+-          </Animated.View>
++          </View>
+         ) : null}
++        {frame && travel ? (
++          <IndicatorTravelLayer key={`card-${travel.id}`} testID="nav-rail-indicator-travel" from={cardBox(travel.from)} to={cardBox(travel.to)} style={styles.card}>
++            <GlowLayer level={2} radius={radius.px.lg} />
++          </IndicatorTravelLayer>
++        ) : null}
+         {items.map((name) => {
+           const destination = TAB_DESTINATIONS[name];
+           return (
+@@ -118,7 +127,7 @@
+               active={active === name}
+               layout={layout}
+               haptic="railSelect"
+-              onLayout={track.onItemLayout}
++              onLayout={onItemLayout}
+             />
+           );
+         })}
+@@ -183,6 +192,7 @@
+     borderColor: palette.gold,
+     backgroundColor: derived.surfaceTertiary,
+   },
++  hidden: { opacity: 0 },
+   spacer: { flex: 1 },
+   footer: {
+     paddingHorizontal: 20,
+--- a/apps/mobile/src/components/composed/nav/index.ts
++++ b/apps/mobile/src/components/composed/nav/index.ts
+@@ -2,7 +2,8 @@
+ // mini-bar of the navigation shell (step 70). The layout that places them is src/navigation/app-tabs.tsx.
+ export { BottomTabBar, type BottomTabBarProps } from './bottom-tab-bar';
+ export { LiveMiniBar, elapsedSeconds, type LiveMiniBarPlacement, type LiveMiniBarProps } from './live-mini-bar';
+-export { NAV_ICON_SIZE, NavItem, type NavItemLayout, type NavItemProps } from './nav-item';
++export { COLOR_FADE_MS, NAV_ICON_SIZE, NavItem, colorFadeBudgetMs, type NavItemLayout, type NavItemProps } from './nav-item';
++export { IndicatorTravelLayer, settledBoxStyle, type IndicatorBox, type IndicatorTravelLayerProps } from './indicator-travel';
+ export { NavRail, RAIL_FOOTER_VERSION, type NavRailProps } from './nav-rail';
+ export { ResponsiveTabList, type ResponsiveTabListProps } from './responsive-tab-list';
+-export { useIndicatorTrack, type IndicatorTrack } from './use-indicator';
++export { INDICATOR_TRAVEL_MS, indicatorTravelBudgetMs, useIndicatorTrack, type IndicatorTrack, type IndicatorTravel } from './use-indicator';
+--- a/apps/mobile/src/navigation/app-tabs.tsx
++++ b/apps/mobile/src/navigation/app-tabs.tsx
+@@ -7,14 +7,14 @@
+   type TabsSlotRenderOptions,
+   type UseTabsWithTriggersOptions,
+ } from 'expo-router/ui';
+-import { useEffect, type ReactNode } from 'react';
++import { useEffect, useState, type ReactNode } from 'react';
+ import { StyleSheet, View } from 'react-native';
+ import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+ import type { Edge } from 'react-native-safe-area-context';
+ import { palette } from '@dems/shared/tokens';
+ import { LiveMiniBar, ResponsiveTabList } from '@/components/composed/nav';
+ import { BREAKPOINTS, ChromeInsetsProvider, useLayoutClass } from '@/layout';
+-import { animateFade, useMotionSettings } from '@/motion';
++import { animateFade, durationMs, useMotionSettings, type MotionSettings } from '@/motion';
+ import { useActiveSession } from '@/runtime';
+ import { useRailCollapse } from './rail-prefs';
+ import { ALL_TABS, PHONE_TABS, TABLET_TABS, TAB_DESTINATIONS, activeDestination, tabForSegments } from './routes';
+@@ -100,19 +100,70 @@
+   );
+ }
+ 
+-/** 04 §7.2 M-APP-04: "Tab switches cross-fade content 160 ms" (reduced: the same short fade). */
++/** How long the fade veil may stay before a React commit removes it (the `fast` fade, ×10 in proof mode, plus a frame budget). */
++export function tabFadeBudgetMs(m: MotionSettings): number {
++  return durationMs('fast', m) + 80;
++}
++
++/**
++ * E-fix row FX-M2b: a veil for each time the screen gains focus (its key), or null. A screen that
++ * mounts focused gets one too. A React commit removes it after `tabFadeBudgetMs`.
++ */
++function useFocusVeil(focused: boolean, m: MotionSettings): number | null {
++  const [seenFocused, setSeenFocused] = useState(false);
++  const [veil, setVeil] = useState<number | null>(null);
++  const [count, setCount] = useState(0);
++  if (seenFocused !== focused) {
++    setSeenFocused(focused);
++    setVeil(focused ? count + 1 : null);
++    if (focused) setCount(count + 1);
++  }
++  useEffect(() => {
++    if (veil === null) return undefined;
++    const timer = setTimeout(() => setVeil((current) => (current === veil ? null : current)), tabFadeBudgetMs(m));
++    return () => clearTimeout(timer);
++  }, [veil, m]);
++  return veil;
++}
++
++/**
++ * 04 §7.2 M-APP-04: "Tab switches cross-fade content 160 ms" (reduced: the same short fade).
++ *
++ * E-fix row FX-M2b (E2E-T-2; decision D201): the content itself used to fade from opacity 0 on the
++ * UI thread. On the tablet that update was lost once (12_devices_blank): the Devices screen stayed
++ * mounted at opacity 0 for minutes, a blank pane drawing no frames, while the rail showed the same
++ * lost update (label moved, icon and indicator not). Now the content is ALWAYS drawn at full opacity
++ * by React; the fade is a veil in the canvas colour laid over it and faded out on the UI thread
++ * (`FadeVeil`), which React unmounts after `tabFadeBudgetMs`. A lost UI-thread update can keep the
++ * veil for that budget (about a quarter of a second), never longer: the screen cannot stay invisible.
++ */
+ function TabScreenFade({ focused, children }: { focused: boolean; children: ReactNode }) {
+   const settings = useMotionSettings();
+-  const opacity = useSharedValue(focused ? 0 : 1);
++  const veil = useFocusVeil(focused, settings);
++  return (
++    <View style={styles.slot}>
++      {children}
++      {veil !== null ? <FadeVeil key={veil} settings={settings} /> : null}
++    </View>
++  );
++}
+ 
++/** The canvas-coloured veil over a newly focused screen, from 1 to 0 on the UI thread; untouchable, hidden from TalkBack. */
++function FadeVeil({ settings }: { settings: MotionSettings }) {
++  const opacity = useSharedValue(1);
+   useEffect(() => {
+-    if (!focused) return;
+-    opacity.set(0);
+-    opacity.set(animateFade(1, settings, 'fast'));
+-  }, [focused, settings, opacity]);
+-
++    opacity.set(animateFade(0, settings, 'fast'));
++  }, [settings, opacity]);
+   const style = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+-  return <Animated.View style={[styles.slot, style]}>{children}</Animated.View>;
++  return (
++    <Animated.View
++      testID="tab-fade-veil"
++      pointerEvents="none"
++      importantForAccessibility="no-hide-descendants"
++      accessibilityElementsHidden
++      style={[StyleSheet.absoluteFill, styles.veil, style]}
++    />
++  );
+ }
+ 
+ const styles = StyleSheet.create({
+@@ -121,4 +172,5 @@
+   column: { flexDirection: 'column' },
+   content: { flex: 1 },
+   slot: { flex: 1 },
++  veil: { backgroundColor: palette.black },
+ });
+--- a/apps/mobile/src/navigation/root-navigator.tsx
++++ b/apps/mobile/src/navigation/root-navigator.tsx
+@@ -21,13 +21,21 @@
+  * (AC-C-74): the existing guard tests pass unchanged.
+  *
+  * When a guard removes the current group (sign-in, sign-out, idle expiry, Lock console, a revocation
+- * or an unknown credential), Expo Router falls back to the anchor `/`, and the boot router picks the
+- * target — `/pair` first when blocked (§9.4 route table, AC-C-73, AC-C-78), else the §3.3 order. One
+- * case needs help: `/login` opened over a public screen (a guarded deep link arriving on
+- * `/stack-check` or `/pair`, see `+native-intent`). After sign-in that public screen is still
+- * underneath, so there is no fallback to `/`; the navigator then replaces it with `/`, so the boot
+- * router still applies the order (resync target, pending href, Home). While blocked, `/login` is
+- * itself guarded out, so such a link falls through `/` to `/pair` and stays pending (MP-12).
++ * or an unknown credential), React Navigation keeps every route that is still allowed. Only when
++ * nothing is left underneath does Expo Router fall back to the anchor `/`, where the boot router
++ * picks the target: `/pair` first when blocked (§9.4 route table, AC-C-73, AC-C-78), else the §3.3
++ * order. A public screen left underneath needs help, in each direction:
++ *
++ * - After a SIGN-IN (this navigator): `/login` opened over a public screen (a guarded deep link
++ *   arriving on `/stack-check` or `/pair`, see `+native-intent`) leaves that screen underneath; the
++ *   effect below replaces it with `/`, so the boot router still applies the order (resync target,
++ *   pending href, Home). While blocked, `/login` is itself guarded out, so such a link falls through
++ *   `/` to `/pair` and stays pending (MP-12).
++ * - After a SIGN-OUT (not this navigator): `SignedOutLanding` (`src/runtime/signed-out-landing.tsx`,
++ *   row FX-M1, E2E-S-1; decision DX-2: the landing is mounted by `src/app/_layout.tsx` beside this
++ *   navigator) resets the stack to `/` when a public screen is left on top, so the boot router
++ *   chooses `/login`, or `/pair` while the gate holds.
++ *
+  * Recording is never touched by the auth guard (§3.3).
+  */
+ export function RootNavigator() {
+--- /dev/null
++++ b/apps/mobile/src/components/composed/nav/indicator-travel.tsx
+@@ -0,0 +1,61 @@
++import { useEffect, type ReactNode } from 'react';
++import type { StyleProp, ViewStyle } from 'react-native';
++import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
++import { animateSpring, useMotionSettings } from '@/motion';
++
++/** A place of the indicator inside its list, in the list's coordinates (dp). */
++export interface IndicatorBox {
++  readonly x: number;
++  readonly y: number;
++  readonly width: number;
++  readonly height: number;
++}
++
++export interface IndicatorTravelLayerProps {
++  readonly from: IndicatorBox;
++  readonly to: IndicatorBox;
++  /** The look of the indicator, positioned at the list's top left (`position: 'absolute', top: 0, left: 0`). */
++  readonly style: StyleProp<ViewStyle>;
++  readonly testID?: string;
++  readonly children?: ReactNode;
++}
++
++/**
++ * The travelling copy of the bar's pill or of the rail's card for ONE trip (E-fix row FX-M2b;
++ * E2E-P-1, E2E-T-2). Mounted per trip (keyed by the trip's id) at the old place and moved to the new
++ * one with the `indicator` spring on the UI thread. It decides nothing about the final state: the
++ * settled indicator under it is drawn by React, and `useIndicatorTrack` unmounts this copy after
++ * the trip's budget, so a lost UI-thread update can only shorten the motion, never leave the
++ * indicator on the old tab.
++ */
++export function IndicatorTravelLayer({ from, to, style, testID, children }: IndicatorTravelLayerProps) {
++  const motion = useMotionSettings();
++  const x = useSharedValue(from.x);
++  const y = useSharedValue(from.y);
++  const width = useSharedValue(from.width);
++  const height = useSharedValue(from.height);
++
++  useEffect(() => {
++    x.set(animateSpring(to.x, 'indicator', motion));
++    y.set(animateSpring(to.y, 'indicator', motion));
++    width.set(animateSpring(to.width, 'indicator', motion));
++    height.set(animateSpring(to.height, 'indicator', motion));
++  }, [to, motion, x, y, width, height]);
++
++  const travelling = useAnimatedStyle(() => ({
++    transform: [{ translateX: x.get() }, { translateY: y.get() }],
++    width: width.get(),
++    height: height.get(),
++  }));
++
++  return (
++    <Animated.View pointerEvents="none" testID={testID} style={[style, travelling]}>
++      {children}
++    </Animated.View>
++  );
++}
++
++/** The settled indicator's place as a plain React style (no UI-thread value). */
++export function settledBoxStyle(box: IndicatorBox): ViewStyle {
++  return { transform: [{ translateX: box.x }, { translateY: box.y }], width: box.width, height: box.height };
++}

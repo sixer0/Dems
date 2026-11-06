@@ -1,0 +1,22 @@
+## 02:16:11 CLG (a)
+ apps/mobile/src/features/settings/i18n.ts          |  31 ++
+ .../src/features/settings/maintenance-section.tsx  | 323 +++++++++++++++------
+ .../src/features/settings/preferences-section.tsx  | 183 ++++++------
+ .../mobile/src/features/settings/profile-sheet.tsx |  15 +-
+ .../src/features/settings/security-section.tsx     |  29 +-
+ .../mobile/src/features/settings/settings-model.ts |  86 +++++-
+ .../src/features/settings/settings-screen.tsx      |   4 +-
+ apps/mobile/src/i18n/en.mobile.ts                  |  44 +++
+ 8 files changed, 525 insertions(+), 190 deletions(-)
+settings-screen.test.tsx acaff20=c758a29d92fd5c5567082d30d5a539769e14740d now=c758a29d92fd5c5567082d30d5a539769e14740d equal
+settings-model.test.ts acaff20=8b42a815d544e547585fa405da83322a750cb4c0 now=8b42a815d544e547585fa405da83322a750cb4c0 equal
+heartbeat-release-gate.test.tsx acaff20=6aa6db7ef1cc666b03be489a23e2146b3e28f9ac now=6aa6db7ef1cc666b03be489a23e2146b3e28f9ac equal
+31	0	apps/mobile/src/features/settings/i18n.ts
+44	0	apps/mobile/src/i18n/en.mobile.ts
+## CLG (c)
+useSimActions in production files: 0
+apps/mobile/src/features/settings/security-section.tsx:120:        <View style={styles.actions}>
+apps/mobile/src/features/settings/profile-sheet.tsx:72:          <View style={styles.actions}>
+apps/mobile/src/features/settings/core-link-switch.tsx:130:              <Button.Label>{t('common.actions.cancel')}</Button.Label>
+## KI-07 markers (production files of the folder)
+   2 SIM-GAP-M88-1

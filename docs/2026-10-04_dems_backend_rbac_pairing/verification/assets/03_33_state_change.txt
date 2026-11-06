@@ -1,0 +1,7 @@
+$ node --import tsx docs/2026-10-04_dems_backend_rbac_pairing/verification/assets/03_state_change.mjs   # 2026-10-07 05:31:24
+PASS | POST /auth/sign-in (SUPERVISOR, origin 127.0.0.1:5173) | status=200 operator=n/a role=n/a cookie=dems_session_4420 (47 chars, value not printed)
+PASS | GET /auth/session | status=200 role=SUPERVISOR
+PASS | POST /auth/sign-out | status=204
+PASS | GET /auth/session after sign-out is refused | status=401
+state change: OK
+exit=0

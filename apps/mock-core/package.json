@@ -1,0 +1,30 @@
+{
+  "name": "@dems/mock-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
+    "test": "vitest run",
+    "probe:ws": "tsx scripts/ws-probe.ts"
+  },
+  "dependencies": {
+    "@dems/shared": "*",
+    "@fastify/cors": "11.3.0",
+    "@fastify/websocket": "11.3.1",
+    "fastify": "5.12.5",
+    "tsx": "4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.3",
+    "@types/ws": "8.18.2",
+    "oxlint": "1.86.0",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3",
+    "ws": "8.22.0"
+  }
+}

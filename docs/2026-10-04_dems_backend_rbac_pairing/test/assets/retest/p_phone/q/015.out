@@ -1,0 +1,18 @@
+12:51:24.746 mark c02 at 12:51:24.746
+12:51:24.806 tap 756,2283
+12:51:25.016 slept 2500 ms
+12:51:27.560 declared screen devices
+12:51:27.606 screencap 27_devices_list.png 12:51:27.606..12:51:28.053
+12:51:28.157 tapid device-row-CAM-01 at 540,499 "Camera 1, Interview Room 1, Online"
+12:51:30.628 slept 2500 ms
+12:51:33.231 declared screen device-detail
+12:51:33.358 screencap 28_device_detail_cam01.png 12:51:33.358..12:51:34.443
+12:51:34.626 swipe 540,1900,540,800 600 ms
+12:51:35.505 slept 1500 ms
+12:51:37.060 screencap 28b_device_detail_cam01_scrolled.png 12:51:37.060..12:51:37.546
+12:51:37.665 ids(12): device-detail-screen@540,1173 ; device-detail-back@95,216 "Back to Devices" ; device-detail-scroll@540,1137 ; device-detail-feed@540,393 "Live preview, Camera 1" ; device-detail-status-pulse@154,566 ; device-detail-status@154,566 "Online" ; device-detail-id@980,566 "CAM-01" ; device-detail-actions@540,2063 ; device-action-diagnostics@200,2069 "Run diagnostics" ; device-action-test-signal@538,2069 "Test signal" ; device-action-restart@878,2069 "Restart" ; device-restart-hint@540,2173 "Requires the Technician role"
+12:51:40.529 api GET /api/v1/device/inventory => {"status":200,"body":{"device":{"id":"DEMS-IR-01","name":"Interview Room 1","room":"Interview Room 1","productName":"DEMS Edge Client","softwareVersion":"2.4.1","identity":{"serialNumber":"DEC-2026-IR01-000117","hardwareUuid":"157db69a-cc30-5125-a739-14c9bc62a4fd","chassisRevision":"CH-B","somPartRevision":"SOM-A1 rev 1.2","audioBoardRevision":"AUD-2 rev C","poeBoardRevision":"POE-4 rev B","powerBoardRevision":"PWR-1 rev D","bspVersion":"BSP 6.1.57 / DT r3","coreSoftwareVersion":"2.4.1","tabletAppVersion":"2.4.1","tpmModelFirmware":"TPM 2.0 (fw 7.2.3.1)","cameraModelFirmware":"Dual-lens IP camera DL-2 (fw 3.8.14)","provisioningRecordId":"PRV-2026-0117","deviceCertificateId":"CN=DEMS-IR-01, O=DEMS Demo (synthetic)"}},"cameras":[{"id":"VIDEO-01","deviceId":"CAM-01","name":"Camera 1","room":"Interview Room 1","lens":"READY","online":true,"recState":null,"resolution":"1080p","fps":25,"codec":"H.264","bitrateMbps":9,"poePort":"POE_CAM_1","model":"Dual-lens IP camera DL-2 (lens 1)","firmware":"3.8.14"},{"id":"VIDEO-02","deviceId":"CAM-02","name":"Camera 2","room":"Interview Room 1","lens":"READY","online":true,"recState":null,"resolution":"1080p","fps":25,"codec":"H.264","bitrateMbps":9,"poePort":"POE_CAM_1","model":"Dual-lens IP camera DL-2 (lens 2)","firmware":"3.8.14"}],"mics":[{"id":"AUDIO-01","deviceId":"MIC-01","name":"MIC 1 – Interviewer","role":"Interviewer","channel":1,"state":"READY","recState":null,"gainDb":32,"phantom":true,"clipLatched":false},{"id":"AUDIO-02","deviceId":"MIC-02","name":"MIC 2 – Subject","role":"Subject","channel":2,"state":"READY","recState":null,"gainDb":32,"phantom":true,"clipLatched":false}],"otherDevices":[{"id":"POE-SWITCH","name":"PoE Switch","online":true,"status":"2/2 Ports Active"},{"id":"REC-INDICATOR","name":"Recording Indicator","online":true,"status":"Standby"},{"id":"TABLET","name":"Tablet Control","online":true,"status":"CONNECTED"}],"ports":[{"id":"POE_CAM_1","label":"PoE CAM 1","link":true},{"id":"POE_CAM_2_AUX","label":"PoE CAM 2 / AUX","link":true,"spare":true},{"id":"MGMT_LAN","label":"MGMT LAN","link":true},{"id":"MIC_IN_1","label":"MIC IN 1","link":true},{"id":"MIC_IN_2","label":"MIC IN 2","link":true},{"id":"GNSS_SMA","label":"GNSS SMA","link":true},{"id":"RELAY_IO","label":"Relay I/O","link":true}],"activeCameraId":"VIDEO-01","tabletLink":{"state":"CONNECTED","changedAt":1791265490623}}}
+12:51:40.601 warnlog since 10-06 12:51:24.000 (0): 
+12:51:40.736 serverlog since c02 (2):
+    12:51:32.413 POST /api/v1/auth/touch 200
+    12:51:40.543 GET /api/v1/device/inventory 200

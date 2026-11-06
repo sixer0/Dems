@@ -1,0 +1,54 @@
+== 17:56:12 0. inside the lock: .locks/core-server.lock 0
+== 17:56:12 0b. listener on 4420 before the start (expect none)
+    no listener on 4420
+== 17:56:12 1. snapshot of dems_demo before the start (sweeper baseline, item E)
+[before-start] open_sessions=2 (web=2, device=0) | audit rows=86 head_seq=86 | ACCESS_DENIED=1 AUTH_EXPIRED=0 AUTH_SUCCESS=15
+== 17:56:12 2. start the server from the current tree: DEMS_CORE_PORT=4420 npm run start -w @dems/core-server
+    npm pid=4396, recorded in .locks/core-server.pid
+== 17:56:12 3. wait for health (up to 90 s)
+    listener pid=4421 after 1 s
+    health http_status=200
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T10:56:13.539Z","uptimeMs":359,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}== 17:56:13 4. watch the session sweeper of the listening server for 25 s (item E), then snapshot again
+[sweeper-watch] seconds=25 samples=184421 server_connections_seen=2 sweep_reads_observed=1
+[sweeper-watch] instants of the sweep read: 10:56:23.233
+[after-25s-of-listening] open_sessions=2 (web=2, device=0) | audit rows=86 head_seq=86 | ACCESS_DENIED=1 AUTH_EXPIRED=0 AUTH_SUCCESS=15
+== 17:56:38 5. the smoke steps (health, sign-in, protected call, denied call + audit row, socket heartbeat, log probes)
+PASS | health | status=200 envelope_keys=[status, service, version, apiVersion, serverTime, uptimeMs, ws, ready] service=dems-core-server version=0.2.0 ready={"database":true,"engine":true} ws={"path":"/ws","heartbeatIntervalMs":1000,"clients":0}
+PASS | sign-in SUPERVISOR (web console origin, cookie) | status=200 operator_role=n/a cookie=dems_session_4420 (47 chars) attributes=["Path=/","HttpOnly","SameSite=Strict"] set_cookie_shows_value=no
+PASS | protected call listUsers as SUPERVISOR (holds USER_ADMIN) | status=200 users=3 roles=INVESTIGATOR/SUPERVISOR/TECHNICIAN
+PASS | denied call listUsers as INVESTIGATOR answers 403 | sign-in status=200; denied status=403 code=NOT_PERMITTED
+PASS | exactly one ACCESS_DENIED audit row for that call | seq=89 type=ACCESS_DENIED actor=OPR-001 message="Access denied: role INVESTIGATOR lacks USER_ADMIN (listUsers)" details={"role":"INVESTIGATOR","permission":"USER_ADMIN","operationId":"listUsers"}
+PASS | socket heartbeat on /ws (cookie of the web session) | verdict=both received types=[hello, snapshot, heartbeat] hello={epoch:2,revision:undefined,roles:null} heartbeat={state:undefined,epoch:undefined,uptimeMs:present}
+PASS | log probes sent (a ?token= query and a malformed body, both holding the marker) | health with a query string status=200; malformed sign-in status=400
+AUDIT_SINCE_START count=3 seqs=[87:AUTH_SUCCESS, 88:AUTH_SUCCESS, 89:ACCESS_DENIED]
+SMOKE_SUMMARY failures=0
+    smoke exit=0
+== 17:56:38 6. lsof proof: one listener on 127.0.0.1, and the sockets of that pid
+COMMAND  PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    4421 gsp-budi   17u  IPv4 0xa168dc3598f0fa89      0t0  TCP 127.0.0.1:4420 (LISTEN)
+    all sockets of pid 4421:
+COMMAND  PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    4421 gsp-budi   16u  IPv4 0xa96d91630713de38      0t0  TCP 127.0.0.1:55697->127.0.0.1:4432 (ESTABLISHED)
+node    4421 gsp-budi   17u  IPv4 0xa168dc3598f0fa89      0t0  TCP 127.0.0.1:4420 (LISTEN)
+node    4421 gsp-budi   18u  IPv4 0x8d28e77859b323cd      0t0  TCP 127.0.0.1:55707->127.0.0.1:4432 (ESTABLISHED)
+== 17:56:38 7. stop what this row started (the listener first, gracefully, then the npm wrapper)
+    listener gone after 0 s
+    npm pid 4396 alive: no
+    listener on 4420 after the stop:
+    none
+== 17:56:38 8. snapshot after the stop, and the tail of the server log (graceful shutdown lines)
+[after-stop] open_sessions=4 (web=4, device=0) | audit rows=89 head_seq=89 | ACCESS_DENIED=2 AUTH_EXPIRED=0 AUTH_SUCCESS=17
+{"level":30,"time":1791197798763,"pid":4421,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"0d67fdee-a538-426e-b7fc-aadac2f2067b","method":"GET","route":"/api/v1/admin/users","status":403,"durationMs":2,"principal":"operator:OPR-001","code":"NOT_PERMITTED","msg":"request completed"}
+{"level":30,"time":1791197798768,"pid":4421,"hostname":"GSP-Budis-MacBook-Air.local","connectionId":"1aac1f52-f6fa-48af-9a53-1ee9a4a3e6b2","principal":"operator:OPR-002","kind":"OPERATOR","msg":"socket opened"}
+{"level":30,"time":1791197798769,"pid":4421,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"981ef62d-05fb-404c-9a7e-5e74e72970c2","method":"GET","route":"/api/v1/health","status":200,"durationMs":0,"principal":null,"msg":"request completed"}
+{"level":30,"time":1791197798769,"pid":4421,"hostname":"GSP-Budis-MacBook-Air.local","connectionId":"1aac1f52-f6fa-48af-9a53-1ee9a4a3e6b2","code":1000,"closedBy":"peer","principal":"operator:OPR-002","durationMs":2,"msg":"socket closed"}
+{"level":30,"time":1791197798770,"pid":4421,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"f7c39709-8079-4d00-96a9-bd3fd9c61f90","method":"POST","route":"/api/v1/auth/sign-in","status":400,"durationMs":1,"principal":"operator:OPR-002","code":"INVALID_JSON","msg":"request completed"}
+{"level":30,"time":1791197798831,"pid":4421,"hostname":"GSP-Budis-MacBook-Air.local","signal":"SIGTERM","msg":"shutdown requested"}
+{"level":30,"time":1791197798831,"pid":4421,"hostname":"GSP-Budis-MacBook-Air.local","hold":"shutdown","held":true,"msg":"readiness hold"}
+{"level":30,"time":1791197798832,"pid":4421,"hostname":"GSP-Budis-MacBook-Air.local","part":"engine","ready":false,"msg":"readiness changed"}
+{"level":30,"time":1791197798832,"pid":4421,"hostname":"GSP-Budis-MacBook-Air.local","epoch":2,"revision":29,"msg":"engine stopped"}
+{"level":30,"time":1791197798832,"pid":4421,"hostname":"GSP-Budis-MacBook-Air.local","drained":true,"abandoned":0,"completed":513,"failed":0,"timedOut":0,"refused":0,"msg":"pipeline closed"}
+{"level":30,"time":1791197798832,"pid":4421,"hostname":"GSP-Budis-MacBook-Air.local","part":"database","ready":false,"msg":"readiness changed"}
+{"level":30,"time":1791197798832,"pid":4421,"hostname":"GSP-Budis-MacBook-Air.local","msg":"shutdown complete"}
+== 17:56:38 9. done; the lock is released when this script returns
+RUN_EXIT=0

@@ -1,0 +1,56 @@
+// Minimal reproduction of findings W53-F1 and W53-F2 (plan row W53; not part of the suite).
+// Appended to `test/acceptance/restart.test.ts` at load time by the scratch runner configuration
+// (`W53_APPEND=<this file>`), so it uses that file's helpers. It asserts nothing about the
+// findings: it prints what the server answers.
+describe('repro W53-F1, W53-F2: a start with the server clock behind the stored state', () => {
+  it('the clock of the new process is two minutes before the stop; the sessions were issued ten seconds before the stop', async () => {
+    const target = await db.another({ slug: 'w53_repro_clock' });
+    const owner = target.ownerPool();
+    const first = await startServer(target, FIXED_NOW);
+    await first.drive(10 * MINUTE);
+    const supervisor = await signIn(first, 'SUPERVISOR');
+    const investigator = await signIn(first, 'INVESTIGATOR');
+    const technician = await signIn(first, 'TECHNICIAN');
+    const tablet = await redeemCode(first, (await issueCode(first, supervisor)).code, 'Interview tablet 01');
+    const tabletSession = await signInOnDevice(first, tablet, 'INVESTIGATOR');
+    await first.drive(10 * SECOND);
+    const stoppedAt = first.clock.now();
+    await stopServer(first, owner);
+    const head = await readHead(owner);
+
+    const second = await startServer(target, stoppedAt - 2 * MINUTE);
+    const lastError = (): string => {
+      const line = second.log.lines().filter((entry) => Number(entry['level']) >= 50).at(-1);
+      const err = (line?.['err'] ?? {}) as { code?: string; stack?: string };
+      const frame = (err.stack ?? '').split('\n').find((text) => text.includes('/modules/')) ?? '';
+      return `log: "${String(line?.['msg'])}", SQLSTATE ${err.code}, ${frame.trim().replace(/\(.*core-server\//, '(').replace(/:\d+\)$/, ')')}`;
+    };
+    const status = (response: LightMyRequestResponse): string => `${response.statusCode} ${outcome(response)[1] ?? ''}`.trim();
+    console.info(`[repro] sessions issued at ${rel(stoppedAt - 10 * SECOND)}, stop at ${rel(stoppedAt)}, start at ${rel(stoppedAt - 2 * MINUTE)}; warning of the engine: ${second.log.lines().filter((line) => line['code'] === 'ENGINE_CLOCK_BEHIND').length} x ENGINE_CLOCK_BEHIND`);
+
+    // W53-F1: nothing can END a session that was issued after the instant the clock now shows.
+    const out = await webPost(second.app, SIGN_OUT, investigator.cookie);
+    console.info(`[repro] F1 signOut: ${status(out)}; ${lastError()}; the session afterwards: getAuthSession ${(await get(second.app, AUTH_SESSION, investigator.cookie)).statusCode}`);
+    const disabled = await webPost(second.app, `${USERS}/${technician.operator.id}/disable`, supervisor.cookie, { reason: 'Left the unit' });
+    const enabled = (await owner.query<{ enabled: boolean }>('SELECT enabled FROM public.operators WHERE id = $1', [technician.operator.id])).rows[0]?.enabled;
+    console.info(`[repro] F1 disableUser: ${status(disabled)}; ${lastError()}; the operator afterwards: enabled ${enabled}, getAuthSession ${(await get(second.app, AUTH_SESSION, technician.cookie)).statusCode}`);
+    const revoked = await webPost(second.app, revokeUrl(tablet.deviceId), supervisor.cookie, { reason: 'Lost on site' });
+    const state = (await owner.query<{ state: string }>('SELECT state FROM public.paired_devices WHERE id = $1', [tablet.deviceId])).rows[0]?.state;
+    console.info(`[repro] F1 revokeDevice: ${status(revoked)}; ${lastError()}; the device afterwards: ${state}, its operator session: getCurrentSession ${(await deviceGet(second.app, CURRENT, tabletSession)).statusCode}`);
+    const again = await webSignIn(second.app, supervisor.operator.username, undefined, supervisor.cookie);
+    console.info(`[repro] F1 signIn that presents the open session (rotation, ID-6): ${again.statusCode}; ${lastError()}`);
+    console.info(`[repro] F1 rows stored by the four requests: ${(await readTrail(owner)).filter((row) => row.seq > head.seq).map(rowLine).join(', ') || 'none'}`);
+
+    // W53-F2: a row of a server-native module is stamped at the raw clock, before its predecessor;
+    // a row of a hosted action in the same process is stamped at the instant the engine holds.
+    const fresh = await webSignIn(second.app, technician.operator.username);
+    const policy = await webPost(second.app, STORAGE_POLICY, supervisor.cookie, { retentionDays: 123 });
+    const trail = await readTrail(owner);
+    console.info(`[repro] F2 a new sign-in ${fresh.statusCode}, then setStoragePolicy ${policy.statusCode}: ${trail.filter((row) => row.seq >= head.seq).map(rowLine).join(', ')}`);
+    console.info(`[repro] F2 rows stamped before their predecessor: ${trail.filter((row, index) => index > 0 && row.at < (trail[index - 1]?.at ?? 0)).map(rowLine).join(', ') || 'none'}; the chain: ${JSON.stringify(verifyTrail(trail, await readHead(owner)))}`);
+
+    // Once the clock has passed the issue instant again, the session can be ended.
+    second.clock.set(stoppedAt + SECOND);
+    console.info(`[repro] F1 signOut once the clock is past the stop instant: ${status(await webPost(second.app, SIGN_OUT, investigator.cookie))}`);
+  });
+});

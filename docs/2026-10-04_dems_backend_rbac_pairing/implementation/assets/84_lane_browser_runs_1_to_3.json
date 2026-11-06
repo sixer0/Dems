@@ -1,0 +1,617 @@
+{
+ "run1": {
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "steps": {
+   "signIn": {
+    "status": 200,
+    "role": "SUPERVISOR",
+    "operator": "AKP Andi Pratama"
+   },
+   "live": {
+    "scalarReady": false,
+    "facts": {
+     "href": "http://127.0.0.1:5178/developer/api",
+     "mode": "live",
+     "operationCount": "75 operations",
+     "baseUrl": "http://127.0.0.1:5178",
+     "specVersion": "v0.2.1",
+     "banner": "CORE SERVER ONLINE \u2022 dems-core-server v0.2.0 \u2022 READYTry it goes to the Core server through 127.0.0.1:5178, as the signed-in operator",
+     "liveWarning": "Try it sends real requests to the Core server as AKP Andi Pratama. Commands change the Core's state and are recorded in the audit log.",
+     "showSimulatedSwitch": false,
+     "showCoreServerSwitch": false,
+     "legend": [
+      "api-legend-LIVE",
+      "api-legend-RBAC_AUDIT"
+     ],
+     "realtime": {
+      "chip": "ONLINE",
+      "url": "ws://127.0.0.1:5178/ws",
+      "connectSwitch": false,
+      "entryTypes": [
+       "delta",
+       "heartbeat",
+       "delta",
+       "heartbeat",
+       "delta"
+      ],
+      "firstEntry": "{\n  \"type\": \"delta\",\n  \"epoch\": 20,\n  \"revision\": 39,\n  \"slices\": [\"storage\",\"network\",\"health\"]\n}",
+      "epoch": "20",
+      "revision": "39",
+      "meters": "20 per second"
+     },
+     "scalarMounted": true,
+     "testRequestButtons": 0
+    },
+    "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/84_api_reference_live.png"
+   },
+   "tryHealth": {
+    "opened": {
+     "found": true,
+     "via": "sidebar link",
+     "button": true,
+     "sendButton": null
+    },
+    "sent": false,
+    "shows": {
+     "200": true,
+     "dems-core-server": true
+    },
+    "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/84_api_reference_tryit_health.png"
+   },
+   "tryTouch": {
+    "opened": {
+     "found": false,
+     "via": "section",
+     "ids": [
+      "api-1/tag/service/GET/api/v1/health",
+      "api-1/tag/service/GET/api/v1/health.responses.200"
+     ]
+    },
+    "sent": false,
+    "shows": {
+     "idleExpiresAt": false
+    }
+   },
+   "tryDenied": {
+    "opened": {
+     "found": false,
+     "via": "section",
+     "ids": [
+      "api-1/tag/service/GET/api/v1/health",
+      "api-1/tag/service/GET/api/v1/health.responses.200"
+     ]
+    },
+    "sent": false,
+    "shows": {
+     "This operation carries or returns a secret and cannot be tried from the reference page.": false
+    },
+    "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/84_api_reference_tryit_denied.png",
+    "signInRequests": 0,
+    "apiRequestsWhileDenied": []
+   },
+   "storage": {
+    "storage": {
+     "localStorage": [],
+     "sessionStorage": [
+      {
+       "key": "dems.shell.intro",
+       "length": 1,
+       "holds": []
+      }
+     ],
+     "indexedDb": []
+    },
+    "sockets": []
+   },
+   "sockets": {
+    "toDevServerWs": 1,
+    "all": [
+     {
+      "url": "ws://127.0.0.1:5178/?\u2026",
+      "status": 101,
+      "distinctTypes": [
+       "connected"
+      ]
+     },
+     {
+      "url": "ws://127.0.0.1:5178/ws",
+      "status": 101,
+      "distinctTypes": [
+       "delta",
+       "heartbeat",
+       "hello",
+       "meters",
+       "snapshot"
+      ]
+     }
+    ],
+    "realtime": {
+     "chip": "ONLINE",
+     "url": "ws://127.0.0.1:5178/ws",
+     "connectSwitch": false,
+     "entryTypes": [
+      "heartbeat",
+      "delta",
+      "heartbeat",
+      "delta",
+      "heartbeat",
+      "delta"
+     ],
+     "firstEntry": "{\n  \"type\": \"heartbeat\",\n  \"seq\": 53,\n  \"serverTime\": \"2026-10-05T22:05:25.951Z\",\n  \"clients\": 1\n}",
+     "epoch": "20",
+     "revision": "55",
+     "meters": "19.5 per second"
+    },
+    "console": []
+   },
+   "simulated": {
+    "signOutOfLive": 204,
+    "scalarReady": false,
+    "facts": {
+     "href": "http://127.0.0.1:5178/developer/api",
+     "mode": "simulated",
+     "operationCount": "10 operations",
+     "baseUrl": "http://127.0.0.1:4400",
+     "specVersion": "v0.1.0",
+     "banner": "MOCK-CORE OFFLINE \u2022 live try-it unavailableLIVE try-it goes to 127.0.0.1:4400; SIMULATED try-it is answered in this browser",
+     "liveWarning": null,
+     "showSimulatedSwitch": true,
+     "showCoreServerSwitch": true,
+     "legend": [
+      "api-legend-LIVE",
+      "api-legend-SIMULATED",
+      "api-legend-RBAC_AUDIT"
+     ],
+     "realtime": {
+      "chip": "OFFLINE",
+      "url": "ws://127.0.0.1:4400/ws",
+      "connectSwitch": true,
+      "entryTypes": [],
+      "firstEntry": null,
+      "epoch": null,
+      "revision": null,
+      "meters": null
+     },
+     "scalarMounted": true,
+     "testRequestButtons": 0
+    },
+    "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/84_api_reference_simulated.png",
+    "apiRequestsToTheDevServer": 9,
+    "socketsToTheDevServerWs": 0
+   }
+  },
+  "elapsedSeconds": 84
+ },
+ "run2": {
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "steps": {
+   "signIn": {
+    "status": 200,
+    "role": "SUPERVISOR",
+    "operator": "AKP Andi Pratama"
+   },
+   "live": {
+    "scalarReady": false,
+    "facts": {
+     "href": "http://127.0.0.1:5178/developer/api",
+     "mode": "live",
+     "operationCount": "75 operations",
+     "baseUrl": "http://127.0.0.1:5178",
+     "specVersion": "v0.2.1",
+     "banner": "CORE SERVER ONLINE \u2022 dems-core-server v0.2.0 \u2022 READYTry it goes to the Core server through 127.0.0.1:5178, as the signed-in operator",
+     "liveWarning": "Try it sends real requests to the Core server as AKP Andi Pratama. Commands change the Core's state and are recorded in the audit log.",
+     "showSimulatedSwitch": false,
+     "showCoreServerSwitch": false,
+     "legend": [
+      "api-legend-LIVE",
+      "api-legend-RBAC_AUDIT"
+     ],
+     "realtime": {
+      "chip": "ONLINE",
+      "url": "ws://127.0.0.1:5178/ws",
+      "connectSwitch": false,
+      "entryTypes": [
+       "heartbeat",
+       "delta",
+       "heartbeat",
+       "delta",
+       "heartbeat"
+      ],
+      "firstEntry": "{\n  \"type\": \"heartbeat\",\n  \"seq\": 36,\n  \"serverTime\": \"2026-10-05T22:08:03.854Z\",\n  \"clients\": 1\n}",
+      "epoch": "21",
+      "revision": "38",
+      "meters": "19.5 per second"
+     },
+     "scalarMounted": true,
+     "testRequestButtons": 0
+    },
+    "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/84_api_reference_live.png"
+   },
+   "tryHealth": {
+    "opened": {
+     "found": true,
+     "via": "sidebar link",
+     "button": true,
+     "sendButton": null
+    },
+    "sent": false,
+    "shows": {
+     "\"dems-core-server\"": false,
+     "\"service\"": true,
+     "200 OK": false
+    },
+    "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/84_api_reference_tryit_health.png",
+    "healthRequests": []
+   },
+   "tryTouch": {
+    "opened": {
+     "found": false,
+     "via": "hash",
+     "ids": [
+      "api-1/tag/service/GET/api/v1/health",
+      "api-1/tag/service/GET/api/v1/health.responses.200"
+     ]
+    },
+    "sent": false,
+    "shows": {
+     "\"idleExpiresAt\"": false
+    },
+    "touchRequests": []
+   },
+   "tryDenied": {
+    "opened": {
+     "found": false,
+     "via": "hash",
+     "ids": [
+      "api-1/tag/service/GET/api/v1/health",
+      "api-1/tag/service/GET/api/v1/health.responses.200"
+     ]
+    },
+    "sent": false,
+    "shows": {
+     "This operation carries or returns a secret and cannot be tried from the reference page.": false
+    },
+    "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/84_api_reference_tryit_denied.png",
+    "signInRequests": 0,
+    "apiRequestsWhileDenied": []
+   },
+   "storage": {
+    "storage": {
+     "localStorage": [],
+     "sessionStorage": [
+      {
+       "key": "dems.shell.intro",
+       "length": 1,
+       "holds": []
+      }
+     ],
+     "indexedDb": []
+    },
+    "sockets": []
+   },
+   "sockets": {
+    "toDevServerWs": 1,
+    "all": [
+     {
+      "url": "ws://127.0.0.1:5178/?\u2026",
+      "status": 101,
+      "distinctTypes": [
+       "connected"
+      ]
+     },
+     {
+      "url": "ws://127.0.0.1:5178/ws",
+      "status": 101,
+      "distinctTypes": [
+       "delta",
+       "heartbeat",
+       "hello",
+       "meters",
+       "snapshot"
+      ]
+     }
+    ],
+    "realtime": {
+     "chip": "ONLINE",
+     "url": "ws://127.0.0.1:5178/ws",
+     "connectSwitch": false,
+     "entryTypes": [
+      "delta",
+      "heartbeat",
+      "delta",
+      "heartbeat",
+      "delta"
+     ],
+     "firstEntry": "{\n  \"type\": \"delta\",\n  \"epoch\": 21,\n  \"revision\": 62,\n  \"slices\": [\"storage\",\"time\",\"network\",\"health\"]\n}",
+     "epoch": "21",
+     "revision": "62",
+     "meters": "19.5 per second"
+    },
+    "console": []
+   },
+   "simulated": {
+    "signOutOfLive": 204,
+    "scalarReady": false,
+    "facts": {
+     "href": "http://127.0.0.1:5178/developer/api",
+     "mode": "simulated",
+     "operationCount": "10 operations",
+     "baseUrl": "http://127.0.0.1:4400",
+     "specVersion": "v0.1.0",
+     "banner": "MOCK-CORE OFFLINE \u2022 live try-it unavailableLIVE try-it goes to 127.0.0.1:4400; SIMULATED try-it is answered in this browser",
+     "liveWarning": null,
+     "showSimulatedSwitch": true,
+     "showCoreServerSwitch": true,
+     "legend": [
+      "api-legend-LIVE",
+      "api-legend-SIMULATED",
+      "api-legend-RBAC_AUDIT"
+     ],
+     "realtime": {
+      "chip": "OFFLINE",
+      "url": "ws://127.0.0.1:4400/ws",
+      "connectSwitch": true,
+      "entryTypes": [],
+      "firstEntry": null,
+      "epoch": null,
+      "revision": null,
+      "meters": null
+     },
+     "scalarMounted": true,
+     "testRequestButtons": 0
+    },
+    "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/84_api_reference_simulated.png",
+    "apiRequestsToTheDevServer": 1,
+    "apiRequests": [
+     "GET http://127.0.0.1:5178/api/v1/auth/status null",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED"
+    ],
+    "socketsToTheDevServerWs": 0
+   }
+  },
+  "elapsedSeconds": 91
+ },
+ "run3": {
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "steps": {
+   "signIn": {
+    "status": 200,
+    "role": "SUPERVISOR",
+    "operator": "AKP Andi Pratama"
+   },
+   "live": {
+    "scalarReady": false,
+    "facts": {
+     "href": "http://127.0.0.1:5178/developer/api",
+     "mode": "live",
+     "operationCount": "75 operations",
+     "baseUrl": "http://127.0.0.1:5178",
+     "specVersion": "v0.2.1",
+     "banner": "CORE SERVER ONLINE \u2022 dems-core-server v0.2.0 \u2022 READYTry it goes to the Core server through 127.0.0.1:5178, as the signed-in operator",
+     "liveWarning": "Try it sends real requests to the Core server as AKP Andi Pratama. Commands change the Core's state and are recorded in the audit log.",
+     "showSimulatedSwitch": false,
+     "showCoreServerSwitch": false,
+     "legend": [
+      "api-legend-LIVE",
+      "api-legend-RBAC_AUDIT"
+     ],
+     "realtime": {
+      "chip": "ONLINE",
+      "url": "ws://127.0.0.1:5178/ws",
+      "connectSwitch": false,
+      "entryTypes": [
+       "heartbeat",
+       "delta",
+       "heartbeat",
+       "delta",
+       "heartbeat",
+       "delta"
+      ],
+      "firstEntry": "{\n  \"type\": \"heartbeat\",\n  \"seq\": 36,\n  \"serverTime\": \"2026-10-05T22:10:22.437Z\",\n  \"clients\": 1\n}",
+      "epoch": "22",
+      "revision": "38",
+      "meters": "19.3 per second"
+     },
+     "scalarMounted": true,
+     "testRequestButtons": 0
+    },
+    "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/84_api_reference_live.png"
+   },
+   "tryHealth": {
+    "opened": {
+     "found": true,
+     "via": "sidebar link",
+     "button": true,
+     "sendButton": "SendSend get request to http://127.0.0.1:5178/api/v1/health"
+    },
+    "sent": "button",
+    "shows": {
+     "\"dems-core-server\"": true,
+     "\"service\"": true,
+     "200 OK": true
+    },
+    "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/84_api_reference_tryit_health.png",
+    "healthRequests": [
+     {
+      "method": "GET",
+      "url": "http://127.0.0.1:5178/api/v1/health",
+      "status": 200
+     },
+     {
+      "method": "GET",
+      "url": "http://127.0.0.1:5178/api/v1/health",
+      "status": 200
+     }
+    ]
+   },
+   "tryTouch": {
+    "opened": {
+     "found": false,
+     "via": "page load at the anchor",
+     "ids": [
+      "api-1/tag/service/GET/api/v1/health",
+      "api-1/tag/service/GET/api/v1/health.responses.200"
+     ],
+     "firstAttempt": {
+      "found": false,
+      "via": "section",
+      "ids": [
+       "api-1/tag/service/GET/api/v1/health",
+       "api-1/tag/service/GET/api/v1/health.responses.200"
+      ]
+     }
+    },
+    "sent": "hotkey",
+    "shows": {
+     "\"idleExpiresAt\"": false
+    },
+    "touchRequests": []
+   },
+   "tryDenied": {
+    "opened": {
+     "found": false,
+     "via": "page load at the anchor",
+     "ids": [
+      "api-1/tag/service/GET/api/v1/health",
+      "api-1/tag/service/GET/api/v1/health.responses.200"
+     ],
+     "firstAttempt": {
+      "found": false,
+      "via": "section",
+      "ids": [
+       "api-1/tag/service/GET/api/v1/health",
+       "api-1/tag/service/GET/api/v1/health.responses.200"
+      ]
+     }
+    },
+    "sent": "hotkey",
+    "shows": {
+     "This operation carries or returns a secret and cannot be tried from the reference page.": false
+    },
+    "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/84_api_reference_tryit_denied.png",
+    "signInRequests": 0,
+    "apiRequestsWhileDenied": [
+     {
+      "method": "GET",
+      "url": "http://127.0.0.1:5178/api/v1/health",
+      "status": 200
+     },
+     {
+      "method": "GET",
+      "url": "http://127.0.0.1:5178/api/v1/health",
+      "status": 200
+     }
+    ]
+   },
+   "storage": {
+    "storage": {
+     "localStorage": [],
+     "sessionStorage": [
+      {
+       "key": "dems.shell.intro",
+       "length": 1,
+       "holds": []
+      }
+     ],
+     "indexedDb": []
+    },
+    "sockets": []
+   },
+   "sockets": {
+    "toDevServerWs": 1,
+    "all": [
+     {
+      "url": "ws://127.0.0.1:5178/?\u2026",
+      "status": 101,
+      "distinctTypes": [
+       "connected"
+      ]
+     },
+     {
+      "url": "ws://127.0.0.1:5178/ws",
+      "status": 101,
+      "distinctTypes": [
+       "delta",
+       "heartbeat",
+       "hello",
+       "meters",
+       "snapshot"
+      ]
+     }
+    ],
+    "realtime": {
+     "chip": "ONLINE",
+     "url": "ws://127.0.0.1:5178/ws",
+     "connectSwitch": false,
+     "entryTypes": [
+      "heartbeat",
+      "delta",
+      "heartbeat",
+      "delta",
+      "heartbeat",
+      "delta"
+     ],
+     "firstEntry": "{\n  \"type\": \"heartbeat\",\n  \"seq\": 112,\n  \"serverTime\": \"2026-10-05T22:11:38.562Z\",\n  \"clients\": 1\n}",
+     "epoch": "22",
+     "revision": "115",
+     "meters": "19.5 per second"
+    },
+    "console": []
+   },
+   "simulated": {
+    "signOutOfLive": 204,
+    "scalarReady": false,
+    "facts": {
+     "href": "http://127.0.0.1:5178/developer/api",
+     "mode": "simulated",
+     "operationCount": "10 operations",
+     "baseUrl": "http://127.0.0.1:4400",
+     "specVersion": "v0.1.0",
+     "banner": "MOCK-CORE OFFLINE \u2022 live try-it unavailableLIVE try-it goes to 127.0.0.1:4400; SIMULATED try-it is answered in this browser",
+     "liveWarning": null,
+     "showSimulatedSwitch": true,
+     "showCoreServerSwitch": true,
+     "legend": [
+      "api-legend-LIVE",
+      "api-legend-SIMULATED",
+      "api-legend-RBAC_AUDIT"
+     ],
+     "realtime": {
+      "chip": "OFFLINE",
+      "url": "ws://127.0.0.1:4400/ws",
+      "connectSwitch": true,
+      "entryTypes": [],
+      "firstEntry": null,
+      "epoch": null,
+      "revision": null,
+      "meters": null
+     },
+     "scalarMounted": true,
+     "testRequestButtons": 0
+    },
+    "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/84_api_reference_simulated.png",
+    "apiRequestsToTheDevServer": 1,
+    "apiRequests": [
+     "GET http://127.0.0.1:5178/api/v1/auth/status 200",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED",
+     "GET http://127.0.0.1:4400/api/v1/health failed: net::ERR_CONNECTION_REFUSED"
+    ],
+    "socketsToTheDevServerWs": 0
+   }
+  },
+  "elapsedSeconds": 143
+ }
+}

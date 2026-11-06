@@ -1,0 +1,4 @@
+top
+pid
+shot E2_04_tablet_monitor_still_recording
+noshot

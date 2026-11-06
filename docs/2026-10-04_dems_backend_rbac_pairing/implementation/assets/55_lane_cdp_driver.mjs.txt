@@ -1,0 +1,408 @@
+// W55 lane check: the Login page in Live mode in a real headless Chromium, over raw CDP (Node's
+// built-in WebSocket; no install). The sign-in goes THROUGH THE FORM: the fields are typed by
+// script (`Input.insertText`), the button is pressed.
+// Usage: node --import tsx .cache/w55/lane/cdp-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+//
+// What is never stored or printed: a request body, a cookie value, the seeded password, the wrong
+// password of step 3, a `Runtime.evaluate` expression, the whole text of a page. Cookie values are
+// cut to their length; URLs lose their query values; only named elements are read.
+import { randomBytes } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+// The seeded demo operator, read from the project's own seed source (never printed).
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+if (!supervisor || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source has no SUPERVISOR or no demo password constant')
+// A wrong password that exists in this process only.
+const WRONG = `wrong-${randomBytes(9).toString('hex')}`
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map() // requestId -> { method, url, status }
+let sockets = new Map() // requestId -> { url, status, frames: [type...], cookieSent }
+let consoleLines = []
+let loadFired = false
+
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+const typeOf = (payload) => {
+  try {
+    return JSON.parse(payload).type ?? '(no type)'
+  } catch {
+    return '(not JSON)'
+  }
+}
+const pick = (headers, name) => {
+  for (const [key, value] of Object.entries(headers ?? {})) if (key.toLowerCase() === name) return value
+  return null
+}
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    // The error of a failed call is reported by its code only: its text can quote the expression.
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      // Never `p.request.postData`.
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Network.webSocketCreated':
+      sockets.set(p.requestId, { url: cleanUrl(p.url), status: null, frames: [] })
+      break
+    case 'Network.webSocketWillSendHandshakeRequest': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.cookieSent = pick(p.request.headers, 'cookie') ? 'yes (value not recorded)' : 'no'
+      break
+    }
+    case 'Network.webSocketHandshakeResponseReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.webSocketFrameReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry && entry.frames.length < 400) entry.frames.push(typeOf(p.response.payloadData))
+      break
+    }
+    case 'Network.webSocketClosed': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.closed = true
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 420)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+
+/** Runs page script. A failure is reported without the expression and without the page's own message. */
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs) // the dev client's socket, the lazy route chunk, the entrance motion
+  return loadFired
+}
+
+/** Waits until the page holds (or no longer holds) an element with this test ID. Returns whether it did in time. */
+const waitFor = async (testId, present = true, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`document.querySelector('[data-testid="${testId}"]') !== null`, `wait ${testId}`)
+    if (found === present) return true
+    await sleep(150)
+  }
+  return false
+}
+
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  const file = join(assetsDir, name)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return file
+}
+
+/** Types into the input of a field by script: focus, select what is there, insert. The text is not echoed. */
+const typeInto = async (fieldTestId, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector('[data-testid="${fieldTestId}"] input'); if (!el) return false; el.focus(); el.select(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const press = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`)
+
+/** What the page did since the last call, and a new record for what follows. */
+const takeNetwork = () => {
+  const taken = {
+    api: [...requests.values()].filter((entry) => entry.url.includes('/api/v1/')),
+    origins: [...new Set([...requests.values()].map((entry) => { try { return new URL(entry.url).origin } catch { return '(other)' } }))].sort(),
+    sockets: [...sockets.values()]
+      .filter((entry) => entry.url.endsWith('/ws'))
+      .map((entry) => ({ url: entry.url, status: entry.status, cookieSent: entry.cookieSent ?? null, closed: entry.closed === true, frameCount: entry.frames.length, firstTypes: entry.frames.slice(0, 4), distinctTypes: [...new Set(entry.frames)].sort() })),
+    console: consoleLines,
+  }
+  requests = new Map()
+  sockets = new Map()
+  consoleLines = []
+  return taken
+}
+
+/** Named elements of the Login page only: never the whole page text (the disclosure holds the demo credentials). */
+const loginFacts = (label) =>
+  evaluate(
+    `(() => {
+      const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+      const text = (id) => q(id)?.textContent?.trim() ?? null
+      const page = q('page-login')
+      const outside = (() => {
+        if (!page) return null
+        const clone = page.cloneNode(true)
+        clone.querySelector('[data-testid="login-mode-selector"]')?.remove()
+        clone.querySelector('[data-testid="login-demo-operators"]')?.remove()
+        for (const input of clone.querySelectorAll('input')) input.remove()
+        return /simulat/i.test(clone.textContent ?? '')
+      })()
+      return {
+        href: location.origin + location.pathname + (location.search ? '?…' : ''),
+        onLoginPage: page !== null,
+        state: page?.getAttribute('data-state') ?? null,
+        coreMode: page?.getAttribute('data-core-mode') ?? null,
+        coreLink: page?.getAttribute('data-core-link') ?? null,
+        trustLine: text('login-trust-line'),
+        trustLineReachable: q('login-trust-line')?.getAttribute('data-reachable') ?? null,
+        securityKeyInDom: q('login-security-key') !== null,
+        dividerInDom: document.querySelector('.dems-login-divider') !== null,
+        modeSelector: q('login-mode-selector')?.getAttribute('data-mode') ?? null,
+        strip: {
+          label: q('login-device-strip')?.querySelector('[role="group"]')?.getAttribute('aria-label') ?? null,
+          cells: q('login-device-strip')?.querySelectorAll('.dems-login-strip-cell').length ?? null,
+          service: text('login-core-service'),
+          database: q('login-core-database')?.getAttribute('data-state') ?? null,
+          engine: q('login-core-engine')?.getAttribute('data-state') ?? null,
+          link: q('login-core-link')?.getAttribute('data-state') ?? null,
+          mode: text('login-core-mode'),
+        },
+        alertKind: q('login-alert')?.getAttribute('data-kind') ?? null,
+        alertText: q('login-alert')?.textContent?.trim().slice(0, 160) ?? null,
+        usernameFieldChars: document.querySelector('[data-testid="login-username-field"] input')?.value.length ?? null,
+        passwordFieldChars: document.querySelector('[data-testid="login-password-field"] input')?.value.length ?? null,
+        submitDisabled: q('login-submit')?.hasAttribute('disabled') ?? null,
+        disclosureExpanded: q('login-demo-operators')?.querySelector('[aria-expanded]')?.getAttribute('aria-expanded') ?? null,
+        saysSimulatedOutsideTheSelectorAndTheDisclosure: outside,
+      }
+    })()`,
+    label,
+  )
+
+/** What a script of the page can read about the session: the row's verification cell (AC-C-38). */
+const sessionFacts = (label) =>
+  evaluate(
+    `(() => {
+      const lengths = (area) => Object.fromEntries(Object.keys(area).map((key) => [key, String(area.getItem(key)).length + ' chars']))
+      const values = [...Object.keys(localStorage).map((k) => localStorage.getItem(k)), ...Object.keys(sessionStorage).map((k) => sessionStorage.getItem(k))]
+      const cookieNames = document.cookie === '' ? [] : document.cookie.split(';').map((part) => part.split('=')[0].trim())
+      const facts = {
+        href: location.origin + location.pathname + (location.search ? '?…' : ''),
+        documentCookieLength: document.cookie.length,
+        documentCookieNames: cookieNames,
+        documentCookieShowsSessionCookie: /dems_session/.test(document.cookie),
+        localStorage: lengths(localStorage),
+        sessionStorage: lengths(sessionStorage),
+        anyStoredValueStartsWithSes: values.some((value) => /(^|[^a-z])ses_/.test(String(value))),
+        demsAuthWritten: sessionStorage.getItem('dems.auth') !== null || localStorage.getItem('dems.auth') !== null,
+        demsSimSnapshotWritten: sessionStorage.getItem('dems.sim.v1') !== null || localStorage.getItem('dems.sim.v1') !== null,
+        owedSignOutKeyPresent: localStorage.getItem('dems.live.owedSignOut.v1') !== null,
+        pageTestIds: [...document.querySelectorAll('[data-testid]')].map((el) => el.getAttribute('data-testid')).filter((id) => id && id.startsWith('page-')),
+        signedInAs: document.querySelector('[data-testid="page-dashboard"]') ? (document.body.textContent.match(/Logged in as [^\\n]{0,40}?(?=[A-Z][a-z]+ed|$)/)?.[0] ?? null) : null,
+      }
+      // The row asks for console output: the page prints what its own script can see of the session.
+      console.info('[w55 lane] session facts', JSON.stringify({ documentCookieNames: facts.documentCookieNames, documentCookieShowsSessionCookie: facts.documentCookieShowsSessionCookie, anyStoredValueStartsWithSes: facts.anyStoredValueStartsWithSes, demsAuthWritten: facts.demsAuthWritten }))
+      return facts
+    })()`,
+    label,
+  )
+
+const cookieFacts = async () =>
+  (await send('Network.getCookies', { urls: [`${ORIGIN}/`] })).cookies.map((cookie) => ({
+    name: cookie.name,
+    value: `(${String(cookie.value).length} chars, not recorded)`,
+    domain: cookie.domain,
+    path: cookie.path,
+    httpOnly: cookie.httpOnly,
+    sameSite: cookie.sameSite ?? null,
+    secure: cookie.secure,
+    session: cookie.session,
+    expires: cookie.session ? 'none (a browser-session cookie)' : cookie.expires,
+  }))
+
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
+const version = await send('Browser.getVersion')
+// GC-22: the browser and its version.
+const result = { browser: { product: version.product, userAgent: version.userAgent, protocolVersion: version.protocolVersion, jsVersion: version.jsVersion, headless: /Headless/i.test(version.userAgent) }, steps: {} }
+
+// ── 1. The Login page in Live mode (the lane preselects it; nothing is stored) ──
+{
+  const loaded = await navigate(`${ORIGIN}/login`)
+  await waitFor('page-login')
+  const facts = await loginFacts('facts live login')
+  result.steps.login = { loaded, facts, session: await sessionFacts('session before sign-in'), screenshot: await screenshot('55_login_live.png'), network: takeNetwork() }
+}
+
+// ── 2. The disclosure (WS-9): read by named elements, then closed again before any screenshot ──
+{
+  await evaluate(`document.querySelector('[data-testid="login-demo-operators"] button')?.click()`, 'open the disclosure')
+  await waitFor('login-demo-notice', true, 4000)
+  const disclosure = await evaluate(
+    `(() => {
+      const box = document.querySelector('[data-testid="login-demo-operators"]')
+      const rows = [...(box?.querySelectorAll('[data-testid^="login-operator-"]') ?? [])]
+      return {
+        notice: document.querySelector('[data-testid="login-demo-notice"]')?.textContent?.trim() ?? null,
+        rows: rows.map((row) => row.getAttribute('data-testid')),
+        roleWordShown: /Investigator|Supervisor|Technician/.test(box?.textContent ?? ''),
+        chips: box?.querySelectorAll('[data-slot="chip"], .chip').length ?? null,
+        saysSimulated: /simulat/i.test(box?.textContent ?? ''),
+      }
+    })()`,
+    'disclosure facts',
+  )
+  await evaluate(`document.querySelector('[data-testid="login-demo-operators"] button')?.click()`, 'close the disclosure')
+  await sleep(600)
+  result.steps.disclosure = { ...disclosure, expandedAfterwards: (await loginFacts('facts after the disclosure')).disclosureExpanded }
+}
+
+// ── 3. A wrong password, through the form: the server's refusal (ONE attempt; the lane is not run into the lockout) ──
+{
+  takeNetwork()
+  await typeInto('login-username-field', supervisor.username, 'username')
+  await typeInto('login-password-field', WRONG, 'password')
+  const before = await loginFacts('facts typed')
+  await press('login-submit')
+  await waitFor('login-alert', true, 10000)
+  await sleep(900) // the verification beat and the Alert's entrance
+  const facts = await loginFacts('facts after the wrong password')
+  result.steps.wrongPassword = {
+    typed: { usernameFieldChars: before.usernameFieldChars, passwordFieldChars: before.passwordFieldChars },
+    facts,
+    session: await sessionFacts('session after the wrong password'),
+    screenshot: await screenshot('55_login_live_wrong_password.png'),
+    network: takeNetwork(),
+  }
+}
+
+// ── 4. The sign-in, through the form ──
+{
+  await typeInto('login-username-field', supervisor.username, 'username')
+  await typeInto('login-password-field', DEMO_OPERATOR_PASSWORD, 'password')
+  await press('login-submit')
+  await sleep(250)
+  const whileOut = await loginFacts('facts while the request is out')
+  const arrived = await waitFor('page-dashboard', true, 20000)
+  await sleep(2500) // the hand-off and the shell's entrance
+  const session = await sessionFacts('session after the sign-in')
+  result.steps.signIn = {
+    whileOut: { state: whileOut.state, passwordFieldChars: whileOut.passwordFieldChars, onLoginPage: whileOut.onLoginPage },
+    dashboardShown: arrived,
+    session,
+    cookies: await cookieFacts(),
+    screenshot: await screenshot('55_live_signed_in_through_the_form.png'),
+    network: takeNetwork(),
+  }
+}
+
+// ── 5. AC-C-40: a reload while signed in returns to the same route without credentials ──
+{
+  const loaded = await navigate(`${ORIGIN}/dashboard`, 4000)
+  const session = await sessionFacts('session after the reload')
+  result.steps.reload = { loaded, dashboardShown: await waitFor('page-dashboard', true, 10000), session, network: takeNetwork() }
+}
+
+// ── 6. Sign out at the end (a request of the page; the console follows its socket), and the Login page again ──
+{
+  const signOut = await evaluate(
+    `(async () => {
+      const answer = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) })
+      return { status: answer.status }
+    })()`,
+    'sign-out',
+  )
+  const back = await waitFor('page-login', true, 15000)
+  await sleep(2500)
+  const facts = await loginFacts('facts after the sign-out')
+  result.steps.signOut = {
+    signOut,
+    loginShown: back,
+    facts,
+    session: await sessionFacts('session after the sign-out'),
+    cookieNamesLeft: (await send('Network.getCookies', { urls: [`${ORIGIN}/`] })).cookies.map((cookie) => cookie.name),
+    screenshot: await screenshot('55_login_live_signed_out.png'),
+    network: takeNetwork(),
+  }
+}
+
+// ── 7. The mode selector: the confirmation opens; it is cancelled (the lane's origin is left as it was found) ──
+{
+  await press('login-mode-SIMULATED')
+  const opened = await waitFor('mode-switch-dialog', true, 5000)
+  await sleep(500)
+  const dialog = await evaluate(
+    `(() => { const el = document.querySelector('[data-testid="mode-switch-dialog"]'); return el ? { heading: el.querySelector('h1,h2,h3,[role="heading"]')?.textContent?.trim() ?? null, text: el.textContent?.trim().slice(0, 200) ?? null } : null })()`,
+    'dialog facts',
+  )
+  const shot = await screenshot('55_login_live_mode_dialog.png')
+  await press('mode-switch-cancel')
+  await waitFor('mode-switch-dialog', false, 5000)
+  result.steps.modeSelector = {
+    opened,
+    dialog,
+    screenshot: shot,
+    storedModeAfterCancel: await evaluate(`localStorage.getItem('dems.core.mode.v1')`, 'stored mode'),
+    selectorAfterCancel: (await loginFacts('facts after cancel')).modeSelector,
+    network: takeNetwork(),
+  }
+}
+
+// Last line of defence: neither password may be in what is written, whatever a page showed.
+let text = JSON.stringify(result, null, 2)
+for (const secret of [DEMO_OPERATOR_PASSWORD, WRONG]) if (text.includes(secret)) text = text.split(secret).join('***')
+text = text.replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+writeFileSync(outJson, `${text}\n`)
+console.log(text)
+ws.close()

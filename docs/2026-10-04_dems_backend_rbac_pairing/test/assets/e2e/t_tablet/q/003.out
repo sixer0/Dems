@@ -1,0 +1,9 @@
+tap 2022,346 at 09:43:52.661
+slept 1000 ms
+focused true; keyguard false; editor inputType 0x80001
+username typed (budi.santoso); editor inputType 0x80001
+slept 500 ms
+tap 2022,466 at 09:43:54.630
+slept 1000 ms
+focused true; keyguard false; editor inputType 0x80081
+screencap 003.png (1952943 bytes) at 09:43:56.532

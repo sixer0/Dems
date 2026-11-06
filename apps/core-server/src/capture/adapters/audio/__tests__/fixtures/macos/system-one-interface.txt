@@ -1,0 +1,39 @@
+{
+  "SPAudioDataType" : [
+    {
+      "_items" : [
+        {
+          "_name" : "DEMS Hexa 6",
+          "coreaudio_device_input" : 6,
+          "coreaudio_device_manufacturer" : "DEMS Test Works",
+          "coreaudio_device_output" : 6,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_usb",
+          "coreaudio_input_source" : "spaudio_default",
+          "coreaudio_output_source" : "spaudio_default"
+        },
+        {
+          "_name" : "DEMS Built-in Input",
+          "coreaudio_default_audio_input_device" : "spaudio_yes",
+          "coreaudio_device_input" : 1,
+          "coreaudio_device_manufacturer" : "DEMS Host Maker",
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_builtin",
+          "coreaudio_input_source" : "DEMS Internal Source"
+        },
+        {
+          "_name" : "DEMS Built-in Output",
+          "_properties" : "coreaudio_default_audio_system_device",
+          "coreaudio_default_audio_output_device" : "spaudio_yes",
+          "coreaudio_default_audio_system_device" : "spaudio_yes",
+          "coreaudio_device_manufacturer" : "DEMS Host Maker",
+          "coreaudio_device_output" : 2,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_builtin",
+          "coreaudio_output_source" : "DEMS Internal Speakers"
+        }
+      ],
+      "_name" : "coreaudio_device"
+    }
+  ]
+}

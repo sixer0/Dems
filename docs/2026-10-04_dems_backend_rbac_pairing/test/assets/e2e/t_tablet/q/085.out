@@ -1,0 +1,9 @@
+mark B10 tablet after web archive at 10:49:12.736
+slept 500 ms
+screencap B35a_tablet_after_web_archive.png (725174 bytes) at 10:49:13.870
+ids: 158 nodes -> q/tablet_after_archive.txt
+swipe 1920,500,1920,1400 600 ms
+slept 800 ms
+swipe 1920,500,1920,1400 600 ms
+slept 1500 ms
+screencap B35b_tablet_after_web_archive_top.png (1275730 bytes) at 10:49:22.111

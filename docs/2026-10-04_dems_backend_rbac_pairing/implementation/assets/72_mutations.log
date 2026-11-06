@@ -1,0 +1,60 @@
+# W72 mutation check, 2026-10-06 01:09:32; 4 test files per run; the tree is not edited
+control (no mutation): exit=0 Tests:       38 passed, 38 total (28 s)
+U1  detected       7s  LIVE skips the presenter (the step-80 toast instead of the denied / outage / limit toast)  | Tests:       4 failed, 34 passed, 38 total  | live-summary-sites.test.tsx
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › refusal: a 403 (example notPermitted) → the denied toast with the role; the Summary stays, Done is idle; a second press sends again
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › refusal on View in Evidence: the denied toast; no evidence route; the control is idle
+U2  detected       7s  a refusal still navigates (ok runs in fail)  | Tests:       5 failed, 33 passed, 38 total  | live-summary-sites.test.tsx
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › refusal: a 403 (example notPermitted) → the denied toast with the role; the Summary stays, Done is idle; a second press sends again
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › refusal on View in Evidence: the denied toast; no evidence route; the control is idle
+U3  detected       7s  S4-4 read dropped: a summary that is not pending is acknowledged anyway  | Tests:       2 failed, 36 passed, 38 total  | live-summary-sites.test.tsx
+      e.g. S4-4: whether a request is needed is read from the replica before the call › a summary another console acknowledged on the Core: Done sends nothing and goes Home
+      e.g. S4-4: whether a request is needed is read from the replica before the call › a past session of the Core's history: no stamp, no acknowledgement, Done goes Home
+U4  detected       6s  no one-request-at-a-time guard across the three controls  | Tests:       1 failed, 37 passed, 38 total  | live-summary-sites.test.tsx
+      e.g. the pending control (LB-1; AC-C-57, AC-C-58) › an answer 1 s late: Done is busy at once, the spinner only after the reveal delay; Done, View in Evidence and Back together send ONE request
+U5  detected       6s  the in-flight flag is never released (a second press after a refusal sends nothing)  | Tests:       3 failed, 35 passed, 38 total  | live-summary-sites.test.tsx
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › refusal: a 403 (example notPermitted) → the denied toast with the role; the Summary stays, Done is idle; a second press sends again
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › outage: "Core server unreachable. Nothing was changed."; the Summary stays; a second press succeeds
+U6  detected       6s  the control is never released after the command settled  | Tests:       5 failed, 33 passed, 38 total  | live-summary-sites.test.tsx
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › refusal: a 403 (example notPermitted) → the denied toast with the role; the Summary stays, Done is idle; a second press sends again
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › refusal on View in Evidence: the denied toast; no evidence route; the control is idle
+## 6 detected, 0 not detected, 0 not applied, of 6
+## the mutated files in the tree, before and after: identical
+   96a65de742fbbc2d  src/features/session-finalizing/session-finalizing-screen.tsx
+   622463989c24dc49  src/features/session-summary/session-summary-screen.tsx
+   da1bda0facd076fe  src/features/session-summary/use-summary.ts
+   1dc09edfe5d818bd  src/features/sessions/sessions-screen.tsx
+# finished 01:10:38
+# W72 mutation check, 2026-10-06 01:10:45; 4 test files per run; the tree is not edited
+S1  detected       7s  Done navigates before the Core answered (not in ok)  | Tests:       5 failed, 33 passed, 38 total  | live-summary-sites.test.tsx
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › refusal: a 403 (example notPermitted) → the denied toast with the role; the Summary stays, Done is idle; a second press sends again
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › outage: "Core server unreachable. Nothing was changed."; the Summary stays; a second press succeeds
+S2  detected       7s  Done never marked busy  | Tests:       1 failed, 37 passed, 38 total  | live-summary-sites.test.tsx
+      e.g. the pending control (LB-1; AC-C-57, AC-C-58) › an answer 1 s late: Done is busy at once, the spinner only after the reveal delay; Done, View in Evidence and Back together send ONE request
+S3  detected       6s  no spinner inside Done  | Tests:       1 failed, 37 passed, 38 total  | live-summary-sites.test.tsx
+      e.g. the pending control (LB-1; AC-C-57, AC-C-58) › an answer 1 s late: Done is busy at once, the spinner only after the reveal delay; Done, View in Evidence and Back together send ONE request
+S4  detected       6s  the link notice never shows  | Tests:       1 failed, 37 passed, 38 total  | live-summary-sites.test.tsx
+      e.g. the Core link (M1: one call, `useCoreLinkNotice`) › while the summary waits and the link is down: the notice says why; a press stays; when the link is back the notice goes and Done finishes
+S5  detected       7s  the link notice always shows while pending (no link rule)  | Tests:       3 failed, 35 passed, 38 total  | live-summary-sites.test.tsx
+      e.g. the Summary in LIVE mode shows the Core's data and claims no simulation › the hero, details, hashes, finalization and lifecycle come from the replica; only the signature says SIMULATED (the contract calls it so)
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › a limit (429) is worded as a limit with the seconds, never as an outage, and shows no link notice (LB-10)
+S6  detected       7s  the acknowledgement starts on mount (the D158 / F69-1 defect class)  | Tests:       15 failed, 23 passed, 38 total  | live-finalizing.test.tsx, live-sessions.test.tsx, live-summary-sites.test.tsx, session-summary-screen.test.tsx
+      e.g. the hub in LIVE mode lists the Core's sessions › phone: the pending row hands off to the Core's Summary; the summary is acknowledged only by its own Done
+      e.g. the Summary in LIVE mode shows the Core's data and claims no simulation › the hero, details, hashes, finalization and lifecycle come from the replica; only the signature says SIMULATED (the contract calls it so)
+S7  detected       7s  hardware Back leaves without acknowledging  | Tests:       3 failed, 35 passed, 38 total  | live-summary-sites.test.tsx, session-summary-screen.test.tsx
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › success: hardware Back acknowledges once and returns Home (consumed, never leaves the app)
+      e.g. the pending control (LB-1; AC-C-57, AC-C-58) › an answer 1 s late: Done is busy at once, the spinner only after the reveal delay; Done, View in Evidence and Back together send ONE request
+S8  detected       6s  View in Evidence goes Home  | Tests:       2 failed, 36 passed, 38 total  | live-summary-sites.test.tsx, session-summary-screen.test.tsx
+      e.g. Session Summary (04 §4.7) › View in Evidence acknowledges and opens the evidence detail
+      e.g. S2-4: Done, View in Evidence and Back acknowledge through the Core, then navigate in ok › success: View in Evidence acknowledges once and opens the Core's evidence item
+X1  detected       6s  S4-5: the refresh stamp on the wall clock instead of the Live clock  | Tests:       2 failed, 36 passed, 38 total  | live-sessions.test.tsx
+      e.g. S4-5: the refresh stamp reads the Live clock (no change) › success: pull-to-refresh lasts REFRESH_MS on the Live clock, stamps that time, and sends nothing
+      e.g. S4-5: the refresh stamp reads the Live clock (no change) › outage: with the link down the refresh still runs and stamps "Updated" on the Live clock though nothing was fetched (finding F-1); the rows keep the last replica; the Core's newer session arrives with the link, without a refresh
+X2  detected       6s  Finalization never shows the Core's evidence ID  | Tests:       1 failed, 37 passed, 38 total  | live-finalizing.test.tsx
+      e.g. Finalization in LIVE mode follows the Core › stop → STOPPING → six steps → SEALED → the Summary → Done: the Core's data throughout, ONE command (the acknowledgement)
+## 10 detected, 0 not detected, 0 not applied, of 10
+## the mutated files in the tree, before and after: identical
+   96a65de742fbbc2d  src/features/session-finalizing/session-finalizing-screen.tsx
+   622463989c24dc49  src/features/session-summary/session-summary-screen.tsx
+   da1bda0facd076fe  src/features/session-summary/use-summary.ts
+   1dc09edfe5d818bd  src/features/sessions/sessions-screen.tsx
+# finished 01:11:49

@@ -1,0 +1,6 @@
+tap 1700,110 at 16:40:26.147
+slept 1500 ms
+tap 1852,1248 at 16:40:27.715
+slept 2500 ms
+screencap B1_hash_integrity_0017_not_verified.png (1332572 bytes) at 16:40:30.698
+ids: 168 nodes -> q/rt2_0017_before.txt

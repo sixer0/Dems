@@ -1,0 +1,7 @@
+# Step 66 (W44), fix round after CP-C1: CPC1-14 at compile time, 2026-10-04 14:05:19 WIB
+$ python3 docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/44_fix_assim_probe.py
+before | Sim as it is              | tsc exit 0 | 0 errors
+before | Sim with one member more  | tsc exit 0 | 0 errors
+after  | Sim as it is              | tsc exit 0 | 0 errors
+after  | Sim with one member more  | tsc exit 2 | 1 errors
+         src/live/source/index.ts(134,7): error TS2322: Type 'true' is not assignable to type 'never'.

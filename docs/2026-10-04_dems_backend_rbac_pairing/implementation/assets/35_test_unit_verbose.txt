@@ -1,0 +1,178 @@
+# Plan row W35: the row's unit tests, verbose (15:25:44 WIB, exit 0). Command: npm run test -w @dems/core-server -- --maxWorkers=2 --reporter=verbose src/modules/evidence
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 --reporter=verbose src/modules/evidence
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a body the contract accepts > is VALID: the reason trimmed by the schema, the destination as sent, an absent destination as the empty text 4ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a body the contract accepts > the bounds themselves pass: 5 and 500 for the reason, 120 for the destination, in UTF-16 code units 1ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a body the contract accepts > what the hosted action is handed is what the contract accepted: the same reason and destination reach the audit row 12ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a reason that is missing or too short: line 10 of the precedence table, decided by the hosted action > no body members at all is REASON_MISSING 1ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a reason that is missing or too short: line 10 of the precedence table, decided by the hosted action > only a destination is REASON_MISSING 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a reason that is missing or too short: line 10 of the precedence table, decided by the hosted action > an empty reason is REASON_MISSING 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a reason that is missing or too short: line 10 of the precedence table, decided by the hosted action > a blank reason is REASON_MISSING 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a reason that is missing or too short: line 10 of the precedence table, decided by the hosted action > four characters is REASON_MISSING 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a reason that is missing or too short: line 10 of the precedence table, decided by the hosted action > four characters and white space around them is REASON_MISSING 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a reason that is missing or too short: line 10 of the precedence table, decided by the hosted action > three two-unit characters: 6 code units, 3 characters is REASON_MISSING 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a reason that is missing or too short: line 10 of the precedence table, decided by the hosted action > four characters and an unknown key is REASON_MISSING 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a reason that is missing or too short: line 10 of the precedence table, decided by the hosted action > an explicit undefined is REASON_MISSING 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a reason that is missing or too short: line 10 of the precedence table, decided by the hosted action > the action is handed NO_REASON, never the text: it answers 404, then 409, then 422 INVALID_REASON, and changes nothing 3ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > a reason that is missing or too short: line 10 of the precedence table, decided by the hosted action > why the text itself is not handed on: the simulator counts code units and would ACCEPT what the contract refuses 3ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a reason that is a number is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a reason that is null is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a reason that is a list is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a reason that is an object is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a reason that is true is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a reason of 501 code units is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a reason of 251 two-unit characters: 251 characters, 502 code units is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a reason that holds U+0000 is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a reason that holds an unpaired surrogate is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a short reason that holds U+0000 is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a destination that is a number is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a destination that is null is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a destination of 121 code units is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a destination of 119 units and a two-unit character is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a destination that holds U+0000 is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a short reason AND a destination that is too long is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > a missing reason AND a destination that is not text is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > not an object: a list is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > not an object: text is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > not an object: null is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > not an object: undefined is INVALID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/export-request.test.ts > any other body that does not match its schema: line 8, 422 INVALID_INPUT before the engine > nothing of a body comes back in the outcome of a refused one 0ms
+ ✓ |unit| src/modules/evidence/__tests__/media.test.ts > the media reference of the dataset items > all 13 join their bundled package on the instant the packages are frozen at: the dated parts of the IDs do not matter (ENG-18) 11ms
+ ✓ |unit| src/modules/evidence/__tests__/media.test.ts > the media reference of the dataset items > all 13 join their bundled package on 45 days later: the dated parts of the IDs do not matter (ENG-18) 3ms
+ ✓ |unit| src/modules/evidence/__tests__/media.test.ts > the media reference of the dataset items > all 13 join their bundled package on a year later: the dated parts of the IDs do not matter (ENG-18) 2ms
+ ✓ |unit| src/modules/evidence/__tests__/media.test.ts > an item that joins no package answers NONE > each of the four parts of the join must match: suffix of the evidence ID, suffix of the session ID, case sequence, subject 0ms
+ ✓ |unit| src/modules/evidence/__tests__/media.test.ts > an item that joins no package answers NONE > a session recorded live seals into an evidence number a package uses, and still joins nothing 0ms
+ ✓ |unit| src/modules/evidence/__tests__/media.test.ts > an item that joins no package answers NONE > the dated parts alone change nothing; white space around the subject is ignored by the shared join 0ms
+ ✓ |unit| src/modules/evidence/__tests__/media.test.ts > SR-66, MS-3: a reference, never a file > holds exactly two members: a source, and four digits or null. No path, no URL, no file name 3ms
+ ✓ |unit| src/modules/evidence/__tests__/media.test.ts > SR-66, MS-3: a reference, never a file > the contract refuses a reference whose source and suffix do not go together, and anything that names a file 0ms
+ ✓ |unit| src/modules/evidence/__tests__/media.test.ts > SR-66, MS-3: a reference, never a file > the answer for NONE is one frozen object: a caller cannot change what the next caller gets 0ms
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > the scan itself > reads the production sources of the folder 2ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 3ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 1 (M3): who may call is stage 6, only > no file reads a member of the principal: it is handed to the engine host whole 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 1 (M3): who may call is stage 6, only > no file names a permission, a role, the session registry or the device registry 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 1 (M3): who may call is stage 6, only > no route has a hook of its own, and the module adds none to the app 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 2 (M3, M5, M6): the module writes no denial row and no row at all > nothing appends an audit row or an event, takes a place in the denial budget, or names a denial type 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 3 (M4): a command is one call of the engine host > the three commands call app.engine.command with request.principal and the hosted action of their operation 1ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 3 (M4): a command is one call of the engine host > no simulator action is called directly, the engine's state is not read, and no unit of work is opened here 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 4 (M5): the folder changes no row > it holds no statement text that changes a row and uses no insert, update or delete of the query builder 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 4 (M5): the folder changes no row > its two transactions are the two reads, and both are opened READ ONLY at REPEATABLE READ 1ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 4 (M5): the folder changes no row > the row-to-item mapping is the one mapping module's: the folder builds no item from columns itself 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 5 (M2): routes come from the registry > every route is built from its registry entry, in the order of the operations, and there is no other route 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 6 (M8): one clock, no chance, no environment > no file reads the system time, sets a timer or draws a random number 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 6 (M8): one clock, no chance, no environment > no console call, no raw URL, no header, no environment, no listener 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 7 (SR-66, MS-1 to MS-4): no file is read, sent or fetched > the folder imports no file, path, process, stream or network module and serves no static file 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 7 (SR-66, MS-1 to MS-4): no file is read, sent or fetched > what it imports is the contract, the simulator's types and join, the query builder, and the server's own seams 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 8 (SR-48): the log > the folder has one log call, and it carries a code and an operation ID 0ms
+ ✓ |unit| src/modules/evidence/__tests__/static.test.ts > rule 8 (SR-48): the log > an error's own message is never read 0ms
+stdout | src/modules/evidence/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > registers operations 39 to 43 with the method, the path and the operation ID of the registry, and nothing else under /api/v1/evidence
+[w35] MODG routes of src/modules/evidence: GET /api/v1/evidence listEvidence | GET /api/v1/evidence/:id getEvidence | POST /api/v1/evidence/:id/verify verifyEvidence | POST /api/v1/evidence/:id/export exportEvidence | POST /api/v1/evidence/:id/archive archiveEvidence
+[w35] MODG registry, operations 39 to 43:   GET /api/v1/evidence listEvidence | GET /api/v1/evidence/:id getEvidence | POST /api/v1/evidence/:id/verify verifyEvidence | POST /api/v1/evidence/:id/export exportEvidence | POST /api/v1/evidence/:id/archive archiveEvidence
+
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > registers operations 39 to 43 with the method, the path and the operation ID of the registry, and nothing else under /api/v1/evidence 74ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > the area of the registry is these five and no other: the four of contract C are numbered 39, 40, 41 and 43, and 42 is the design-book operation 1ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > the access rule of each route is the registry's, as the guard holds it: one permission each, EXPORT_DENIED and FORBIDDEN for the export only 6ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > no route carries a check of its own: no hook beside the stage hook, and no rule in its configuration (rule M3) 16ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > each command is one hosted action of the contract's table, and the two reads are none 1ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > who may call is stage 6: a caller without an operator session reaches no handler > listEvidence: nobody, and a paired device without an operator, answer 401 NOT_SIGNED_IN; no read and no command runs 22ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > who may call is stage 6: a caller without an operator session reaches no handler > getEvidence: nobody, and a paired device without an operator, answer 401 NOT_SIGNED_IN; no read and no command runs 8ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > who may call is stage 6: a caller without an operator session reaches no handler > verifyEvidence: nobody, and a paired device without an operator, answer 401 NOT_SIGNED_IN; no read and no command runs 11ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > who may call is stage 6: a caller without an operator session reaches no handler > exportEvidence: nobody, and a paired device without an operator, answer 401 NOT_SIGNED_IN; no read and no command runs 7ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > who may call is stage 6: a caller without an operator session reaches no handler > archiveEvidence: nobody, and a paired device without an operator, answer 401 NOT_SIGNED_IN; no read and no command runs 7ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > who may call is stage 6: a caller without an operator session reaches no handler > a 401 is decided before the body is read: a body that is not JSON, and one that breaks the schema, answer 401 all the same 8ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?limit=0 answers 422 INVALID_INPUT with details.in querystring, before any read 9ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?limit=201 answers 422 INVALID_INPUT with details.in querystring, before any read 6ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?limit=1.5 answers 422 INVALID_INPUT with details.in querystring, before any read 6ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?limit=many answers 422 INVALID_INPUT with details.in querystring, before any read 11ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?limit=-1 answers 422 INVALID_INPUT with details.in querystring, before any read 10ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?status=SEALD answers 422 INVALID_INPUT with details.in querystring, before any read 8ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?status=sealed answers 422 INVALID_INPUT with details.in querystring, before any read 6ms
+ ✓ |unit| src/modules/evidence/__tests__/cursor.test.ts > the cursor of the evidence list > is the recording instant and the evidence ID of the last item of a page, joined by a hyphen 1ms
+ ✓ |unit| src/modules/evidence/__tests__/cursor.test.ts > the cursor of the evidence list > comes back as the same position, for the instants and IDs an item can have 1ms
+ ✓ |unit| src/modules/evidence/__tests__/cursor.test.ts > the cursor of the evidence list > fits the contract: the pattern of a list cursor, the query member and the answer member, at its longest too 3ms
+ ✓ |unit| src/modules/evidence/__tests__/cursor.test.ts > the cursor of the evidence list > refuses every value this list never gave out, also one that has the form of a list cursor 0ms
+ ✓ |unit| src/modules/evidence/__tests__/cursor.test.ts > the cursor of the evidence list > a decoded instant is always a safe integer, so the bind parameter is exact 0ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?status=SEALED&status=EXPORTED answers 422 INVALID_INPUT with details.in querystring, before any read 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?caseType=WITNESS answers 422 INVALID_INPUT with details.in querystring, before any read 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?q= answers 422 INVALID_INPUT with details.in querystring, before any read 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?q=%20%20 answers 422 INVALID_INPUT with details.in querystring, before any read 10ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?q=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx answers 422 INVALID_INPUT with details.in querystring, before any read 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?q=a%00b answers 422 INVALID_INPUT with details.in querystring, before any read 8ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?cursor= answers 422 INVALID_INPUT with details.in querystring, before any read 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?cursor=has_underscore answers 422 INVALID_INPUT with details.in querystring, before any read 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > ?cursor=ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc answers 422 INVALID_INPUT with details.in querystring, before any read 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > a value of the form of a bearer session token is no cursor: the underscore of its prefix is outside the pattern (CL-6a) 9ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > a cursor that has the form of one and is none of this list (abc) answers the same 422, before any read 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > a cursor that has the form of one and is none of this list (42) answers the same 422, before any read 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > a cursor that has the form of one and is none of this list (EV-20260930-0004) answers the same 422, before any read 9ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > a cursor that has the form of one and is none of this list (1790823600000-EV-20260930-004) answers the same 422, before any read 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > a cursor that has the form of one and is none of this list (9007199254740992-EV-20260930-0004) answers the same 422, before any read 8ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > a cursor that has the form of one and is none of this list (01-EV-20260930-0004) answers the same 422, before any read 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 39 listEvidence: the query (SR-64) > a query the contract accepts reaches the read: every member is optional, an unknown member is dropped 14ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operations 39 and 40: a database that does not answer > listEvidence answers 503 NOT_READY, logs the driver's code and never its message, persists one entry and probes the database 6ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operations 39 and 40: a database that does not answer > getEvidence answers 503 NOT_READY, logs the driver's code and never its message, persists one entry and probes the database 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operations 39 and 40: a database that does not answer > the code of a failure the query builder wrapped is the driver's: the wrapper's message, which quotes the statement, is never read 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > the path parameter of operations 40, 41 and 43 (rule M7) > getEvidence: an ID that is no evidence ID answers 422 INVALID_INPUT with details.in params; nothing is read and no action runs 8ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > the path parameter of operations 40, 41 and 43 (rule M7) > verifyEvidence: an ID that is no evidence ID answers 422 INVALID_INPUT with details.in params; nothing is read and no action runs 6ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > the path parameter of operations 40, 41 and 43 (rule M7) > archiveEvidence: an ID that is no evidence ID answers 422 INVALID_INPUT with details.in params; nothing is read and no action runs 9ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 41 verifyEvidence: the hosted action `verify` > hands the engine the principal of the request as it is and the ID of the path, and answers the verdict with the state position 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 41 verifyEvidence: the hosted action `verify` > a failed verification is an answer, not an error: 200 with ok false 3ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 41 verifyEvidence: the hosted action `verify` > an unknown item: the host's 404 passes with its details and the wording of this area, and without the state headers 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 41 verifyEvidence: the hosted action `verify` > a verdict that is not the contract's shape never leaves the server: the response schema refuses it (500) 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 41 verifyEvidence: the hosted action `verify` > what is not a refusal of the simulator passes unchanged: a unit that was not committed is 503, an unexpected failure 500 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > answers 204 without a body, with the state position; the engine gets the principal and the ID 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > a body is not read into the command: whatever is sent, the action gets the ID only 6ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > an item that was never sealed: 409 NOT_SEALED with the simulator's code, its event, and the wording of this area 9ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > an unknown item: 404 NOT_FOUND 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > an accepted export answers 202 with the export ID, the ID of the path and EXPORTED, and the state position 6ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > nothing but the reason and the destination of a body reaches the action: no actor, no time, no ID from the body 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a refusal in the result (NOT_FOUND) is answered after the command resolved: 404 with the contract's text, no details, no state headers 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a refusal in the result (NOT_SEALED) is answered after the command resolved: 409 with the contract's text, no details, no state headers 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a refusal in the result (SECURITY_FAULT) is answered after the command resolved: 409 with the contract's text, no details, no state headers 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a refusal in the result (INVALID_REASON) is answered after the command resolved: 422 with the contract's text, no details, no state headers 8ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a refusal in the result (FORBIDDEN) is answered after the command resolved: 403 with the contract's text, no details, no state headers 6ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a refusal in the result (NOT_SIGNED_IN) is answered after the command resolved: 401 with the contract's text, no details, no state headers 7ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a missing or too-short reason (no body at all) goes to the action as NO_REASON, which decides in its own order: 404, 409, 422 7ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a missing or too-short reason (an empty object) goes to the action as NO_REASON, which decides in its own order: 404, 409, 422 16ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a missing or too-short reason (an empty reason) goes to the action as NO_REASON, which decides in its own order: 404, 409, 422 6ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a missing or too-short reason (four characters) goes to the action as NO_REASON, which decides in its own order: 404, 409, 422 6ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a missing or too-short reason (a blank reason and a destination) goes to the action as NO_REASON, which decides in its own order: 404, 409, 422 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > any other body that breaks the schema (a reason that is a number) answers 422 INVALID_INPUT with details.in body, before the engine, also for an unknown ID 8ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > any other body that breaks the schema (a reason that is null) answers 422 INVALID_INPUT with details.in body, before the engine, also for an unknown ID 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > any other body that breaks the schema (a reason of 501 code units) answers 422 INVALID_INPUT with details.in body, before the engine, also for an unknown ID 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > any other body that breaks the schema (a reason that holds U+0000) answers 422 INVALID_INPUT with details.in body, before the engine, also for an unknown ID 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > any other body that breaks the schema (a destination of 121 code units) answers 422 INVALID_INPUT with details.in body, before the engine, also for an unknown ID 5ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > any other body that breaks the schema (a destination that is a number) answers 422 INVALID_INPUT with details.in body, before the engine, also for an unknown ID 7ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > any other body that breaks the schema (a short reason and a destination that is too long) answers 422 INVALID_INPUT with details.in body, before the engine, also for an unknown ID 6ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a body that is not a JSON object answers 400 INVALID_JSON and one over the limit 413, both before the handler 6ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > an ID that is no evidence ID answers 404 NOT_FOUND without a unit, as in Simulated mode; nothing of the path reaches the engine 12ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > a unit that was not committed is 503, and the answer carries no state position 4ms
+ ✓ |unit| src/modules/evidence/__tests__/routes.test.ts > what the module writes into the log (rule M8, SR-48) > nothing of a request: no reason, no destination, no search text and no cursor is in any line 6ms
+
+ Test Files  5 passed (5)
+      Tests  142 passed (142)
+   Start at  15:25:42
+   Duration  2.84s (transform 47%, import 40%, tests 13%)
+

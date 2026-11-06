@@ -1,0 +1,38 @@
+[device-session phone 05:48:00] lock held; hard cap 600 s, until 05:58:00 (watchdog PID 20489)
+[device-session phone 05:48:00] session serial: emulator-5554 (dems2_phone)
+[device-session phone 05:48:00] emulator-5554: screen awake, no keyguard
+[device-session phone 05:48:00] Metro PID 20525 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session phone 05:48:02] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 05:48:02] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 05:48:02] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), Metro 8083
+-- reverse rules of this session (device -> host):
+   host-16 tcp:8081 tcp:8083
+   host-16 tcp:4400 tcp:4400
+   host-16 tcp:4420 tcp:4421
+   
+-- prefs before: {"coreLinkSource":"SIMULATED"}
+-- $ adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+   exit 0
+-- $ adb -s emulator-5554 shell 'am start -W -a android.intent.action.VIEW -d "demsdemo:///login?core=LIVE&motion=off" com.dems.demo.tablet'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 10 s for runtime.live.ready
+-- screencap 86_m1_live_login_lane1.png (1720568 B)
+-- prefs in LIVE: {"coreLinkSource":"LIVE"}
+-- Core request lines of the app (method, path template, status):
+      1 DEMS-LIVE] GET /api/v1/pairing/device 200
+      1 DEMS-LIVE] GET /api/v1/auth/status 200
+      1 DEMS-LIVE] GET /api/v1/auth/session 401
+-- runtime lines: runtime.debug.core runtime.live.ready 
+-- $ adb -s emulator-5554 shell 'am start -W -a android.intent.action.VIEW -d "demsdemo:///login?core=SIMULATED&motion=off" com.dems.demo.tablet'
+   Status: ok
+   LaunchState: UNKNOWN (0)
+   TotalTime: 0
+-- waited 2 s for runtime.sim.hydrated
+-- screencap 86_m2_simulated_login_lane1.png (1719328 B)
+-- prefs after: {"coreLinkSource":"SIMULATED"}
+-- credential/token lines in the JS log since the start (must be 0): 0
+-- lock at end: isKeyguardShowing=false
+[device-session phone 05:48:49] Metro 20525 stopped
+[device-session phone 05:48:50] session ended with status 0

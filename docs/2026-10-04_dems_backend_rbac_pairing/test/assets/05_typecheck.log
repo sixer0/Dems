@@ -1,0 +1,6 @@
+## 2026-10-04 19:14:29 WIB $ npm run typecheck -w @dems/core-server
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+exit=0

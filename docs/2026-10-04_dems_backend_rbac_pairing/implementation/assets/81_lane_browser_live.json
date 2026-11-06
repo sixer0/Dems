@@ -1,0 +1,356 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+    "headless": true
+  },
+  "viewport": "1920x1080",
+  "steps": {
+    "idle": {
+      "loginCoreMode": "LIVE",
+      "dashboardShown": true,
+      "sidebarEntry": true,
+      "pageShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/admin/devices",
+        "search": "",
+        "hash": "",
+        "onPage": true,
+        "shellMode": "LIVE",
+        "panels": [
+          "issue",
+          "devices"
+        ],
+        "issueState": "IDLE",
+        "codeShown": false,
+        "codeDigitCount": 0,
+        "qrShown": false,
+        "qrLabel": null,
+        "countdownSeconds": null,
+        "countdownTone": null,
+        "attempts": null,
+        "cancelShown": false,
+        "issueShown": true,
+        "list": "empty",
+        "listText": "No device has been paired yet.Issue a pairing code in \"Pair a device\" and type it on the tablet or phone.",
+        "rows": [],
+        "summary": {
+          "paired": "0",
+          "online": "0"
+        },
+        "storageKeys": {
+          "local": [],
+          "session": [
+            "dems.shell.intro"
+          ]
+        },
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/81_paired_devices_live_idle.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/pairing/code",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/pairing/devices",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 93,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          },
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 62,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "issue": {
+      "pressed": true,
+      "codeShown": true,
+      "codeReadForScan": true,
+      "storageAndUrlHits": 0,
+      "maskCheck": {
+        "digitGroups": 2,
+        "transparent": true,
+        "qrHidden": true
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/81_paired_devices_live_code_masked.png",
+      "facts": {
+        "href": "http://127.0.0.1:5178/admin/devices",
+        "search": "",
+        "hash": "",
+        "onPage": true,
+        "shellMode": "LIVE",
+        "panels": [
+          "issue",
+          "devices"
+        ],
+        "issueState": "ACTIVE_KNOWN",
+        "codeShown": true,
+        "codeDigitCount": 6,
+        "qrShown": true,
+        "qrLabel": "QR code of the pairing code",
+        "countdownSeconds": "300",
+        "countdownTone": "gold",
+        "attempts": "5 attempts left",
+        "cancelShown": true,
+        "issueShown": false,
+        "list": "empty",
+        "listText": "No device has been paired yet.Issue a pairing code in \"Pair a device\" and type it on the tablet or phone.",
+        "rows": [],
+        "summary": {
+          "paired": "0",
+          "online": "0"
+        },
+        "storageKeys": {
+          "local": [],
+          "session": [
+            "dems.shell.intro"
+          ]
+        },
+        "toasts": []
+      },
+      "countdownThreeSecondsLater": {
+        "seconds": "297",
+        "tone": "gold",
+        "state": "ACTIVE_KNOWN"
+      },
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/pairing/code",
+            "status": 201
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/pairing/code",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/pairing/code",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "cancel": {
+      "pressed": true,
+      "toastShown": true,
+      "idle": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/admin/devices",
+        "search": "",
+        "hash": "",
+        "onPage": true,
+        "shellMode": "LIVE",
+        "panels": [
+          "issue",
+          "devices"
+        ],
+        "issueState": "IDLE",
+        "codeShown": false,
+        "codeDigitCount": 0,
+        "qrShown": false,
+        "qrLabel": null,
+        "countdownSeconds": null,
+        "countdownTone": null,
+        "attempts": null,
+        "cancelShown": false,
+        "issueShown": true,
+        "list": "empty",
+        "listText": "No device has been paired yet.Issue a pairing code in \"Pair a device\" and type it on the tablet or phone.",
+        "rows": [],
+        "summary": {
+          "paired": "0",
+          "online": "0"
+        },
+        "storageKeys": {
+          "local": [],
+          "session": [
+            "dems.shell.intro"
+          ]
+        },
+        "toasts": [
+          "Pairing code cancelled"
+        ]
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/81_paired_devices_live_cancelled.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/pairing/code/cancel",
+            "status": 204
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/pairing/code",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/pairing/code",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "after": {
+      "status": {
+        "status": 200,
+        "active": null
+      },
+      "signOut": {
+        "status": 204,
+        "loginShown": true
+      },
+      "network": {
+        "api": [
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/pairing/code",
+            "status": 200
+          },
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-out",
+            "status": 204
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/status",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/health",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "no",
+            "closed": false,
+            "frameCount": 4,
+            "firstTypes": [
+              "hello",
+              "heartbeat",
+              "heartbeat",
+              "heartbeat"
+            ],
+            "distinctTypes": [
+              "heartbeat",
+              "hello"
+            ]
+          }
+        ],
+        "console": []
+      }
+    }
+  },
+  "codeScan": {
+    "scannedFor": "the issued six digits and DEMS-PAIR:1:<digits> (the values are not recorded)",
+    "counts": {
+      "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/81_paired_devices_live_idle.png": {
+        "code": 0,
+        "qrPayload": 0
+      },
+      "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/81_paired_devices_live_code_masked.png": {
+        "code": 0,
+        "qrPayload": 0
+      },
+      "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/81_paired_devices_live_cancelled.png": {
+        "code": 0,
+        "qrPayload": 0
+      },
+      ".cache/w81/lane/out/chrome.log": {
+        "code": 0,
+        "qrPayload": 0
+      },
+      ".locks/core-server.lane3.log": {
+        "code": 0,
+        "qrPayload": 0
+      },
+      ".locks/core-server.lane3.vite.log": {
+        "code": 0,
+        "qrPayload": 0
+      },
+      "browser_live.json (this result)": {
+        "code": 0,
+        "qrPayload": 0
+      }
+    }
+  },
+  "seconds": 19
+}

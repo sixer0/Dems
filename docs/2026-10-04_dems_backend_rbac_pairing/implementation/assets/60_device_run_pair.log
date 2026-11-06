@@ -1,0 +1,184 @@
+
+== 16:31:33 0. before: run id w60x163133; listeners on 4421 and Metro 8083 must be free
+(no listener on 4421, none on 8083)
+16:31  up 3 days, 23:44, 2 users, load averages: 6.58 7.19 5.94
+   audit_log                83
+   biometric_tokens         0
+   device_credentials       0
+   paired_devices           0
+   pairing_codes            0
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 16:31:33 1. standard lane reset of dems_lane_1 (keeps the pairing tables per R-5)
+     schema_meta              1
+     session_history          13
+     storage_policy           1
+   audit head       seq 83; hash f3c39f92a67cc429...
+   lineage          1 row(s); 0 carried over, 1 appended
+   db:reset: OK: dems_lane_1 is reset. State: npm run db:status -w @dems/core-server -- --database dems_lane_1
+   audit_log                83
+   biometric_tokens         0
+   device_credentials       0
+   paired_devices           0
+   pairing_codes            0
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 16:31:35 2. start the lane backend: DEMS_CORE_PORT=4421 npm run start:server (demo flag off)
+npm PID 46904, listener PID 46970 (recorded in .locks/core-server.lane1.pid), attempt 1
+COMMAND   PID     USER   FD   TYPE            DEVICE SIZE/OFF NODE NAME
+node    46970 gsp-budi   18u  IPv4 0x83a29694bc4e558      0t0  TCP 127.0.0.1:4421 (LISTEN)
+   "port":4421,"database":"dems_lane_1","demoControls":false
+
+== 16:31:37 3. health from the host (curl)
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T09:31:37.482Z","uptimeMs":318,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+server log lines before the device session: 22
+
+== 16:31:37 4. device session: phone (emulator-5554), Metro 8083, device tcp:4420 -> host tcp:4421
+[device-session phone 16:31:37] lock held; hard cap 720 s, until 16:43:37 (watchdog PID 47034)
+[device-session phone 16:31:37] session serial: emulator-5554 (dems2_phone)
+[device-session phone 16:31:37] emulator-5554: screen awake, no keyguard
+[device-session phone 16:31:37] Metro PID 47073 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session phone 16:31:41] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 16:31:41] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 16:31:41] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), app com.dems.demo.tablet, Metro port 8083, lane port 4421, run w60x163133
+host-17 tcp:8081 tcp:8083
+host-17 tcp:4400 tcp:4400
+host-17 tcp:4420 tcp:4421
+
+-- lock state (start of the session; read-only):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: PIN
+   fingerprints enrolled: "count":1
+-- secure-store entry NAMES (before the first launch; none listed = none stored):
+-- dems.mobile.prefs.v1 (before the first launch; absent = SIMULATED default): {"coreLinkSource":"SIMULATED"}
+
+-- device time at the first launch: 10-05 16:30:53.000; display 1080x2424
+
+== A. cold start in LIVE mode, NOT paired: the gate must hold the app on /pair ==
+-- am start -W -d 'demsdemo:///pair?core=LIVE' com.dems.demo.tablet
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+   Activity: com.dems.demo.tablet/.MainActivity
+-- waited 5 s for: runtime.live.ready
+-- dems.mobile.prefs.v1 (after the launch with core=LIVE; absent = SIMULATED default): {"coreLinkSource":"LIVE"}
+
+-- screencap: 60_phone_unpaired_pair.png (294934 bytes), display 1080x2424, focus: mCurrentFocus=Window{abb24e6 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- which screens are present in the dump (screen-* test IDs):
+   display 1080x2424; 144 nodes in the dump
+-- A2. try to reach /login while blocked: demsdemo:///login?core=LIVE (must land back on /pair)
+-- am start -W -d 'demsdemo:///login?core=LIVE' com.dems.demo.tablet
+   Warning: Activity not started, intent has been delivered to currently running top-most instance.
+   Status: ok
+   LaunchState: UNKNOWN (0)
+   Activity: com.dems.demo.tablet/.MainActivity
+   TotalTime: 0
+-- screencap: 60_phone_unpaired_login_attempt.png (296719 bytes), display 1080x2424, focus: mCurrentFocus=Window{abb24e6 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- which screens are present in the dump (screen-* test IDs):
+   display 1080x2424; 144 nodes in the dump
+-- the boot router's target for this launch (from the runtime log):
+     source: 'runtime.debug.core',
+
+== B. pair with a code issued by the lane-1 backend; the gate releases into Login ==
+-- focus before the tap: mCurrentFocus=Window{abb24e6 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- adb shell input tap 178 1922 (centre of the app's code field)
+-- before the issue: isKeyguardShowing=false; mCurrentFocus=Window{abb24e6 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- sign-in as the seeded SUPERVISOR (OPR-002): 200
+-- issuePairingCode: 201
+-- sign-out of the SUPERVISOR: 204
+-- issued: codeId PCD-000001, valid 300 s, 5 failed redeems close it; the code has 6 characters, all digits: true (not shown)
+-- before typing: isKeyguardShowing=false; mCurrentFocus=Window{abb24e6 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- typed the code into the focused field of the app: adb shell input text <not shown>
+-- pressed the keypad's submit key (KEYCODE_ENTER) in the app
+-- the app's redeem request, from the device log: status 201, request ID 89de2537-f580-48bb-a95c-4af616676218
+-- the issued code, counted (must be 0 everywhere): device JS log 0; whole device log (every tag) 0; AsyncStorage values 0; backend log 0; this check's output files 0
+   searched: 29 JS log lines, 163647 device log lines, AsyncStorage keys [dems.sim.v1, dems.mobile.prefs.v1, dems.mobile.log.v1], 37 backend log lines
+-- lines with a credential or a token (dvc_, ses_, bio_): device JS log 0; AsyncStorage values 0; backend log 0
+-- sign-in as the seeded SUPERVISOR (OPR-002): 200
+-- listPairedDevices: 200
+   device undefined: state PAIRED, online true, name "sdk_gphone64_arm64", platform android, app 0.1.0
+   devices in the registry: 1
+-- getPairingCodeStatus: no code is active (the issued one was redeemed or closed)
+-- sign-out of the SUPERVISOR: 204
+-- pairing step exit: 0 (0 = Core answered 201 and the code was found nowhere)
+-- screencap: 60_phone_released_login.png (1721879 bytes), display 1080x2424, focus: mCurrentFocus=Window{abb24e6 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- which screens are present in the dump (screen-* test IDs):
+   display 0x0; 0 nodes in the dump
+
+== C. sign in on the paired phone in LIVE mode (the D138 evidence) ==
+-- a login field was not found (username='' password='' submit=''): cannot sign in
+-- sign-in step exit: 3 (0 = Core answered 200 and no credential leaked)
+-- screencap: 60_phone_signed_in_home.png (1706833 bytes), display 1080x2424, focus: mCurrentFocus=Window{abb24e6 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- which screens are present in the dump (screen-* test IDs):
+   display 0x0; 0 nodes in the dump
+
+== D. leave the app in SIMULATED mode as it was found ==
+-- am start -W -d 'demsdemo:///?core=SIMULATED' com.dems.demo.tablet
+   Status: ok
+   LaunchState: COLD
+   Activity: com.dems.demo.tablet/.MainActivity
+   TotalTime: 10099
+-- waited 0 s for: runtime.sim.hydrated
+-- dems.mobile.prefs.v1 (after the launch with core=SIMULATED; absent = SIMULATED default): {"coreLinkSource":"SIMULATED"}
+
+-- secure-store entry NAMES (after the SIMULATED relaunch (the credential entry must still be listed); none listed = none stored):
+   entry: name="key_v1-dems.live.device.v1"
+-- request lines to the Core server after the SIMULATED relaunch (must be 0): 0
+-- the app's Core request lines this run ([DEMS-LIVE] method path status reqId):
+      2 DEMS-LIVE] GET /api/v1/auth/status 200
+      1 DEMS-LIVE] POST /api/v1/pairing/redeem 201
+      1 DEMS-LIVE] GET /api/v1/auth/session 401
+-- 'live.misuse' reports (must be 0): 0
+-- lines with a credential/token in the device JS log (must be 0): 0
+-- Metro bundle/error lines:
+   Android Bundled 2769ms node_modules/expo-router/entry.js (6122 modules)
+   Android Bundled 49ms node_modules/expo-router/entry.js (1 module)
+-- display at the end: 1080x2424
+-- lock state (end of the commands; read-only):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: PIN
+   fingerprints enrolled: "count":1
+host-17 tcp:8081 tcp:8083
+host-17 tcp:4400 tcp:4400
+host-17 tcp:4420 tcp:4421
+
+[device-session phone 16:33:39] Metro 47073 stopped
+[device-session phone 16:33:39] session ended with status 3
+device session exit=3
+
+== 16:33:39 5. the backend's request log during the device session (by route/status/principal)
+      1 GET /api/v1/auth/session 401 principal=null
+      1 GET /api/v1/auth/status 200 principal=device
+      1 GET /api/v1/auth/status 200 principal=null
+      1 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/code 200 principal=operator
+      1 GET /api/v1/pairing/devices 200 principal=operator
+      2 POST /api/v1/auth/sign-in 200 principal=null
+      2 POST /api/v1/auth/sign-out 204 principal=operator
+      1 POST /api/v1/pairing/code 201 principal=operator
+      1 POST /api/v1/pairing/redeem 201 principal=null
+-- socket lines:
+   {"level":30,"connectionId":"c0dfd59e-bdb9-45d2-be46-505bd2c477cd","principal":null,"kind":"ANONYMOUS","msg":"socket opened"}
+   {"level":30,"connectionId":"c0dfd59e-bdb9-45d2-be46-505bd2c477cd","code":1000,"closedBy":"peer","principal":null,"durationMs":33894,"msg":"socket closed"}
+   {"level":30,"connectionId":"b0bfc919-cabd-4e92-957b-3dd1268bffa8","principal":"device:DEV-0001","kind":"DEVICE","msg":"socket opened"}
+   {"level":30,"connectionId":"b0bfc919-cabd-4e92-957b-3dd1268bffa8","code":1006,"closedBy":"peer","principal":"device:DEV-0001","durationMs":53065,"msg":"socket closed"}
+-- bearer/cookie/credential lines in the server log this run (must be 0): 0
+
+== 16:33:39 6. stop the backend and check nothing is left
+   {"level":30,"time":1791192819969,"pid":46970,"drained":true,"abandoned":0,"completed":2422,"failed":0,"timedOut":0,"refused":0,"msg":"pipeline closed"}
+   {"level":30,"time":1791192819969,"pid":46970,"part":"database","ready":false,"msg":"readiness changed"}
+   {"level":30,"time":1791192819969,"pid":46970,"msg":"shutdown complete"}
+lsof exit 1 (1 = no listener on 4421 or 8083)
+process 46970 is gone
+
+== 16:33:40 7. dems_lane_1 after the check (backend stopped; the phone is now paired with it)
+   audit_log                92
+   biometric_tokens         0
+   device_credentials       1
+   paired_devices           1
+   pairing_codes            1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 16:33:40 end of run w60x163133

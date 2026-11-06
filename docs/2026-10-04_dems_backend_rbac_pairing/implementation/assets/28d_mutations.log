@@ -1,0 +1,14 @@
+# Step c of plan row W28 (finding CPS1-3): 12 mutations of the new logic, through a load-time transform (no file of the tree was changed).
+# 2026-10-04 19:45:09 to 2026-10-04 19:47:23 WIB. Base under the harness, no mutation: unit 9 files / 170 tests, db 4 files / 121 tests, both exit 0 (19:44:27 to 19:44:32).
+C01 | the condition DEVICE_CREDENTIAL is looked at and never refuses (the case is empty) | unit: Tests 9 failed | 161 passed (170) | db: Tests 6 failed | 115 passed (121)
+C02 | an operator on a device holds the condition | unit: Tests 9 failed | 161 passed (170) | db: Tests 6 failed | 115 passed (121)
+C03 | the condition is turned round: the device is refused, the operator's session passes | unit: Tests 10 failed | 160 passed (170) | db: Tests 6 failed | 115 passed (121)
+C04 | a condition without a case is passed over | unit: Tests 1 failed | 169 passed (170) | db: Tests 121 passed (121)
+C05 | DEVICE_CREDENTIAL has no case (it reaches the default) | unit: Tests 13 failed | 157 passed (170) | db: Tests 6 failed | 115 passed (121)
+C06 | the answer of the condition carries no reason | unit: Tests 2 failed | 168 passed (170) | db: Tests 2 failed | 119 passed (121)
+C07 | the answer of the condition has the text of the marker's refusal | unit: Tests 2 failed | 168 passed (170) | db: Tests 1 failed | 120 passed (121)
+C08 | a web console session gets the reason too | unit: Tests 3 failed | 167 passed (170) | db: Tests 1 failed | 120 passed (121)
+C09 | the answer of the condition has another code | unit: Tests 2 failed | 168 passed (170) | db: Tests 3 failed | 118 passed (121)
+C10 | the refusal of the condition writes a row and takes a place in the denial budget | unit: Tests 3 failed | 167 passed (170) | db: Tests 3 failed | 118 passed (121)
+C11 | the log line names what refused under the key cause again | unit: Tests 2 failed | 168 passed (170) | db: Tests 3 failed | 118 passed (121)
+C12 | the log line does not say what refused | unit: Tests 2 failed | 168 passed (170) | db: Tests 3 failed | 118 passed (121)

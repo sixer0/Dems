@@ -1,0 +1,7 @@
+10:13:06.813 tap 95,224
+10:13:08.314 slept 1500 ms
+10:13:10.364 screencap 37a_header_back_dialog.png 10:13:10.364..10:13:18.657
+10:13:19.685 tap 539,1380
+10:13:21.759 slept 6000 ms
+10:13:27.947 screencap 37b_after_go_home_header_path.png 10:13:27.947..10:13:31.084
+10:13:31.639 mCurrentFocus=Window{5b196b2 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false

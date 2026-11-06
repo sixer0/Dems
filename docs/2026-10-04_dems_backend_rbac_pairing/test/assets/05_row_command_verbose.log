@@ -1,0 +1,292 @@
+## 2026-10-04 19:15:00 WIB $ DEMS_TEST_STEP=71 npm run test:db -w @dems/core-server -- test/acceptance/shared-state.test.ts --reporter=verbose
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db test/acceptance/shared-state.test.ts --reporter=verbose
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_71_tmdu10xb_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_71_tmdu10xb_tpl_schema: built in 142 ms (create 54 ms, hook 85 ms)
+[test:db] template dems_test_step_71_tmdu10xb_tpl_seed: built in 215 ms (create 73 ms, hook 141 ms)
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: A and B took the snapshot: engine 1/7; digests A 3e8be8f0c514, B 3e8be8f0c514, engine 3e8be8f0c514; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: createSession: engine 1/8; digests A 83fb347bb1ca, B 83fb347bb1ca, engine 83fb347bb1ca; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: createSession: answered 201 with 1/8 (before: 1/7); the effect is in the delta of revision 8; A's store showed it when the action settled; B got every delta up to 8
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: beginPrecheck: engine 1/9; digests A 3c62fb8978f9, B 3c62fb8978f9, engine 3c62fb8978f9; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: beginPrecheck: answered 202 with 1/9 (before: 1/8); the effect is in the delta of revision 9; A's store showed it when the action settled; B got every delta up to 9
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: the pre-check ran (5 s of the engine): engine 1/21; digests A edd7504f0df7, B edd7504f0df7, engine edd7504f0df7; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: startRecording: engine 1/22; digests A 98534699f110, B 98534699f110, engine 98534699f110; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: startRecording: answered 200 with 1/22 (before: 1/21); the effect is in the delta of revision 22; A's store showed it when the action settled; B got every delta up to 22
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: recording (2 s of the engine): engine 1/24; digests A 28f61c828954, B 28f61c828954, engine 28f61c828954; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: addMarker: engine 1/25; digests A 7ab082be1c15, B 7ab082be1c15, engine 7ab082be1c15; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: addMarker: answered 204 with 1/25 (before: 1/24); the effect is in the delta of revision 25; A's store showed it when the action settled; B got every delta up to 25
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: stopRecording: engine 1/26; digests A 908852d4a30f, B 908852d4a30f, engine 908852d4a30f; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: stopRecording: answered 202 with 1/26 (before: 1/25); the effect is in the delta of revision 26; A's store showed it when the action settled; B got every delta up to 26
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: finalised and sealed (20 s of the engine): engine 1/53; digests A 26f6392b2953, B 26f6392b2953, engine 26f6392b2953; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: drop: B at 1/53; the server destroyed the stream of its socket (no close frame); new connections of B are refused; B's link OFFLINE +1 ms
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: acknowledgeSummary (B is away): engine 1/54; digests A 5c6bef7db381, engine 5c6bef7db381; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: acknowledgeSummary (B is away): answered 204 with 1/54 (before: 1/53); the effect is in the delta of revision 54; A's store showed it when the action settled
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: createSession, the second (B is away): engine 1/55; digests A 73284d64af2d, engine 73284d64af2d; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: createSession, the second (B is away): answered 201 with 1/55 (before: 1/54); the effect is in the delta of revision 55; A's store showed it when the action settled
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: while B is away: A ran two commands, the engine is at 1/55; B holds 1/53 and is behind in 5 slice(s): meta, session, lastSealedAcknowledged, events, audit
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: B is back: engine 1/55; digests A 73284d64af2d, B 73284d64af2d, engine 73284d64af2d; 28 of 28 slices equal (waited 4 turn(s) for B)
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: resync by reconnect: network restored +19 ms; 0 attempt(s) of B were refused while it was down; B's socket #3 synced +524 ms with a snapshot at 1/55; one GET /api/v1/auth/session; B's store equal to the engine +548 ms
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: a fresh client C joined: B = C = engine: engine 1/55; digests A 73284d64af2d, B 73284d64af2d, C 73284d64af2d, engine 73284d64af2d; 28 of 28 slices equal (waited 0 turn(s) for C)
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: B asked for a resync: B = C = engine: engine 1/55; digests A 73284d64af2d, B 73284d64af2d, C 73284d64af2d, engine 73284d64af2d; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: C's role changed: A = B = C = engine: engine 1/57; digests A 1c6b9803852f, B 1c6b9803852f, C 1c6b9803852f, engine 1c6b9803852f; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: B signed out: A = C = engine: engine 1/58; digests A 76e239aab744, C 76e239aab744, engine 76e239aab744; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: every frame validated against the contract's union: 1395 frames (3334091 bytes) on 9 sockets, 0 refused; 0 out of sequence; 0 forbidden
+[w49] (i) web + web: received by anonymous over 1 socket(s) (ANONYMOUS): {"hello":1,"heartbeat":45}
+[w49] (i) web + web: received by A over 2 socket(s) (ANONYMOUS → OPERATOR): {"hello":2,"heartbeat":46,"snapshot":1,"delta":55,"meters":540}
+[w49] (i) web + web: received by B over 4 socket(s) (ANONYMOUS → OPERATOR → OPERATOR → ANONYMOUS): {"hello":4,"heartbeat":44,"snapshot":3,"delta":52,"meters":540,"session.ended":1,"admin.changed":4}
+[w49] (i) web + web: received by link over 1 socket(s) (DEVICE): {"hello":1,"heartbeat":45}
+[w49] (i) web + web: received by C over 1 socket(s) (OPERATOR): {"hello":1,"heartbeat":5,"snapshot":1,"delta":3,"session.updated":1}
+[w49] (i) web + web: reports of the Live sources: {"A":[],"B":[],"C":[]}
+[w49] (i) web + web: relay: {"accepted":6,"refused":0,"destroyedByCut":0}; hub: {"healed":0,"slowConsumers":0,"refusedByCap":0}
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (i) web + web: closed: no listener, no socket; +1038 ms
+
+ ✓ |db| test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (i) web + web > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid 1139ms
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: A and B took the snapshot: engine 1/7; digests A 3337b7c87bec, B 3337b7c87bec, engine 3337b7c87bec; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: createSession: engine 1/8; digests A 42b5da4fb065, B 42b5da4fb065, engine 42b5da4fb065; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: createSession: answered 201 with 1/8 (before: 1/7); the effect is in the delta of revision 8; A's store showed it when the action settled; B got every delta up to 8
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: beginPrecheck: engine 1/9; digests A feca665fc844, B feca665fc844, engine feca665fc844; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: beginPrecheck: answered 202 with 1/9 (before: 1/8); the effect is in the delta of revision 9; A's store showed it when the action settled; B got every delta up to 9
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: the pre-check ran (5 s of the engine): engine 1/21; digests A 800a500b4089, B 800a500b4089, engine 800a500b4089; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: startRecording: engine 1/22; digests A 64d1e0b7cbec, B 64d1e0b7cbec, engine 64d1e0b7cbec; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: startRecording: answered 200 with 1/22 (before: 1/21); the effect is in the delta of revision 22; A's store showed it when the action settled; B got every delta up to 22
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: recording (2 s of the engine): engine 1/24; digests A 1822eaf621f5, B 1822eaf621f5, engine 1822eaf621f5; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: addMarker: engine 1/25; digests A 28d72795a5f7, B 28d72795a5f7, engine 28d72795a5f7; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: addMarker: answered 204 with 1/25 (before: 1/24); the effect is in the delta of revision 25; A's store showed it when the action settled; B got every delta up to 25
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: stopRecording: engine 1/26; digests A 758faba699d2, B 758faba699d2, engine 758faba699d2; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: stopRecording: answered 202 with 1/26 (before: 1/25); the effect is in the delta of revision 26; A's store showed it when the action settled; B got every delta up to 26
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: finalised and sealed (20 s of the engine): engine 1/53; digests A 1325faf3df09, B 1325faf3df09, engine 1325faf3df09; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: drop: B at 1/53; the network between the tablet and the Core was cut (both TCP legs destroyed, new connections refused); B's link OFFLINE +1 ms
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: acknowledgeSummary (B is away): engine 1/54; digests A fbfadda9afd7, engine fbfadda9afd7; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: acknowledgeSummary (B is away): answered 204 with 1/54 (before: 1/53); the effect is in the delta of revision 54; A's store showed it when the action settled
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: the Core link went OFFLINE (B is away): engine 1/59; digests A 810541d97378, engine 810541d97378; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: while B is away: its first reconnect attempt was refused +544 ms
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: createSession, the second (B is away): engine 1/60; digests A 367e4143d8a0, engine 367e4143d8a0; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: createSession, the second (B is away): answered 201 with 1/60 (before: 1/59); the effect is in the delta of revision 60; A's store showed it when the action settled
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: while B is away: A ran two commands, the engine is at 1/60; B holds 1/53 and is behind in 11 slice(s): meta, tabletLink, session, lastSealedAcknowledged, storage, time, network, health, otherDevices, events, audit
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: B is back: engine 1/61; digests A cc6b2052c623, B cc6b2052c623, engine cc6b2052c623; 28 of 28 slices equal (waited 2 turn(s) for B)
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: resync by reconnect: network restored +562 ms; 1 attempt(s) of B were refused while it was down; B's socket #4 synced +1729 ms with a snapshot at 1/60; one GET /api/v1/auth/session; B's store equal to the engine +1760 ms
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: a fresh client C joined: B = C = engine: engine 1/61; digests A cc6b2052c623, B cc6b2052c623, C cc6b2052c623, engine cc6b2052c623; 28 of 28 slices equal (waited 0 turn(s) for C)
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: B asked for a resync: B = C = engine: engine 1/61; digests A cc6b2052c623, B cc6b2052c623, C cc6b2052c623, engine cc6b2052c623; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: C's role changed: A = B = C = engine: engine 1/63; digests A 677a5d73c1b2, B 677a5d73c1b2, C 677a5d73c1b2, engine 677a5d73c1b2; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: B signed out: A = C = engine: engine 1/64; digests A 3849031d53a1, C 3849031d53a1, engine 3849031d53a1; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: every frame validated against the contract's union: 1471 frames (3556808 bytes) on 9 sockets, 0 refused; 0 out of sequence; 0 forbidden
+[w49] (ii) web + tablet: received by anonymous over 1 socket(s) (ANONYMOUS): {"hello":1,"heartbeat":53}
+[w49] (ii) web + tablet: received by A over 2 socket(s) (ANONYMOUS → OPERATOR): {"hello":2,"heartbeat":54,"snapshot":1,"delta":61,"meters":645}
+[w49] (ii) web + tablet: received by B over 5 socket(s) (DEVICE → OPERATOR → refused → OPERATOR → DEVICE): {"hello":4,"heartbeat":44,"snapshot":3,"delta":50,"meters":540,"session.ended":1,"admin.changed":1}
+[w49] (ii) web + tablet: received by C over 1 socket(s) (OPERATOR): {"hello":1,"heartbeat":5,"snapshot":1,"delta":3,"session.updated":1}
+[w49] (ii) web + tablet: reports of the Live sources: {"A":[],"B":[],"C":[]}
+[w49] (ii) web + tablet: relay: {"accepted":7,"refused":1,"destroyedByCut":3}; hub: {"healed":0,"slowConsumers":0,"refusedByCap":0}
+
+stdout | test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid
+[w49] (ii) web + tablet: closed: no listener, no socket; +2359 ms
+
+ ✓ |db| test/acceptance/shared-state.test.ts > SC3, AC-B-44 to AC-B-47: two clients on one Core, (ii) web + tablet > equal after every step; B dropped, back and equal to a fresh client; an explicit resync; every frame valid 2469ms
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > the engine stops and starts again: both clients are sent a snapshot of the new epoch without asking, and continue equal
+[w49] new epoch: A and B took the snapshot: engine 1/2; digests A cc848dfb9697, B cc848dfb9697, engine cc848dfb9697; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > the engine stops and starts again: both clients are sent a snapshot of the new epoch without asking, and continue equal
+[w49] new epoch: createSession: engine 1/3; digests A 36a43f054fb2, B 36a43f054fb2, engine 36a43f054fb2; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > the engine stops and starts again: both clients are sent a snapshot of the new epoch without asking, and continue equal
+[w49] new epoch: createSession: answered 201 with 1/3 (before: 1/2); the effect is in the delta of revision 3; A's store showed it when the action settled; B got every delta up to 3
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > the engine stops and starts again: both clients are sent a snapshot of the new epoch without asking, and continue equal
+[w49] new epoch: the engine started again: A = B = engine: engine 2/0; digests A 91f746c2bbc4, B 91f746c2bbc4, engine 91f746c2bbc4; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > the engine stops and starts again: both clients are sent a snapshot of the new epoch without asking, and continue equal
+[w49] new epoch: beginPrecheck, in the new epoch: engine 2/1; digests A 0a8c9769ef62, B 0a8c9769ef62, engine 0a8c9769ef62; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > the engine stops and starts again: both clients are sent a snapshot of the new epoch without asking, and continue equal
+[w49] new epoch: beginPrecheck, in the new epoch: answered 202 with 2/1 (before: 2/0); the effect is in the delta of revision 1; A's store showed it when the action settled; B got every delta up to 1
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > the engine stops and starts again: both clients are sent a snapshot of the new epoch without asking, and continue equal
+[w49] new epoch: every frame validated against the contract's union: 27 frames (506875 bytes) on 4 sockets, 0 refused; 0 out of sequence; 0 forbidden
+[w49] new epoch: received by A over 2 socket(s) (ANONYMOUS → OPERATOR): {"hello":2,"heartbeat":7,"snapshot":2,"delta":3}
+[w49] new epoch: received by B over 2 socket(s) (ANONYMOUS → OPERATOR): {"hello":2,"heartbeat":7,"snapshot":2,"delta":2}
+
+ ✓ |db| test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > the engine stops and starts again: both clients are sent a snapshot of the new epoch without asking, and continue equal 343ms
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > a real demo reset through the demo route: the snapshot of the new epoch and the session.updated of the operator whose role the seed put back arrive, and both clients continue equal
+[w49] demo reset: A and B took the snapshot: engine 1/2; digests A cc848dfb9697, B cc848dfb9697, engine cc848dfb9697; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > a real demo reset through the demo route: the snapshot of the new epoch and the session.updated of the operator whose role the seed put back arrive, and both clients continue equal
+[w49] demo reset: A's role changed to TECHNICIAN: engine 1/4; digests A 7dc67f0500a2, B 7dc67f0500a2, engine 7dc67f0500a2; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > a real demo reset through the demo route: the snapshot of the new epoch and the session.updated of the operator whose role the seed put back arrive, and both clients continue equal
+[w49] demo reset: createSession (by B): engine 1/5; digests B eab9787c6d41, A eab9787c6d41, engine eab9787c6d41; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > a real demo reset through the demo route: the snapshot of the new epoch and the session.updated of the operator whose role the seed put back arrive, and both clients continue equal
+[w49] demo reset: createSession (by B): answered 201 with 1/5 (before: 1/4); the effect is in the delta of revision 5; B's store showed it when the action settled; A got every delta up to 5
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > a real demo reset through the demo route: the snapshot of the new epoch and the session.updated of the operator whose role the seed put back arrive, and both clients continue equal
+[w49] demo reset: after the demo reset: A = B = engine: engine 2/1; digests A cbb0c75a7e93, B cbb0c75a7e93, engine cbb0c75a7e93; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > a real demo reset through the demo route: the snapshot of the new epoch and the session.updated of the operator whose role the seed put back arrive, and both clients continue equal
+[w49] demo reset: the Core link: CONNECTED in the snapshot of the new epoch, OFFLINE at 2/1 (recomputed from the open sockets at the channel's pace step)
+[w49] demo reset: the reset was answered 200 after 963 ms; epoch 1 → 2; A was told session.updated twice (TECHNICIAN, then INVESTIGATOR), B never; A's socket since: snapshot 2/0; delta 2/1 (replace meta, append events [TABLET_DISCONNECTED], append audit [TABLET_LINK_CHANGED], replace tabletLink, replace otherDevices)
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > a real demo reset through the demo route: the snapshot of the new epoch and the session.updated of the operator whose role the seed put back arrive, and both clients continue equal
+[w49] demo reset: createSession, after the reset (by A): engine 2/2; digests A 507996ce0ed5, B 507996ce0ed5, engine 507996ce0ed5; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > a real demo reset through the demo route: the snapshot of the new epoch and the session.updated of the operator whose role the seed put back arrive, and both clients continue equal
+[w49] demo reset: createSession, after the reset (by A): answered 201 with 2/2 (before: 2/1); the effect is in the delta of revision 2; A's store showed it when the action settled; B got every delta up to 2
+
+stdout | test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > a real demo reset through the demo route: the snapshot of the new epoch and the session.updated of the operator whose role the seed put back arrive, and both clients continue equal
+[w49] demo reset: every frame validated against the contract's union: 41 frames (506832 bytes) on 4 sockets, 0 refused; 0 out of sequence; 0 forbidden
+[w49] demo reset: received by A over 2 socket(s) (ANONYMOUS → OPERATOR): {"hello":2,"heartbeat":9,"snapshot":2,"delta":6,"session.updated":2}
+[w49] demo reset: received by B over 2 socket(s) (ANONYMOUS → OPERATOR): {"hello":2,"heartbeat":9,"snapshot":2,"delta":5,"admin.changed":2}
+
+ ✓ |db| test/acceptance/shared-state.test.ts > RT-7, a new epoch under the same listener > a real demo reset through the demo route: the snapshot of the new epoch and the session.updated of the operator whose role the seed put back arrive, and both clients continue equal 1298ms
+stdout | test/acceptance/shared-state.test.ts > can the assertions fail? > the deltas of one command withheld on their way to B: the equality assertion is red; B meets the gap at the next delta, resyncs, and it is green
+[w49] withheld delta: A and B took the snapshot: engine 1/2; digests A cc848dfb9697, B cc848dfb9697, engine cc848dfb9697; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > can the assertions fail? > the deltas of one command withheld on their way to B: the equality assertion is red; B meets the gap at the next delta, resyncs, and it is green
+[w49] withheld delta: red, as it must be: B: its socket client is at 1/2, the engine at 1/3 | B: slices of its store that differ from app.engine.state() at 1/3: meta, session, events, audit | B: the frames it was handed end at 1/2, the engine at 1/3
+
+stdout | test/acceptance/shared-state.test.ts > can the assertions fail? > the deltas of one command withheld on their way to B: the equality assertion is red; B meets the gap at the next delta, resyncs, and it is green
+[w49] withheld delta: B met the gap and resynchronised: A = B = engine: engine 1/4; digests A 3d904183caf2, B 3d904183caf2, engine 3d904183caf2; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > can the assertions fail? > the deltas of one command withheld on their way to B: the equality assertion is red; B meets the gap at the next delta, resyncs, and it is green
+[w49] withheld delta: green after the resync: B's socket was sent snapshot 1/2, delta 1/3 (withheld), delta 1/4, snapshot 1/4
+[w49] withheld delta: red, as they must be: A #2 frame 5 (delta) 1/3: does not continue 1/1 | A #1 frame 2 (delta): never sent to a socket of principal ANONYMOUS | A #1 frame 2 (delta): the socket was not given the topic state
+
+ ✓ |db| test/acceptance/shared-state.test.ts > can the assertions fail? > the deltas of one command withheld on their way to B: the equality assertion is red; B meets the gap at the next delta, resyncs, and it is green 305ms
+stdout | test/acceptance/shared-state.test.ts > can the assertions fail? > frames the test makes itself: a member the contract does not name, a slice that never travels, a value like a credential; each assertion about frames is red, and the client drops them
+[w49] frames of the test: A took the snapshot: engine 1/1; digests A 06c220da5faf, engine 06c220da5faf; 28 of 28 slices equal
+
+stdout | test/acceptance/shared-state.test.ts > can the assertions fail? > frames the test makes itself: a member the contract does not name, a slice that never travels, a value like a credential; each assertion about frames is red, and the client drops them
+[w49] frames of the test: red, as it must be: A #2 frame 4 (admin.changed): admin.changed: unrecognized_keys [rows] at (the message); the socket client counted 1 invalid frame
+[w49] frames of the test: the union alone does not refuse an unknown member of a heartbeat; the test's own rule does: A #2 frame 5 (heartbeat): members clients, extra, intervalMs, seq, serverTime, sessionState, type, uptimeMs, v
+[w49] frames of the test: red, as they must be: 3 frames refused by the union; A #2 frame 7 (admin.changed): holds what looks like a credential (token)
+
+stdout | test/acceptance/shared-state.test.ts
+[w49] durations: (i) web + web 1138 ms; (ii) web + tablet 2469 ms; new epoch 343 ms; demo reset 1297 ms; withheld delta 304 ms; frames of the test 212 ms
+
+ ✓ |db| test/acceptance/shared-state.test.ts > can the assertions fail? > frames the test makes itself: a member the contract does not name, a slice that never travels, a value like a credential; each assertion about frames is red, and the client drops them 212ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  19:15:00
+   Duration  8.83s (tests 81%, transform 13%, import 6%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 128 ms; 0 remain with the run prefix dems_test_step_71_tmdu10xb_
+exit=0
+## ended 19:15:09

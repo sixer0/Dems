@@ -1,0 +1,128 @@
+// Mutation check of plan row W37 (storage and network-time modules). Run from the repository root:
+//   node <this file> [unit|db] [id,id,...]
+// For each mutation: the file is changed in ONE place, the tests of the two folders run, the file
+// is put back byte for byte (checked by hash), and the outcome is printed. A mutation that the
+// tests do not detect is reported as SURVIVED.
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const ROOT = '/Users/gsp-budi/Documents/DEMS';
+const SRC = `${ROOT}/apps/core-server/src/modules`;
+const STORAGE = `${SRC}/storage/index.ts`;
+const STATUS = `${SRC}/storage/status.ts`;
+const POLICY = `${SRC}/storage/policy.ts`;
+const NETWORK_TIME = `${SRC}/network-time/index.ts`;
+
+const COMMAND = `const { epoch, revision } = await app.engine.command(request.principal, STORAGE_POLICY_ACTION, policyPatchOf(request.body));`;
+
+const MUTATIONS = [
+  // ── storage/index.ts ──
+  { id: 'M01', file: STORAGE, what: '53 answers the raw state instead of the summary', find: `storageStatusOf(app.engine.state())`, replace: `(app.engine.state() as never)` },
+  { id: 'M02', file: STORAGE, what: '54 answers a policy that is not the committed one', find: `return { storage, storagePolicy };`, replace: `return { storage, storagePolicy: { ...storagePolicy, retentionDays: storagePolicy.retentionDays + 1 } };` },
+  { id: 'M03', file: STORAGE, what: '54 reads the state twice (two slices of two states)', find: `const { storage, storagePolicy } = app.engine.state();`, replace: `const storage = app.engine.slice('storage'); const storagePolicy = app.engine.slice('storagePolicy');` },
+  { id: 'M04', file: STORAGE, what: '55 does not run the hosted action', find: COMMAND, replace: `const { epoch, revision } = app.engine;` },
+  { id: 'M05', file: STORAGE, what: '55 swaps the two headers', find: `reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision)`, replace: `reply.header(EPOCH_HEADER_NAME, revision).header(REVISION_HEADER_NAME, epoch)` },
+  { id: 'M06', file: STORAGE, what: '55 sets no header', find: `      void reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision);\n`, replace: `      void epoch; void revision; void reply;\n` },
+  { id: 'M07', file: STORAGE, what: '55 takes the revision from the engine before the command, not from the outcome', find: COMMAND, replace: `const { epoch, revision } = app.engine; await app.engine.command(request.principal, STORAGE_POLICY_ACTION, policyPatchOf(request.body));` },
+  { id: 'M08', file: STORAGE, what: '55 passes a copy of the principal, not the principal as it is', find: `app.engine.command(request.principal, STORAGE_POLICY_ACTION`, replace: `app.engine.command({ ...request.principal }, STORAGE_POLICY_ACTION` },
+  { id: 'M09', file: STORAGE, what: '55 passes the whole body, not the patch', find: `policyPatchOf(request.body));`, replace: `request.body as never);` },
+  { id: 'M10', file: STORAGE, what: '55 answers the policy it read BEFORE the command', find: COMMAND, replace: `const stale = app.engine.slice('storagePolicy'); ${COMMAND}`, also: [{ find: `return committed;`, replace: `return stale;` }] },
+  { id: 'M11', file: STORAGE, what: '55 answers the body merged over the policy instead of the committed slice', find: `return committed;`, replace: `return { ...committed, ...policyPatchOf(request.body) } as never;` },
+  { id: 'M47', file: STORAGE, what: '55 sets the two headers before it reads the committed slice (a 503 after the commit would carry them)', find: `      const committed = app.engine.slice('storagePolicy');\n      void reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision);\n`, replace: `      void reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision);\n      const committed = app.engine.slice('storagePolicy');\n` },
+  { id: 'M12', file: STORAGE, what: '55 runs another hosted action', find: `export const STORAGE_POLICY_ACTION = 'setStoragePolicy';`, replace: `export const STORAGE_POLICY_ACTION = 'restartServices' as 'setStoragePolicy';` },
+  { id: 'M13', file: STORAGE, what: '55 has no body schema (stage 7 validates nothing)', find: `schema: { body: StoragePolicyRequestSchema, response: { 200: StoragePolicySliceSchema } },`, replace: `schema: { response: { 200: StoragePolicySliceSchema } },` },
+  { id: 'M14', file: STORAGE, what: '55 checks a role in the handler (a second, unlisted rule)', find: `    handler: async (request, reply): Promise<StoragePolicySliceBody> => {\n`, replace: `    handler: async (request, reply): Promise<StoragePolicySliceBody> => {\n      if (request.principal.kind === 'OPERATOR' && request.principal.role === 'TECHNICIAN') throw new Error('refused');\n` },
+  { id: 'M15', file: STORAGE, what: 'a route carries a hook of its own', find: `    schema: { response: { 200: StorageDetailSchema } },\n`, replace: `    schema: { response: { 200: StorageDetailSchema } },\n    onRequest: async () => undefined,\n` },
+  { id: 'M16', file: STORAGE, what: '53 and 54 are registered under each other\'s registry entry', find: `routeOfOperation(registryEntry('getStorageStatus'))`, replace: `routeOfOperation(registryEntry('getStorageDetail'))`, also: [{ find: `...routeOfOperation(registryEntry('getStorageDetail')),\n    schema: { response: { 200: StorageDetailSchema } },`, replace: `...routeOfOperation(registryEntry('getStorageStatus')),\n    schema: { response: { 200: StorageDetailSchema } },` }] },
+  { id: 'M17', file: STORAGE, what: '53 has a response schema of its own, not the registry\'s', find: `schema: { response: { 200: StorageStatusResponseSchema } },`, replace: `schema: { response: { 200: StorageStatusResponseSchema.partial() } },` },
+  { id: 'M18', file: STORAGE, what: '55 catches the engine\'s refusal and answers the old policy', find: COMMAND, replace: `const { epoch, revision } = await app.engine.command(request.principal, STORAGE_POLICY_ACTION, policyPatchOf(request.body)).catch(() => ({ epoch: app.engine.epoch, revision: app.engine.revision }));` },
+  // ── storage/status.ts ──
+  { id: 'M19', file: STATUS, what: 'the percentage is not rounded', find: `usedPercent: summary.usedPercent,`, replace: `usedPercent: summary.usedRatioPercent,` },
+  { id: 'M20', file: STATUS, what: 'the remaining time is not rounded', find: `estimatedRemainingMs: Math.round(summary.estimatedRemainingMs),`, replace: `estimatedRemainingMs: summary.estimatedRemainingMs,` },
+  { id: 'M21', file: STATUS, what: 'free bytes are the total', find: `freeBytes: summary.freeBytes,`, replace: `freeBytes: summary.totalBytes,` },
+  { id: 'M22', file: STATUS, what: 'the state is always READY', find: `state: summary.state,`, replace: `state: 'READY',` },
+  { id: 'M23', file: STATUS, what: 'the write rate is 0', find: `writeBytesPerSec: storage.writeBytesPerSec,`, replace: `writeBytesPerSec: 0,` },
+  { id: 'M24', file: STATUS, what: 'the bitrate is the write rate', find: `bitrateMbps: storage.bitrateMbps,`, replace: `bitrateMbps: storage.writeBytesPerSec,` },
+  { id: 'M25', file: STATUS, what: 'the volumes are the slice\'s own objects', find: `volumes: storage.volumes.map((volume) => ({\n      id: volume.id,\n      kind: volume.kind,\n      label: volume.label,\n      totalBytes: volume.totalBytes,\n      usedBytes: volume.usedBytes,\n    })),`, replace: `volumes: storage.volumes,` },
+  { id: 'M26', file: STATUS, what: 'a volume\'s used bytes are its total', find: `usedBytes: volume.usedBytes,`, replace: `usedBytes: volume.totalBytes,` },
+  { id: 'M27', file: STATUS, what: 'the retention days are a constant', find: `days: storagePolicy.retentionDays,`, replace: `days: 90,` },
+  { id: 'M28', file: STATUS, what: 'the automatic archive is inverted', find: `autoArchive: storagePolicy.autoArchive,`, replace: `autoArchive: !storagePolicy.autoArchive,` },
+  { id: 'M29', file: STATUS, what: 'the retention policy is a constant', find: `policy: storagePolicy.retentionPolicy,`, replace: `policy: 'DAYS_90',` },
+  { id: 'M30', file: STATUS, what: 'the totals are the first volume\'s (the system volume)', find: `totalBytes: summary.totalBytes,\n    usedBytes: summary.usedBytes,`, replace: `totalBytes: storage.volumes[0]?.totalBytes ?? 0,\n    usedBytes: storage.volumes[0]?.usedBytes ?? 0,` },
+  // ── storage/policy.ts ──
+  { id: 'M31', file: POLICY, what: '`autoArchive: false` is treated as absent', find: `if (body.autoArchive !== undefined) patch.autoArchive = body.autoArchive;`, replace: `if (body.autoArchive) patch.autoArchive = body.autoArchive;` },
+  { id: 'M32', file: POLICY, what: 'the days are not passed on', find: `  if (body.retentionDays !== undefined) patch.retentionDays = body.retentionDays;\n`, replace: `` },
+  { id: 'M33', file: POLICY, what: 'the policy name is not passed on', find: `  if (body.retentionPolicy !== undefined) patch.retentionPolicy = body.retentionPolicy;\n`, replace: `` },
+  { id: 'M34', file: POLICY, what: 'every member is always a key of the patch', find: `const patch: Partial<StoragePolicy> = {};`, replace: `const patch: Partial<StoragePolicy> = { retentionPolicy: undefined, retentionDays: undefined, autoArchive: undefined };` },
+  { id: 'M35', file: POLICY, what: 'the whole body is the patch', find: `const patch: Partial<StoragePolicy> = {};`, replace: `const patch: Partial<StoragePolicy> = { ...(body as object) };` },
+  // ── network-time/index.ts ──
+  { id: 'M36', file: NETWORK_TIME, what: '56 leaves the tablet link out', find: `return { network, tabletLink };`, replace: `return { network } as never;` },
+  { id: 'M37', file: NETWORK_TIME, what: '56 reads the state twice (two slices of two states)', find: `const { network, tabletLink } = app.engine.state();`, replace: `const network = app.engine.slice('network'); const tabletLink = app.engine.slice('tabletLink');` },
+  { id: 'M38', file: NETWORK_TIME, what: '56 stamps the tablet link with the system time', find: `return { network, tabletLink };`, replace: `return { network, tabletLink: { ...tabletLink, changedAt: Date.now() } };` },
+  { id: 'M39', file: NETWORK_TIME, what: '56 stamps the tablet link with the server clock at the request', find: `return { network, tabletLink };`, replace: `return { network, tabletLink: { ...tabletLink, changedAt: app.clock.now() } };` },
+  { id: 'M40', file: NETWORK_TIME, what: '57 answers the slice without its name', find: `({ time: app.engine.slice('time') })`, replace: `(app.engine.slice('time') as never)` },
+  { id: 'M41', file: NETWORK_TIME, what: '57 stamps the last sync with the system time', find: `({ time: app.engine.slice('time') })`, replace: `({ time: { ...app.engine.slice('time'), lastSyncAt: Date.now() } })` },
+  { id: 'M42', file: NETWORK_TIME, what: '57 answers another slice under the name `time`', find: `({ time: app.engine.slice('time') })`, replace: `({ time: app.engine.slice('network') as never })` },
+  { id: 'M43', file: NETWORK_TIME, what: '56 and 57 are registered under each other\'s registry entry', find: `routeOfOperation(registryEntry('getNetworkStatus'))`, replace: `routeOfOperation(registryEntry('getTimeStatus'))`, also: [{ find: `...routeOfOperation(registryEntry('getTimeStatus')),\n    schema: { response: { 200: TimeStatusSchema } },`, replace: `...routeOfOperation(registryEntry('getNetworkStatus')),\n    schema: { response: { 200: TimeStatusSchema } },` }] },
+  { id: 'M44', file: NETWORK_TIME, what: '56 reports the link of the host: always up', find: `return { network, tabletLink };`, replace: `return { network: { ...network, linkUp: true }, tabletLink };` },
+  { id: 'M45', file: NETWORK_TIME, what: '57 has a response schema of its own, not the registry\'s', find: `schema: { response: { 200: TimeStatusSchema } },`, replace: `schema: { response: { 200: TimeStatusSchema.partial() } },` },
+  { id: 'M46', file: NETWORK_TIME, what: 'a route reads the caller', find: `    handler: async (): Promise<TimeStatus> => ({ time: app.engine.slice('time') }),`, replace: `    handler: async (request): Promise<TimeStatus> => (request.principal.kind === 'OPERATOR' ? { time: app.engine.slice('time') } : { time: app.engine.slice('time') }),` },
+];
+
+const mode = process.argv[2] === 'db' ? 'db' : 'unit';
+const only = process.argv[3] === undefined ? null : new Set(process.argv[3].split(','));
+const sha = (text) => createHash('sha256').update(text).digest('hex');
+
+function replaceOnce(text, find, replace, id) {
+  const first = text.indexOf(find);
+  if (first < 0) throw new Error(`${id}: the text to change was not found`);
+  if (text.indexOf(find, first + 1) >= 0) throw new Error(`${id}: the text to change occurs more than once`);
+  return text.slice(0, first) + replace + text.slice(first + find.length);
+}
+
+function runTests() {
+  const args = mode === 'db'
+    ? ['run', 'test:db', '-w', '@dems/core-server', '--', '--maxWorkers=2', 'src/modules/storage', 'src/modules/network-time']
+    : ['run', 'test', '-w', '@dems/core-server', '--', '--maxWorkers=2', 'src/modules/storage', 'src/modules/network-time'];
+  const result = spawnSync('npm', args, { cwd: ROOT, encoding: 'utf8', env: { ...process.env, DEMS_TEST_STEP: '59' }, maxBuffer: 64 * 1024 * 1024 });
+  const output = `${result.stdout}\n${result.stderr}`;
+  const tests = /Tests\s+(?:(\d+) failed \| )?(\d+) passed/.exec(output);
+  const files = [...new Set([...output.matchAll(/FAIL\s+\|(?:unit|db)\|\s+(\S+?)(?:\s|$)/g)].map((match) => match[1].replace('src/modules/', '')))];
+  return { status: result.status, failed: Number(tests?.[1] ?? 0), passed: Number(tests?.[2] ?? 0), files, output };
+}
+
+const stamp = () => new Date().toTimeString().slice(0, 8);
+console.log(`[w37 mutation] mode ${mode}; start ${stamp()}`);
+const baseline = runTests();
+console.log(`[w37 mutation] baseline: exit ${baseline.status}, ${baseline.passed} passed, ${baseline.failed} failed`);
+if (baseline.status !== 0) {
+  console.log(baseline.output.slice(-3000));
+  process.exit(2);
+}
+
+let detected = 0;
+let survived = 0;
+for (const mutation of MUTATIONS) {
+  if (only !== null && !only.has(mutation.id)) continue;
+  const original = readFileSync(mutation.file, 'utf8');
+  const hash = sha(original);
+  let mutated = replaceOnce(original, mutation.find, mutation.replace, mutation.id);
+  for (const more of mutation.also ?? []) mutated = replaceOnce(mutated, more.find, more.replace, mutation.id);
+  let outcome;
+  try {
+    writeFileSync(mutation.file, mutated);
+    outcome = runTests();
+  } finally {
+    writeFileSync(mutation.file, original);
+  }
+  if (sha(readFileSync(mutation.file, 'utf8')) !== hash) throw new Error(`${mutation.id}: the file was not restored`);
+  const killed = outcome.status !== 0;
+  if (killed) detected += 1;
+  else survived += 1;
+  const where = mutation.file.replace(`${SRC}/`, '');
+  console.log(`[w37 mutation] ${mutation.id} ${killed ? 'DETECTED' : 'SURVIVED'} ${where}: ${mutation.what} -> ${outcome.failed} failed in ${outcome.files.join(', ') || '(no test file named)'}`);
+  if (killed && outcome.failed === 0) console.log(outcome.output.split('\n').filter((line) => /Error|error/.test(line)).slice(0, 4).join('\n'));
+}
+console.log(`[w37 mutation] end ${stamp()}: ${detected} detected, ${survived} survived of ${detected + survived}`);
+process.exit(survived === 0 ? 0 : 1);

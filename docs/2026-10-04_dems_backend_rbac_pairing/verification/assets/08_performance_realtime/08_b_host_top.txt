@@ -1,0 +1,14 @@
+10:09:05
+10:09  up 5 days, 17:22, 2 users, load averages: 5.16 5.13 5.31
+ %CPU    RSS COMM
+149.5 2426624 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64
+ 99.6 2138064 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64
+ 98.2 124800 /Users/gsp-budi/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell
+ 43.6 688272 /Users/gsp-budi/.vscode/extensions/kilocode.kilo-code-7.8.3-darwin-arm64/bin/kilo
+ 18.3  52928 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+ 13.6 376464 /Users/gsp-budi/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell
+ 10.1 456400 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64
+  8.8   3472 /usr/sbin/notifyd
+  8.3  19440 /System/Library/ExtensionKit/Extensions/WallpaperAerialsExtension.appex/Contents/MacOS/WallpaperAerialsExtension
+  6.1   9648 /usr/libexec/dasd
+  4.8  57296 /Applications/Stats.app/Contents/MacOS/Stats

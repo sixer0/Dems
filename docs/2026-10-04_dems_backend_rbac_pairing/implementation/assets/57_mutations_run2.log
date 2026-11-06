@@ -1,0 +1,41 @@
+## W57 mutation check, 2026-10-04 21:58:14; 6 test files per run; the tree is not edited
+control (no mutation): exit=0 Tests:       66 passed, 66 total (16 s)
+F13 DETECTED  use-pairing-flow.ts: Pair is open while the Core is unreachable -> 1 failing; first: no judgement of the code: the error form (§9.4 "failed, error form") › the link drops between Pair and `commitAt`: nothing is sent, and th (14 s)
+F27 DETECTED  use-pairing-flow.ts: Simulated mode maps a thrown error through the Live table -> 1 failing; first: SIMULATED mode, where the existing tests do not reach: a simulator that throws › `pair` throws: the screen's own generic Alert, and the sl (10 s)
+M10 DETECTED  pairing-live-model.ts: retry-after is rounded down -> 1 failing; first: outcomes of a redeem › Retry is paced 3 s, 6 s, 12 s, and withdrawn after the third attempt in a row (2 s)
+M26 DETECTED  pairing-live-model.ts: the wait after a 429 ignores retry-after -> 1 failing; first: outcomes of a redeem › a 429 is a limit, never a wrong code: no count of attempts, and the wait is at least `retry-after` (decision D116) (3 s)
+C01 DETECTED  pairing-code-panel.tsx: the slots stay open while the Core is unreachable -> 1 failing; first: the Core server unreachable (§3.5, §9.4 "offline") › slots disabled, a danger Alert with a paced Retry that reconnects, and no flicker whi (12 s)
+C02 DETECTED  pairing-code-panel.tsx: the code card keeps the Simulated description in LIVE mode -> 1 failing; first: LIVE mode, unpaired: the screen says what is true (decision D124, item a; §3.2, §9.4) › reads LIVE and never "simulated"; shows no Core id (12 s)
+C03 DETECTED  pairing-code-panel.tsx: "Use Simulated mode" is never offered -> 4 failing; first: LIVE mode, unpaired: the screen says what is true (decision D124, item a; §3.2, §9.4) › reads LIVE and never "simulated"; shows no Core id (14 s)
+C04 DETECTED  pairing-code-panel.tsx: an attempt in flight has no Cancel -> 3 failing; first: a correct code (AC-C-75, MP-5, MP-6) › stores the credential, opens the gate and hands off; the marker code is in no storage and no log (S (13 s)
+C05 DETECTED  pairing-code-panel.tsx: no offline Alert -> 2 failing; first: no judgement of the code: the error form (§9.4 "failed, error form") › the link drops between Pair and `commitAt`: nothing is sent, and th (15 s)
+C06 DETECTED  pairing-code-panel.tsx: a limit is drawn as "Code not accepted" -> 1 failing; first: a 429 on redeem is a limit, never a wrong code (decision D116, finding F76) › says "wait", counts no attempt, keeps the code, and Retry op (14 s)
+C07 DETECTED  pairing-code-panel.tsx: Simulated mode gets the LIVE wording of the count -> 1 failing; first: Pairing screen › 3 wrong codes: PAIRING_FAILED rows, attempts left, then the 60 s lockout on the simulator clock (17 s)
+C08 DETECTED  pairing-code-panel.tsx: LIVE mode words the lock's count as attempts left of the code -> 1 failing; first: a refused code (AC-C-76, SR-29) › a wrong code: "Code not accepted" with the lock's count, the slots cleared; never why (14 s)
+C09 DETECTED  pairing-code-panel.tsx: the notice never says that the recording continues -> 1 failing; first: `revoked` while a recording ran (§6.6) › the notice adds that the recording continues on the Core (11 s)
+C10 DETECTED  pairing-code-panel.tsx: the notice says "the recording continues" although nothing recorded -> 1 failing; first: the notices of the gate (§9.4, §6.6) › `revoked`: the Core revoked this tablet while the screen was open (12 s)
+C11 DETECTED  pairing-code-panel.tsx: the paired card keeps the Simulated sentence in LIVE mode -> 1 failing; first: a correct code (AC-C-75, MP-5, MP-6) › stores the credential, opens the gate and hands off; the marker code is in no storage and no log (S (14 s)
+C12 DETECTED  pairing-code-panel.tsx: Simulated mode gets the LIVE wrapper (still without a notice) -> 1 failing; first: SIMULATED mode, where the existing tests do not reach: a simulator that throws › `pair` throws: the screen's own generic Alert, and the sl (10 s)
+C13 DETECTED  pairing-code-panel.tsx: every outage reads the same -> 2 failing; first: the credential is written before the action settles (MP-6) › a credential that cannot be stored: "not available", the code is cleared, and (9 s)
+K09 DETECTED  pairing-connection.tsx: Discover is never in error while the Core is unreachable -> 1 failing; first: the Core server unreachable (§3.5, §9.4 "offline") › slots disabled, a danger Alert with a paced Retry that reconnects, and no flicker whi (9 s)
+S01 DETECTED  pairing-screen.tsx: the back button is drawn while the gate holds -> 2 failing; first: LIVE mode, unpaired: the screen says what is true (decision D124, item a; §3.2, §9.4) › reads LIVE and never "simulated"; shows no Core id (12 s)
+S02 DETECTED  pairing-screen.tsx: a paired tablet in LIVE mode has no back button -> 1 failing; first: unpair on the device (AC-C-80, MP-7) › calls operation 22, deletes the three items and stays on the screen with the notice (10 s)
+S03 DETECTED  pairing-screen.tsx: LIVE mode repeats the notice as a toast -> 1 failing; first: unpair on the device (AC-C-80, MP-7) › calls operation 22, deletes the three items and stays on the screen with the notice (13 s)
+S04 DETECTED  pairing-screen.tsx: a refused unpair is not worded by the presenter in LIVE mode -> 1 failing; first: unpair on the device (AC-C-80, MP-7) › while the link is down it is refused: no request, nothing deleted, the tablet stays PAIRED (13 s)
+S08 DETECTED  pairing-screen.tsx: Simulated mode words a thrown unpair through the LIVE presenter -> 1 failing; first: SIMULATED mode, where the existing tests do not reach: a simulator that throws › `unpair` throws: "Could not unpair. Please try again.", t (11 s)
+S05 DETECTED  pairing-screen.tsx: the header says "simulated in this demo" in LIVE mode (decision D124, item a) -> 4 failing; first: LIVE mode, unpaired: the screen says what is true (decision D124, item a; §3.2, §9.4) › reads LIVE and never "simulated"; shows no Core id (13 s)
+S06 DETECTED  pairing-screen.tsx: the connection card is the Simulated one in LIVE mode -> 12 failing; first: LIVE mode, unpaired: the screen says what is true (decision D124, item a; §3.2, §9.4) › reads LIVE and never "simulated"; shows no Core id (8 s)
+S07 DETECTED  pairing-screen.tsx: the unpair dialog keeps the Simulated text in LIVE mode -> 1 failing; first: unpair on the device (AC-C-80, MP-7) › calls operation 22, deletes the three items and stays on the screen with the notice (13 s)
+U01 DETECTED  unpair-dialog.tsx: Simulated mode gets the LIVE dialog text -> 1 failing; first: SIMULATED mode, where the existing tests do not reach: a simulator that throws › `unpair` throws: "Could not unpair. Please try again.", t (14 s)
+## 27 detected, 0 not detected, 0 errors, of 27
+## the mutated files in the tree, before and after: identical
+   dd4f571cb9d83cf0 same src/features/home/home-screen.tsx
+   2731061247cc0d3d same src/features/pairing/i18n.ts
+   6e80e7f2aac5cd21 same src/features/pairing/pairing-code-panel.tsx
+   79f26125ef734693 same src/features/pairing/pairing-connection.tsx
+   9d6102afec7738cc same src/features/pairing/pairing-live-model.ts
+   30ce8f322a3bd360 same src/features/pairing/pairing-model.ts
+   a16f7a2a4f28c476 same src/features/pairing/pairing-screen.tsx
+   a4d6f1d6f8fbe809 same src/features/pairing/unpair-dialog.tsx
+   b8a6a817b4be87f6 same src/features/pairing/use-pairing-flow.ts
+exit=0

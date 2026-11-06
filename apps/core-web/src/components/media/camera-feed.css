@@ -1,0 +1,39 @@
+/*
+ * CameraFeed standby sweep (step 45b, F45-01). A tile that wants to play but does not hold the
+ * page's one live decode slot keeps its frame and shows a faint warm light band crossing it:
+ * 2.4 s sweep, 4.8 s rest. Only `transform` moves (03_motion_spec §9.2). The animation exists
+ * only while the loop holds an ambient slot (`data-ambient="running"`); otherwise the band rests
+ * off-frame, so a paused loop never leaves a frozen streak. Durations follow
+ * --motion-time-scale (proof mode). Reduced motion never shows standby (videos are paused).
+ */
+.dems-feed-standby {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dems-feed-standby::after {
+  content: "";
+  position: absolute;
+  top: -10%;
+  bottom: -10%;
+  left: 0;
+  width: 40%;
+  background: linear-gradient(100deg, transparent 0%, rgb(255 222 170 / 0.09) 50%, transparent 100%);
+  transform: translateX(-120%);
+}
+
+.dems-feed-standby[data-ambient="running"]::after {
+  animation: dems-feed-standby-sweep calc(7.2s * var(--motion-time-scale, 1)) cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes dems-feed-standby-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  33%,
+  100% {
+    transform: translateX(300%);
+  }
+}

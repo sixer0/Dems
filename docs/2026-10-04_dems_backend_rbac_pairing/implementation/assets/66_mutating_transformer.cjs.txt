@@ -1,0 +1,41 @@
+// W66 mutation check: a jest transformer that changes texts of ONE source file IN MEMORY and hands
+// the result to the app's own transformer (babel-jest with jest-expo's options). Nothing in the
+// tree is edited (rule M15; the method of W51 / W56, `56_mutating_transformer.cjs.txt`). The change
+// comes from the JSON file named by W66_MUT_SPEC:
+//   { "id": "…", "file": "src/runtime/link-notice.ts", "edits": [{ "from": "<occurs exactly once>", "to": "…" }, …] }
+// The edits are applied in order; each `from` must occur exactly once in the text it is applied to.
+const path = require('node:path')
+const fs = require('node:fs')
+const crypto = require('node:crypto')
+const ROOT = '/Users/gsp-budi/Documents/DEMS'
+const APP = path.join(ROOT, 'apps/mobile')
+const babelJest = require(path.join(ROOT, 'node_modules/babel-jest'))
+const { resolveBabelOptions } = require(path.join(ROOT, 'node_modules/jest-expo/src/resolveBabelOptions'))
+const inner = (babelJest.default ?? babelJest).createTransformer(resolveBabelOptions(APP))
+
+const specPath = process.env.W66_MUT_SPEC
+const spec = specPath ? JSON.parse(fs.readFileSync(specPath, 'utf8')) : null
+const target = spec ? path.join(APP, spec.file) : null
+const specHash = spec ? crypto.createHash('sha256').update(JSON.stringify(spec)).digest('hex') : 'none'
+
+function mutate(source, filename) {
+  if (!spec || filename !== target) return source
+  let text = source
+  for (const edit of spec.edits) {
+    const count = text.split(edit.from).length - 1
+    if (count !== 1) throw new Error(`W66 mutation ${spec.id}: a text occurs ${count} times in ${spec.file} (expected exactly 1)`)
+    text = text.replace(edit.from, () => edit.to)
+  }
+  return text
+}
+
+module.exports = {
+  canInstrument: false,
+  process(source, filename, options) {
+    return inner.process(mutate(source, filename), filename, options)
+  },
+  getCacheKey(source, filename, options) {
+    const key = inner.getCacheKey(source, filename, options)
+    return filename === target ? crypto.createHash('sha256').update(key).update(specHash).digest('hex') : key
+  },
+}

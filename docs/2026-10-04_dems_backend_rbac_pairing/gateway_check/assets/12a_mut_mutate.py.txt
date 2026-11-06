@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""CF-M1 mutation check (rule: an in-memory mutation per fix, never modifying tree files).
+
+Each mutant changes texts of ONE production file IN MEMORY (the jest transformer beside this file) and runs
+the test files mapped to it. DETECTED = jest exits non-zero. Before a mutant runs, each `from` text is checked
+to occur exactly once in the file (otherwise: NOT APPLIED, never counted as detected). The SHA-256 of every
+mutated file is compared before and after the whole run. 'control' runs the unmutated tests once.
+
+  python3 mutate.py [id ...]
+"""
+import hashlib, json, os, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+
+T_EXIT = 'src/features/session-live/live-handover-exit.test.tsx'
+T_TIMER = 'src/features/session-live/monitor-timer-drawn.test.tsx'
+T_STALL = 'src/runtime/stall-tolerant-timers.test.ts'
+T_LIVESTALL = 'src/runtime/live-stall-link.test.ts'
+T_RESTART = 'src/features/session-live/live-client-restart.test.tsx'
+T_ROUTES = 'src/features/pairing/pairing-handoff-routes.test.tsx'
+ALL = [T_EXIT, T_TIMER, T_STALL, T_LIVESTALL, T_RESTART, T_ROUTES]
+
+LIVE = 'src/app/(app)/session/live.tsx'
+BANNER = 'src/features/session-live/connection-banner.tsx'
+SCREEN = 'src/features/session-live/session-live-screen.tsx'
+REC = 'src/features/session-live/rec-indicator.tsx'
+READOUT = 'src/features/session-live/timer-readout.tsx'
+TIMERS = 'src/runtime/stall-tolerant-timers.ts'
+ADAPT = 'src/runtime/sim-adapters.ts'
+ENDED = 'src/runtime/ended-link.ts'
+
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+
+MUTANTS = [
+    # R-P-1: the hand-over removes the monitor with no exiting animation below it.
+    {'id': 'P1-a no skipExiting wrapper', 'file': LIVE, 'tests': [T_EXIT], 'edits': [
+        e("""    <LayoutAnimationConfig skipExiting>
+      <View collapsable={false} style={styles.monitor} testID="session-live-exit-boundary">
+        <SessionLiveScreen />
+      </View>
+    </LayoutAnimationConfig>""", '    <SessionLiveScreen />')]},
+    {'id': 'P1-b skipExiting false', 'file': LIVE, 'tests': [T_EXIT], 'edits': [
+        e('<LayoutAnimationConfig skipExiting>', '<LayoutAnimationConfig skipExiting={false}>')]},
+    {'id': 'P1-c collapsable host', 'file': LIVE, 'tests': [T_EXIT], 'edits': [
+        e('<View collapsable={false} style={styles.monitor}', '<View style={styles.monitor}')]},
+    {'id': 'P1-d banner exiting back', 'file': BANNER, 'tests': [T_EXIT], 'edits': [
+        e('      accessibilityLiveRegion="polite"', '      exiting={FadeIn.duration(motionTokens.duration.fast)}\n      accessibilityLiveRegion="polite"')]},
+    {'id': 'P1-e banner slot flattenable', 'file': SCREEN, 'tests': [T_EXIT], 'edits': [
+        e('<View style={styles.banner} collapsable={false} testID="monitor-banner-slot">', '<View style={styles.banner} testID="monitor-banner-slot">')]},
+    # R-P-2 (drawing): the timer digits are positioned by React.
+    {'id': 'P2-a RollingNumber back', 'file': REC, 'tests': [T_TIMER], 'edits': [
+        e("import { TimerReadout } from './timer-readout';", "import { RollingNumber } from '@/components/composed/rolling-number';"),
+        e('  return <TimerReadout seconds={seconds} motion={policy} size={size} color={palette.foreground} testID={testID} />;',
+          "  return <RollingNumber value={seconds} mode=\"slide\" format={{ kind: 'duration' }} motion={policy} size={size} color={palette.foreground} testID={testID} />;")]},
+    {'id': 'P2-b column position only in the animated style', 'file': READOUT, 'tests': [T_TIMER], 'edits': [
+        e("<View testID={testID} style={{ transform: [{ translateY: -shown.cell * lineHeight }] }}>", "<View testID={testID}>"),
+        e("const roll = useAnimatedStyle(() => ({ transform: [{ translateY: offset.get() }] }));", "const cellNow = shown.cell;\n  const roll = useAnimatedStyle(() => ({ transform: [{ translateY: offset.get() - cellNow * lineHeight }] }));")]},
+    {'id': 'P2-c roll rests away from 0', 'file': READOUT, 'tests': [T_TIMER], 'edits': [
+        e('offset.set(withTiming(0, { duration: SLIDE_MS, easing: STANDARD }));', 'offset.set(withTiming(lineHeight, { duration: SLIDE_MS, easing: STANDARD }));'),
+        e('const offset = useSharedValue(0);', 'const offset = useSharedValue(lineHeight);')]},
+    # R-P-2 / R-S-2 (link): late timers yield to the queue; the app wraps the Live source's timers.
+    {'id': 'P3-a no yield (late runs at once)', 'file': TIMERS, 'tests': [T_STALL, T_LIVESTALL], 'edits': [
+        e('if (late > STALL_LATENESS_MS && yields < STALL_MAX_YIELDS) {', 'if (false && late > STALL_LATENESS_MS && yields < STALL_MAX_YIELDS) {')]},
+    {'id': 'P3-b unbounded yields', 'file': TIMERS, 'tests': [T_STALL], 'edits': [
+        e('if (late > STALL_LATENESS_MS && yields < STALL_MAX_YIELDS) {', 'if (late > STALL_LATENESS_MS) {')]},
+    {'id': 'P3-c cancel ignored during a yield', 'file': TIMERS, 'tests': [T_STALL], 'edits': [
+        e('    if (slot.cancelled) return;\n    const late', '    const late')]},
+    {'id': 'P3-d app does not wrap its timers', 'file': ADAPT, 'tests': [T_LIVESTALL], 'edits': [
+        e('const timers = createStallTolerantTimers(options.timers ?? DEFAULT_LIVE_TIMERS, now);', 'const timers = options.timers ?? DEFAULT_LIVE_TIMERS;')]},
+    # R-S-2 (notice): a socket the client gave up itself reads as settling (first restart only).
+    {'id': 'P4-a no client-restart settling', 'file': ENDED, 'tests': [T_RESTART], 'edits': [
+        e('return isRunEndedByCore(live) || isClientRestart(live);', 'return isRunEndedByCore(live);')]},
+    {'id': 'P4-b marker never set', 'file': ADAPT, 'tests': [T_RESTART], 'edits': [
+        e("selfRestart = Number.isInteger(connection) ? connection : null;", "selfRestart = null;")]},
+    {'id': 'P4-c every restart settles (no consecutive rule)', 'file': ADAPT, 'tests': [T_RESTART], 'edits': [
+        e('&& live.heartbeat.getSnapshot().reconnectAttempt <= 1;', ';')]},
+]
+
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def run(tests, spec):
+    env = dict(os.environ)
+    if spec is None:
+        env.pop('CFM1_MUT_SPEC', None)
+    else:
+        with open(SPEC, 'w') as f:
+            json.dump(spec, f)
+        env['CFM1_MUT_SPEC'] = SPEC
+    t = time.time()
+    proc = subprocess.run(['npx', 'jest', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests], cwd=APP, env=env, capture_output=True, text=True)
+    out = proc.stdout + proc.stderr
+    summary = [l.strip() for l in out.splitlines() if l.strip().startswith('Tests:')]
+    applied_error = 'CF-M1 mutation' in out and 'occurs' in out
+    return proc.returncode, (summary[-1] if summary else '(no summary)'), round(time.time() - t, 1), applied_error
+
+
+def main():
+    wanted = sys.argv[1:]
+    files = sorted({m['file'] for m in MUTANTS})
+    before = {f: sha(os.path.join(APP, f)) for f in files}
+    results = []
+    if not wanted or 'control' in wanted:
+        code, summary, secs, _ = run(ALL, None)
+        print(f"control (unmutated, {len(ALL)} files): exit {code}; {summary}; {secs} s", flush=True)
+        results.append(('control', code, summary))
+    for m in MUTANTS:
+        if wanted and m['id'].split(' ')[0] not in wanted and 'all' not in wanted:
+            continue
+        text = open(os.path.join(APP, m['file'])).read()
+        bad = [x['from'][:60] for x in m['edits'] if text.count(x['from']) != 1]
+        if bad:
+            print(f"{m['id']}: NOT APPLIED (text not found exactly once: {bad})", flush=True)
+            results.append((m['id'], None, 'not applied'))
+            continue
+        code, summary, secs, applied_error = run(m['tests'], {'id': m['id'], 'file': m['file'], 'edits': m['edits']})
+        verdict = 'NOT APPLIED' if applied_error else ('DETECTED' if code != 0 else 'MISSED')
+        print(f"{m['id']} [{m['file']}] -> {verdict} (jest exit {code}; {summary}; {secs} s)", flush=True)
+        results.append((m['id'], code, verdict))
+    after = {f: sha(os.path.join(APP, f)) for f in files}
+    print('tree unchanged by the run:', all(before[f] == after[f] for f in files), flush=True)
+    for f in files:
+        print(f'  {before[f][:16]} {f}')
+
+
+if __name__ == '__main__':
+    main()

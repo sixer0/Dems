@@ -1,0 +1,20 @@
+## before (config hash 7374427, 06:31:55-06:32:29 WIB)
+ Test Files  39 passed (39)
+      Tests  438 passed (438)
+   Duration  33.66s (tests 70%, import 13%, environment 11%, setup 4%, transform 2%)
+exit=0
+## after (config hash cb48698, 06:40:35-06:41:09 WIB)
+ Test Files  39 passed (39)
+      Tests  438 passed (438)
+   Duration  33.87s (tests 70%, import 12%, environment 11%, setup 4%, transform 2%)
+exit=0
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+typecheck exit=0
+
+> @dems/core-web@0.1.0 lint
+> oxlint
+
+lint exit=0

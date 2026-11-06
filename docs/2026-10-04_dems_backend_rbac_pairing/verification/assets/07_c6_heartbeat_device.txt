@@ -1,0 +1,35 @@
+# 2026-10-07 10:39:45 WIB README: the heartbeat option needs the tcp:4400 reverse rule
+$ adb -s emulator-5558 reverse tcp:4400 tcp:4400
+4400
+exit=0
+host-16 tcp:8081 tcp:8081
+host-16 tcp:4420 tcp:4420
+host-16 tcp:4400 tcp:4400
+
+$ am start -a VIEW -d 'demsdemo:///home?core=HEARTBEAT' (later deep link; MD-7 sets the same stored choice as Settings > App Preferences)
+Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Physical size: 1080x2424
+mCurrentFocus=Window{c21283d u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity
+isKeyguardShowing=false
+State: RUNNING_UNLOCKED
+prefs: {"coreLinkSource":"HEARTBEAT"}
+sim auth: 
+reverse: host-16 tcp:8081 tcp:8081;host-16 tcp:4420 tcp:4420;host-16 tcp:4400 tcp:4400;;
+10-07 10:38:55.631  4964  4998 I ReactNativeJS:   source: 'runtime.debug.core',
+10-07 10:38:55.631  4964  4998 I ReactNativeJS:   message: 'Core link source set from a deep link',
+10-07 10:38:55.631  4964  4998 I ReactNativeJS:   context: { source: 'HEARTBEAT', origin: 'link' },
+10-07 10:38:55.688  4964  4998 I ReactNativeJS:   source: 'runtime.coreLink.tabletLink',
+10-07 10:38:55.688  4964  4998 I ReactNativeJS:   message: 'Tablet link OFFLINE',
+10-07 10:38:55.688  4964  4998 I ReactNativeJS:   context: { source: 'HEARTBEAT', heartbeat: 'OFFLINE' },
+10-07 10:38:59.638  4964  4998 I ReactNativeJS:   source: 'runtime.coreLink.tabletLink',
+10-07 10:38:59.638  4964  4998 I ReactNativeJS:   message: 'Tablet link CONNECTED',
+10-07 10:38:59.638  4964  4998 I ReactNativeJS:   context: { source: 'HEARTBEAT', heartbeat: 'LIVE' },
+-- 10:40:01 tapped tab sessions at 323,2275
+-- screencap 07_mob_hb_sessions.png
+-- 10:40:05 tapped tab evidence at 539,2275
+-- screencap 07_mob_hb_evidence.png
+-- 10:40:09 tapped tab devices at 753,2275
+-- screencap 07_mob_hb_devices.png
+-- 10:40:12 tapped tab home at 107,2275
+-- screencap 07_mob_hb_home.png

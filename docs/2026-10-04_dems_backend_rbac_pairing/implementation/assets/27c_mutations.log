@@ -1,0 +1,18 @@
+F1 | operation 23 loses the condition (document regenerated) | tests | DETECTED | 3 failing test(s) in test/api-openapi-scope.test.ts, test/api-registry.test.ts
+F2 | operation 23 loses the condition and the committed document is left as it was | check_document | DETECTED | .cache/W27c/mut/packages/shared/openapi/openapi.json is stale: run npm run openapi:gen -w @dems/shared
+F3 | unpairDevice (22) carries the condition too | tests | DETECTED | 3 failing test(s) in test/api-openapi-scope.test.ts, test/api-registry.test.ts
+F4 | signInWithBiometric (8) carries the condition too | tests | DETECTED | 3 failing test(s) in test/api-openapi-scope.test.ts, test/api-registry.test.ts
+F5 | the condition stands on an AUTHENTICATED operation (7) in place of DEVICE_SESSION | tests | DETECTED | 4 failing test(s) in test/api-openapi-scope.test.ts, test/api-registry.test.ts
+F6 | the vocabulary loses DEVICE_CREDENTIAL | typecheck | DETECTED | 3 type error(s): .cache/W27c/mut/packages/shared/src/api/pairing.ts(469,69): error TS2339: Property 'DEVICE_CREDENTIAL' does not exist on type '{ readonly CONSOLE_IDEN
+F7 | the value of the condition is renamed | tests | DETECTED | 4 failing test(s) in test/api-openapi-scope.test.ts, test/api-registry.test.ts
+F8 | the reason of the refusal is renamed | tests | DETECTED | 2 failing test(s) in test/api-openapi-scope.test.ts, test/api-registry.test.ts
+F9 | the example of the refusal carries another error code | tests | DETECTED | 1 failing test(s) in test/api-registry.test.ts
+F10 | operation 23 has no example of the refusal | tests | DETECTED | 2 failing test(s) in test/api-openapi-scope.test.ts, test/api-registry.test.ts
+F11 | the example of the refusal carries no details.reason | tests | DETECTED | 2 failing test(s) in test/api-openapi-scope.test.ts, test/api-registry.test.ts
+F12 | the 403 text of operation 23 does not name the refusal | tests | DETECTED | 2 failing test(s) in test/api-openapi-scope.test.ts, test/api-registry.test.ts
+F13 | the description of operation 23 does not name the refusal | tests | DETECTED | 2 failing test(s) in test/api-openapi-scope.test.ts, test/api-registry.test.ts
+F14 | a text of operation 23 changes and the committed document is not regenerated | check_document | DETECTED | .cache/W27c/mut/packages/shared/openapi/openapi.json is stale: run npm run openapi:gen -w @dems/shared
+F15 | the example of the refusal is not the first of its status | tests | DETECTED | 1 failing test(s) in test/api-registry.test.ts
+control | the copy without a mutation | tests | green | 0 failing test(s) in no file
+control | the copy without a mutation | check_document | exit 0 | .cache/W27c/mut/packages/shared/openapi/openapi.json is up to date (all (committed): 75 operations, 2 security schemes, version 0.2.0; offline: 10 operations, 0
+15 mutation(s), 0 not detected

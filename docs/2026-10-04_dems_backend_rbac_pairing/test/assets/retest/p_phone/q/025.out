@@ -1,0 +1,19 @@
+12:57:27.660 declared screen settings-about
+12:57:27.729 tapid settings-about-stack-check at 539,2073 "Stack diagnostics"
+12:57:30.424 slept 3500 ms
+12:57:33.963 declared screen stack-check
+12:57:33.994 screencap 47_stack_check_p2.png 12:57:33.994..12:57:34.226
+12:57:46.034 ERROR in "p ids stack-proof|service|heartbeat|sour": Command failed: adb -s emulator-5554 shell cat /sdcard/rt_p.xml
+12:57:46.125 slept 5000 ms
+12:57:51.196 screencap 47b_stack_check_p2_t2.png 12:57:51.196..12:57:51.567
+12:57:51.659 swipe 540,1900,540,900 600 ms
+12:57:52.386 slept 1200 ms
+12:57:53.638 screencap 47c_stack_check_p2_scrolled.png 12:57:53.638..12:57:53.974
+12:57:54.065 api GET /api/v1/health => {"status":200,"body":{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-06T05:57:54.071Z","uptimeMs":2746453,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":2},"ready":{"database":true,"engine":true}}}
+12:57:54.121 warnlog since 10-06 12:57:27.000 (0): 
+12:57:54.274 serverlog since c05 (5):
+    12:57:30.747 GET /api/v1/health 200
+    12:57:32.713 POST /api/v1/auth/touch 200
+    12:57:40.852 GET /api/v1/health 200
+    12:57:50.899 GET /api/v1/health 200
+    12:57:54.071 GET /api/v1/health 200

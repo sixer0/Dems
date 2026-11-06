@@ -1,0 +1,326 @@
+diff --git a/apps/core-server/test/helpers/db/__tests__/cleanup.db.test.ts b/apps/core-server/test/helpers/db/__tests__/cleanup.db.test.ts
+index fedb4f2..77a2704 100644
+--- a/apps/core-server/test/helpers/db/__tests__/cleanup.db.test.ts
++++ b/apps/core-server/test/helpers/db/__tests__/cleanup.db.test.ts
+@@ -4,7 +4,7 @@
+ // owner role may not end another role's session: PG-26, trial step T5-h); and what a crashed
+ // worker left behind is removed by the teardown of the run.
+ import type { Pool } from 'pg';
+-import { describe, expect, it } from 'vitest';
++import { describe, expect, it, vi } from 'vitest';
+ import { createRuntimePool } from '../../../../src/plugins/db';
+ import { APP_ROLE, OWNER_ROLE } from '../constants';
+ import { DbTestHelperError } from '../errors';
+@@ -12,6 +12,11 @@ import { TestRun, useTestDatabase, withTestDatabase, type TestDatabase } from '.
+ import { PROBE_TABLE, SELFTEST_TEMPLATE } from '../testing/probe-hooks';
+ import { probeResolver, startPrivateRun } from '../testing/private-run';
+ 
++// Limits as caps, not waits (decision D110). A clone or a template that a test asks for waits
++// for the clone lock, which another run on this host may hold for seconds while it builds its
++// bulk template; with the runner's default of 5 s such a wait failed a healthy test under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ const db = useTestDatabase({ template: SELFTEST_TEMPLATE });
+ 
+ async function exists(name: string): Promise<boolean> {
+diff --git a/apps/core-server/test/helpers/db/__tests__/clone-lock.db.test.ts b/apps/core-server/test/helpers/db/__tests__/clone-lock.db.test.ts
+index 044258e..4620f59 100644
+--- a/apps/core-server/test/helpers/db/__tests__/clone-lock.db.test.ts
++++ b/apps/core-server/test/helpers/db/__tests__/clone-lock.db.test.ts
+@@ -2,12 +2,17 @@
+ // lock (442002, 0) on the maintenance database; a clone waits while another session holds it,
+ // clones of two sessions and of one process never overlap, and a wait that takes too long ends
+ // with a clear error and creates nothing.
+-import { describe, expect, it } from 'vitest';
++import { describe, expect, it, vi } from 'vitest';
+ import { CLONE_LOCK_KEY, LOCK_CLASS, LOG_PREFIX } from '../constants';
+ import { TestRun, useTestDatabase, type TestDatabase } from '../index';
+ import { SELFTEST_TEMPLATE } from '../testing/probe-hooks';
+ import { probeResolver, sleep } from '../testing/private-run';
+ 
++// Limits as caps, not waits (decision D110). A clone or a template that a test asks for waits
++// for the clone lock, which another run on this host may hold for seconds while it builds its
++// bulk template; with the runner's default of 5 s such a wait failed a healthy test under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ const db = useTestDatabase({ template: SELFTEST_TEMPLATE });
+ 
+ /** Rows of pg_locks for the clone lock: one per session that holds it or waits for it. */
+@@ -29,8 +34,11 @@ async function runDatabaseNames(): Promise<string[]> {
+   return rows.rows.map((row) => row.name);
+ }
+ 
+-/** Other rows may hold the clone lock for a moment while these tests run: allow for it. */
+-const TEST_TIMEOUT_MS = 60_000;
++/**
++ * Other rows may hold the clone lock for a moment while these tests run: allow for it. The same
++ * cap as the file's; it was 60 s before decision D110.
++ */
++const TEST_TIMEOUT_MS = 120_000;
+ 
+ describe('TI-7: clones are serialised by the advisory lock (442002, 0)', () => {
+   it('a clone waits while another session holds the clone lock, and runs when it is released', async () => {
+diff --git a/apps/core-server/test/helpers/db/__tests__/drop-retry.db.test.ts b/apps/core-server/test/helpers/db/__tests__/drop-retry.db.test.ts
+index 2bde8a2..0668f98 100644
+--- a/apps/core-server/test/helpers/db/__tests__/drop-retry.db.test.ts
++++ b/apps/core-server/test/helpers/db/__tests__/drop-retry.db.test.ts
+@@ -11,7 +11,7 @@
+ //     when a database stays.
+ //
+ // The stand-in tests of the same behaviour: `drop-retry.test.ts`.
+-import { describe, expect, it } from 'vitest';
++import { describe, expect, it, vi } from 'vitest';
+ import { APP_ROLE } from '../constants';
+ import { readOwnerCredentials } from '../credentials';
+ import { backendsOn, dropDatabase, isTerminateRefusal, waitForSessionsToEnd } from '../ddl';
+@@ -25,6 +25,11 @@ import { PROBE_HOOKS, SELFTEST_TEMPLATE } from '../testing/probe-hooks';
+ import { privateRunEnv, probeResolver, startPrivateRun } from '../testing/private-run';
+ import { refusingDriver } from '../testing/refusing-driver';
+ 
++// Limits as caps, not waits (decision D110). A clone or a template that a test asks for waits
++// for the clone lock, which another run on this host may hold for seconds while it builds its
++// bulk template; with the runner's default of 5 s such a wait failed a healthy test under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ const db = useTestDatabase({ template: SELFTEST_TEMPLATE });
+ 
+ const STATEMENT_MARKER = 'w11b-statement-marker';
+diff --git a/apps/core-server/test/helpers/db/__tests__/global-setup.db.test.ts b/apps/core-server/test/helpers/db/__tests__/global-setup.db.test.ts
+index b59f1ce..9016645 100644
+--- a/apps/core-server/test/helpers/db/__tests__/global-setup.db.test.ts
++++ b/apps/core-server/test/helpers/db/__tests__/global-setup.db.test.ts
+@@ -1,6 +1,6 @@
+ // The global setup of the Vitest project `db`, called here as a function with a stand-in for
+ // Vitest's project object and with injected hooks (TI-1, TI-4, TI-11, TI-12; T-TI-3).
+-import { describe, expect, it } from 'vitest';
++import { describe, expect, it, vi } from 'vitest';
+ import { FOREIGN_PORT, OWNER_ROLE } from '../constants';
+ import { setupDbTestProject } from '../global-setup';
+ import { injectedResolver, standardDefinitions } from '../hooks';
+@@ -10,6 +10,11 @@ import { PROBE_HOOKS, PROBE_TABLE, SELFTEST_TEMPLATE } from '../testing/probe-ho
+ import { findClosedLoopbackPort } from '../testing/closed-port';
+ import { privateRunEnv } from '../testing/private-run';
+ 
++// Limits as caps, not waits (decision D110). A clone or a template that a test asks for waits
++// for the clone lock, which another run on this host may hold for seconds while it builds its
++// bulk template; with the runner's default of 5 s such a wait failed a healthy test under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ const db = useTestDatabase({ template: SELFTEST_TEMPLATE });
+ 
+ interface Capture {
+diff --git a/apps/core-server/test/helpers/db/__tests__/guards.db.test.ts b/apps/core-server/test/helpers/db/__tests__/guards.db.test.ts
+index e2aef19..1b8d95b 100644
+--- a/apps/core-server/test/helpers/db/__tests__/guards.db.test.ts
++++ b/apps/core-server/test/helpers/db/__tests__/guards.db.test.ts
+@@ -2,12 +2,17 @@
+ // the cluster, or a younger database of another run is refused before a statement is sent.
+ // "Before a statement is sent" is measured: the run's own session counts every statement it
+ // hands to the driver, and a refused request leaves the count unchanged.
+-import { afterAll, describe, expect, it } from 'vitest';
++import { afterAll, describe, expect, it, vi } from 'vitest';
+ import { DbGuardError } from '../errors';
+ import { TestRun, useTestDatabase } from '../index';
+ import { SELFTEST_TEMPLATE } from '../testing/probe-hooks';
+ import { startPrivateRun } from '../testing/private-run';
+ 
++// Limits as caps, not waits (decision D110). A clone or a template that a test asks for waits
++// for the clone lock, which another run on this host may hold for seconds while it builds its
++// bulk template; with the runner's default of 5 s such a wait failed a healthy test under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ const db = useTestDatabase({ template: SELFTEST_TEMPLATE });
+ const others: TestRun[] = [];
+ 
+diff --git a/apps/core-server/test/helpers/db/__tests__/isolation-a.db.test.ts b/apps/core-server/test/helpers/db/__tests__/isolation-a.db.test.ts
+index 4688b95..0844c3c 100644
+--- a/apps/core-server/test/helpers/db/__tests__/isolation-a.db.test.ts
++++ b/apps/core-server/test/helpers/db/__tests__/isolation-a.db.test.ts
+@@ -1,5 +1,11 @@
+ // T-TI-1, first of two files: its own clone, the same token hash as the other file, one row.
+ // The body is shared with `isolation-b.db.test.ts` (see `../testing/isolation-suite.ts`).
++import { vi } from 'vitest';
+ import { defineIsolationSuite } from '../testing/isolation-suite';
+ 
++// Limits as caps, not waits (decision D110). A clone or a template that a test asks for waits
++// for the clone lock, which another run on this host may hold for seconds while it builds its
++// bulk template; with the runner's default of 5 s such a wait failed a healthy test under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ defineIsolationSuite('isolation_a');
+diff --git a/apps/core-server/test/helpers/db/__tests__/isolation-b.db.test.ts b/apps/core-server/test/helpers/db/__tests__/isolation-b.db.test.ts
+index 659606b..9f5ade1 100644
+--- a/apps/core-server/test/helpers/db/__tests__/isolation-b.db.test.ts
++++ b/apps/core-server/test/helpers/db/__tests__/isolation-b.db.test.ts
+@@ -1,5 +1,11 @@
+ // T-TI-1, second of two files: its own clone, the same token hash as the other file, one row.
+ // The body is shared with `isolation-a.db.test.ts` (see `../testing/isolation-suite.ts`).
++import { vi } from 'vitest';
+ import { defineIsolationSuite } from '../testing/isolation-suite';
+ 
++// Limits as caps, not waits (decision D110). A clone or a template that a test asks for waits
++// for the clone lock, which another run on this host may hold for seconds while it builds its
++// bulk template; with the runner's default of 5 s such a wait failed a healthy test under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ defineIsolationSuite('isolation_b');
+diff --git a/apps/core-server/test/helpers/db/__tests__/nested-run.db.test.ts b/apps/core-server/test/helpers/db/__tests__/nested-run.db.test.ts
+index ea5f53c..776ecc7 100644
+--- a/apps/core-server/test/helpers/db/__tests__/nested-run.db.test.ts
++++ b/apps/core-server/test/helpers/db/__tests__/nested-run.db.test.ts
+@@ -16,13 +16,18 @@
+ // its environment hold paths and names only.
+ import { execFile } from 'node:child_process';
+ import { join } from 'node:path';
+-import { describe, expect, it } from 'vitest';
++import { describe, expect, it, vi } from 'vitest';
+ import { ENV_TEST_STEP } from '../constants';
+ import { REPOSITORY_ROOT, WORKSPACE_ROOT } from '../credentials';
+ import { useTestDatabase } from '../index';
+ import { SELFTEST_TEMPLATE } from '../testing/probe-hooks';
+ import { privateRunEnv } from '../testing/private-run';
+ 
++// Limits as caps, not waits (decision D110). A clone or a template that a test asks for waits
++// for the clone lock, which another run on this host may hold for seconds while it builds its
++// bulk template; with the runner's default of 5 s such a wait failed a healthy test under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ const VITEST = join(REPOSITORY_ROOT, 'node_modules', 'vitest', 'vitest.mjs');
+ const CONFIG = join(WORKSPACE_ROOT, 'test', 'helpers', 'db', 'selfcheck', 'vitest.selfcheck.config.ts');
+ const RUN_TIMEOUT_MS = 90_000;
+diff --git a/apps/core-server/test/helpers/db/__tests__/sweep.db.test.ts b/apps/core-server/test/helpers/db/__tests__/sweep.db.test.ts
+index e3bdc8d..644252e 100644
+--- a/apps/core-server/test/helpers/db/__tests__/sweep.db.test.ts
++++ b/apps/core-server/test/helpers/db/__tests__/sweep.db.test.ts
+@@ -4,13 +4,18 @@
+ //
+ // The old runs of this test are real runs started with a clock that is set back; nothing sleeps
+ // for six hours.
+-import { afterAll, describe, expect, it } from 'vitest';
++import { afterAll, describe, expect, it, vi } from 'vitest';
+ import { STALE_AFTER_SECONDS } from '../constants';
+ import { stampSeconds } from '../names';
+ import { TestRun, useTestDatabase } from '../index';
+ import { SELFTEST_TEMPLATE } from '../testing/probe-hooks';
+ import { sleep, startPrivateRun } from '../testing/private-run';
+ 
++// Limits as caps, not waits (decision D110). A clone or a template that a test asks for waits
++// for the clone lock, which another run on this host may hold for seconds while it builds its
++// bulk template; with the runner's default of 5 s such a wait failed a healthy test under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ const HOUR_MS = 3_600_000;
+ 
+ const db = useTestDatabase({ template: SELFTEST_TEMPLATE });
+diff --git a/apps/core-server/test/helpers/db/__tests__/templates.db.test.ts b/apps/core-server/test/helpers/db/__tests__/templates.db.test.ts
+index 5092fa0..805df1f 100644
+--- a/apps/core-server/test/helpers/db/__tests__/templates.db.test.ts
++++ b/apps/core-server/test/helpers/db/__tests__/templates.db.test.ts
+@@ -1,7 +1,7 @@
+ // The three templates of the contract (§10.1; TI-4 to TI-6; T-TI-3), built in a run of this
+ // file's own from the injected one-table migration, seed and bulk stand-ins: what the rows that
+ // own the real migrations, seed and bulk fixture plug in later goes through the same code.
+-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
++import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+ import { APP_ROLE, LOG_PREFIX, OWNER_ROLE } from '../constants';
+ import { DbTestHelperError, errorCode } from '../errors';
+ import { injectedResolver, standardDefinitions, type TemplateDefinition } from '../hooks';
+@@ -9,6 +9,11 @@ import { TestRun, type TestDatabase } from '../index';
+ import { PROBE_BULK_ROWS, PROBE_HOOKS, PROBE_TABLE, probeSchemaHook } from '../testing/probe-hooks';
+ import { privateRunEnv } from '../testing/private-run';
+ 
++// Limits as caps, not waits (decision D110). A clone or a template that a test asks for waits
++// for the clone lock, which another run on this host may hold for seconds while it builds its
++// bulk template; with the runner's default of 5 s such a wait failed a healthy test under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ const calls = { schema: 0, seed: 0, bulk: 0, race: 0 };
+ 
+ const definitions: TemplateDefinition[] = [
+diff --git a/apps/core-server/test/helpers/db/__tests__/timing.db.test.ts b/apps/core-server/test/helpers/db/__tests__/timing.db.test.ts
+index 4c6eac6..00f8f9e 100644
+--- a/apps/core-server/test/helpers/db/__tests__/timing.db.test.ts
++++ b/apps/core-server/test/helpers/db/__tests__/timing.db.test.ts
+@@ -1,13 +1,18 @@
+ // The first measurement of this host (database contract §10.1: "No figure exists for this host;
+ // the test helper records the first measurement"). Later rows budget on these numbers, so the
+ // test prints them; it asserts only that they are sane.
+-import { describe, expect, it } from 'vitest';
++import { describe, expect, it, vi } from 'vitest';
+ import { LOG_PREFIX } from '../constants';
+ import type { TemplateDefinition } from '../hooks';
+ import { useTestDatabase } from '../index';
+ import { SELFTEST_TEMPLATE, probeSchemaHook } from '../testing/probe-hooks';
+ import { median } from '../testing/private-run';
+ 
++// Limits as caps, not waits (decision D110). A clone or a template that a test asks for waits
++// for the clone lock, which another run on this host may hold for seconds while it builds its
++// bulk template; with the runner's default of 5 s such a wait failed a healthy test under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ const CLONES = 15;
+ const USED_CLONES = 7;
+ 
+diff --git a/apps/core-server/test/helpers/db/selfcheck/convention.selfcheck.ts b/apps/core-server/test/helpers/db/selfcheck/convention.selfcheck.ts
+index a0c0213..ac1bde6 100644
+--- a/apps/core-server/test/helpers/db/selfcheck/convention.selfcheck.ts
++++ b/apps/core-server/test/helpers/db/selfcheck/convention.selfcheck.ts
+@@ -1,7 +1,7 @@
+ // Self-check fixture (see vitest.selfcheck.config.ts): a database test file in a run whose
+ // templates come from hook modules found by convention, as they will once the rows that own
+ // the migrations, the seed and the bulk fixture have added theirs.
+-import { afterAll, beforeAll, expect, it } from 'vitest';
++import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+ import { OWNER_ROLE } from '../constants';
+ import { conventionResolver } from '../hooks';
+ import { TestRun, providedRun } from '../index';
+@@ -9,6 +9,10 @@ import { createRunIdentity } from '../names';
+ import { PROBE_BULK_ROWS, PROBE_TABLE } from '../testing/probe-hooks';
+ import { CONVENTION_WORKSPACE } from './convention-workspace';
+ 
++// Limits as caps, not waits (decision D110): this file runs in a nested Vitest of its own, and
++// its clone waits for the clone lock like any other; the default of 5 s is not enough under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ let run!: TestRun;
+ 
+ beforeAll(async () => {
+diff --git a/apps/core-server/test/helpers/db/selfcheck/throwing-hook.selfcheck.ts b/apps/core-server/test/helpers/db/selfcheck/throwing-hook.selfcheck.ts
+index cfdc8bb..3be0285 100644
+--- a/apps/core-server/test/helpers/db/selfcheck/throwing-hook.selfcheck.ts
++++ b/apps/core-server/test/helpers/db/selfcheck/throwing-hook.selfcheck.ts
+@@ -1,10 +1,14 @@
+ // Self-check fixture (see vitest.selfcheck.config.ts): a database test file whose own
+ // `beforeAll` throws after the helper has cloned its database. No test of the file runs; its
+ // database must be gone afterwards all the same (TI-10).
+-import { beforeAll, expect, it } from 'vitest';
++import { beforeAll, expect, it, vi } from 'vitest';
+ import { useTestDatabase } from '../index';
+ import { SELFTEST_TEMPLATE } from '../testing/probe-hooks';
+ 
++// Limits as caps, not waits (decision D110): this file runs in a nested Vitest of its own, and
++// its clone waits for the clone lock like any other; the default of 5 s is not enough under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ const db = useTestDatabase({ template: SELFTEST_TEMPLATE });
+ 
+ beforeAll(async () => {
+diff --git a/apps/core-server/test/helpers/db/selfcheck/throwing-test.selfcheck.ts b/apps/core-server/test/helpers/db/selfcheck/throwing-test.selfcheck.ts
+index 352fa9d..e18650a 100644
+--- a/apps/core-server/test/helpers/db/selfcheck/throwing-test.selfcheck.ts
++++ b/apps/core-server/test/helpers/db/selfcheck/throwing-test.selfcheck.ts
+@@ -1,9 +1,13 @@
+ // Self-check fixture (see vitest.selfcheck.config.ts): a database test file whose test throws
+ // while pools are open. The file fails; its database must be gone afterwards (TI-10).
+-import { expect, it } from 'vitest';
++import { expect, it, vi } from 'vitest';
+ import { useTestDatabase } from '../index';
+ import { PROBE_TABLE, SELFTEST_TEMPLATE } from '../testing/probe-hooks';
+ 
++// Limits as caps, not waits (decision D110): this file runs in a nested Vitest of its own, and
++// its clone waits for the clone lock like any other; the default of 5 s is not enough under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
+ const db = useTestDatabase({ template: SELFTEST_TEMPLATE });
+ 
+ it('writes into its clone as the runtime role', async () => {

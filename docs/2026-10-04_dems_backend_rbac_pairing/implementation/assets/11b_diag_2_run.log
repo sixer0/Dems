@@ -1,0 +1,12 @@
+[12:04:54.119] run {"prefix":"dems_test_step_33b_tmda46ut_"}
+[12:04:59.444] plain first, then forced {"database":"dems_test_step_33b_tmda46ut_f01_diag_pf1","plain":{"ok":false,"ms":5081,"code":"55006"},"forced":{"ok":true,"ms":175}}
+[12:05:04.661] plain first, then forced {"database":"dems_test_step_33b_tmda46ut_f01_diag_pf2","plain":{"ok":false,"ms":5051,"code":"55006"},"forced":{"ok":true,"ms":131}}
+[12:05:09.995] plain first, then forced {"database":"dems_test_step_33b_tmda46ut_f01_diag_pf3","plain":{"ok":false,"ms":5042,"code":"55006"},"forced":{"ok":false,"ms":2,"code":"42501"},"backendsRightAfterTheRefusal":[{"pid":39772,"usename":"dems_owner","application_name":"dems-w11b-held-owner","backend_type":"client backend"}],"forcedAgain":{"succeededAtRetry":1,"afterMs":100}}
+[12:05:15.255] plain first, then forced {"database":"dems_test_step_33b_tmda46ut_f01_diag_pf4","plain":{"ok":false,"ms":4979,"code":"55006"},"forced":{"ok":false,"ms":2,"code":"42501"},"backendsRightAfterTheRefusal":[{"pid":39776,"usename":"dems_owner","application_name":"dems-w11b-held-owner","backend_type":"client backend"}],"forcedAgain":{"succeededAtRetry":1,"afterMs":100}}
+[12:05:15.417] forced first {"database":"dems_test_step_33b_tmda46ut_f01_diag_ff1","forced":{"ok":true,"ms":116}}
+[12:05:15.570] forced first {"database":"dems_test_step_33b_tmda46ut_f01_diag_ff2","forced":{"ok":true,"ms":114}}
+[12:05:15.727] forced first {"database":"dems_test_step_33b_tmda46ut_f01_diag_ff3","forced":{"ok":true,"ms":117}}
+[12:05:15.882] forced first {"database":"dems_test_step_33b_tmda46ut_f01_diag_ff4","forced":{"ok":true,"ms":116}}
+[12:05:15.901] teardown of the diagnosis run {"dropped":1,"remaining":[],"failed":[]}
+[12:05:15.904] databases with the prefix dems_test_step_33b_ now []
+exit=0

@@ -1,0 +1,4 @@
+signin andi.pratama (SUPERVISOR): dashboard true at 10:05:58.983
+nav /devices load=true at 10:06:03.278
+shot W02_web_devices.png at 10:06:03.522
+testids dev (6): devices-banner devices-banner-detail device-menu-CAM-01 device-menu-CAM-02 device-menu-MIC-01 device-menu-MIC-02

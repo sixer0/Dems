@@ -1,0 +1,72 @@
+{
+  "phase": "down",
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "at": "2026-10-04T14:25:34.474Z",
+  "steps": {
+    "linkLost": {
+      "facts": {
+        "path": "/dashboard",
+        "viewport": "1440x900",
+        "tier": "lg",
+        "sidebar": "full",
+        "mode": {
+          "text": "LIVE · OFFLINE",
+          "state": "OFFLINE",
+          "ariaLabel": "Data mode: LIVE · OFFLINE",
+          "tag": "BUTTON",
+          "box": [
+            733,
+            22,
+            106,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "api-reference"
+        ],
+        "adminGroup": null,
+        "pages": [
+          "page-dashboard"
+        ],
+        "stubs": [],
+        "heading": "Dashboard",
+        "toasts": [
+          {
+            "title": "Core server unreachable",
+            "description": "The screen shows the last state received. Reconnecting…Switch to Simulated mode",
+            "buttons": [
+              "Switch to Simulated mode",
+              "Retry now"
+            ]
+          }
+        ],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "screenshot": "54_link_lost_live.png",
+      "network": {
+        "api": [],
+        "origins": [],
+        "sockets": [
+          "ws://127.0.0.1:5178/ws null closed",
+          "ws://127.0.0.1:5178/ws null closed",
+          "ws://127.0.0.1:5178/ws null closed"
+        ],
+        "console": []
+      }
+    }
+  }
+}

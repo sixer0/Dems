@@ -1,0 +1,5 @@
+export default async (c, lib) => {
+  const r = await c.evaluate(`(async () => { const s = await (await fetch('/api/v1/network/status', {credentials:'same-origin'})).json(); return JSON.stringify(s).match(/"tablet[A-Za-z]*":\\{[^}]*\\}|"tabletLink":"?[A-Z_]+"?/g) })()`)
+  const cur = await c.pageFetch('GET', '/api/v1/session/current')
+  return { r, cur: cur.body?.session ? { id: cur.body.session.id, state: cur.body.session.state } : null }
+}

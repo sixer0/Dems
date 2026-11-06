@@ -1,0 +1,19 @@
+2026-10-04 12:37:59 WIB
+19121 Sun Oct  4 07:14:26 2026    
+postgres.pid file: 19121
+session         dems_owner (superuser false) on 127.0.0.1:4432, PostgreSQL 18.4, postmaster started 2026-10-04 07:14:26 WIB
+pg_database     16 row(s): dems_demo (dems_owner), dems_lane_1 (dems_owner), dems_lane_2 (dems_owner), dems_lane_3 (dems_owner), dems_test_step_48_tmdbmqkh_f01_rf (dems_owner), dems_test_step_48_tmdbmqkh_f01_rf_next (dems_owner), dems_test_step_48_tmdbmqkh_f02_timing (dems_owner), dems_test_step_48_tmdbmqkh_tpl_bulk (dems_owner), dems_test_step_48_tmdbmqkh_tpl_schema (dems_owner), dems_test_step_48_tmdbmqkh_tpl_seed (dems_owner), dems_test_step_48_tmdbmqkh_tpl_x_selftest (dems_owner), dems_test_step_48_tmdbmqkh_tpl_x_timing (dems_owner), dems_test_step_48_tmdbmqkh_tpl_x_w29empty (dems_owner), postgres (dems_admin), template0 (dems_admin), template1 (dems_admin)
+databases with the prefix dems_test_step_33b: 0
+role            {"role":"dems_app","rolsuper":false,"rolcreatedb":false,"rolcreaterole":false,"signal_backend":false,"read_all_stats":false}
+role            {"role":"dems_owner","rolsuper":false,"rolcreatedb":true,"rolcreaterole":false,"signal_backend":false,"read_all_stats":false}
+pg_roles        3 role(s) outside pg_*
+pg_settings     375 visible setting(s), digest 68b90376bd0f4bb04b816628735a4706; pg_db_role_setting 0 row(s)
+autovacuum      autovacuum=on, autovacuum_naptime=60
+backends on databases with the prefix dems_test_step_33b: 0
+advisory locks  3 (442001, 1178473567) (442002, 0) (442002, 848658995)
+exit=0
+--- the reset row's read-only script (w29-cluster-state.mts), for a settings digest that compares with implementation/assets/29_final_state.log
+pg_database    17 row(s)
+pg_roles       3 role(s) outside pg_*
+pg_settings    375 visible setting(s), digest 6373391cbc111bce33dc5cf487c0c1e8; pg_db_role_setting 0 row(s)
+advisory locks 2 (442001, 1178473567) (442002, 848658995)

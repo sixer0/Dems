@@ -1,0 +1,5 @@
+mark cold launch after force-stop at 09:43:36.101
+deep link demsdemo:///login?core=LIVE&motion=off at 09:43:36.146: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 9000 ms
+any 401 (10-06 09:43:40.037 GET /api/v1/auth/session 401)
+screencap 01_login_live_cold.png (3300042 bytes) at 09:43:46.423

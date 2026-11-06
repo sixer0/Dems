@@ -1,0 +1,46 @@
+// W97 criterion 6 (mobile): Simulated sign-in on phone2 (emulator-5558) through the app's own Login form.
+// Coordinates measured on 07_mob_01_login_simulated.png (1080 x 2424). The demo password comes from the dataset
+// module and is only handed to `adb shell input text`; it is never printed. Stops (exit 77) if the keyguard
+// shows or the app is not focused: reported, never worked around.
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../packages/shared/src/sim/dataset';
+
+const SERIAL = 'emulator-5558';
+const [out] = process.argv.slice(2);
+const adb = (...a: string[]) => execFileSync('adb', ['-s', SERIAL, ...a], { encoding: 'utf8', maxBuffer: 64 << 20 });
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const say = (t: string) => console.log(`-- ${new Date().toTimeString().slice(0, 8)} ${t}`);
+function guard(): void {
+  const w = adb('shell', 'dumpsys', 'window');
+  if (!/isKeyguardShowing=false/.test(w) || !/mCurrentFocus=.*com\.dems\.demo\.tablet/.test(w)) {
+    say('LOCKED or app not focused - stop, report');
+    process.exit(77);
+  }
+}
+const tap = (x: number, y: number, what: string) => { guard(); adb('shell', 'input', 'tap', String(x), String(y)); say(`tapped ${what} at ${x},${y}`); };
+const shot = (name: string) => { const png = execFileSync('adb', ['-s', SERIAL, 'exec-out', 'screencap', '-p'], { maxBuffer: 64 << 20 }); writeFileSync(`${out}/${name}`, png); say(`screencap ${name}`); };
+
+const sup = OPERATORS.find((o) => o.role === 'SUPERVISOR');
+if (!sup) throw new Error('no SUPERVISOR in the dataset');
+tap(540, 1183, 'the username field');
+await sleep(1200);
+tap(540, 2338, "the handwriting coach's Cancel (empty space when none)");
+await sleep(800);
+tap(540, 1183, 'the username field');
+await sleep(600);
+guard();
+adb('shell', 'input', 'text', sup.username);
+say(`typed the operator username (${sup.username})`);
+await sleep(400);
+tap(540, 1340, 'the password field');
+await sleep(600);
+guard();
+adb('shell', 'input', 'text', DEMO_OPERATOR_PASSWORD);
+say('typed the demo password (not shown)');
+await sleep(400);
+guard();
+adb('shell', 'input', 'keyevent', '66');
+say("pressed the keypad's go key");
+await sleep(7000);
+shot('07_mob_02_after_signin.png');

@@ -1,0 +1,8 @@
+jslog jslog_tablet_full.txt: 44 lines
+jswarn jswarn_tablet_full.txt: 1 lines
+jserr jserr_tablet_full.txt: 0 lines
+crash misc/crash_final.txt: 3727 crash-class lines since T0
+app pid 12423 at 17:27:30.909
+mCurrentFocus=Window{d3a6e79 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+device-host clock offset ms: -479, -482, -481, -479, -482 at 17:27:31.098
+done 0

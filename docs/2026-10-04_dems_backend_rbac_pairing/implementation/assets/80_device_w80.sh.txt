@@ -1,0 +1,48 @@
+#!/bin/sh
+# W80 device commands, run by device-session.sh on the phone; lane-1 backend on 4421 via tcp:4420.
+# LIVE: /login?core=LIVE&motion=off -> sign in -> (decline the app's biometric offer by pixels) -> /audit
+# -> the lane's real rows -> Verify (operation 60, the Core's verdict) -> search "typed". SIMULATED last
+# (D124): /login?core=SIMULATED&motion=off -> (sign in if signed out) -> /audit -> Verify.
+# Removes the one dump file this row creates (/sdcard/w80.xml). Exit 77 when locked: reported, never worked around.
+set -u
+OUT=$1; H="$ROOT/.cache/w80"; A="adb -s $SERIAL"
+echo "-- serial $SERIAL ($AVD_NAME), Metro $METRO_PORT"
+unlocked() {
+  KG=$($A shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1)
+  ST=$($A shell dumpsys user 2>/dev/null | grep -m 1 "State:" | tr -d '\r' | sed 's/^ *//')
+  case "$KG/$ST" in isKeyguardShowing=false/*RUNNING_UNLOCKED*) return 0 ;; *) echo "-- LOCKED ($KG; $ST) at: $1 - stop, report."; return 1 ;; esac
+}
+launch() { echo "-- am start -W -d '$1'"; $A shell "am start -W -a android.intent.action.VIEW -d '$1' $APP_ID" 2>&1 | tr -d '\r' | grep -E "Status|LaunchState|Error|TotalTime" | sed 's/^/   /'; }
+simauth() { $A shell "run-as $APP_ID sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.sim.v1\\\"\"'" 2>/dev/null | tr -d '\r' | grep -o '"auth":{"status":"[A-Z_]*"' | head -n 1; }
+prefs() { $A shell "run-as $APP_ID sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" 2>/dev/null | tr -d '\r'; }
+unlocked "the start" || exit 77
+echo "-- before: prefs $(prefs); simulator auth $(simauth)"
+
+echo "== L. LIVE mode =="
+T0=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+launch 'demsdemo:///login?core=LIVE&motion=off'
+i=0; until $A logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -q 'runtime.live.ready' || [ "$i" -ge 90 ]; do i=$((i + 1)); sleep 1; done
+echo "-- waited $i s for runtime.live.ready"
+unlocked "the LIVE login" || exit 77
+(cd "$ROOT" && node --import tsx "$H/device_flow.mts" "$SERIAL" "$OUT" "$T0" live)
+LIVE_EXIT=$?; echo "-- LIVE flow exit: $LIVE_EXIT"
+[ "$LIVE_EXIT" = 77 ] && exit 77
+echo "-- Core request lines of the LIVE part:"
+$A logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -o 'DEMS-LIVE\] .*' | sed -E 's/ [0-9a-f]{8}-[0-9a-f-]{27}$//' | sort | uniq -c | sort -rn | head -n 16 | sed 's/^/   /'
+
+echo "== S. SIMULATED mode (the last launch, D124) =="
+$A shell am force-stop "$APP_ID"
+T1=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+launch 'demsdemo:///login?core=SIMULATED&motion=off'
+i=0; until $A logcat -d -T "$T1" -s ReactNativeJS:V 2>/dev/null | grep -q 'runtime.sim.hydrated' || [ "$i" -ge 60 ]; do i=$((i + 1)); sleep 1; done
+echo "-- waited $i s for runtime.sim.hydrated"
+unlocked "the SIMULATED part" || exit 77
+SIM_AUTH=$(simauth); echo "-- simulator auth at the start: $SIM_AUTH"
+(cd "$ROOT" && SIM_AUTH="$SIM_AUTH" node --import tsx "$H/device_flow.mts" "$SERIAL" "$OUT" "$T1" simulated)
+SIM_EXIT=$?; echo "-- SIMULATED flow exit: $SIM_EXIT"
+echo "-- prefs after: $(prefs)"
+echo "-- remove this row's dump file only: adb shell rm /sdcard/w80.xml"
+$A shell rm -f /sdcard/w80.xml; $A shell ls /sdcard/w80.xml 2>&1 | tr -d '\r' | sed 's/^/   /'
+echo "-- lock at end: $($A shell dumpsys window 2>/dev/null|tr -d '\r'|grep -o 'isKeyguardShowing=[a-z]*'|head -n1)"
+[ "$LIVE_EXIT" = 0 ] && [ "$SIM_EXIT" = 0 ] && exit 0
+exit 1

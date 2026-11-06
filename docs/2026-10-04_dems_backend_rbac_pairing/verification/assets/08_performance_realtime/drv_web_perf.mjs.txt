@@ -1,0 +1,52 @@
+// Web perf window on THIS row's headless page (origin 127.0.0.1:5173 only; ownership-checked connect()).
+// Measures over SECS seconds: requestAnimationFrame frames (fps, frame-interval percentiles, intervals > 50 ms),
+// PerformanceObserver 'longtask' entries (count, total, max), CDP Performance.getMetrics deltas (TaskDuration,
+// ScriptDuration, LayoutDuration, RecalcStyleDuration), and the socket frames received by type.
+//   CTX=a node web_perf.mjs <label> <secs> [navPath]
+import { ORIGIN, connect, log, sleep, stamp, writeJson } from './lib.mjs'
+import { execFileSync } from 'node:child_process'
+const [label, secsArg, nav] = process.argv.slice(2)
+const SECS = Number(secsArg)
+const page = await connect({ viewport: true })
+if (nav) await page.navigate(`${ORIGIN}${nav}`, 4000)
+await page.send('Performance.enable', { timeDomain: 'timeTicks' })
+const metrics = async () => Object.fromEntries((await page.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]))
+const frames = []
+page.onEvent((e) => { if (e.kind === 'frame') frames.push(e) })
+const uptimeStart = execFileSync('uptime', { encoding: 'utf8' }).trim()
+const state0 = await page.evaluate(`({ href: location.pathname, state: document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state') ?? null, mode: document.querySelector('[data-testid="shell-mode"]')?.textContent ?? null, visibility: document.visibilityState })`, 'state')
+const m0 = await metrics()
+const t0 = Date.now()
+await page.evaluate(`(() => {
+  const w = { frames: [], long: [], start: performance.now(), done: false }
+  window.__w98 = w
+  try { const po = new PerformanceObserver((list) => { for (const e of list.getEntries()) w.long.push({ start: e.startTime, dur: e.duration }) }); po.observe({ type: 'longtask', buffered: false }); w.po = po; w.longSupported = true } catch (e) { w.longSupported = false }
+  const tick = (t) => { if (w.done) return; w.frames.push(t); requestAnimationFrame(tick) }
+  requestAnimationFrame(tick)
+  return true
+})()`, 'install')
+await sleep(SECS * 1000)
+const r = await page.evaluate(`(() => {
+  const w = window.__w98; w.done = true; if (w.po) w.po.disconnect()
+  const f = w.frames, iv = []
+  for (let i = 1; i < f.length; i++) iv.push(f[i] - f[i - 1])
+  const s = [...iv].sort((a, b) => a - b), q = (p) => s.length ? +s[Math.min(s.length - 1, Math.floor(p * s.length))].toFixed(1) : null
+  const span = f.length > 1 ? (f[f.length - 1] - f[0]) / 1000 : 0
+  return { longSupported: w.longSupported, frames: f.length, spanS: +span.toFixed(2), fps: span ? +((f.length - 1) / span).toFixed(1) : 0,
+    intervalP50: q(0.5), intervalP95: q(0.95), intervalP99: q(0.99), intervalMax: s.length ? +s[s.length - 1].toFixed(1) : null,
+    intervalsOver50: iv.filter((x) => x > 50).length, intervalsOver100: iv.filter((x) => x > 100).length,
+    longtasks: w.long.length, longtaskTotalMs: +w.long.reduce((a, b) => a + b.dur, 0).toFixed(0), longtaskMaxMs: w.long.length ? +Math.max(...w.long.map((x) => x.dur)).toFixed(0) : 0,
+    longtaskDurations: w.long.map((x) => Math.round(x.dur)) }
+})()`, 'collect')
+const t1 = Date.now()
+const m1 = await metrics()
+const d = (k) => +(((m1[k] ?? 0) - (m0[k] ?? 0)) * 1000).toFixed(0)
+const wall = (t1 - t0)
+const busy = { TaskDurationMs: d('TaskDuration'), ScriptDurationMs: d('ScriptDuration'), LayoutDurationMs: d('LayoutDuration'), RecalcStyleDurationMs: d('RecalcStyleDuration'), mainThreadBusyPct: +((d('TaskDuration') / wall) * 100).toFixed(1), JSHeapUsedMB: +((m1.JSHeapUsedSize ?? 0) / 1048576).toFixed(1), Nodes: m1.Nodes }
+const byType = {}
+for (const f of frames) { const k = f.resource ? `${f.type} ${f.resource}` : f.type; byType[k] = (byType[k] ?? 0) + 1 }
+const state1 = await page.evaluate(`({ href: location.pathname, state: document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state') ?? null, visibility: document.visibilityState })`, 'state')
+const out = { label, start: stamp(t0), end: stamp(t1), wallMs: wall, uptimeStart, uptimeEnd: execFileSync('uptime', { encoding: 'utf8' }).trim(), pageBefore: state0, pageAfter: state1, raf: r, cdpMetrics: busy, socketFramesByType: byType, socketFramesPerS: +(frames.length / (wall / 1000)).toFixed(2) }
+writeJson(`${label}.json`, out)
+log(JSON.stringify({ ...out, raf: { ...r, longtaskDurations: r.longtaskDurations.slice(0, 30) } }))
+page.close()

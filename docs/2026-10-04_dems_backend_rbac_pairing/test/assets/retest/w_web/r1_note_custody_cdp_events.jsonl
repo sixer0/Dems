@@ -1,0 +1,632 @@
+{"t":1791264954566,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/login"}
+{"t":1791264954580,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@vite/client"}
+{"t":1791264954580,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/main.tsx"}
+{"t":1791264954587,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@react-refresh"}
+{"t":1791264954593,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/orbitron/index.css"}
+{"t":1791264954593,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/inter/index.css"}
+{"t":1791264954593,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/jetbrains-mono/index.css"}
+{"t":1791264954593,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/index.css"}
+{"t":1791264954593,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react.js"}
+{"t":1791264954594,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-dom_client.js"}
+{"t":1791264954594,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@tanstack_react-query.js"}
+{"t":1791264954594,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@tanstack_react-router.js"}
+{"t":1791264954594,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-i18next.js"}
+{"t":1791264954594,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zod.js"}
+{"t":1791264954594,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/error-sink.ts"}
+{"t":1791264954594,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react_jsx-dev-runtime.js"}
+{"t":1791264954595,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/vite/dist/client/env.mjs"}
+{"t":1791264954603,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/rolldown-runtime-DC62tzP2.js"}
+{"t":1791264954608,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zod-DbJ75KGc.js"}
+{"t":1791264954628,"label":"Login","kind":"ws","origin":"ws://127.0.0.1:5178","path":"/"}
+{"t":1791264954636,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react_jsx-runtime.js"}
+{"t":1791264954636,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-dom.js"}
+{"t":1791264954636,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/shim-Zj6jh50b.js"}
+{"t":1791264954636,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/i18next.js"}
+{"t":1791264954640,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/with-selector-B2QvWTxs.js"}
+{"t":1791264954681,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/boot.ts"}
+{"t":1791264954683,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/index.ts"}
+{"t":1791264954683,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/index.ts"}
+{"t":1791264954683,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/core-endpoint.ts"}
+{"t":1791264954683,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/core-mode.ts"}
+{"t":1791264954684,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/live-host.ts"}
+{"t":1791264954690,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/constants.ts"}
+{"t":1791264954690,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/core-actions.ts"}
+{"t":1791264954690,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/settle.ts"}
+{"t":1791264954690,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/errors.ts"}
+{"t":1791264954690,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/mode.ts"}
+{"t":1791264954690,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/hooks.ts"}
+{"t":1791264954692,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/constants.ts"}
+{"t":1791264954692,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/vocabulary.ts"}
+{"t":1791264954692,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/types.ts"}
+{"t":1791264954692,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/errors.ts"}
+{"t":1791264954693,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/memo.ts"}
+{"t":1791264954693,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/demo-alignment.ts"}
+{"t":1791264954693,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/rng.ts"}
+{"t":1791264954693,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/clock.ts"}
+{"t":1791264954693,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/events.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/evidence.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/auth.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/platform.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/initial-state.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/store.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/selectors.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/devices.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/views.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/derive.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/session-machine.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/faults.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/audio.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/health.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/generator.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/maintenance.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/evidence-actions.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/pairing.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/scenarios.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/api.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/actions.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/engine.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/react.ts"}
+{"t":1791264954694,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts"}
+{"t":1791264954695,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/packaged-csp.ts"}
+{"t":1791264954717,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@noble_hashes_sha2__js.js"}
+{"t":1791264954717,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@noble_hashes_utils__js.js"}
+{"t":1791264954718,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/index.ts"}
+{"t":1791264954721,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand_middleware.js"}
+{"t":1791264954721,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand_vanilla.js"}
+{"t":1791264954723,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts"}
+{"t":1791264954724,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/text-cut.ts"}
+{"t":1791264954727,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand.js"}
+{"t":1791264954727,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand_react_shallow.js"}
+{"t":1791264954727,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts"}
+{"t":1791264954727,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts"}
+{"t":1791264954728,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts"}
+{"t":1791264954737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/ids.ts"}
+{"t":1791264954737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/enums.ts"}
+{"t":1791264954737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/entities.ts"}
+{"t":1791264954746,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts"}
+{"t":1791264954747,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts"}
+{"t":1791264954747,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts"}
+{"t":1791264954747,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts"}
+{"t":1791264954748,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/tokens.ts"}
+{"t":1791264954767,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/i18n.ts"}
+{"t":1791264954772,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/index.ts"}
+{"t":1791264954775,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/api-reference.ts"}
+{"t":1791264954775,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/common.ts"}
+{"t":1791264954775,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/dashboard.ts"}
+{"t":1791264954775,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/devices.ts"}
+{"t":1791264954776,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/evidence.ts"}
+{"t":1791264954776,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/login.ts"}
+{"t":1791264954776,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/network-time.ts"}
+{"t":1791264954776,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/paired-devices.ts"}
+{"t":1791264954776,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/security-audit.ts"}
+{"t":1791264954776,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/session.ts"}
+{"t":1791264954776,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/session-new.ts"}
+{"t":1791264954776,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/shell.ts"}
+{"t":1791264954776,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/storage.ts"}
+{"t":1791264954776,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/system.ts"}
+{"t":1791264954776,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/users-roles.ts"}
+{"t":1791264954776,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/resource-tree.ts"}
+{"t":1791264954789,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/router.tsx"}
+{"t":1791264954791,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/route-view-transition.ts"}
+{"t":1791264954791,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routeTree.gen.ts"}
+{"t":1791264954791,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/query-bridge.ts"}
+{"t":1791264954794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/__root.tsx"}
+{"t":1791264954794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app.tsx"}
+{"t":1791264954794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/login.tsx"}
+{"t":1791264954794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/index.tsx"}
+{"t":1791264954794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/dashboard.tsx"}
+{"t":1791264954794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/devices.tsx"}
+{"t":1791264954794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/network-time.tsx"}
+{"t":1791264954794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/security-audit.tsx"}
+{"t":1791264954794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/stack-check.tsx"}
+{"t":1791264954794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/storage.tsx"}
+{"t":1791264954794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/system.tsx"}
+{"t":1791264954795,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/admin/devices.tsx"}
+{"t":1791264954795,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/admin/users.tsx"}
+{"t":1791264954795,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/developer/api.tsx"}
+{"t":1791264954795,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/evidence/index.tsx"}
+{"t":1791264954795,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/evidence/$evidenceId.tsx"}
+{"t":1791264954795,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/session/index.tsx"}
+{"t":1791264954795,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/session/new.tsx"}
+{"t":1791264954803,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@heroui_react.js"}
+{"t":1791264954803,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/motion_react.js"}
+{"t":1791264954804,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/index.ts"}
+{"t":1791264954804,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-entrance.ts"}
+{"t":1791264954804,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/index.ts"}
+{"t":1791264954804,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/presentation-follow.ts"}
+{"t":1791264954804,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell.css"}
+{"t":1791264954807,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/-search.ts"}
+{"t":1791264954809,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/admin/-guard.ts"}
+{"t":1791264954833,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts"}
+{"t":1791264954834,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/live-socket-client.ts"}
+{"t":1791264954835,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-context.tsx"}
+{"t":1791264954836,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/use-heartbeat.ts"}
+{"t":1791264954837,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/format.ts"}
+{"t":1791264954837,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/use-retry-cooldown.ts"}
+{"t":1791264954844,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/motion-policy-provider.tsx"}
+{"t":1791264954844,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/use-motion-policy.ts"}
+{"t":1791264954844,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/use-ambient-loop.ts"}
+{"t":1791264954844,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/ambient-registry.ts"}
+{"t":1791264954845,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/glow-layer.tsx"}
+{"t":1791264954845,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/glow.ts"}
+{"t":1791264954845,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/debug-overlay-gate.tsx"}
+{"t":1791264954845,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/debug-metrics.ts"}
+{"t":1791264954845,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/variants.ts"}
+{"t":1791264954845,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/transitions.ts"}
+{"t":1791264954845,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/policy.ts"}
+{"t":1791264954845,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/use-media-query.ts"}
+{"t":1791264954846,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/presentation-mode.ts"}
+{"t":1791264954862,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/motion.css"}
+{"t":1791264954864,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/index.ts"}
+{"t":1791264954864,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/utils.ts"}
+{"t":1791264954868,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/status-tones.ts"}
+{"t":1791264954868,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/clsx.js"}
+{"t":1791264954868,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/tailwind-merge.js"}
+{"t":1791264954886,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/DateFormatter-BaZr6xpv.js"}
+{"t":1791264954947,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/live-start.ts"}
+{"t":1791264954953,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/client/index.ts"}
+{"t":1791264954953,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/index.ts"}
+{"t":1791264954954,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/owed-sign-out-storage.ts"}
+{"t":1791264954956,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/client/core-client.ts"}
+{"t":1791264954957,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/constants.ts"}
+{"t":1791264954957,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/types.ts"}
+{"t":1791264954957,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/bindings.ts"}
+{"t":1791264954957,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/clock.ts"}
+{"t":1791264954957,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts"}
+{"t":1791264954957,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-result.ts"}
+{"t":1791264954957,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts"}
+{"t":1791264954957,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/neutral-state.ts"}
+{"t":1791264954958,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts"}
+{"t":1791264954958,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/replica.ts"}
+{"t":1791264954958,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/structural-sharing.ts"}
+{"t":1791264954958,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/touch-throttle.ts"}
+{"t":1791264954971,"label":"Login","kind":"ws","origin":"ws://127.0.0.1:5178","path":"/ws"}
+{"t":1791264954971,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/auth/session"}
+{"t":1791264954972,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/auth/status"}
+{"t":1791264954973,"label":"Login","kind":"response4xx","status":401,"method":"GET","path":"/api/v1/auth/session"}
+{"t":1791264954973,"label":"Login","kind":"log","level":"error","source":"network","text":"Failed to load resource: the server responded with a status of 401 (Unauthorized)","url":"http://127.0.0.1:5178/api/v1/auth/session"}
+{"t":1791264954985,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/login.tsx"}
+{"t":1791264954987,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/index.tsx"}
+{"t":1791264954989,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/mode-switch.tsx"}
+{"t":1791264954989,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/auth-card.tsx"}
+{"t":1791264954989,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/brand-panel.tsx"}
+{"t":1791264954989,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-choreography.ts"}
+{"t":1791264954990,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-model.ts"}
+{"t":1791264954990,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-motion.ts"}
+{"t":1791264954990,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/report.ts"}
+{"t":1791264954990,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/sim-adapter.ts"}
+{"t":1791264954990,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/use-login-controller.ts"}
+{"t":1791264954990,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/use-login-tier.ts"}
+{"t":1791264954990,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login.css"}
+{"t":1791264954993,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/index.ts"}
+{"t":1791264954993,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-report.ts"}
+{"t":1791264954996,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/lucide-react.js"}
+{"t":1791264954996,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/border-beam.tsx"}
+{"t":1791264954997,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-alert.tsx"}
+{"t":1791264954997,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/mode-selector.tsx"}
+{"t":1791264954998,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/hero/room-2560.jpg"}
+{"t":1791264954998,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/glow-ring.tsx"}
+{"t":1791264954998,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shared-layout-ids.ts"}
+{"t":1791264954998,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/particles.tsx"}
+{"t":1791264954998,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/text-effect.tsx"}
+{"t":1791264954998,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/device-strip.tsx"}
+{"t":1791264954998,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/graded-still.ts"}
+{"t":1791264954998,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-emblem.tsx"}
+{"t":1791264955000,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/core-errors.ts"}
+{"t":1791264955001,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/live-adapter.ts"}
+{"t":1791264955001,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-live-model.ts"}
+{"t":1791264955001,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/hooks.ts"}
+{"t":1791264955006,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/animated-number.tsx"}
+{"t":1791264955006,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/sliding-number.tsx"}
+{"t":1791264955012,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/index.ts"}
+{"t":1791264955012,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/rec-indicator.tsx"}
+{"t":1791264955012,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/glow-ring.math.ts"}
+{"t":1791264955021,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-use-measure.js"}
+{"t":1791264955022,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/emblem.ts"}
+{"t":1791264955022,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/topo.ts"}
+{"t":1791264955023,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/use-sim-clock.ts"}
+{"t":1791264955156,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2"}
+{"t":1791264955157,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/assets/brand/topo.svg"}
+{"t":1791264955157,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2"}
+{"t":1791264955157,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/orbitron/files/orbitron-latin-wght-normal.woff2"}
+{"t":1791264955157,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/health"}
+{"t":1791264955157,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/hero/room-2560.jpg"}
+{"t":1791264955393,"label":"Login","kind":"request","origin":"blob:","method":"GET","path":"http://127.0.0.1:5178/6943f3e5-2db0-4efb-8ae3-f214d98140c9"}
+{"t":1791264956951,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app.tsx"}
+{"t":1791264956953,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/app-layout.tsx"}
+{"t":1791264956955,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/app-shell.tsx"}
+{"t":1791264956955,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/exit-guard.tsx"}
+{"t":1791264956955,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/route-transition.tsx"}
+{"t":1791264956958,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/bottom-tabs.tsx"}
+{"t":1791264956958,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/live-notices.tsx"}
+{"t":1791264956958,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/nav-drawer.tsx"}
+{"t":1791264956958,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-choreography.ts"}
+{"t":1791264956958,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-motion-context.ts"}
+{"t":1791264956958,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/sidebar.tsx"}
+{"t":1791264956958,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/top-bar.tsx"}
+{"t":1791264956958,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/use-shell-layout.ts"}
+{"t":1791264956963,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/nav-items.ts"}
+{"t":1791264956963,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/mode-indicator-state.ts"}
+{"t":1791264956963,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/route-permissions.ts"}
+{"t":1791264956965,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/brand-emblem.tsx"}
+{"t":1791264956968,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/mode-indicator.tsx"}
+{"t":1791264956968,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/notifications-bell.tsx"}
+{"t":1791264956968,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/secure-pill.tsx"}
+{"t":1791264956968,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/user-menu.tsx"}
+{"t":1791264956968,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/assets/brand/topo.svg"}
+{"t":1791264956968,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/animated-background.tsx"}
+{"t":1791264956969,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/use-visible-nav-items.ts"}
+{"t":1791264956974,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/integrity-checks.ts"}
+{"t":1791264957601,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"POST","path":"/api/v1/auth/sign-in"}
+{"t":1791264957638,"label":"Login","kind":"ws","origin":"ws://127.0.0.1:5178","path":"/ws"}
+{"t":1791264958190,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/dashboard.tsx"}
+{"t":1791264958237,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/index.tsx"}
+{"t":1791264958240,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/dashboard.css"}
+{"t":1791264958712,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/dashboard-panels.tsx"}
+{"t":1791264958737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/active-session-panel.tsx"}
+{"t":1791264958737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/devices-panel.tsx"}
+{"t":1791264958737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/hero-panel.tsx"}
+{"t":1791264958737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/quick-actions-panel.tsx"}
+{"t":1791264958737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/recent-events-panel.tsx"}
+{"t":1791264958737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/sealed-today-panel.tsx"}
+{"t":1791264958737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/security-panel.tsx"}
+{"t":1791264958737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/status-strip.tsx"}
+{"t":1791264958737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/storage-panel.tsx"}
+{"t":1791264958737,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/system-ring-panel.tsx"}
+{"t":1791264958755,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/index.ts"}
+{"t":1791264958755,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/ripple.tsx"}
+{"t":1791264958755,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/shine-border.tsx"}
+{"t":1791264958755,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/text-scramble.tsx"}
+{"t":1791264958755,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/dash-panel.tsx"}
+{"t":1791264958756,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/dashboard-model.ts"}
+{"t":1791264958756,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/dashboard-motion.ts"}
+{"t":1791264958756,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/sim-adapter.ts"}
+{"t":1791264958756,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/index.ts"}
+{"t":1791264958756,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/pending-control.ts"}
+{"t":1791264958756,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/report.ts"}
+{"t":1791264958756,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/status-bits.tsx"}
+{"t":1791264958756,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/hero/room-1600.jpg"}
+{"t":1791264958756,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/spotlight.tsx"}
+{"t":1791264958756,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/animated-list.tsx"}
+{"t":1791264958756,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/recharts.js"}
+{"t":1791264958764,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/camera-feed.tsx"}
+{"t":1791264958765,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/demo-media.ts"}
+{"t":1791264958765,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/feed-scheduler.ts"}
+{"t":1791264958765,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/live-decode-budget.ts"}
+{"t":1791264958767,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/dashboard/panel-boundary.tsx"}
+{"t":1791264958768,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/index.ts"}
+{"t":1791264958769,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/dbfs-meter.tsx"}
+{"t":1791264958769,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/dbfs-meter.math.ts"}
+{"t":1791264958770,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/session-timeline.math.ts"}
+{"t":1791264958770,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/session-timeline.tsx"}
+{"t":1791264958770,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/stepper.tsx"}
+{"t":1791264958771,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/page-report.ts"}
+{"t":1791264958790,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0001/AUDIO-01.m4a"}
+{"t":1791264958794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0001/AUDIO-02.m4a"}
+{"t":1791264958794,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0001/VIDEO-01.mp4"}
+{"t":1791264958795,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0001/VIDEO-01.poster.jpg"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0001/VIDEO-01.thumb.jpg"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0001/VIDEO-02.mp4"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0001/VIDEO-02.poster.jpg"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0001/VIDEO-02.thumb.jpg"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0002/AUDIO-01.m4a"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0002/AUDIO-02.m4a"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0002/VIDEO-01.mp4"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0002/VIDEO-01.poster.jpg"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0002/VIDEO-01.thumb.jpg"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0002/VIDEO-02.mp4"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0002/VIDEO-02.poster.jpg"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0002/VIDEO-02.thumb.jpg"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0003/AUDIO-01.m4a"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0003/AUDIO-02.m4a"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0003/VIDEO-01.mp4"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0003/VIDEO-01.poster.jpg"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0003/VIDEO-01.thumb.jpg"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0003/VIDEO-02.mp4"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0003/VIDEO-02.poster.jpg"}
+{"t":1791264958796,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0003/VIDEO-02.thumb.jpg"}
+{"t":1791264958797,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0004/AUDIO-01.m4a"}
+{"t":1791264958797,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0004/AUDIO-02.m4a"}
+{"t":1791264958797,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0004/VIDEO-01.mp4"}
+{"t":1791264958797,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0004/VIDEO-01.poster.jpg"}
+{"t":1791264958797,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0004/VIDEO-01.thumb.jpg"}
+{"t":1791264958797,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0004/VIDEO-02.mp4"}
+{"t":1791264958797,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0004/VIDEO-02.poster.jpg"}
+{"t":1791264958797,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0004/VIDEO-02.thumb.jpg"}
+{"t":1791264958797,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0005/AUDIO-01.m4a"}
+{"t":1791264958797,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0005/AUDIO-02.m4a"}
+{"t":1791264958797,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0005/VIDEO-01.mp4"}
+{"t":1791264958797,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0005/VIDEO-01.poster.jpg"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0005/VIDEO-01.thumb.jpg"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0005/VIDEO-02.mp4"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0005/VIDEO-02.poster.jpg"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0005/VIDEO-02.thumb.jpg"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0006/AUDIO-01.m4a"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0006/AUDIO-02.m4a"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0006/VIDEO-01.mp4"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0006/VIDEO-01.poster.jpg"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0006/VIDEO-01.thumb.jpg"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0006/VIDEO-02.mp4"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0006/VIDEO-02.poster.jpg"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0006/VIDEO-02.thumb.jpg"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0007/AUDIO-01.m4a"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0007/AUDIO-02.m4a"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0007/VIDEO-01.mp4"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0007/VIDEO-01.poster.jpg"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0007/VIDEO-01.thumb.jpg"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0007/VIDEO-02.mp4"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0007/VIDEO-02.poster.jpg"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0007/VIDEO-02.thumb.jpg"}
+{"t":1791264958798,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0008/AUDIO-01.m4a"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0008/AUDIO-02.m4a"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0008/VIDEO-01.mp4"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0008/VIDEO-01.poster.jpg"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0008/VIDEO-01.thumb.jpg"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0008/VIDEO-02.mp4"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0008/VIDEO-02.poster.jpg"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0008/VIDEO-02.thumb.jpg"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0009/AUDIO-01.m4a"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0009/AUDIO-02.m4a"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0009/VIDEO-01.mp4"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0009/VIDEO-01.poster.jpg"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0009/VIDEO-01.thumb.jpg"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0009/VIDEO-02.mp4"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0009/VIDEO-02.poster.jpg"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0009/VIDEO-02.thumb.jpg"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0010/AUDIO-01.m4a"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0010/AUDIO-02.m4a"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0010/VIDEO-01.mp4"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0010/VIDEO-01.poster.jpg"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0010/VIDEO-01.thumb.jpg"}
+{"t":1791264958799,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0010/VIDEO-02.mp4"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0010/VIDEO-02.poster.jpg"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0010/VIDEO-02.thumb.jpg"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0011/AUDIO-01.m4a"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0011/AUDIO-02.m4a"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0011/VIDEO-01.mp4"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0011/VIDEO-01.poster.jpg"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0011/VIDEO-01.thumb.jpg"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0011/VIDEO-02.mp4"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0011/VIDEO-02.poster.jpg"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0011/VIDEO-02.thumb.jpg"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0012/AUDIO-01.m4a"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0012/AUDIO-02.m4a"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0012/VIDEO-01.mp4"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0012/VIDEO-01.poster.jpg"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0012/VIDEO-01.thumb.jpg"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0012/VIDEO-02.mp4"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0012/VIDEO-02.poster.jpg"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0012/VIDEO-02.thumb.jpg"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0013/AUDIO-01.m4a"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0013/AUDIO-02.m4a"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0013/VIDEO-01.mp4"}
+{"t":1791264958800,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0013/VIDEO-01.poster.jpg"}
+{"t":1791264958801,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0013/VIDEO-01.thumb.jpg"}
+{"t":1791264958801,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0013/VIDEO-02.mp4"}
+{"t":1791264958801,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0013/VIDEO-02.poster.jpg"}
+{"t":1791264958801,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/evidence/0013/VIDEO-02.thumb.jpg"}
+{"t":1791264958801,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/AUDIO-01.loop.m4a"}
+{"t":1791264958801,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/AUDIO-02.loop.m4a"}
+{"t":1791264958801,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/VIDEO-01.loop.mp4"}
+{"t":1791264958801,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/VIDEO-01.poster.jpg"}
+{"t":1791264958801,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/VIDEO-01.thumb.jpg"}
+{"t":1791264958801,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/VIDEO-02.loop.mp4"}
+{"t":1791264958801,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/VIDEO-02.poster.jpg"}
+{"t":1791264958801,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/VIDEO-02.thumb.jpg"}
+{"t":1791264958805,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/camera-feed.math.ts"}
+{"t":1791264958805,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/camera-feed.css"}
+{"t":1791264958805,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/procedural-feed.ts"}
+{"t":1791264958814,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/live-only-state.tsx"}
+{"t":1791264958814,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/page-header.tsx"}
+{"t":1791264958889,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/VIDEO-01.thumb.jpg"}
+{"t":1791264958892,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/VIDEO-01.loop.mp4"}
+{"t":1791264958898,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/VIDEO-02.thumb.jpg"}
+{"t":1791264958899,"label":"Login","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/VIDEO-02.loop.mp4"}
+{"t":1791264961269,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/demo/status"}
+{"t":1791264961279,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/session/current"}
+{"t":1791264961400,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"POST","path":"/api/v1/auth/touch"}
+{"t":1791264961448,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/system.tsx"}
+{"t":1791264961454,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/index.tsx"}
+{"t":1791264961456,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/about-panel.tsx"}
+{"t":1791264961456,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/demo-panel.tsx"}
+{"t":1791264961457,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/diagnostics.tsx"}
+{"t":1791264961457,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/health-panel.tsx"}
+{"t":1791264961457,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/quick-actions.tsx"}
+{"t":1791264961457,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/services-panel.tsx"}
+{"t":1791264961457,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/settings-panel.tsx"}
+{"t":1791264961457,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/status-banner.tsx"}
+{"t":1791264961457,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/update-panel.tsx"}
+{"t":1791264961457,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/live.ts"}
+{"t":1791264961457,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/use-sim-command.ts"}
+{"t":1791264961457,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/system.css"}
+{"t":1791264961463,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/panel.tsx"}
+{"t":1791264961463,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/sim-adapter.ts"}
+{"t":1791264961493,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/log.ts"}
+{"t":1791264961493,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/model.ts"}
+{"t":1791264961493,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/choreography.ts"}
+{"t":1791264961493,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/export-logs-dialog.tsx"}
+{"t":1791264961493,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/system/live-log-export.ts"}
+{"t":1791264961493,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/effect-start.ts"}
+{"t":1791264961499,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/core-page-walk.ts"}
+{"t":1791264965477,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/demo-data/index.ts"}
+{"t":1791264965480,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/demo-data/documents.generated.ts"}
+{"t":1791264965480,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/demo-data/lookup.ts"}
+{"t":1791264965480,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/demo-data/packages.generated.ts"}
+{"t":1791264965480,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/demo-data/types.ts"}
+{"t":1791264965480,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/demo-data/verify.ts"}
+{"t":1791264965480,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/demo-data/join.ts"}
+{"t":1791264970802,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"POST","path":"/api/v1/demo/scenario"}
+{"t":1791264976705,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/demo/status"}
+{"t":1791264976715,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/session/current"}
+{"t":1791264976837,"label":"System & Demo Control","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/audit"}
+{"t":1791264976997,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/session/index.tsx"}
+{"t":1791264977003,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/index.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/text-shimmer.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/action-bar.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/audio-panel.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/audit-panel.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/details-panel.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/finalization-modal.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/flight-layer.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/inputs-panel.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/integrity-panel.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/live-feed-panel.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/log.ts"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/model.ts"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/panel.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/status-banner.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/storage-panel.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/timeline-panel.tsx"}
+{"t":1791264977007,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/session-monitor.css"}
+{"t":1791264977040,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/flight-context.ts"}
+{"t":1791264977040,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/choreography.ts"}
+{"t":1791264977040,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/scroll-edges.ts"}
+{"t":1791264977040,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/session-monitor/sim-adapter.ts"}
+{"t":1791264977123,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/VIDEO-01.poster.jpg"}
+{"t":1791264981437,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/session/current"}
+{"t":1791264983935,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"POST","path":"/api/v1/session/SES-20261006-0024/notes"}
+{"t":1791264987465,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/audit"}
+{"t":1791264991916,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"POST","path":"/api/v1/session/SES-20261006-0024/stop"}
+{"t":1791264998824,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/session/current"}
+{"t":1791264999008,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/audit"}
+{"t":1791264999013,"label":"Session Monitor","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/audit"}
+{"t":1791264999183,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/evidence/$evidenceId.tsx"}
+{"t":1791264999186,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/index.tsx"}
+{"t":1791264999188,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/evidence.css"}
+{"t":1791264999246,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/detail-page.tsx"}
+{"t":1791264999248,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/chips.tsx"}
+{"t":1791264999248,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/clipboard.ts"}
+{"t":1791264999248,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/choreography.ts"}
+{"t":1791264999248,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/demo-assets.ts"}
+{"t":1791264999248,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/export-download.ts"}
+{"t":1791264999248,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/export-wizard.tsx"}
+{"t":1791264999248,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/integrity-tab.tsx"}
+{"t":1791264999248,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/log.ts"}
+{"t":1791264999248,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/media-tab.tsx"}
+{"t":1791264999249,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/metadata-tab.tsx"}
+{"t":1791264999249,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/model.ts"}
+{"t":1791264999249,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/pending-actions.ts"}
+{"t":1791264999249,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/selectors.ts"}
+{"t":1791264999249,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/use-archive.ts"}
+{"t":1791264999249,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/use-evidence-media.ts"}
+{"t":1791264999249,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/use-verification.ts"}
+{"t":1791264999261,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260929-0011/audit-session-extract.jsonl"}
+{"t":1791264999261,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260929-0011/evidence-container.json"}
+{"t":1791264999261,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260929-0011/manifest.json"}
+{"t":1791264999261,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260929-0011/metadata.json"}
+{"t":1791264999261,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260929-0011/signature.sig"}
+{"t":1791264999261,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260929-0012/audit-session-extract.jsonl"}
+{"t":1791264999262,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260929-0012/evidence-container.json"}
+{"t":1791264999262,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260929-0012/manifest.json"}
+{"t":1791264999262,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260929-0012/metadata.json"}
+{"t":1791264999262,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260929-0012/signature.sig"}
+{"t":1791264999262,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0013/audit-session-extract.jsonl"}
+{"t":1791264999262,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0013/evidence-container.json"}
+{"t":1791264999262,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0013/manifest.json"}
+{"t":1791264999262,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0013/metadata.json"}
+{"t":1791264999262,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0013/signature.sig"}
+{"t":1791264999262,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0014/audit-session-extract.jsonl"}
+{"t":1791264999263,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0014/evidence-container.json"}
+{"t":1791264999263,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0014/export/EXP-######.zip"}
+{"t":1791264999263,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0014/export/export-manifest.json"}
+{"t":1791264999263,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0014/export/export-manifest.sig"}
+{"t":1791264999263,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0014/manifest.json"}
+{"t":1791264999263,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0014/metadata.json"}
+{"t":1791264999264,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0014/signature.sig"}
+{"t":1791264999264,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0015/audit-session-extract.jsonl"}
+{"t":1791264999264,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0015/evidence-container.json"}
+{"t":1791264999264,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0015/manifest.json"}
+{"t":1791264999264,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0015/media/AUDIO-02.m4a"}
+{"t":1791264999264,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0015/metadata.json"}
+{"t":1791264999264,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0015/signature.sig"}
+{"t":1791264999265,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0016/audit-session-extract.jsonl"}
+{"t":1791264999265,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0016/evidence-container.json"}
+{"t":1791264999265,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0016/manifest.json"}
+{"t":1791264999265,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0016/metadata.json"}
+{"t":1791264999265,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20260930-0016/signature.sig"}
+{"t":1791264999265,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0017/audit-session-extract.jsonl"}
+{"t":1791264999265,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0017/evidence-container.json"}
+{"t":1791264999265,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0017/manifest.json"}
+{"t":1791264999266,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0017/metadata.json"}
+{"t":1791264999266,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0017/signature.sig"}
+{"t":1791264999266,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0018/audit-session-extract.jsonl"}
+{"t":1791264999267,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0018/evidence-container.json"}
+{"t":1791264999267,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0018/manifest.json"}
+{"t":1791264999267,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0018/metadata.json"}
+{"t":1791264999267,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0018/signature.sig"}
+{"t":1791264999267,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0019/audit-session-extract.jsonl"}
+{"t":1791264999267,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0019/evidence-container.json"}
+{"t":1791264999267,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0019/manifest.json"}
+{"t":1791264999267,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0019/metadata.json"}
+{"t":1791264999267,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0019/signature.sig"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0020/audit-session-extract.jsonl"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0020/evidence-container.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0020/manifest.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0020/metadata.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0020/signature.sig"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0021/audit-session-extract.jsonl"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0021/evidence-container.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0021/manifest.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0021/metadata.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0021/signature.sig"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0022/audit-session-extract.jsonl"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0022/evidence-container.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0022/manifest.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0022/metadata.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0022/signature.sig"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0023/audit-session-extract.jsonl"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0023/evidence-container.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0023/manifest.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0023/metadata.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0023/signature.sig"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0024/audit-session-extract.jsonl"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0024/evidence-container.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0024/manifest.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0024/metadata.json"}
+{"t":1791264999268,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-evidence/SESSION-SES-20261001-0024/signature.sig"}
+{"t":1791264999269,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/transition-panel.tsx"}
+{"t":1791264999269,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/check-list.tsx"}
+{"t":1791264999269,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/export-outcome.ts"}
+{"t":1791264999269,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/lock-shackle.tsx"}
+{"t":1791264999269,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/sim-adapter.ts"}
+{"t":1791264999270,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/use-retry-cooldown.ts"}
+{"t":1791264999284,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/json-view.tsx"}
+{"t":1791264999285,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/manifest-summary.ts"}
+{"t":1791264999318,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/labels.ts"}
+{"t":1791264999319,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/evidence/json-tokens.ts"}
+{"t":1791264999533,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/evidence/EV-20261006-0014"}
+{"t":1791264999565,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/AUDIO-01.loop.m4a"}
+{"t":1791264999565,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/demo-media/live/AUDIO-02.loop.m4a"}
+{"t":1791265005052,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/evidence/EV-20261006-0014"}
+{"t":1791265005056,"label":"Evidence detail (sealed item)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/admin/users"}
+{"t":1791265008177,"label":"Session Monitor (after seal)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/session/current"}
+{"t":1791265008182,"label":"Session Monitor (after seal)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/demo/status"}
+{"t":1791265009830,"label":"Sign out","kind":"request","origin":"http://127.0.0.1:5178","method":"POST","path":"/api/v1/auth/sign-out"}
+{"t":1791265009884,"label":"Sign out","kind":"ws","origin":"ws://127.0.0.1:5178","path":"/ws"}
+{"t":1791265009926,"label":"Sign out","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/auth/status"}
+{"t":1791265010209,"label":"Sign out","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/health"}
+{"t":1791265010209,"label":"Sign out","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/hero/room-2560.jpg"}
+{"t":1791265010270,"label":"Sign out","kind":"request","origin":"blob:","method":"GET","path":"http://127.0.0.1:5178/4cc1cdc5-a583-40df-873d-32b61ad8e529"}

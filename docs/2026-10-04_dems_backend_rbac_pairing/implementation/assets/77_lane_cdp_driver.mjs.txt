@@ -1,0 +1,441 @@
+// W77 lane check: the Users & Roles page in Live mode in a real headless Chromium, over raw CDP (Node's
+// built-in WebSocket; no install). The helpers and the sign-in flow are W71's driver (W55's helpers as W63
+// used them), unchanged; the steps are this row's. Sign-ins go THROUGH THE FORM, from the project's own seed
+// constants. ONE role change of another seeded operator through the UI, then back to its seeded role.
+// Usage: node --import tsx .cache/w77/lane/cdp-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+//
+// What is never stored or printed: a request body, a cookie value, the seeded password, a
+// `Runtime.evaluate` expression. Cookie values are cut to their length; URLs lose their query
+// values; only named elements and booleans are read from the pages.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+// The seeded demo operator, read from the project's own seed source (never printed).
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+const investigator = OPERATORS.find((operator) => operator.role === 'INVESTIGATOR')
+if (!supervisor || !investigator || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source has no SUPERVISOR, no INVESTIGATOR or no demo password constant')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map() // requestId -> { method, url, status }
+let sockets = new Map() // requestId -> { url, status, frames: [type...], cookieSent }
+let consoleLines = []
+let loadFired = false
+
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+const typeOf = (payload) => {
+  try {
+    return JSON.parse(payload).type ?? '(no type)'
+  } catch {
+    return '(not JSON)'
+  }
+}
+const pick = (headers, name) => {
+  for (const [key, value] of Object.entries(headers ?? {})) if (key.toLowerCase() === name) return value
+  return null
+}
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    // The error of a failed call is reported by its code only: its text can quote the expression.
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      // Never `p.request.postData`.
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Network.webSocketCreated':
+      sockets.set(p.requestId, { url: cleanUrl(p.url), status: null, frames: [] })
+      break
+    case 'Network.webSocketWillSendHandshakeRequest': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.cookieSent = pick(p.request.headers, 'cookie') ? 'yes (value not recorded)' : 'no'
+      break
+    }
+    case 'Network.webSocketHandshakeResponseReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.webSocketFrameReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry && entry.frames.length < 400) entry.frames.push(typeOf(p.response.payloadData))
+      break
+    }
+    case 'Network.webSocketClosed': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.closed = true
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 420)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+
+/** Runs page script. A failure is reported without the expression and without the page's own message. */
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs) // the dev client's socket, the lazy route chunk, the entrance motion
+  return loadFired
+}
+
+/** Waits until the page holds (or no longer holds) an element with this test ID. Returns whether it did in time. */
+const waitFor = async (testId, present = true, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`document.querySelector('[data-testid="${testId}"]') !== null`, `wait ${testId}`)
+    if (found === present) return true
+    await sleep(150)
+  }
+  return false
+}
+
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  const file = join(assetsDir, name)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return file
+}
+
+/** Types into the input of a field by script: focus, select what is there, insert. The text is not echoed. */
+const typeInto = async (fieldTestId, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector('[data-testid="${fieldTestId}"] input'); if (!el) return false; el.focus(); el.select(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const press = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`)
+
+/** What the page did since the last call, and a new record for what follows. */
+const takeNetwork = () => {
+  const taken = {
+    api: [...requests.values()].filter((entry) => entry.url.includes('/api/v1/')),
+    origins: [...new Set([...requests.values()].map((entry) => { try { return new URL(entry.url).origin } catch { return '(other)' } }))].sort(),
+    sockets: [...sockets.values()]
+      .filter((entry) => entry.url.endsWith('/ws'))
+      .map((entry) => ({ url: entry.url, status: entry.status, cookieSent: entry.cookieSent ?? null, closed: entry.closed === true, frameCount: entry.frames.length, firstTypes: entry.frames.slice(0, 4), distinctTypes: [...new Set(entry.frames)].sort() })),
+    console: consoleLines,
+  }
+  requests = new Map()
+  sockets = new Map()
+  consoleLines = []
+  return taken
+}
+
+
+
+
+const waitToast = async (needle, timeoutMs = 10000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`[...document.querySelectorAll('[data-slot="toast"]')].some((el) => (el.textContent ?? '').includes(${JSON.stringify(needle)}))`, 'toast')
+    if (found) return true
+    await sleep(150)
+  }
+  return false
+}
+const signInThroughTheForm = async (operator, label) => {
+  await waitFor('page-login', true, 15000)
+  await typeInto('login-username-field', operator.username, `${label} username`)
+  await typeInto('login-password-field', DEMO_OPERATOR_PASSWORD, `${label} password`)
+  await press('login-submit')
+  const arrived = await waitFor('page-dashboard', true, 25000)
+  await sleep(2500) // the hand-off and the shell's entrance
+  return arrived
+}
+const signOutByPage = async () => {
+  const answer = await evaluate(
+    `(async () => { const r = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return { status: r.status } })()`,
+    'sign-out',
+  )
+  const back = await waitFor('page-login', true, 15000)
+  await sleep(1500)
+  return { ...answer, loginShown: back }
+}
+/** Goes to a page of the console by a full load (the session cookie carries the sign-in). */
+const openPage = async (path, testId, lastPanel) => {
+  await navigate(`${ORIGIN}${path}`, 2500)
+  const shown = await waitFor(testId, true, 20000)
+  if (lastPanel) await waitFor(lastPanel, true, 15000)
+  await sleep(3000) // the panels' beats and the lazily loaded charts
+  return shown
+}
+
+
+
+// ════════════════════════════════════ W77: the steps ════════════════════════════════════
+
+/** Named facts of the Users & Roles page (operator IDs, roles, flags; the page holds no credential). */
+const usersFacts = (label) =>
+  evaluate(
+    `(() => {
+      const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+      const text = (id) => q(id)?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+      const rows = [...document.querySelectorAll('[data-testid^="ur-user-"]')].map((row) => {
+        const id = row.getAttribute('data-testid').slice('ur-user-'.length)
+        return {
+          id,
+          role: q('ur-role-' + id)?.getAttribute('data-role') ?? null,
+          roleText: text('ur-role-' + id),
+          enabled: q('ur-status-' + id)?.getAttribute('data-enabled') ?? null,
+          self: row.querySelector('[data-testid="ur-self"]') !== null,
+          highlighted: row.getAttribute('data-highlight') === 'true',
+          menuDisabled: q('ur-actions-' + id)?.hasAttribute('disabled') || q('ur-actions-' + id)?.getAttribute('aria-disabled') === 'true' || q('ur-actions-' + id)?.hasAttribute('data-disabled') || false,
+        }
+      })
+      return {
+        href: location.origin + location.pathname,
+        onPage: q('page-users-roles') !== null,
+        shellMode: text('shell-mode'),
+        summary: q('ur-summary')?.querySelector('.sr-only')?.textContent ?? null,
+        panels: ['users', 'matrix'].filter((id) => q('panel-' + id) !== null),
+        rows,
+        matrixRows: q('ur-matrix') ? q('ur-matrix').querySelectorAll('[data-permission]').length : null,
+        grants: document.querySelectorAll('[data-testid^="ur-grant-"][data-granted="true"]').length,
+        readOnly: text('ur-matrix-readonly'),
+        liveOnly: q('ur-live-only') !== null,
+        liveOnlyCentred: q('ur-live-only')?.closest('.ur-state-wrap') ? true : false,
+        states: ['ur-loading', 'ur-empty', 'ur-error', 'ur-forbidden'].filter((id) => q(id) !== null),
+        dialog: ['ur-role-dialog', 'ur-disable-dialog', 'ur-enable-dialog'].find((id) => q(id) !== null) ?? null,
+        toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((el) => el.textContent?.replace(/\\s+/g, ' ').trim()),
+      }
+    })()`,
+    label,
+  )
+
+/** The Core's users list read by a page request with the page's own cookie: ID, role, enabled only. */
+const coreUsers = () =>
+  evaluate(
+    `(async () => { const r = await fetch('/api/v1/admin/users', { credentials: 'same-origin' }); let body = null; try { body = await r.json() } catch {} return { status: r.status, users: (body?.users ?? []).map((u) => ({ id: u.id, role: u.role, enabled: u.enabled })) } })()`,
+    'core users',
+  )
+
+/** Opens the row menu of `operatorId` and presses one of its items. */
+const pressMenuItem = async (operatorId, item) => {
+  await press('ur-actions-' + operatorId)
+  let shown = false
+  for (let i = 0; i < 40 && !shown; i++) {
+    shown = await evaluate(`document.querySelector('[data-testid="ur-${item}-${operatorId}"]') !== null`, 'menu shown')
+    if (!shown) await sleep(100)
+  }
+  await sleep(300)
+  const pressed = await press(`ur-${item}-${operatorId}`)
+  return { shown, pressed }
+}
+
+/** The role dialog: what it offers for the target (options, which are blocked, the own-row warning). */
+const roleDialogFacts = (label) =>
+  evaluate(
+    `(() => {
+      const d = document.querySelector('[data-testid="ur-role-dialog"]')
+      if (!d) return null
+      const options = [...d.querySelectorAll('[data-testid^="ur-role-option-"]')].map((o) => ({
+        role: o.getAttribute('data-testid').slice('ur-role-option-'.length),
+        checked: o.querySelector('input')?.checked ?? null,
+        blocked: o.getAttribute('data-blocked') === 'true',
+        disabled: o.querySelector('input')?.disabled ?? null,
+        hint: o.textContent?.includes('At least one enabled user must keep user administration.') ?? false,
+      }))
+      const confirm = d.querySelector('[data-testid="ur-role-confirm"]')
+      return {
+        target: d.querySelector('[data-testid="ur-role-target"]')?.textContent ?? null,
+        options,
+        ownWarning: d.querySelector('[data-testid="ur-role-own"]') !== null,
+        confirmDisabled: confirm ? confirm.hasAttribute('disabled') || confirm.getAttribute('aria-disabled') === 'true' || confirm.hasAttribute('data-disabled') : null,
+        diff: d.querySelector('[data-testid="ur-role-diff"]')?.textContent?.replace(/\\s+/g, ' ').trim() ?? null,
+        error: d.querySelector('[data-testid="ur-role-error"]')?.textContent ?? null,
+      }
+    })()`,
+    label,
+  )
+
+/** One role change through the UI: the row menu, the dialog, a role, the confirm; waits for the toast. */
+const changeRoleThroughTheUi = async (operatorId, role, shotName) => {
+  const menu = await pressMenuItem(operatorId, 'change-role')
+  const opened = await waitFor('ur-role-dialog', true, 8000)
+  await sleep(600)
+  const before = await roleDialogFacts('dialog before')
+  const chosen = await evaluate(`(() => { const el = document.querySelector('[data-testid="ur-role-option-${role}"] input'); if (!el || el.disabled) return false; el.click(); return true })()`, 'choose role')
+  await sleep(400)
+  const ready = await roleDialogFacts('dialog ready')
+  const dialogShot = shotName ? await screenshot(shotName.replace('.png', '_dialog.png')) : null
+  const pressed = await press('ur-role-confirm')
+  const roleLabel = { INVESTIGATOR: 'Investigator', SUPERVISOR: 'Supervisor', TECHNICIAN: 'Technician' }[role]
+  const toastShown = await waitToast(`is now ${roleLabel}`)
+  const closed = await waitFor('ur-role-dialog', false, 8000)
+  await sleep(1200)
+  const after = await usersFacts('after role change')
+  const shot = shotName ? await screenshot(shotName) : null
+  return { menu, opened, dialogBefore: before, chosen, dialogReady: ready, dialogScreenshot: dialogShot, pressed, toastShown, closed, after, screenshot: shot }
+}
+
+const started = Date.now()
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false })
+const version = await send('Browser.getVersion')
+const result = { browser: { product: version.product, userAgent: version.userAgent, headless: /Headless/i.test(version.userAgent) }, viewport: '1600x1000', steps: {} }
+
+// ── 1. Live, the seeded SUPERVISOR through the form; Users & Roles on the Core's data ──
+await navigate(`${ORIGIN}/login`)
+const loginMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+takeNetwork()
+const signedIn = await signInThroughTheForm(supervisor, 'supervisor')
+const shown = await openPage('/admin/users', 'page-users-roles', 'ur-matrix')
+await waitFor('ur-users-table', true, 15000)
+await sleep(1500)
+const startUsers = await coreUsers()
+result.steps.live = { loginCoreMode: loginMode, signedIn, shown, facts: await usersFacts('live users'), coreUsersAtStart: startUsers, screenshot: await screenshot('77_users_roles_live.png'), network: takeNetwork() }
+
+// ── 2. The hint for the only administrator (the 409 path is closed in the UI by design) ──
+const self = result.steps.live.facts.rows.find((row) => row.self)
+if (self) {
+  await pressMenuItem(self.id, 'change-role')
+  await waitFor('ur-role-dialog', true, 8000)
+  await sleep(700)
+  const hint = await roleDialogFacts('own dialog')
+  const hintShot = await screenshot('77_last_admin_hint_live.png')
+  await press('ur-role-cancel')
+  await waitFor('ur-role-dialog', false, 8000)
+  await sleep(500)
+  result.steps.lastAdminHint = { operatorId: self.id, dialog: hint, screenshot: hintShot, network: takeNetwork() }
+}
+
+// ── 3. ONE role change of another seeded operator through the UI, then back to the seeded role ──
+const SEEDED = Object.fromEntries(OPERATORS.map((operator) => [operator.id, operator.role]))
+const candidates = ['OPR-003', 'OPR-001']
+const changeTarget = candidates.find((id) => startUsers.users.some((user) => user.id === id && user.role === SEEDED[id] && user.enabled))
+if (!changeTarget) {
+  result.steps.roleChange = { skipped: 'no candidate operator is at its seeded role and enabled at the start: nothing was changed', coreUsersAtStart: startUsers }
+} else {
+  const seededRole = SEEDED[changeTarget]
+  const newRole = seededRole === 'TECHNICIAN' ? 'INVESTIGATOR' : 'TECHNICIAN'
+  let changed = null
+  let back = null
+  try {
+    changed = await changeRoleThroughTheUi(changeTarget, newRole, '77_role_changed_live.png')
+    const coreAfterChange = await coreUsers()
+    changed.coreUsersAfterChange = coreAfterChange
+    changed.network = takeNetwork()
+  } finally {
+    // Always set it back to the seeded role, through the UI, and prove it by the Core's own list.
+    try {
+      back = await changeRoleThroughTheUi(changeTarget, seededRole, '77_role_restored_live.png')
+    } catch (error) {
+      back = { uiError: String(error?.message ?? 'unknown') }
+    }
+    let coreBack = await coreUsers()
+    let restoredByRequest = null
+    if (!coreBack.users.some((user) => user.id === changeTarget && user.role === seededRole)) {
+      restoredByRequest = await evaluate(
+        `(async () => { const r = await fetch('/api/v1/admin/users/${changeTarget}/role', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: '${seededRole}', reason: 'W77 lane check: back to the seeded role' }) }); return { status: r.status } })()`,
+        'restore role by request',
+      )
+      coreBack = await coreUsers()
+    }
+    back.restoredByRequest = restoredByRequest
+    back.coreUsersAfterRestore = coreBack
+    back.backAtSeededRole = coreBack.users.some((user) => user.id === changeTarget && user.role === seededRole)
+    back.network = takeNetwork()
+  }
+  result.steps.roleChange = { target: changeTarget, seededRole, newRole, changed, back }
+}
+
+// ── 4. Simulated mode: the shared "Live mode only" state, centred, and nothing asked of the Core ──
+{
+  const signOut = await signOutByPage()
+  await evaluate(`localStorage.setItem('dems.core.mode.v1', 'SIMULATED')`, 'store SIMULATED')
+  takeNetwork()
+  await navigate(`${ORIGIN}/login`)
+  await waitFor('page-login', true, 15000)
+  const coreMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+  await evaluate(`sessionStorage.setItem('dems.auth', JSON.stringify({ operatorId: ${JSON.stringify(supervisor.id)}, issuedAt: Date.now() }))`, 'simulated stored sign-in')
+  const simShown = await openPage('/admin/users', 'page-users-roles', 'ur-live-only')
+  const facts = await usersFacts('simulated users')
+  const navEntry = await evaluate(`document.querySelector('[data-testid="nav-admin-group"]') !== null`, 'nav group')
+  const shot = await screenshot('77_users_roles_simulated.png')
+  const network = takeNetwork()
+  result.steps.simulated = {
+    signOutOfLive: signOut,
+    loginCoreMode: coreMode,
+    signInPath: 'stored simulated sign-in (dems.auth), F63-3',
+    shown: simShown,
+    facts,
+    navAdminGroupShown: navEntry,
+    screenshot: shot,
+    apiRequestsToTheDevServer: network.api.length,
+    socketsToTheDevServerWs: network.sockets.filter((s) => s.url.startsWith(`ws://127.0.0.1:${vitePort}/ws`)).length,
+    network,
+  }
+  await evaluate(`localStorage.removeItem('dems.core.mode.v1'); sessionStorage.removeItem('dems.auth')`, 'leave the origin as found')
+}
+result.elapsedSeconds = Math.round((Date.now() - started) / 1000)
+
+// Last line of defence: the password may not be in what is written, whatever a page showed.
+let text = JSON.stringify(result, null, 2)
+const held = text.includes(DEMO_OPERATOR_PASSWORD)
+if (held) text = text.split(DEMO_OPERATOR_PASSWORD).join('***')
+text = text.replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+writeFileSync(outJson, `${text}\n`)
+console.log(text)
+console.log(`the output held the seeded password before redaction: ${held}`)
+ws.close()

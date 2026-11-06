@@ -1,0 +1,62 @@
+SESSION_START 07:08:38
+[device-session phone 07:08:38] lock held; hard cap 600 s, until 07:18:38 (watchdog PID 13333)
+[device-session phone 07:08:38] session serial: emulator-5554 (dems_phone)
+[device-session phone 07:08:38] Metro PID 13356 (own process group) on 127.0.0.1:8085 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8085.log)
+[device-session phone 07:08:40] emulator-5554: WARNING could not set the bundler location (is com.dems.demo.tablet installed?); the app will use 10.0.2.2:8081
+[device-session phone 07:08:40] Metro ready; device tcp:8081 -> host tcp:8085, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 07:08:40] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+== dems_phone emulator-5554 commands start 07:08:40; METRO_PORT=8085; DEMS_CORE_HOST_PORT=4421
+-- reverse rules during the session (set by the helper)
+host-16 tcp:8081 tcp:8085
+host-16 tcp:4400 tcp:4400
+host-16 tcp:4420 tcp:4421
+
+-- host APK
+-rw-r--r--@ 1 gsp-budi  staff  324537405 Oct  4 07:07 /Users/gsp-budi/Documents/DEMS/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+sha256 d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec
+-- package BEFORE install
+codePath=/data/app/~~XTyMAODIFx05NLPkux9LUQ==/com.dems.demo.tablet-XmOMd94jrLFBJe2bdsDv5w==
+versionCode=1 minSdk=24 targetSdk=36
+versionName=0.1.0
+lastUpdateTime=2026-10-01 10:45:40
+signatures=PackageSignatures{95bb385 version:2, signatures:[51ed3f60], past signatures:[]}
+pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
+firstInstallTime=2026-10-01 10:45:40
+run-as: couldn't stat /data/user/0/com.dems.demo.tablet: No such file or directory
+-- app data BEFORE install: 0 files, list sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+-- INSTALL_START 07:08:41: adb -s emulator-5554 install -r <app-debug.apk>
+Performing Streamed Install
+Success
+-- INSTALL_END 07:08:42
+-- package AFTER install
+codePath=/data/app/~~o7XnvkDj9WO2KMAuRHbB2A==/com.dems.demo.tablet-P3Oz7E3JBHCujvjhi9xAAQ==
+versionCode=100 minSdk=24 targetSdk=36
+versionName=0.1.0
+lastUpdateTime=2026-10-04 07:08:42
+signatures=PackageSignatures{95bb385 version:2, signatures:[51ed3f60], past signatures:[]}
+pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
+firstInstallTime=2026-10-01 10:45:40
+-- base.apk on the device: d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec  (host APK: d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec)
+run-as: couldn't stat /data/user/0/com.dems.demo.tablet: No such file or directory
+-- app data AFTER install (app not started yet): 0 files, list sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+   app data: IDENTICAL before and after the install
+-- pidof before launch: []
+-- LAUNCH 07:08:42 (one launch; the lane Metro serves the bundle)
+Error: Activity not started, unable to resolve Intent { act=android.intent.action.VIEW dat=demsdemo:///... flg=0x10000000 xflg=0x4 pkg=com.dems.demo.tablet }
+-- bundle wait: 300s
+-- pidof after launch: []
+mCurrentFocus=Window{4c10738 u0 NotificationShade}
+cdp probe: no inspector target (not fatal)
+-rw-r--r--@ 1 gsp-budi  staff  15733 Oct  4 07:13 /Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/13_dems_phone_launch.png
+-- logcat of the app process: FATAL / JS error lines
+   (end of logcat filter)
+== dems_phone commands end 07:13:57
+[device-session phone 07:13:58] Metro 13356 stopped
+[device-session phone 07:13:58] session ended with status 0
+SESSION_EXIT=0 07:13:58
+-- reverse rules AFTER the session:
+
+(end of list)
+pidof after: []
+8085: no listener
+DONE

@@ -1,0 +1,8 @@
+tap 2022,406 at 10:21:34.927
+slept 1200 ms
+username typed (rina.wijaya); editor inputType 0x80001
+slept 500 ms
+tap 2022,526 at 10:21:37.057
+slept 1200 ms
+focused true; keyguard false; editor inputType 0x80081
+screencap 21_login_technician_username.png (1904767 bytes) at 10:21:39.236

@@ -1,0 +1,65 @@
+== 017
+21:46:31.560 batch start; device time 10-06 21:46:31.000; host load 11.04
+21:46:31.626 mark V2 at 21:46:31.626
+21:46:31.675 declared screen summary
+21:46:31.738 tap 244,2252
+21:46:31.948 sumack 204 at device 10-06 21:46:31.525 (POST /api/v1/session/{id}/summary/acknowledge 204)
+21:46:32.054 slept 6000 ms
+21:46:38.118 declared screen home
+21:46:38.178 tap 107,2279
+21:46:38.346 slept 3000 ms
+21:46:41.383 tap 302,1239
+21:46:41.503 slept 4000 ms
+21:46:45.542 declared screen session-new
+21:46:45.569 tap 913,748
+21:46:45.681 slept 900 ms
+21:46:46.633 tap 229,994
+21:46:46.713 slept 700 ms
+21:46:47.451 tap 540,1309
+21:46:47.546 slept 900 ms
+21:46:48.480 text typed (CF2A V2); inputType 0x2001
+21:46:48.756 slept 800 ms
+21:46:49.605 key 111
+21:46:49.690 slept 800 ms
+21:46:50.527 tap 540,2257
+21:46:50.610 create 201 at device 10-06 21:46:50.212 (POST /api/v1/session 201)
+21:46:51.255 precheck 202 at device 10-06 21:46:50.300 (POST /api/v1/session/{id}/precheck 202)
+21:46:51.390 slept 9000 ms
+21:47:00.498 tap 540,2257
+21:47:00.847 slept 2500 ms
+21:47:03.386 nav /session load=true
+21:47:06.035 wait page-session-monitor present: 0 ms (at 21:47:06.035)
+21:47:06.063 js => "ARMED"
+21:47:06.090 declared screen live
+21:47:06.117 host load 8.63 8.79 8.29
+21:47:06.177 device-host clock offset ms: -427, -427, -431, -428, -427
+21:47:06.471 screencap V2_ready.png 21:47:06.471..21:47:07.316
+21:47:07.497 screenrecord V2 started (pid 21491) at 21:47:08.101; load 8.90 8.84 8.31
+21:47:08.189 tap 540,2257
+21:47:08.436 start 200 at device 10-06 21:47:11.239 (POST /api/v1/session/{id}/start 200)
+21:47:11.921 until true at 21:47:11.922 after 1 ms => "RECORDING"
+21:47:11.956 press sm-action-end ok at 21:47:11.975
+21:47:12.000 wait sm-end-dialog present: 0 ms (at 21:47:12.000)
+21:47:12.030 type into [data-testid="sm-end-reason"]: "CF2A V2 web stop at once after the start"
+21:47:12.066 press sm-end-confirm ok at 21:47:12.069
+21:47:12.116 until true at 21:47:12.123 after 7 ms => "STOPPING"
+21:47:12.157 slept 1200 ms
+21:47:13.454 until true at 21:47:19.102 after 5648 ms => {"state":"SEALED","modal":"SEALED"}
+21:47:19.240 slept 5000 ms
+21:47:24.339 screenrecord V2 pulled; every frame extracted (passthrough)
+21:48:50.010 declared screen summary
+21:48:50.088 screencap V2_after.png 21:48:50.089..21:48:51.492
+21:48:51.675 native V2_native.txt pid 31182: 280711 lines; crash-class lines 1626: 10-06 21:46:50.429 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [65724] | 10-06 21:46:50.435 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [65698] | 10-06 21:46:50.435 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [65578] | 10-06 21:46:50.435 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [65424] | 10-06 21:46:50.451 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [65724] | 10-06 21:46:50.452 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [65698]
+21:48:52.510 appjs V2_js.txt: 31 lines since 10-06 21:46:31.000
+21:48:52.744 focused true; keyguard false; inputType 0x2001
+21:48:53.515 serverlog since V2 (8):
+    21:46:31.965 POST /api/v1/session/:id/summary/acknowledge 204
+    21:46:50.611 POST /api/v1/session 201
+    21:46:50.743 POST /api/v1/session/:id/precheck 202
+    21:47:03.398 [socket closed]
+    21:47:03.494 [socket opened]
+    21:47:03.495 GET /api/v1/auth/session 200
+    21:47:11.660 POST /api/v1/session/:id/start 200
+    21:47:12.078 POST /api/v1/session/:id/stop 202
+21:48:53.593 js => {"id":"SES-20261006-0086","state":"SEALED","subject":"CF2A V2","startedAt":"2026-10-06T21:47:11.656+07:00","stoppedAt":"2026-10-06T21:47:12.073+07:00","sealedAt":"2026-10-06T21:47:18.966+07:00","evidenceId":"EV-20261006-0073","elapsedMs":417,"audit":[["AUD-001253","SESSION_CREATED","OPR-001","21:46:50.604",""],["AUD-001254","PRECHECK_PASSED","OPR-001","21:46:54.497",""],["AUD-001255","RECORDING_STARTED","OPR-001","21:47:11.656",""],["AUD-001256","RECORDING_STOPPED","OPR-002","21:47:12.073","CF2A V2 web stop at once after the start"],["AUD-001257","EVIDENCE_SEALED",null,"21:47:18.966",""]]}
+21:48:53.675 nav /admin/devices load=true

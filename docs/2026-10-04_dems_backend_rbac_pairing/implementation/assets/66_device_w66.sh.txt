@@ -1,0 +1,111 @@
+#!/bin/sh
+# W66 device commands (run by device-session.sh on the phone). The phone is paired with lane 1 (DEV-0001).
+# LIVE: boot → /login → scripted sign-in → Home (screencaps) → More (screencaps, top and footer).
+# SIMULATED: launch with core=SIMULATED (stored, D124) → sign in to the simulator → Home (screencap)
+# → sign out again from More, so the app is left as found (SIMULATED, at its Login screen).
+# Never: a PIN, the fingerprint sensor, a keyguard, a system prompt or a device setting (D125). The app's
+# own biometric offer is only ever DECLINED ("Not now": in-memory, nothing stored, nothing sent).
+set -u
+RUN=$1; OUT=$2; SERVER_LOG=$3; HOSTPORT=$4
+A="adb -s $SERIAL"; H="$ROOT/.cache/w66"
+echo "-- serial $SERIAL ($AVD_NAME), lane port $HOSTPORT, run $RUN"
+unlocked() {
+  KG=$($A shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1)
+  ST=$($A shell dumpsys user 2>/dev/null | grep -m 1 "State:" | tr -d '\r' | sed 's/^ *//')
+  case "$KG/$ST" in isKeyguardShowing=false/*RUNNING_UNLOCKED*) return 0 ;; *) echo "-- LOCKED ($KG; $ST) at: $1 — stop, report."; return 1 ;; esac
+}
+echo "-- lock: $($A shell dumpsys window 2>/dev/null|tr -d '\r'|grep -o 'isKeyguardShowing=[a-z]*'|head -n1); fps $($A shell dumpsys fingerprint 2>/dev/null|tr -d '\r'|grep -o '"count":[0-9]*'|head -n1)"
+unlocked "the start" || exit 77
+T0=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+js() { $A logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null; }
+wait_for() { i=0; until js | grep -q -- "$1" || [ "$i" -ge "$2" ]; do i=$((i + 1)); sleep 1; done; echo "-- waited $i s for: $1"; }
+launch() { echo "-- am start -W -d '$1'"; $A shell "am start -W -a android.intent.action.VIEW -d '$1' $APP_ID" 2>&1 | tr -d '\r' | grep -E "Status|LaunchState|Error|TotalTime" | sed 's/^/   /'; }
+focus() { $A shell dumpsys window 2>/dev/null | tr -d '\r' | grep -m 1 'mCurrentFocus' | sed 's/^ *//'; }
+shot() { NAME="66_phone_$1"; $A exec-out screencap -p >"$OUT/$NAME.png"; echo "-- screencap: $NAME.png ($(wc -c <"$OUT/$NAME.png"|tr -d ' ') bytes), focus: $(focus)"; }
+decline_offer() {
+  # The app's biometric offer covers Home after a password sign-in (W60's capture). Decline it only when
+  # the pixels show it (python3 pixels.py offer); otherwise touch nothing.
+  shot "$1_offer_check"
+  if [ "$(python3 "$H/pixels.py" offer "$OUT/66_phone_$1_offer_check.png")" = "offer" ]; then
+    unlocked "the offer" || exit 77
+    $A shell input tap 540 1444; echo "-- the app's biometric offer: declined (Not now)"; sleep 2
+  else
+    echo "-- the app's biometric offer: not shown, nothing tapped"
+  fi
+}
+prefs() { $A shell "run-as $APP_ID sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" 2>/dev/null | tr -d '\r'; }
+simauth() { $A shell "run-as $APP_ID sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.sim.v1\\\"\"'" 2>/dev/null | tr -d '\r' | grep -o '"auth":{"status":"[A-Z_]*"' | head -n 1; }
+FIELDS="540 1105|540 1265|540 1430"
+UA=$(echo "$FIELDS" | cut -d'|' -f1); PA=$(echo "$FIELDS" | cut -d'|' -f2); SA=$(echo "$FIELDS" | cut -d'|' -f3)
+echo "-- before: prefs $(prefs); simulator auth $(simauth)"
+
+echo "== L1. LIVE: cold start on the paired phone → /login =="
+launch 'demsdemo:///?core=LIVE'
+wait_for 'runtime.live.ready' 150
+wait_for 'DEMS-LIVE\] GET /api/v1/pairing/device 200' 40
+sleep 8
+unlocked "the login" || exit 77
+shot login_live
+$A shell input tap 540 700; sleep 1   # the brand emblem: no control there (gives the window the focus)
+
+echo "== L2. LIVE: scripted sign-in with the seeded operator =="
+unlocked "the sign-in" || exit 77
+(cd "$ROOT" && node --import tsx .cache/w66/sign_in_w66.mts "$SERIAL" live "$T0" "$SERVER_LOG" "$UA" "$PA" "$SA")
+SIGN_EXIT=$?; echo "-- sign-in step exit: $SIGN_EXIT (0 = Core answered 200 and no credential leaked)"
+sleep 4
+unlocked "the home" || exit 77
+decline_offer home_live
+shot home_live
+
+echo "== L3. LIVE: More (top, then the footer) =="
+launch 'demsdemo:///more'
+sleep 5
+shot more_live_top
+$A shell input swipe 540 1700 540 500 500; sleep 1; $A shell input swipe 540 1700 540 500 500; sleep 2
+shot more_live_footer
+echo "-- Core request lines in LIVE:"
+js | grep -o 'DEMS-LIVE\] .*' | sed -E 's/ [0-9a-f]{8}-[0-9a-f-]{27}$//' | sort | uniq -c | sort -rn | head -n 14 | sed 's/^/   /'
+echo "-- live.misuse (must be 0): $(js | grep -c 'live\.misuse'); credential/token lines (must be 0): $(js | grep -c -E 'dvc_|ses_|bio_')"
+
+echo "== S1. SIMULATED: launch with core=SIMULATED (stored) =="
+$A shell am force-stop "$APP_ID"
+T1=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+launch 'demsdemo:///?core=SIMULATED'
+i=0; until $A logcat -d -T "$T1" -s ReactNativeJS:V 2>/dev/null | grep -q 'runtime.sim.hydrated' || [ "$i" -ge 90 ]; do i=$((i + 1)); sleep 1; done
+echo "-- waited $i s for runtime.sim.hydrated"
+sleep 6
+unlocked "the simulated start" || exit 77
+AUTH=$(simauth); echo "-- simulator auth at the start: $AUTH"
+shot simulated_start
+SIM_SIGNED=0
+case "$AUTH" in
+  *SIGNED_IN*) echo "-- the simulator is signed in already: no typing" ;;
+  *)
+    $A shell input tap 540 700; sleep 1
+    (cd "$ROOT" && node --import tsx .cache/w66/sign_in_w66.mts "$SERIAL" simulated "$T1" - "$UA" "$PA" "$SA")
+    echo "-- simulated sign-in step exit: $?"; SIM_SIGNED=1 ;;
+esac
+sleep 3
+unlocked "the simulated home" || exit 77
+decline_offer home_simulated
+shot home_simulated
+echo "-- Core requests after the SIMULATED launch (must be 0): $($A logcat -d -T "$T1" -s ReactNativeJS:V 2>/dev/null | grep -c 'DEMS-LIVE')"
+
+if [ "$SIM_SIGNED" = 1 ]; then
+  echo "== S2. SIMULATED: sign out again from More (the app was at its Login screen) =="
+  launch 'demsdemo:///more'
+  sleep 5
+  shot more_simulated_top
+  AT=$(python3 "$H/pixels.py" signout "$OUT/66_phone_more_simulated_top.png")
+  if [ "$AT" != "none" ]; then
+    unlocked "the sign-out" || exit 77
+    $A shell input tap $AT; echo "-- tapped More's Sign out at $AT"; sleep 4
+  else
+    echo "-- More's Sign out not found on the capture: left signed in (reported)"
+  fi
+  shot simulated_after_sign_out
+fi
+sleep 2
+echo "-- after: prefs $(prefs); simulator auth $(simauth)"
+echo "-- lock at end: $($A shell dumpsys window 2>/dev/null|tr -d '\r'|grep -o 'isKeyguardShowing=[a-z]*'|head -n1); fps $($A shell dumpsys fingerprint 2>/dev/null|tr -d '\r'|grep -o '"count":[0-9]*'|head -n1)"
+exit "$SIGN_EXIT"

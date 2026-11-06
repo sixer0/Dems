@@ -1,0 +1,28 @@
+== npm slot N3 acquired 06:58:03
+manifest edited: expo-secure-store ~57.0.4 added; reverse script extended
+== dry run 06:58:03
+add expo-secure-store 57.0.4
+
+added 1 package in 1s
+
+396 packages are looking for funding
+  run `npm fund` for details
+dry-run exit=0
+== INSTALL_START 06:58:04
+
+added 1 package, and audited 1731 packages in 9s
+
+396 packages are looking for funding
+  run `npm fund` for details
+
+84 vulnerabilities (5 low, 25 moderate, 54 high)
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+== INSTALL_END 06:58:14 exit=0
+== npm slot N3 released 06:58:14

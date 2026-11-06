@@ -1,0 +1,62 @@
+{
+ "Login": {
+  "requests": 442,
+  "origins": {
+   "http://127.0.0.1:5178": 441,
+   "blob:": 1
+  },
+  "ws": [
+   "ws://127.0.0.1:5178/",
+   "ws://127.0.0.1:5178/ws",
+   "ws://127.0.0.1:5178/ws"
+  ],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [
+   "error network: Failed to load resource: the server responded with a status of 401 (Unauthorized) (/api/v1/auth/session)"
+  ],
+  "responses4xx": [
+   "401 GET /api/v1/auth/session"
+  ],
+  "blocked": []
+ },
+ "Evidence detail": {
+  "requests": 1857,
+  "origins": {
+   "http://127.0.0.1:5178": 1857
+  },
+  "ws": [
+   "ws://127.0.0.1:5178/",
+   "ws://127.0.0.1:5178/ws",
+   "ws://127.0.0.1:5178/",
+   "ws://127.0.0.1:5178/ws",
+   "ws://127.0.0.1:5178/",
+   "ws://127.0.0.1:5178/ws",
+   "ws://127.0.0.1:5178/",
+   "ws://127.0.0.1:5178/ws"
+  ],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Sign out": {
+  "requests": 25,
+  "origins": {
+   "http://127.0.0.1:5178": 24,
+   "blob:": 1
+  },
+  "ws": [
+   "ws://127.0.0.1:5178/ws"
+  ],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ }
+}

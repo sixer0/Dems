@@ -1,0 +1,86 @@
+// W11b: the CHANGED helper (the scratch copy) against a real autovacuum worker. A test file's run
+// (attached, as in a worker of Vitest) drops its database through the public path while a
+// backend without a role is on it; the owner of the run counts the retried drop at its teardown.
+// Own run prefix only (33b).
+import { performance } from 'node:perf_hooks';
+import { TestRun } from './tree/apps/core-server/test/helpers/db/run';
+import { injectedResolver } from './tree/apps/core-server/test/helpers/db/hooks';
+import { OwnerSession } from './tree/apps/core-server/test/helpers/db/session';
+import { DEFAULT_DATA_DIR, readOwnerCredentials } from './tree/apps/core-server/test/helpers/db/credentials';
+import { retriedDropsLine } from './tree/apps/core-server/test/helpers/db/global-setup';
+
+const ROWS = Number(process.env['W11B_ROWS'] ?? 600_000);
+const DETECT_MS = Number(process.env['W11B_DETECT_MS'] ?? 200_000);
+type Row = Record<string, unknown>;
+
+function clock(): string {
+  const now = new Date();
+  return `${now.toTimeString().slice(0, 8)}.${String(now.getMilliseconds()).padStart(3, '0')}`;
+}
+function say(label: string, value?: unknown): void {
+  console.log(`[${clock()}] ${label}${value === undefined ? '' : ` ${JSON.stringify(value)}`}`);
+}
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const definitions = injectedResolver([
+  { key: 'x_diag', base: 'empty', build: async ({ pool }) => void (await pool.query('CREATE TABLE diag_load (id integer, pad text)')) },
+]);
+const credentials = readOwnerCredentials(DEFAULT_DATA_DIR);
+const owner = await TestRun.start({ env: { DEMS_TEST_STEP: '33b' }, resolveDefinition: definitions });
+say('run (the changed helper)', { prefix: owner.identity.prefix, server: owner.server });
+const file = await TestRun.attach(owner.identity, { resolveDefinition: definitions });
+
+async function scenario(slug: string): Promise<void> {
+  const database = await file.createDatabase({ template: 'x_diag', slug });
+  await database.ownerPool().query('INSERT INTO diag_load SELECT n, md5(n::text) FROM generate_series(1, $1::int) AS n', [ROWS]);
+  await database.closeResources();
+  const watcher = await OwnerSession.open(credentials, { applicationName: 'dems-w11b-watch' });
+  try {
+    const deadline = performance.now() + DETECT_MS;
+    for (;;) {
+      const rows = await watcher.run<Row>('SELECT pid FROM pg_stat_activity WHERE datname = $1 AND usename IS NULL', [database.name]);
+      if (rows.length > 0) {
+        const started = performance.now();
+        let error: unknown;
+        try {
+          await database.drop();
+        } catch (thrown) {
+          error = thrown;
+        }
+        const exists = (await watcher.run('SELECT 1 FROM pg_database WHERE datname = $1', [database.name])).length > 0;
+        say(`${slug}: database.drop() while a backend without a role (pid ${String(rows[0]?.['pid'])}) was on it`, {
+          ms: Math.round(performance.now() - started),
+          threw: error === undefined ? null : String((error as Error).message),
+          dropped: database.dropped,
+          databaseExists: exists,
+          retriedDropsOfTheFileRun: file.retriedDrops,
+        });
+        return;
+      }
+      if (performance.now() > deadline) {
+        say(`${slug}: no backend without a role came within ${DETECT_MS} ms`);
+        return;
+      }
+      await sleep(4);
+    }
+  } finally {
+    await watcher.close();
+  }
+}
+
+try {
+  await Promise.all([scenario('fix_av_a'), scenario('fix_av_b')]);
+} finally {
+  await file.close();
+  const report = await owner.teardown();
+  say('teardown report of the owner', { dropped: report.dropped, remaining: report.remaining, failed: report.failed, retriedDrops: report.retriedDrops });
+  say(`the line of the global setup: ${retriedDropsLine(report.retriedDrops)}`);
+  const sweeper = await OwnerSession.open(credentials, { applicationName: 'dems-w11b-sweeper' });
+  try {
+    say('databases with the prefix dems_test_step_33b_ now', await sweeper.run("SELECT datname::text AS name FROM pg_database WHERE starts_with(datname, 'dems_test_step_33b_') ORDER BY 1"));
+  } finally {
+    await sweeper.close();
+  }
+}

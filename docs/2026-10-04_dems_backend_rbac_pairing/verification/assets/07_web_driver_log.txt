@@ -1,0 +1,28 @@
+2026-10-07T03:37:00.009Z browser pid 17986, HeadlessChrome/153.0.8010.12, CDP port 50047 (OS-assigned), owner verified (lsof + /json/version)
+2026-10-07T03:37:00.040Z MARK start 1791344220040
+2026-10-07T03:37:02.061Z login (default): {"href":"/login","pages":["page-login"],"mode":null,"coreMode":"LIVE","stored":null}
+2026-10-07T03:37:02.881Z clicked login-mode-SIMULATED
+2026-10-07T03:37:03.282Z MARK switchConfirm 1791344223282
+2026-10-07T03:37:04.066Z clicked mode-switch-confirm
+2026-10-07T03:37:05.569Z MARK simulatedReady 1791344225569
+2026-10-07T03:37:05.570Z login (after switch): {"href":"/login","pages":["page-login"],"mode":null,"coreMode":"SIMULATED","stored":"SIMULATED"}; Sign In enabled: true
+2026-10-07T03:37:05.816Z screenshot 07_web_01_login_simulated.png
+2026-10-07T03:37:06.296Z typed username andi.pratama and the demo password (not shown)
+2026-10-07T03:37:07.131Z clicked login-submit
+2026-10-07T03:37:10.425Z dashboard: {"href":"/dashboard","pages":["page-dashboard"],"mode":"SIMULATED","coreMode":null,"stored":"SIMULATED"}
+2026-10-07T03:37:10.606Z screenshot 07_web_02_dashboard.png
+2026-10-07T03:37:11.407Z clicked aside a[href="/session"], nav a[href="/session"]
+2026-10-07T03:37:13.910Z /session: reached page-session-monitor=true {"href":"/session","pages":["page-session-monitor","page-header"],"mode":"SIMULATED","coreMode":null,"stored":"SIMULATED"}
+2026-10-07T03:37:14.040Z screenshot 07_web_03_session.png
+2026-10-07T03:37:14.861Z clicked aside a[href="/evidence"], nav a[href="/evidence"]
+2026-10-07T03:37:17.363Z /evidence: reached page-evidence=true {"href":"/evidence","pages":["page-evidence","page-header"],"mode":"SIMULATED","coreMode":null,"stored":"SIMULATED"}
+2026-10-07T03:37:17.515Z screenshot 07_web_04_evidence.png
+2026-10-07T03:37:18.321Z clicked aside a[href="/devices"], nav a[href="/devices"]
+2026-10-07T03:37:20.825Z /devices: reached page-devices=true {"href":"/devices","pages":["page-devices","page-header"],"mode":"SIMULATED","coreMode":null,"stored":"SIMULATED"}
+2026-10-07T03:37:20.945Z screenshot 07_web_05_devices.png
+2026-10-07T03:37:21.758Z clicked user-menu
+2026-10-07T03:37:23.288Z clicked [data-w97="1"]
+2026-10-07T03:37:24.792Z signed out: true {"href":"/login","pages":["page-login"],"mode":null,"coreMode":"SIMULATED","stored":"SIMULATED"}
+2026-10-07T03:37:25.020Z screenshot 07_web_06_signed_out.png
+2026-10-07T03:37:25.020Z MARK end 1791344245020
+2026-10-07T03:37:25.705Z browser closed (pid 17986); profile removed: true

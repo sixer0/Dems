@@ -1,0 +1,153 @@
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 --reporter=verbose src/modules/identity/__tests__ src/plugins/authenticate
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ✓ |unit| src/modules/identity/__tests__/sessions.test.ts > a read that fails > answers 503 NOT_READY, logs the code and never the message, persists one entry and asks for a fresh probe 57ms
+ ✓ |unit| src/modules/identity/__tests__/sessions.test.ts > a read that fails > the sweeper's read fails the same way: no unit, and the failure is the caller's to report 3ms
+ ✓ |unit| src/modules/identity/__tests__/sessions.test.ts > a read that fails > an ApiFailure thrown inside a read is handed on as it is 2ms
+ ✓ |unit| src/modules/identity/__tests__/sessions.test.ts > a session past its limit never resolves > ended by this request: ENDED with the reason the statement gave 2ms
+ ✓ |unit| src/modules/identity/__tests__/sessions.test.ts > a session past its limit never resolves > the statement ended nothing because activity arrived first: the session is read again and is open 2ms
+ ✓ |unit| src/modules/identity/__tests__/sessions.test.ts > a session past its limit never resolves > the statement ended nothing because another unit ended it: ENDED with that unit's reason 2ms
+ ✓ |unit| src/modules/identity/__tests__/sessions.test.ts > a session past its limit never resolves > still open and still past the limit after the statement ended nothing (which cannot be): it fails closed 2ms
+ ✓ |unit| src/modules/identity/__tests__/sessions.test.ts > a session past its limit never resolves > one millisecond before the idle limit it is open, and no unit runs 3ms
+ ✓ |unit| src/modules/identity/__tests__/sessions.test.ts > a session past its limit never resolves > the lookup is given the hash of the token, 32 bytes, never the token 3ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C1 nothing presented: ANONYMOUS, and nothing is looked up 10ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C2 the cookie of an open web session: OPERATOR without a device, with the role and permissions the lookup read 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C3 a cookie whose value is no token: ANONYMOUS, not refused here 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C4 a cookie with an unknown token: ANONYMOUS, not refused here 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C5 a cookie of an ended or expired session: ANONYMOUS, not refused here 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C6 a cookie of a disabled operator's session: ANONYMOUS, not refused here 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C7 a device session's token sent as the cookie (ID-13): ANONYMOUS, not refused here 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C8 a bearer session token of an open session whose device is PAIRED: OPERATOR bound to the device 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C9 an open session whose device is REVOKED or UNPAIRED: not a principal; the device ID is kept for stage 6 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C10 a session that was ended with its device (DEVICE_REVOKED): not a principal; the device ID is kept for stage 6 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C11 a session whose device the registry does not know (the seam unfilled): ANONYMOUS 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C12 an ended device session: ANONYMOUS 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C13 a web session's token sent as a bearer value (ID-13): ANONYMOUS 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C14 an unknown session token: ANONYMOUS 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C15 a device credential of a PAIRED device: DEVICE; C16 of a retired one: the device ID only; C17 unknown: ANONYMOUS 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C18 an Authorization header with a biometric token: ANONYMOUS, and nothing is looked up 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C18 an Authorization header with another scheme: ANONYMOUS, and nothing is looked up 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C18 an Authorization header with a value that is no token: ANONYMOUS, and nothing is looked up 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the credential decision table of stage 4 (spec §4.1, §2.3) > C18 an Authorization header with an empty header: ANONYMOUS, and nothing is looked up 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > ID-12: this instance's cookie AND an Authorization header (D72: through the real stage 4) > no Origin, GET: 401 NOT_SIGNED_IN with details.reason CREDENTIAL_CONFLICT; nothing is resolved, no row, no place in the denial budget, no Set-Cookie 3ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > ID-12: this instance's cookie AND an Authorization header (D72: through the real stage 4) > a web console origin, GET: 401 NOT_SIGNED_IN with details.reason CREDENTIAL_CONFLICT; nothing is resolved, no row, no place in the denial budget, no Set-Cookie 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > ID-12: this instance's cookie AND an Authorization header (D72: through the real stage 4) > a web console origin, POST: 401 NOT_SIGNED_IN with details.reason CREDENTIAL_CONFLICT; nothing is resolved, no row, no place in the denial budget, no Set-Cookie 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > ID-12: this instance's cookie AND an Authorization header (D72: through the real stage 4) > the conflict is by presence: an empty cookie, an unknown token, another scheme 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > ID-12: this instance's cookie AND an Authorization header (D72: through the real stage 4) > it comes before the throttle (spec §7.3 line 4 before line 5) and before the body is read 4ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > ID-12: this instance's cookie AND an Authorization header (D72: through the real stage 4) > one log line names the reason, beside the request line; neither holds a credential 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > D69: only this instance's cookie name is a credential > a bearer request that carries another instance's cookie and an unrelated cookie resolves as the bearer session 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > D69: only this instance's cookie name is a credential > a bearer request that carries this instance's own cookie is the 401 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > D69: only this instance's cookie name is a credential > another instance's cookie alone is no credential: ANONYMOUS, nothing looked up 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > D69: only this instance's cookie name is a credential > this instance's cookie among other cookies is found, wherever it stands 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > D69: only this instance's cookie name is a credential > neither Host nor User-Agent nor the presence of an Origin changes what a bearer resolves to 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > SR-75: the principal is resolved before the throttle > a resolved operator is counted under operator:<id>, a device under device:<id>, everything else in its class 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > SR-75: the principal is resolved before the throttle > 31 requests with 31 different unknown bearer values share one bucket; an operator's 31st request is not refused 7ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > activity (ID-P9): a POST of an operator that reaches its handler > records activity on the session, and the handler sees the new last activity 2ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > activity (ID-P9): a POST of an operator that reaches its handler > a GET never does; neither does a POST without an operator, nor one within a second of the last activity 2ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > activity (ID-P9): a POST of an operator that reaches its handler > a sign-in and a sign-out settle their session themselves 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > activity (ID-P9): a POST of an operator that reaches its handler > a session that ended between stage 4 and the handler is refused with 401, and the command does not run 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > activity (ID-P9): a POST of an operator that reaches its handler > an unchanged session keeps the stored last activity 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > what a handler and the realtime channel read > operatorSessionOf gives the session of an OPERATOR and refuses everybody else with 401 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > what a handler and the realtime channel read > a request with an Upgrade header is resolved like any request: the principal and why a credential did not resolve 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > what a handler and the realtime channel read > the anonymous principal of the scaffold is unchanged 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/authenticate.test.ts > the log of stage 4 (SR-15, SR-48) > at level trace, no line holds a token, a credential or a cookie value; the request line names the principal by its ID 2ms
+stdout | src/modules/identity/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > registers operations 2 to 6 with the method, the path and the operation ID of the registry, and nothing else under /api/v1/auth
+[w24] MODG routes of src/modules/identity: POST /api/v1/auth/sign-in signIn | GET /api/v1/auth/status getSignInStatus | GET /api/v1/auth/session getAuthSession | POST /api/v1/auth/sign-out signOut | POST /api/v1/auth/touch touchSession
+[w24] MODG registry, operations 2 to 6:    POST /api/v1/auth/sign-in signIn | GET /api/v1/auth/status getSignInStatus | GET /api/v1/auth/session getAuthSession | POST /api/v1/auth/sign-out signOut | POST /api/v1/auth/touch touchSession
+
+ ✓ |unit| src/modules/identity/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > registers operations 2 to 6 with the method, the path and the operation ID of the registry, and nothing else under /api/v1/auth 2ms
+ ✓ |unit| src/modules/identity/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > the area has eight operations in the registry: 2 to 6 are this module's, 7 to 9 are the biometric row's (W41) 0ms
+ ✓ |unit| src/modules/identity/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > every route of the module is found by the registry's own matcher under its operation ID 0ms
+ ✓ |unit| src/modules/identity/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > each route carries its own identity check in onRequest, besides the stage hook 0ms
+ ✓ |unit| src/modules/identity/__tests__/routes.test.ts > spec §7.3: who the caller is comes before what the body holds > operations 4 to 6 without a session answer 401 NOT_SIGNED_IN, also with a body that breaks its schema or is no JSON 9ms
+ ✓ |unit| src/modules/identity/__tests__/routes.test.ts > spec §7.3: who the caller is comes before what the body holds > signIn without a console identity answers 403 DEVICE_NOT_PAIRED, also with a body that is no JSON 0ms
+ ✓ |unit| src/modules/identity/__tests__/routes.test.ts > spec §7.3: who the caller is comes before what the body holds > getSignInStatus needs no console identity: a GET without an Origin reads the web console's lock state 2ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > session tokens (ID-P6, SR-09) > are 32 random bytes as base64url behind the prefix ses_: 47 characters of the contract's form 1ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > session tokens (ID-P6, SR-09) > take exactly 32 bytes from the random source, and nothing else decides the value 0ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > session tokens (ID-P6, SR-09) > 1,000 tokens are 1,000 different values 2ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > session tokens (ID-P6, SR-09) > the stored form is the SHA-256 of the whole value, prefix included: 32 bytes 0ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > session tokens (ID-P6, SR-09) > a value of another form is not a session token: empty 0ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > session tokens (ID-P6, SR-09) > a value of another form is not a session token: the prefix alone 0ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > session tokens (ID-P6, SR-09) > a value of another form is not a session token: one character too short 0ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > session tokens (ID-P6, SR-09) > a value of another form is not a session token: one character too long 0ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > session tokens (ID-P6, SR-09) > a value of another form is not a session token: the prefix of a device credential 0ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > session tokens (ID-P6, SR-09) > a value of another form is not a session token: an upper-case prefix 0ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > session tokens (ID-P6, SR-09) > a value of another form is not a session token: a leading space 0ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > session tokens (ID-P6, SR-09) > a value of another form is not a session token: a character outside base64url 0ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > the session cookie (ID-P7, SR-18) > has exactly the attributes HttpOnly, SameSite=Strict and Path=/ 0ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > the session cookie (ID-P7, SR-18) > is set as dems_session_<listen port>=<token> with those three attributes and nothing else 9ms
+ ✓ |unit| src/modules/identity/__tests__/tokens-cookie.test.ts > the session cookie (ID-P7, SR-18) > is cleared with the same name and attributes and Max-Age=0 1ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > the scan itself > reads the production sources of the two folders, without the sub-folders of other rows 1ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 1ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 1: one clock > no file reads the system time 1ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 1: one clock > the only timer is the sweeper's interval 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 1: one clock > the sweeper is started by the listener and stopped before the close, not by the app factory 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 2: one random source, one hash > only tokens.ts names the crypto module, and nothing uses a weak random source 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > SR-61: no signing secret and no pepper > finds each when it is present (positive control), and none in the two folders 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 3: one cookie writer > only cookie.ts writes a cookie, and nobody writes the header by hand 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 3: one cookie writer > the routes set the cookie in one place and clear it in one place 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 4: no secret in the log > every log call carries codes and identifiers only 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 4: no secret in the log > no console call, no raw URL, no environment, no listener 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 5: the statements > are constant texts: every exported statement of the store is listed here 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 5: the statements > name every table with its schema, and hold no value: only bind parameters 1ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 5: the statements > a session is ended, expired and touched only where it is still open (compare-and-set) 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 5: the statements > the token hash is a WHERE parameter and an INSERT column, never selected or returned 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 5: the statements > the hash set of an operator is read by one statement, for the hash wrapper, and written by one 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 5: the statements > no statement is written outside the store 0ms
+ ✓ |unit| src/modules/identity/__tests__/static.test.ts > rule 6: one audit path > nothing here inserts into the audit table or the events table itself: the rows go through the unit's writers 0ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > the numbers (ID-P1, ID-P2) > are 5 attempts within 300 s and a lock of 60 s, as in the shared simulator 1ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > one attempt after the other > four failures leave 4, 3, 2, 1; the fifth locks for 60 s from the moment it was taken 1ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > one attempt after the other > during the lock nothing is taken; at its end the count is fresh 1ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > one attempt after the other > a success clears the count, also the success of the fifth attempt, which lifts the lock it set 0ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > one attempt after the other > the window is 300 s from the first counted attempt: one millisecond before its end the count stands, at its end it is fresh 0ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > one attempt after the other > each console has its own count and its own lock (ID-P3) 0ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > one attempt after the other > status takes nothing 0ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > attempts that arrive together (ENG-24: an attempt is taken before it is verified) > of 20 at once, five are taken and 15 are refused with one lock; the failures then count 4, 3, 2, 1, 0 in any order 0ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > attempts that arrive together (ENG-24: an attempt is taken before it is verified) > whatever the order, what remains is the number of failures since the last success 0ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > attempts that arrive together (ENG-24: an attempt is taken before it is verified) > a failure that arrives while the console is locked again is reported with that lock 0ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > attempts that arrive together (ENG-24: an attempt is taken before it is verified) > an attempt that never reports back leaves the console locked for its 60 s and no longer 0ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > reset (a test, or a restart: SR-25) > forgets one console or every console 0ms
+ ✓ |unit| src/modules/identity/__tests__/lockout.test.ts > reset (a test, or a restart: SR-25) > two lockouts do not share a counter 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > nothing presented 1ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > this instance's cookie with a session token 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > this instance's cookie whose value has not the form of a session token (empty) is a cookie that resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > this instance's cookie whose value has not the form of a session token (too short) is a cookie that resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > this instance's cookie whose value has not the form of a session token (one character too long) is a cookie that resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > this instance's cookie whose value has not the form of a session token (a device credential) is a cookie that resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > this instance's cookie whose value has not the form of a session token (a biometric token) is a cookie that resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > this instance's cookie whose value has not the form of a session token (a character outside base64url) is a cookie that resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > this instance's cookie whose value has not the form of a session token (a token inside a longer text) is a cookie that resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > D69: another instance's cookie and a foreign cookie are not credentials 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > D69: a bearer value beside other cookies is the bearer credential, not a conflict 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > ID-12: this instance's cookie together with an Authorization header (a session token as bearer) is a conflict, by presence alone 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > ID-12: this instance's cookie together with an Authorization header (a device credential as bearer) is a conflict, by presence alone 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > ID-12: this instance's cookie together with an Authorization header (another scheme) is a conflict, by presence alone 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > ID-12: this instance's cookie together with an Authorization header (an empty header) is a conflict, by presence alone 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > ID-12: this instance's cookie together with an Authorization header (a value that is no token) is a conflict, by presence alone 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > a bearer session token and a bearer device credential are told apart by their prefix 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > an Authorization header that carries no credential of this server (a biometric token: it never travels in a header) resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > an Authorization header that carries no credential of this server (another scheme) resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > an Authorization header that carries no credential of this server (no scheme) resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > an Authorization header that carries no credential of this server (an empty header) resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > an Authorization header that carries no credential of this server (the scheme alone) resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > an Authorization header that carries no credential of this server (the scheme and a space) resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > an Authorization header that carries no credential of this server (two values) resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > an Authorization header that carries no credential of this server (a truncated token) resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > an Authorization header that carries no credential of this server (a token with a suffix) resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > an Authorization header that carries no credential of this server (an unknown prefix) resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > an Authorization header that carries no credential of this server (a tab instead of a space) resolves to nothing 0ms
+ ✓ |unit| src/plugins/authenticate/__tests__/credentials.test.ts > readCredential > a repeated Authorization header is not one bearer value 0ms
+ ✓ |unit| src/modules/identity/__tests__/sweeper.test.ts > the sweeper > runs a sweep every 5 s once it is started, and none before 3ms
+ ✓ |unit| src/modules/identity/__tests__/sweeper.test.ts > the sweeper > never runs two sweeps at once: a tick that finds one running does nothing 1ms
+ ✓ |unit| src/modules/identity/__tests__/sweeper.test.ts > the sweeper > a sweep that fails is reported and the next tick tries again 1ms
+ ✓ |unit| src/modules/identity/__tests__/sweeper.test.ts > the sweeper of an app > is not started by the app factory: an app that does not listen has no timer 32ms
+
+ Test Files  8 passed (8)
+      Tests  136 passed (136)
+   Start at  12:22:33
+   Duration  2.58s (import 61%, transform 31%, tests 8%)
+

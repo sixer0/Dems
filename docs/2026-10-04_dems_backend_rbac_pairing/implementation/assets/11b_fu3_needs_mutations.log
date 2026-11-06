@@ -1,0 +1,54 @@
+# W11b follow-up 3, needs half (decision D134): the mutations of THIS round's code, one at a time, in a scratch copy OUTSIDE the repository (rule M15).
+# Scratch: $TMPDIR/kilo/w11b3/tree — copies of apps/core-server/test/helpers/db + test/static + configs; src, node_modules, packages, .data linked; repo tree untouched (SHA256 re-check: TREE-UNCHANGED).
+# Baselines: scratch unit (limits, needs, static) 103 passed exit 0; scratch db (limits.db, limits-own.db, needs.db) 24 passed exit 0.
+# Runs: 2026-10-05 16:1x-16:2x WIB, label 33d. Each mutation: apply, run unit trio and db trio, revert. The scratch copies are as they were after the loop (baseline rerun green).
+
+APPLY M1
+         Tests  13 failed | 90 passed (103)
+         Tests  3 failed | 21 passed (24)
+RESULT M1: unit exit=1 db exit=1
+REVERT M1
+APPLY M2
+         Tests  7 failed | 96 passed (103)
+RESULT M2: unit exit=1 db exit=0
+REVERT M2
+APPLY M3
+         Tests  1 failed | 102 passed (103)
+RESULT M3: unit exit=1 db exit=0
+REVERT M3
+APPLY M4
+         Tests  1 failed | 102 passed (103)
+RESULT M4: unit exit=1 db exit=0
+REVERT M4
+APPLY M5
+         Tests  4 failed | 99 passed (103)
+         Tests  3 failed | 21 passed (24)
+RESULT M5: unit exit=1 db exit=1
+REVERT M5
+APPLY M6
+         Tests  4 failed | 99 passed (103)
+         Tests  3 failed | 21 passed (24)
+RESULT M6: unit exit=1 db exit=1
+REVERT M6
+APPLY M7
+         Tests  1 failed | 102 passed (103)
+RESULT M7: unit exit=1 db exit=0
+REVERT M7
+APPLY M8
+         Tests  9 failed | 94 passed (103)
+         Tests  5 failed | 19 passed (24)
+RESULT M8: unit exit=1 db exit=1
+REVERT M8
+APPLY M9
+         Tests  5 failed | 19 passed (24)
+RESULT M9: unit exit=0 db exit=1
+REVERT M9
+APPLY M10
+         Tests  6 failed | 97 passed (103)
+         Tests  1 failed | 23 passed (24)
+RESULT M10: unit exit=1 db exit=1
+REVERT M10
+APPLY M11
+         Tests  1 failed | 23 passed (24)
+RESULT M11: unit exit=0 db exit=1
+REVERT M11

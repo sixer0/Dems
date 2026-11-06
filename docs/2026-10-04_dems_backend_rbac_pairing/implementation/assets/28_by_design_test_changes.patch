@@ -1,0 +1,125 @@
+--- a/apps/core-server/src/plugins/logger/__tests__/log-capture.test.ts
++++ b/apps/core-server/src/plugins/logger/__tests__/log-capture.test.ts
+@@ -78,6 +78,7 @@
+   app.stages.replace('originGuard', () => {});
+   app.stages.replace('authenticate', () => {});
+   app.stages.replace('throttle', () => {});
++  app.stages.replace('accessRule', () => {});
+   app.readiness.set('database', true);
+   app.readiness.set('engine', true);
+ 
+--- a/apps/core-server/src/modules/identity/__tests__/tokens-cookie.test.ts
++++ b/apps/core-server/src/modules/identity/__tests__/tokens-cookie.test.ts
+@@ -74,6 +74,8 @@
+         return {};
+       });
+       await instance.ready();
++      // By-design change (plan row W28): the scratch routes are no registry operations.
++      instance.stages.replace('accessRule', () => {});
+       instance.readiness.set('database', true);
+       instance.readiness.set('engine', true);
+       return instance;
+--- a/apps/core-server/src/plugins/authenticate/__tests__/authenticate.test.ts
++++ b/apps/core-server/src/plugins/authenticate/__tests__/authenticate.test.ts
+@@ -129,6 +129,8 @@
+   });
+   app.get('/api/v1/scratch/operator', async (request) => ({ sessionId: operatorSessionOf(request).id }));
+   await app.ready();
++  // By-design change (plan row W28): not about stage 6; a scratch route is no registry operation.
++  app.stages.replace('accessRule', () => {});
+   app.seams.replace('clock', clock);
+   app.seams.replace('sessionRegistry', registry);
+   app.seams.replace('deviceResolver', { resolveCredential, resolveDevice });
+--- a/apps/core-server/src/plugins/error-envelope/__tests__/error-envelope.test.ts
++++ b/apps/core-server/src/plugins/error-envelope/__tests__/error-envelope.test.ts
+@@ -65,6 +65,8 @@
+ 
+   await app.ready();
+   app.stages.replace('readiness', () => {});
++  // By-design change (plan row W28): not about stage 6; a scratch route is no registry operation.
++  app.stages.replace('accessRule', () => {});
+ });
+ 
+ afterAll(() => app.close());
+--- a/apps/core-server/src/plugins/readiness/__tests__/readiness.test.ts
++++ b/apps/core-server/src/plugins/readiness/__tests__/readiness.test.ts
+@@ -17,6 +17,8 @@
+   app.get('/api/v1/anything/:id', { config: { operationId: 'anything' } }, async () => ({ ok: true }));
+   app.post('/api/v1/anything', { config: { operationId: 'postAnything' } }, async () => ({ ok: true }));
+   prepare?.(app);
++  // By-design change (plan row W28): not about stage 6; a scratch route is no registry operation.
++  app.stages.replace('accessRule', () => {});
+   await app.ready();
+   return app;
+ }
+@@ -78,6 +80,7 @@
+     const app = buildApp({ config: unitTestConfig(), createPool: () => createFakePool().pool });
+     apps.push(app);
+     app.get('/api/v1/anything/:id', { config: { operationId: 'anything' } }, async () => ({ ok: true }));
++    app.stages.replace('accessRule', () => {});
+     await app.ready();
+     app.readiness.set('database', true);
+     app.readiness.set('engine', true);
+--- a/apps/core-server/src/plugins/origin-guard/__tests__/guard-test-app.ts
++++ b/apps/core-server/src/plugins/origin-guard/__tests__/guard-test-app.ts
+@@ -72,6 +72,8 @@
+   });
+   options.routes?.(app);
+   await app.ready();
++  // By-design change (plan row W28): not about stage 6; a scratch route is no registry operation.
++  app.stages.replace('accessRule', () => {});
+   const clock = createManualClock(CLOCK_START);
+   app.seams.replace('clock', clock);
+   if (options.notReady !== true) {
+--- a/apps/core-server/src/plugins/response-headers/__tests__/response-headers.test.ts
++++ b/apps/core-server/src/plugins/response-headers/__tests__/response-headers.test.ts
+@@ -85,6 +85,8 @@
+   app = buildApp({ config: unitTestConfig() });
+   addScratchRoutes(app);
+   await app.ready();
++  // By-design change (plan row W28): not about stage 6; a scratch route is no registry operation.
++  app.stages.replace('accessRule', () => {});
+   refuseGuardedAtReadiness(app);
+ });
+ 
+--- a/apps/core-server/src/core/__tests__/seeded.db.test.ts
++++ b/apps/core-server/src/core/__tests__/seeded.db.test.ts
+@@ -38,6 +38,8 @@
+       // By-design change (decision D72, plan row W26): the engine host's step follows the nine
+       // checks, and on a seeded database it passes: the engine is rehydrated and running.
+       'engine.rehydrate',
++      // By-design change (plan row W28): the stored role matrix is checked last.
++      'rbac.matrix',
+     ]);
+     expect(lines.find((line) => line['msg'] === 'the stored audit chain verifies')).toMatchObject({
+       step: 'B-8',
+--- a/apps/core-server/src/engine/__tests__/restart.db.test.ts
++++ b/apps/core-server/src/engine/__tests__/restart.db.test.ts
+@@ -21,7 +21,7 @@
+ const db = useTestDatabase({ template: 'seed' });
+ 
+ const STOP_MS = 90_000;
+-const BOOT_STEPS = ['B-1', 'B-2', 'B-3', 'B-4', 'B-5', 'B-6', 'B-7', 'B-8', 'B-9', 'engine.rehydrate'];
++const BOOT_STEPS = ['B-1', 'B-2', 'B-3', 'B-4', 'B-5', 'B-6', 'B-7', 'B-8', 'B-9', 'engine.rehydrate', 'rbac.matrix'];
+ 
+ const passedSteps = (host: EngineApp): unknown[] =>
+   host.log
+--- a/apps/core-server/src/modules/identity/__tests__/support.ts
++++ b/apps/core-server/src/modules/identity/__tests__/support.ts
+@@ -18,6 +18,7 @@
+ import { buildApp } from '../../../app';
+ import type { DatabaseConnection, ListenPort, LogLevel } from '../../../config';
+ import { captureLog, unitTestConfig, type CapturedLog } from '../../../plugins/config/__tests__/test-config';
++import { passScratchRoutes } from '../../../plugins/permission-guard/__tests__/support';
+ import type { PoolFactory } from '../../../plugins/db';
+ import { throttleControl } from '../../../plugins/throttle';
+ import type { DeviceResolver, ResolvedDevice } from '../../pairing';
+@@ -91,6 +92,8 @@
+   target.onCleanup(() => app.close());
+   options.routes?.(app);
+   await app.ready();
++  // By-design change (plan row W28): a test's scratch routes pass stage 6; operations 2 to 6 keep the real guard.
++  if (options.routes !== undefined) passScratchRoutes(app);
+   const clock = createManualClock(CLOCK_START);
+   app.seams.replace('clock', clock);
+   if (!(await app.db.probe({ fresh: true }))) throw new Error('the clone does not answer as dems_app');

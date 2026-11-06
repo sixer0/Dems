@@ -1,0 +1,198 @@
+# W11b follow-up 3 (decision D114): the probe. Files OUTSIDE the repository, in two scratch copies of the server workspace taken from one snapshot (18:31:43):
+#   'after'  = the helper that sets the limits itself;   'before' = the helper as it was (no mechanism; the probe files are the same).
+# None of the first four probe files has a limit line. Runner defaults: 5 s per test, 10 s per hook. 2026-10-04 20:23:39 WIB, load 1.70 1.21 1.77
+
+--- zz-probe-helper.db.test.ts
+// SCRATCH ONLY. NO limit line of its own. It uses the helper (useTestDatabase).
+// Its own hook waits 10.5 s (the runner's limit for a hook is 10 s); its test waits 5.5 s inside
+// the body (the runner's limit for a test is 5 s).
+import { beforeAll, expect, it } from 'vitest';
+import { useTestDatabase } from '../index';
+import { SELFTEST_TEMPLATE } from '../testing/probe-hooks';
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+const db = useTestDatabase({ template: SELFTEST_TEMPLATE });
+
+beforeAll(async () => {
+  await sleep(10_500);
+});
+
+it('uses the helper: a test that waits 5.5 s inside its body', async () => {
+  await db.ownerPool().query('SELECT 1');
+  await sleep(5_500);
+  expect(db.name).toMatch(/^dems_test_/);
+});
+--- zz-probe-with-only.db.test.ts
+// SCRATCH ONLY. NO limit line of its own. It uses the helper through withTestDatabase alone,
+// which is called INSIDE the test: the limit must have been raised before the test was registered.
+import { expect, it } from 'vitest';
+import { withTestDatabase } from '../index';
+import { SELFTEST_TEMPLATE } from '../testing/probe-hooks';
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+it('uses withTestDatabase only: a test that waits 5.5 s inside its body', async () => {
+  const name = await withTestDatabase({ template: SELFTEST_TEMPLATE, slug: 'probe' }, async (database) => {
+    await sleep(5_500);
+    return database.name;
+  });
+  expect(name).toMatch(/^dems_test_/);
+});
+--- zz-probe-control-test.db.test.ts
+// SCRATCH ONLY. Control: NO limit line, and it does NOT use the helper.
+import { expect, it } from 'vitest';
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+it('without the helper: a test that waits 5.5 s inside its body', async () => {
+  await sleep(5_500);
+  expect(true).toBe(true);
+});
+--- zz-probe-control-hook.db.test.ts
+// SCRATCH ONLY. Control: NO limit line, and it does NOT use the helper.
+import { beforeAll, expect, it } from 'vitest';
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+beforeAll(async () => {
+  await sleep(10_500);
+});
+
+it('without the helper: a hook that waits 10.5 s', () => {
+  expect(true).toBe(true);
+});
+--- zz-probe-lower.db.test.ts
+// SCRATCH ONLY. It uses the helper AND sets LOWER limits of its own: they must be kept.
+import { expect, it, vi } from 'vitest';
+import { providedRun } from '../index';
+
+vi.setConfig({ testTimeout: 2_000, hookTimeout: 3_000 });
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+it('own lower limit of 2 s: a test that waits 2.5 s must fail at 2 s', async () => {
+  expect(providedRun().prefix).toMatch(/^dems_test_/);
+  await sleep(2_500);
+});
+--- zz-probe-unit.test.ts
+// SCRATCH ONLY. A file of the database-free project that imports the helper: it must keep the
+// runner's 5 s.
+import { expect, it } from 'vitest';
+import { raisedTestLimits } from '../index';
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+it('database-free project, helper imported: a test that waits 5.5 s must fail at 5 s', async () => {
+  expect(raisedTestLimits(null).testTimeout).toBe(120_000);
+  await sleep(5_500);
+});
+
+## 1. AFTER (the helper sets the limits), project db, label 33d
+ ✓ |db| test/helpers/db/__tests__/zz-probe-with-only.db.test.ts (1 test) 5776ms
+   ✓ uses withTestDatabase only: a test that waits 5.5 s inside its body 5776ms
+ ❯ |db| test/helpers/db/__tests__/zz-probe-lower.db.test.ts (1 test | 1 failed) 2007ms
+   × own lower limit of 2 s: a test that waits 2.5 s must fail at 2 s 2007ms
+ ✓ |db| test/helpers/db/__tests__/zz-probe-helper.db.test.ts (1 test) 16158ms
+   ✓ uses the helper: a test that waits 5.5 s inside its body 5511ms
+ ❯ |db| test/helpers/db/__tests__/zz-probe-control-hook.db.test.ts (1 test | 1 skipped) 10006ms
+ ❯ |db| test/helpers/db/__tests__/zz-probe-control-test.db.test.ts (1 test | 1 failed) 5005ms
+   × without the helper: a test that waits 5.5 s inside its body 5004ms
+ FAIL  |db| test/helpers/db/__tests__/zz-probe-control-hook.db.test.ts [ test/helpers/db/__tests__/zz-probe-control-hook.db.test.ts ]
+Error: Hook timed out in 10000ms.
+ FAIL  |db| test/helpers/db/__tests__/zz-probe-control-test.db.test.ts > without the helper: a test that waits 5.5 s inside its body
+Error: Test timed out in 5000ms.
+ FAIL  |db| test/helpers/db/__tests__/zz-probe-lower.db.test.ts > own lower limit of 2 s: a test that waits 2.5 s must fail at 2 s
+Error: Test timed out in 2000ms.
+ Test Files  3 failed | 2 passed (5)
+      Tests  2 failed | 2 passed | 1 skipped (5)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 145 ms; 0 remain with the run prefix dems_test_step_33d_tmdx7f4u_
+exit=1
+
+## 2. AFTER, project unit: a database-free file that imports the helper
+ ❯ |unit| test/helpers/db/__tests__/zz-probe-unit.test.ts (1 test | 1 failed) 5005ms
+   × database-free project, helper imported: a test that waits 5.5 s must fail at 5 s 5005ms
+ FAIL  |unit| test/helpers/db/__tests__/zz-probe-unit.test.ts > database-free project, helper imported: a test that waits 5.5 s must fail at 5 s
+Error: Test timed out in 5000ms.
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+exit=1
+
+## 3. BEFORE (the helper as it was), project db: the same two files that use the helper
+ ❯ |db| test/helpers/db/__tests__/zz-probe-with-only.db.test.ts (1 test | 1 failed) 5005ms
+   × uses withTestDatabase only: a test that waits 5.5 s inside its body 5004ms
+ ❯ |db| test/helpers/db/__tests__/zz-probe-helper.db.test.ts (1 test | 1 skipped) 10317ms
+ FAIL  |db| test/helpers/db/__tests__/zz-probe-helper.db.test.ts [ test/helpers/db/__tests__/zz-probe-helper.db.test.ts ]
+Error: Hook timed out in 10000ms.
+ FAIL  |db| test/helpers/db/__tests__/zz-probe-with-only.db.test.ts > uses withTestDatabase only: a test that waits 5.5 s inside its body
+Error: Test timed out in 5000ms.
+ Test Files  2 failed (2)
+      Tests  1 failed | 1 skipped (2)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 4 database(s) in 127 ms; 0 remain with the run prefix dems_test_step_33d_tmdx8665_
+exit=1
+
+## 4. A slow test still FAILS, at the cap (a cap is not a wait): two more files outside the tree, no limit line, both use the helper; run 20:26:23 to 20:29:24
+--- zz-cap-test.db.test.ts: its test waits 125 s;  zz-cap-hook.db.test.ts: its hook waits 185 s
+ ❯ |db| test/zzprobe/zz-cap-test.db.test.ts (1 test | 1 failed) 120004ms
+   × a test that waits 125 s: stopped at the cap of 120 s 120003ms
+ ❯ |db| test/zzprobe/zz-cap-hook.db.test.ts (1 test | 1 skipped) 180004ms
+ FAIL  |db| test/zzprobe/zz-cap-hook.db.test.ts [ test/zzprobe/zz-cap-hook.db.test.ts ]
+Error: Hook timed out in 180000ms.
+ FAIL  |db| test/zzprobe/zz-cap-test.db.test.ts > a test that waits 125 s: stopped at the cap of 120 s
+Error: Test timed out in 120000ms.
+ Test Files  2 failed (2)
+      Tests  1 failed | 1 skipped (2)
+   Duration  180.94s (tests 100%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 94 ms; 0 remain with the run prefix dems_test_step_33d_tmdxbz7w_
+exit=1
+
+## 5. The helper only RAISES, whatever the run was started with: the same two files (outside the tree, no limit line) under four command lines. 2026-10-04 20:55:18 WIB
+# To the runner a limit of zero is NO limit (Vitest 5.0.3, run.js: 'if (timeout <= 0 || timeout === Number.POSITIVE_INFINITY) return fn'): it must stay zero.
+# (Measured beside it: this runner does not hand --hookTimeout to the project; the control holds 10000 for a hook whatever the flag says. Not the helper's doing.)
+--- zz-zero.db.test.ts
+// SCRATCH ONLY: print what the runner holds, in a file that uses the helper (no limit line).
+import { beforeAll, expect, it } from 'vitest';
+import { currentTestLimits, providedRun } from '../index';
+
+const atCollection = currentTestLimits();
+let inHook: ReturnType<typeof currentTestLimits> = null;
+beforeAll(() => {
+  inHook = currentTestLimits();
+});
+
+it('prints the limits', ({ task }) => {
+  expect(providedRun().prefix).toMatch(/^dems_test_/);
+  console.log(`[with the helper]    at collection ${JSON.stringify(atCollection)}; in a hook ${JSON.stringify(inHook)}; the limit of this test (task.timeout) ${String(task.timeout)}`);
+});
+--- zz-zero-control.db.test.ts
+// SCRATCH ONLY: the same in a file that does NOT use the helper (the reader is copied here).
+import { expect, it } from 'vitest';
+
+it('prints the limits', ({ task }) => {
+  const state = (globalThis as { __vitest_worker__?: { config?: { testTimeout?: unknown; hookTimeout?: unknown } } }).__vitest_worker__;
+  console.log(`[without the helper] the runner holds ${JSON.stringify({ testTimeout: state?.config?.testTimeout, hookTimeout: state?.config?.hookTimeout })}; the limit of this test (task.timeout) ${String(task.timeout)}`);
+  expect(true).toBe(true);
+});
+--- vitest run --project db (no flag: the runner's own 5 s and 10 s)
+[without the helper] the runner holds {"testTimeout":5000,"hookTimeout":10000}; the limit of this test (task.timeout) 5000
+[with the helper]    at collection {"testTimeout":120000,"hookTimeout":180000}; in a hook {"testTimeout":120000,"hookTimeout":180000}; the limit of this test (task.timeout) 120000
+      Tests  2 passed (2)
+--- vitest run --project db --testTimeout=0
+[without the helper] the runner holds {"testTimeout":0,"hookTimeout":10000}; the limit of this test (task.timeout) 0
+[with the helper]    at collection {"testTimeout":0,"hookTimeout":180000}; in a hook {"testTimeout":0,"hookTimeout":180000}; the limit of this test (task.timeout) 0
+      Tests  2 passed (2)
+--- vitest run --project db --testTimeout=300000
+[without the helper] the runner holds {"testTimeout":300000,"hookTimeout":10000}; the limit of this test (task.timeout) 300000
+[with the helper]    at collection {"testTimeout":300000,"hookTimeout":180000}; in a hook {"testTimeout":300000,"hookTimeout":180000}; the limit of this test (task.timeout) 300000
+      Tests  2 passed (2)
+--- vitest run --project db --testTimeout=0 --hookTimeout=0
+[without the helper] the runner holds {"testTimeout":0,"hookTimeout":10000}; the limit of this test (task.timeout) 0
+[with the helper]    at collection {"testTimeout":0,"hookTimeout":180000}; in a hook {"testTimeout":0,"hookTimeout":180000}; the limit of this test (task.timeout) 0
+      Tests  2 passed (2)
+--- the two limits tests of the tree in a run started with --testTimeout=0
+ ✓ |db| test/helpers/db/__tests__/limits.db.test.ts (6 tests) 3ms
+ ✓ |db| test/helpers/db/__tests__/limits-own.db.test.ts (5 tests) 625ms
+ Test Files  2 passed (2)
+      Tests  11 passed (11)

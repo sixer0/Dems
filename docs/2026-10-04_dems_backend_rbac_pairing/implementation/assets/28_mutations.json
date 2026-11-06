@@ -1,0 +1,513 @@
+[
+ {
+  "id": "M01",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "if (principal.kind === 'ANONYMOUS' && principal.retiredDeviceId !== null && rule.refusesRetiredDevice) {",
+  "to": "if (principal.kind === 'ANONYMOUS' && principal.retiredDeviceId !== null && rule.refusesRetiredDevice && rule.kind !== CoreApiAccessKind.PUBLIC) {",
+  "note": "a retired device is not refused on a PUBLIC operation (D78)"
+ },
+ {
+  "id": "M02",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "if (principal.kind === 'ANONYMOUS' && principal.retiredDeviceId !== null && rule.refusesRetiredDevice) {",
+  "to": "if (principal.kind === 'ANONYMOUS' && principal.retiredDeviceId !== null && false) {",
+  "note": "a retired device is never refused: it gets the 401 of an anonymous caller"
+ },
+ {
+  "id": "M03",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "return principal.kind === 'OPERATOR' ? ALLOW : refuse({ kind: AccessRefusalKind.NOT_SIGNED_IN, needs: 'OPERATOR' });",
+  "to": "return ALLOW;",
+  "note": "AUTHENTICATED lets everybody through"
+ },
+ {
+  "id": "M04",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "return principal.kind === 'OPERATOR' ? ALLOW : refuse({ kind: AccessRefusalKind.NOT_SIGNED_IN, needs: 'OPERATOR' });",
+  "to": "return principal.kind !== 'ANONYMOUS' ? ALLOW : refuse({ kind: AccessRefusalKind.NOT_SIGNED_IN, needs: 'OPERATOR' });",
+  "note": "AUTHENTICATED accepts a paired device without an operator"
+ },
+ {
+  "id": "M05",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "if (principal.kind !== 'OPERATOR') return refuse({ kind: AccessRefusalKind.NOT_SIGNED_IN, needs: 'OPERATOR' });\n      // The rule book",
+  "to": "if (principal.kind === 'ANONYMOUS') return refuse({ kind: AccessRefusalKind.NOT_SIGNED_IN, needs: 'OPERATOR' });\n      if (principal.kind === 'DEVICE') return ALLOW;\n      // The rule book",
+  "note": "a permission operation accepts a paired device without an operator"
+ },
+ {
+  "id": "M06",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "if (rule.permissions.some((permission) => principal.permissions.includes(permission))) return ALLOW;",
+  "to": "return ALLOW;",
+  "note": "the permission is not checked: every operator is allowed"
+ },
+ {
+  "id": "M07",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "if (rule.permissions.some((permission) => principal.permissions.includes(permission))) return ALLOW;",
+  "to": "if (rule.permissions.every((permission) => principal.permissions.includes(permission))) return ALLOW;",
+  "note": "the any-of needs both permissions"
+ },
+ {
+  "id": "M08",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "if (rule.permissions.some((permission) => principal.permissions.includes(permission))) return ALLOW;",
+  "to": "if (principal.permissions.includes(rule.permissions[0] as never)) return ALLOW;",
+  "note": "the any-of checks only its first permission"
+ },
+ {
+  "id": "M09",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "principal.permissions.includes(permission)",
+  "to": "(({ INVESTIGATOR: ['SESSION_START', 'SESSION_NOTE', 'EVIDENCE_VIEW', 'DIAGNOSTICS_RUN'], SUPERVISOR: ['SESSION_START', 'SESSION_NOTE', 'EVIDENCE_VIEW', 'DIAGNOSTICS_RUN', 'EVIDENCE_REVIEW', 'EVIDENCE_EXPORT', 'AUDIT_EXPORT', 'PAIRING_MANAGE', 'USER_ADMIN', 'DEMO_CONTROL'], TECHNICIAN: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE'] } as Record<string, string[]>)[principal.role] ?? []).includes(permission)",
+  "note": "the guard decides by a matrix written into its code, not by what stage 4 read (RB-3)"
+ },
+ {
+  "id": "M10",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "return principal.deviceId === null ? refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: 'DEVICE_OPERATION' }) : ALLOW;",
+  "to": "return ALLOW;",
+  "note": "a DEVICE operation accepts a web console session"
+ },
+ {
+  "id": "M11",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "return refuse({ kind: AccessRefusalKind.NOT_SIGNED_IN, needs: 'DEVICE' });",
+  "to": "return ALLOW;",
+  "note": "a DEVICE operation accepts an anonymous caller"
+ },
+ {
+  "id": "M12",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "if (!caller.consoleIdentity) return refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: condition });",
+  "to": "",
+  "note": "the console rule ID-1 is not applied at stage 6"
+ },
+ {
+  "id": "M13",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "if (principal.kind !== 'OPERATOR' || principal.deviceId === null) {\n          return refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: condition });\n        }",
+  "to": "",
+  "note": "the condition DEVICE_SESSION is not applied"
+ },
+ {
+  "id": "M14",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "if (!caller.demoControls) return refuse({ kind: AccessRefusalKind.DEMO_DISABLED });",
+  "to": "",
+  "note": "the demo flag is not checked"
+ },
+ {
+  "id": "M15",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "return byPrincipal.allowed ? decideConditions(rule, caller) : byPrincipal;",
+  "to": "const byCondition = decideConditions(rule, caller);\n  return byCondition.allowed ? byPrincipal : byCondition;",
+  "note": "the conditions are decided before the permission (DC-1: DEMO_DISABLED instead of NOT_PERMITTED)"
+ },
+ {
+  "id": "M16",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "return refusal.kind === AccessRefusalKind.DEVICE_REVOKED || refusal.kind === AccessRefusalKind.NOT_PERMITTED;",
+  "to": "return refusal.kind === AccessRefusalKind.NOT_PERMITTED;",
+  "note": "isAudited says a retired device is not audited"
+ },
+ {
+  "id": "M17",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "        role: principal.role,\n        deviceId: principal.deviceId,\n        denial: rule.denial,",
+  "to": "        role: principal.role,\n        deviceId: null,\n        denial: rule.denial,",
+  "note": "the refusal does not name the device of the session"
+ },
+ {
+  "id": "M18",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "export const RETIRED_DEVICE_OPERATIONS: readonly string[] = ['getServiceHealth', 'redeemPairingCode'];",
+  "to": "export const RETIRED_DEVICE_OPERATIONS: readonly string[] = ['getServiceHealth', 'redeemPairingCode', 'getSignInStatus'];",
+  "note": "a retired device may read the sign-in status"
+ },
+ {
+  "id": "M19",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "refusesRetiredDevice: !(typedAccess.kind === CoreApiAccessKind.PUBLIC && RETIRED_DEVICE_OPERATIONS.includes(operation.operationId)),",
+  "to": "refusesRetiredDevice: true,",
+  "note": "a retired device is refused on health and on the pairing redeem too"
+ },
+ {
+  "id": "M20",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "const compiled = byRoute.get(name);\n      if (compiled === undefined) {",
+  "to": "const compiled = byRoute.get(name) ?? (route.operationId === undefined ? undefined : byId.get(route.operationId));\n      if (compiled === undefined) {",
+  "note": "a route gets the rule of the operation it NAMES, whatever its path"
+ },
+ {
+  "id": "M21",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "if (route.operationId !== compiled.operationId) {",
+  "to": "if (route.operationId !== undefined && route.operationId !== compiled.operationId) {",
+  "note": "a registry route without config.operationId is accepted"
+ },
+ {
+  "id": "M22",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "return withoutRules(name);\n      }\n      // A defective registry entry",
+  "to": "return { ...REALTIME_CHANNEL_RULE, operationId: 'unknownRoute', url: route.url };\n      }\n      // A defective registry entry",
+  "note": "a route that is no registry operation gets an open rule (allow by default)"
+ },
+ {
+  "id": "M23",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "if (!isObject(audit)) return problem(AccessRuleErrorCode.AUDIT_RULE_MISSING, 'the registry entry carries no audit rule');\n  const { success, denial } = audit;",
+  "to": "const { success, denial } = isObject(audit) ? audit : { success: 'NONE-R', denial: 'ACCESS_DENIED' };",
+  "note": "an entry without an audit rule is compiled as a read"
+ },
+ {
+  "id": "M24",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "if (!isObject(access)) return problem(AccessRuleErrorCode.ACCESS_RULE_MISSING, 'the registry entry carries no access rule');",
+  "to": "if (!isObject(access)) return compileAccessRule({ ...operation, access: { kind: 'PUBLIC' } } as CoreApiOperation);",
+  "note": "an entry without an access rule is compiled as PUBLIC"
+ },
+ {
+  "id": "M25",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "if (unknownAt !== -1) {",
+  "to": "if (false as boolean) {",
+  "note": "a permission outside the vocabulary is accepted in a rule"
+ },
+ {
+  "id": "M26",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "export const ANY_OF_SEPARATOR = '_OR_';",
+  "to": "export const ANY_OF_SEPARATOR = ' | ';",
+  "note": "the any-of permissions are joined as the simulator writes them (not storable)"
+ },
+ {
+  "id": "M27",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "errorCode: operation.operationId === FORBIDDEN_OPERATION ? ApiErrorCode.FORBIDDEN : ApiErrorCode.NOT_PERMITTED,",
+  "to": "errorCode: exportShape !== undefined ? ApiErrorCode.FORBIDDEN : ApiErrorCode.NOT_PERMITTED,",
+  "note": "all three exports answer FORBIDDEN"
+ },
+ {
+  "id": "M28",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "method.toUpperCase() === REALTIME_CHANNEL_RULE.method && url === REALTIME_CHANNEL_RULE.url;",
+  "to": "url === REALTIME_CHANNEL_RULE.url;",
+  "note": "any method on /ws is the socket route"
+ },
+ {
+  "id": "M29",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "method.toUpperCase() === REALTIME_CHANNEL_RULE.method && url === REALTIME_CHANNEL_RULE.url;",
+  "to": "method.toUpperCase() === REALTIME_CHANNEL_RULE.method && url.startsWith(REALTIME_CHANNEL_RULE.url);",
+  "note": "every path that starts with /ws is the socket route"
+ },
+ {
+  "id": "M30",
+  "file": "src/plugins/permission-guard/access-rules.ts",
+  "from": "auditType: denial,",
+  "to": "auditType: AuditType.ACCESS_DENIED,",
+  "note": "the exports are refused with ACCESS_DENIED (RB-5)"
+ },
+ {
+  "id": "M31",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "      await app.denialBudget.consume(request);\n",
+  "to": "",
+  "note": "an audited refusal takes no place in the denial budget"
+ },
+ {
+  "id": "M32",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "      await app.denialBudget.consume(request);\n      await app.pipeline.run(DENIAL_UNIT_LABEL, async (unit) => {\n        await unit.audit.append(record.audit);\n        if (record.event !== null) await unit.events.append(record.event);\n      });",
+  "to": "      await app.pipeline.run(DENIAL_UNIT_LABEL, async (unit) => {\n        await unit.audit.append(record.audit);\n        if (record.event !== null) await unit.events.append(record.event);\n      });\n      await app.denialBudget.consume(request);",
+  "note": "the place in the budget is taken AFTER the row is written"
+ },
+ {
+  "id": "M33",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "        await unit.audit.append(record.audit);\n",
+  "to": "",
+  "note": "the denial row is not written"
+ },
+ {
+  "id": "M34",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "        await unit.audit.append(record.audit);\n",
+  "to": "        await unit.audit.append(record.audit);\n        await unit.audit.append(record.audit);\n",
+  "note": "two rows per refused call"
+ },
+ {
+  "id": "M35",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "        if (record.event !== null) await unit.events.append(record.event);\n",
+  "to": "",
+  "note": "an export refusal writes no event"
+ },
+ {
+  "id": "M36",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "      await app.pipeline.run(DENIAL_UNIT_LABEL, async (unit) => {",
+  "to": "      void app.pipeline.run(DENIAL_UNIT_LABEL, async (unit) => {",
+  "note": "the answer does not wait for the row"
+ },
+ {
+  "id": "M37",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "    if (decision.allowed) return;\n",
+  "to": "    if (decision.allowed) {\n      await app.pipeline.run(DENIAL_UNIT_LABEL, async (unit) => {\n        await unit.audit.append({ type: 'ACCESS_DENIED', message: 'Allowed.', actorId: null, deviceId: null, details: { operationId: rule.operationId } });\n      });\n      return;\n    }\n",
+  "note": "an allowed call writes a row"
+ },
+ {
+  "id": "M38",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "    if (record !== null) {\n      // The place first",
+  "to": "    await app.denialBudget.consume(request);\n    if (record !== null && (await Promise.resolve(true))) {\n      // The place first",
+  "note": "every refusal takes a place in the budget, a 401 included"
+ },
+ {
+  "id": "M39",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "    if (!isAccessRule(resolved)) throw new AccessRuleError([resolved]);\n    registered.set(name, resolved);",
+  "to": "    if (!isAccessRule(resolved)) return rules.ruleAt('GET', '/ws') as AccessRule;\n    registered.set(name, resolved);",
+  "note": "a route without a rule that reaches a request is let through (fail open)"
+ },
+ {
+  "id": "M40",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "    refuseRoutes(problems, 'permissionGuard.routes');\n  });",
+  "to": "  });",
+  "note": "the boot check of ready() refuses nothing"
+ },
+ {
+  "id": "M41",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "        else found.push(resolved);",
+  "to": "",
+  "note": "checkRouter ignores a route without a rule"
+ },
+ {
+  "id": "M42",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "        if (registered.has(name)) continue;\n",
+  "to": "        if (registered.has(name) || !name.startsWith('GET')) continue;\n",
+  "note": "checkRouter looks at GET routes only"
+ },
+ {
+  "id": "M43",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "      else problems.push(resolved);",
+  "to": "",
+  "note": "the onRoute hook forgets a route without a rule"
+ },
+ {
+  "id": "M44",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "    return typeof id === 'string' && rule.idPattern.test(id) ? id : null;",
+  "to": "    return typeof id === 'string' ? id : null;",
+  "note": "the path ID goes into the row unchecked"
+ },
+ {
+  "id": "M45",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "consoleIdentity: rule.conditions.includes(CoreApiAccessCondition.CONSOLE_IDENTITY) && consoleIdentityOf(app, request) !== null,",
+  "to": "consoleIdentity: true,",
+  "note": "every caller counts as a console (pairing is no longer mandatory)"
+ },
+ {
+  "id": "M46",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "demoControls: app.config.demoControls,",
+  "to": "demoControls: true,",
+  "note": "the demo flag is read as on"
+ },
+ {
+  "id": "M47",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "    const decision = decideAccess(rule, callerOf(rule, request));\n    if (decision.allowed) return;",
+  "to": "    const memo = ((app as unknown as { memo?: Map<string, ReturnType<typeof decideAccess>> }).memo ??= new Map());\n    const memoKey = request.principal.kind === 'OPERATOR' ? `${rule.operationId} ${request.principal.sessionId}` : null;\n    const decision = (memoKey === null ? undefined : memo.get(memoKey)) ?? decideAccess(rule, callerOf(rule, request));\n    if (memoKey !== null) memo.set(memoKey, decision);\n    if (decision.allowed) return;",
+  "note": "the decision of a session is cached across requests (RB-2)"
+ },
+ {
+  "id": "M48",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "    if (app.stages.get('accessRule') !== handler) {\n      app.log.warn({ routes: registered.size, unchecked: problems.length }, STAGE_REPLACED);\n      return;\n    }\n    refuseRoutes(problems, 'permissionGuard.routes');",
+  "to": "    if (app.stages.get('accessRule') !== handler) return;\n    refuseRoutes(problems, 'permissionGuard.routes');",
+  "note": "a replaced stage is not announced in the log"
+ },
+ {
+  "id": "M49",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "        actorId: operatorId,\n        deviceId,\n        details: named,",
+  "to": "        actorId: null,\n        deviceId,\n        details: named,",
+  "note": "the ACCESS_DENIED row names no actor"
+ },
+ {
+  "id": "M50",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "const named = { operationId: rule.operationId, permission: denial.permission, role };",
+  "to": "const named = { operationId: rule.operationId, role };",
+  "note": "the row and the answer do not name the permission"
+ },
+ {
+  "id": "M51",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "const named = { operationId: rule.operationId, permission: denial.permission, role };",
+  "to": "const named = { operationId: rule.operationId, permission: denial.permission };",
+  "note": "the row does not name the role"
+ },
+ {
+  "id": "M52",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "const named = { operationId: rule.operationId, permission: denial.permission, role };",
+  "to": "const named = { operationId: 'unknown', permission: denial.permission, role };",
+  "note": "the row names another operation"
+ },
+ {
+  "id": "M53",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "details: { operationId: rule.operationId, reason: RETIRED_DEVICE_REASON },",
+  "to": "details: { operationId: rule.operationId },",
+  "note": "the row of a retired device has no reason"
+ },
+ {
+  "id": "M54",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "        actorId: null,\n        deviceId: refusal.deviceId,",
+  "to": "        actorId: null,\n        deviceId: null,",
+  "note": "the row of a retired device names no device"
+ },
+ {
+  "id": "M55",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "        403,\n        refusal.denial.errorCode,",
+  "to": "        401,\n        refusal.denial.errorCode,",
+  "note": "a missing permission answers 401"
+ },
+ {
+  "id": "M56",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "      return deviceRevoked();",
+  "to": "      return notSignedIn();",
+  "note": "a retired device answers 401"
+ },
+ {
+  "id": "M57",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "{ details: { operationId: rule.operationId, permission: refusal.denial.permission, role: refusal.role } },",
+  "to": "{},",
+  "note": "the 403 carries no details"
+ },
+ {
+  "id": "M58",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "        severity: Severity.WARNING,\n        message: `Access denied: role",
+  "to": "        severity: Severity.INFO,\n        message: `Access denied: role",
+  "note": "the denial row has severity INFO"
+ },
+ {
+  "id": "M59",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "        evidenceId: pathId,",
+  "to": "        evidenceId: null,",
+  "note": "the export refusal does not name the evidence"
+ },
+ {
+  "id": "M60",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "      details: { ...named, scope, eventKind: AuditEventKind.UNAUTHORIZED_EXPORT },",
+  "to": "      details: { ...named, eventKind: AuditEventKind.UNAUTHORIZED_EXPORT },",
+  "note": "the export refusal of the audit and the logs has no scope"
+ },
+ {
+  "id": "M61",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "      return refusal.needs === 'DEVICE' ? new ApiFailure(401, ApiErrorCode.NOT_SIGNED_IN, DEVICE_CREDENTIAL_TEXT) : notSignedIn();",
+  "to": "      return new ApiFailure(403, ApiErrorCode.NOT_PERMITTED, 'Your role does not allow this action. The attempt was audited.');",
+  "note": "no principal answers 403 NOT_PERMITTED"
+ },
+ {
+  "id": "M62",
+  "file": "src/plugins/permission-guard/matrix.ts",
+  "from": "      if (matrix.permissions.includes(permission)) continue;\n",
+  "to": "      if (matrix.permissions.includes(permission) || rule.permissions.length > 0) continue;\n",
+  "note": "a permission of a route that is not stored is accepted"
+ },
+ {
+  "id": "M63",
+  "file": "src/plugins/permission-guard/matrix.ts",
+  "from": "  const extra = stored.filter((name) => !shared.includes(name));",
+  "to": "  const extra: string[] = [];",
+  "note": "a stored name the server does not know is accepted"
+ },
+ {
+  "id": "M64",
+  "file": "src/plugins/permission-guard/matrix.ts",
+  "from": "  const missing = shared.filter((name) => !stored.includes(name));",
+  "to": "  const missing: string[] = [];",
+  "note": "a missing stored name is accepted"
+ },
+ {
+  "id": "M65",
+  "file": "src/plugins/permission-guard/matrix.ts",
+  "from": "    editable: false,",
+  "to": "    editable: true as false,",
+  "note": "the matrix is announced as editable"
+ },
+ {
+  "id": "M66",
+  "file": "src/plugins/permission-guard/matrix.ts",
+  "from": "ORDER BY r.sort_order, p.sort_order), '[]'::json) ",
+  "to": "ORDER BY p.sort_order, r.sort_order), '[]'::json) ",
+  "note": "the grants are ordered by permission first"
+ },
+ {
+  "id": "M67",
+  "file": "src/plugins/permission-guard/matrix.ts",
+  "from": "(SELECT COALESCE(json_agg(p.id ORDER BY p.sort_order), '[]'::json) FROM public.permissions p) AS permissions, ",
+  "to": "(SELECT COALESCE(json_agg(p.id ORDER BY p.id), '[]'::json) FROM public.permissions p) AS permissions, ",
+  "note": "the permissions are ordered by name"
+ },
+ {
+  "id": "M68",
+  "file": "src/modules/rbac/index.ts",
+  "from": "      guard.checkRouter();\n",
+  "to": "",
+  "note": "the boot step does not look at the router"
+ },
+ {
+  "id": "M69",
+  "file": "src/modules/rbac/index.ts",
+  "from": "      await guard.reloadMatrix();\n",
+  "to": "",
+  "note": "the boot step does not read the stored matrix"
+ },
+ {
+  "id": "M70",
+  "file": "src/modules/rbac/index.ts",
+  "from": "stored = await readStoredMatrix(app.db.pool);",
+  "to": "stored = permissionGuard(app).matrix() ?? (await readStoredMatrix(app.db.pool));",
+  "note": "operation 10 answers the matrix as it was loaded at boot"
+ },
+ {
+  "id": "M71",
+  "file": "src/modules/rbac/index.ts",
+  "from": "      return roleMatrixOf(stored);",
+  "to": "      return { ...roleMatrixOf(stored), grants: roleMatrixOf(stored).grants.slice(0, 17) };",
+  "note": "operation 10 drops a grant"
+ },
+ {
+  "id": "M72",
+  "file": "src/plugins/permission-guard/router-table.ts",
+  "from": "    for (const method of (route[2] ?? '').split(', ')) routes.push({ method, url });",
+  "to": "    routes.push({ method: (route[2] ?? '').split(', ')[0] ?? '', url });",
+  "note": "the table gives only the first method of a route"
+ },
+ {
+  "id": "M73",
+  "file": "src/plugins/permission-guard/router-table.ts",
+  "from": "    fragments.length = depth;\n",
+  "to": "",
+  "note": "the table keeps fragments of deeper nodes"
+ }
+]

@@ -1,0 +1,491 @@
+// W70 lane check: Devices & Inputs in Live mode in a real headless Chromium, over raw CDP (Node's
+// built-in WebSocket; no install). The helpers (lines up to `takeNetwork`) are W55's driver as W63
+// used it, unchanged; the steps are this row's. Sign-ins go THROUGH THE FORM, from the project's own
+// seed constants. Sites B-7 and D-5 are pressed through the tile kebab with real mouse events; the
+// drawer row of note G6 is opened from the Other Devices list.
+// Usage: W70_STEPS=live|offline node --import tsx .cache/w70/lane/cdp-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+//
+// What is never stored or printed: a request body, a cookie value, the seeded password, a
+// `Runtime.evaluate` expression. Cookie values are cut to their length; URLs lose their query
+// values; only named elements and booleans are read from the Dashboard.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+// The seeded demo operator, read from the project's own seed source (never printed).
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+const technician = OPERATORS.find((operator) => operator.role === 'TECHNICIAN')
+if (!supervisor || !technician || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source has no SUPERVISOR, no TECHNICIAN or no demo password constant')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map() // requestId -> { method, url, status }
+let sockets = new Map() // requestId -> { url, status, frames: [type...], cookieSent }
+let consoleLines = []
+let loadFired = false
+
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+const typeOf = (payload) => {
+  try {
+    return JSON.parse(payload).type ?? '(no type)'
+  } catch {
+    return '(not JSON)'
+  }
+}
+const pick = (headers, name) => {
+  for (const [key, value] of Object.entries(headers ?? {})) if (key.toLowerCase() === name) return value
+  return null
+}
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    // The error of a failed call is reported by its code only: its text can quote the expression.
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      // Never `p.request.postData`.
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Network.webSocketCreated':
+      sockets.set(p.requestId, { url: cleanUrl(p.url), status: null, frames: [] })
+      break
+    case 'Network.webSocketWillSendHandshakeRequest': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.cookieSent = pick(p.request.headers, 'cookie') ? 'yes (value not recorded)' : 'no'
+      break
+    }
+    case 'Network.webSocketHandshakeResponseReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.webSocketFrameReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry && entry.frames.length < 400) entry.frames.push(typeOf(p.response.payloadData))
+      break
+    }
+    case 'Network.webSocketClosed': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.closed = true
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 420)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+
+/** Runs page script. A failure is reported without the expression and without the page's own message. */
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs) // the dev client's socket, the lazy route chunk, the entrance motion
+  return loadFired
+}
+
+/** Waits until the page holds (or no longer holds) an element with this test ID. Returns whether it did in time. */
+const waitFor = async (testId, present = true, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`document.querySelector('[data-testid="${testId}"]') !== null`, `wait ${testId}`)
+    if (found === present) return true
+    await sleep(150)
+  }
+  return false
+}
+
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  const file = join(assetsDir, name)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return file
+}
+
+/** Types into the input of a field by script: focus, select what is there, insert. The text is not echoed. */
+const typeInto = async (fieldTestId, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector('[data-testid="${fieldTestId}"] input'); if (!el) return false; el.focus(); el.select(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const press = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`)
+
+/** What the page did since the last call, and a new record for what follows. */
+const takeNetwork = () => {
+  const taken = {
+    api: [...requests.values()].filter((entry) => entry.url.includes('/api/v1/')),
+    origins: [...new Set([...requests.values()].map((entry) => { try { return new URL(entry.url).origin } catch { return '(other)' } }))].sort(),
+    sockets: [...sockets.values()]
+      .filter((entry) => entry.url.endsWith('/ws'))
+      .map((entry) => ({ url: entry.url, status: entry.status, cookieSent: entry.cookieSent ?? null, closed: entry.closed === true, frameCount: entry.frames.length, firstTypes: entry.frames.slice(0, 4), distinctTypes: [...new Set(entry.frames)].sort() })),
+    console: consoleLines,
+  }
+  requests = new Map()
+  sockets = new Map()
+  consoleLines = []
+  return taken
+}
+
+
+// ════════════════════════════════════ W70: the steps ════════════════════════════════════
+
+/** Named facts of Devices & Inputs, and booleans over its words (the page holds no credential). */
+const devFacts = (label) =>
+  evaluate(
+    `(() => {
+      const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+      const text = (id) => q(id)?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+      const labels = [...document.body.querySelectorAll('[aria-label], [title], [alt]')].map((el) => ['aria-label', 'title', 'alt'].map((n) => el.getAttribute(n) ?? '').join(' ')).join(' ')
+      const words = (document.body.textContent ?? '') + ' ' + labels
+      return {
+        href: location.origin + location.pathname,
+        onDevices: q('page-devices') !== null,
+        panels: ['cameras','summary','audio','other','front','ports'].filter((id) => q('panel-' + id) !== null),
+        shellMode: text('shell-mode'),
+        shellCoreMode: document.querySelector('.dems-shell')?.getAttribute('data-core-mode') ?? null,
+        user: q('user-menu')?.getAttribute('aria-label') ?? null,
+        status: {
+          'VIDEO-01': q('camera-tile-VIDEO-01')?.getAttribute('data-status') ?? null,
+          'VIDEO-02': q('camera-tile-VIDEO-02')?.getAttribute('data-status') ?? null,
+          'AUDIO-01': q('audio-input-AUDIO-01')?.getAttribute('data-status') ?? null,
+          'AUDIO-02': q('audio-input-AUDIO-02')?.getAttribute('data-status') ?? null,
+          TABLET: q('other-TABLET')?.getAttribute('data-status') ?? null,
+        },
+        lcdLabel: q('front-lcd')?.getAttribute('aria-label') ?? null,
+        saysSimulated: /simulat/i.test(words),
+        busyHeads: document.querySelectorAll('.dev-tile-head[aria-busy="true"]').length,
+        pendingTriggers: document.querySelectorAll('[data-testid^="device-menu-"][data-pending="true"]').length,
+        identifyRings: [...document.querySelectorAll('[data-testid^="identify-"]')].map((el) => el.getAttribute('data-testid')),
+        toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((el) => el.textContent?.replace(/\\s+/g, ' ').trim()),
+      }
+    })()`,
+    label,
+  )
+
+/** The open drawer: its device, its Overview rows (labels and values of the Core's devices, no secret) and the state of the paired-devices row. */
+const drawerFacts = (label) =>
+  evaluate(
+    `(() => {
+      const d = document.querySelector('[data-testid="device-drawer"]')
+      if (!d) return { open: false }
+      const rows = [...d.querySelectorAll('[data-testid="device-overview"] .dev-facts-row')].map((r) => ({ label: r.querySelector('dt')?.textContent?.trim() ?? null, value: r.querySelector('dd')?.textContent?.replace(/\\s+/g, ' ').trim() ?? null }))
+      const link = d.querySelector('[data-testid="drawer-paired-open"]')
+      return {
+        open: true,
+        device: d.getAttribute('data-device'),
+        rows,
+        pairedRowState: ['drawer-paired-summary', 'drawer-paired-link', 'drawer-paired-error', 'drawer-paired-loading'].filter((id) => d.querySelector('[data-testid="' + id + '"]') !== null),
+        link: link ? { href: link.getAttribute('href'), text: link.textContent?.trim() ?? null } : null,
+        saysSimulated: /simulat/i.test(d.textContent ?? ''),
+      }
+    })()`,
+    label,
+  )
+
+/** A real click (mouse moved, pressed, released) at the centre of the element with this test ID, or of a menu item by the start of its text. */
+const clickAt = async (selectorScript, label) => {
+  const box = await evaluate(
+    `(() => { const el = ${selectorScript}; if (!el) return null; el.scrollIntoView({ block: 'center', inline: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`,
+    `locate ${label}`,
+  )
+  if (!box) return false
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y })
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+  return true
+}
+const clickTestId = (testId) => clickAt(`document.querySelector('[data-testid="${testId}"]')`, testId)
+
+/** Opens a device's kebab; returns the menu's items as the page shows them. */
+const openMenu = async (deviceId) => {
+  const opened = await clickTestId(`device-menu-${deviceId}`)
+  if (!opened) return { opened: false, items: [] }
+  for (let i = 0; i < 40; i++) {
+    if (await evaluate(`document.querySelector('[role="menu"]') !== null`, 'menu shown')) break
+    await sleep(100)
+  }
+  await sleep(350)
+  const items = await evaluate(
+    `[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map((el) => ({ text: el.textContent?.replace(/\\s+/g, ' ').trim(), disabled: el.getAttribute('aria-disabled') === 'true' }))`,
+    'menu items',
+  )
+  return { opened: true, items }
+}
+const pressItem = (prefix) =>
+  clickAt(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].find((e) => (e.textContent ?? '').trim().startsWith('${prefix}'))`, `item ${prefix}`)
+const escape = async () => {
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await sleep(500)
+}
+const waitToast = async (needle, timeoutMs = 10000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`[...document.querySelectorAll('[data-slot="toast"]')].some((el) => (el.textContent ?? '').includes(${JSON.stringify(needle)}))`, 'toast')
+    if (found) return true
+    await sleep(120)
+  }
+  return false
+}
+const waitAny = async (testIds, timeoutMs = 12000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`${JSON.stringify(testIds)}.find((id) => document.querySelector('[data-testid="' + id + '"]') !== null) ?? null`, 'wait any')
+    if (found) return found
+    await sleep(150)
+  }
+  return null
+}
+const toDevices = async () => {
+  await evaluate(`(() => { const a = document.querySelector('a[href="/devices"]'); if (!a) return false; a.click(); return true })()`, 'sidebar devices')
+  const shown = await waitFor('page-devices', true, 20000)
+  await waitFor('device-menu-MIC-02', true, 15000)
+  await sleep(3500) // the route's entrance and the panels' beats
+  return shown
+}
+const signInThroughTheForm = async (operator, label) => {
+  await waitFor('page-login', true, 15000)
+  await typeInto('login-username-field', operator.username, `${label} username`)
+  await typeInto('login-password-field', DEMO_OPERATOR_PASSWORD, `${label} password`)
+  await press('login-submit')
+  const arrived = await waitFor('page-dashboard', true, 25000)
+  await sleep(2500) // the hand-off and the shell's entrance
+  return arrived
+}
+const signOutByPage = async () => {
+  const answer = await evaluate(
+    `(async () => { const r = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return { status: r.status } })()`,
+    'sign-out',
+  )
+  const back = await waitFor('page-login', true, 15000)
+  await sleep(1500)
+  return { ...answer, loginShown: back }
+}
+/** Opens the tablet's drawer from its Other Devices row and waits for the paired-devices row. */
+const openTabletDrawer = async () => {
+  const clicked = await clickTestId('other-TABLET')
+  const open = await waitFor('device-drawer', true, 10000)
+  const row = await waitAny(['drawer-paired-summary', 'drawer-paired-link', 'drawer-paired-error'], 12000)
+  await sleep(900) // the drawer's entrance
+  return { clicked, open, row }
+}
+
+const started = Date.now()
+const STEPS = process.env.W70_STEPS ?? 'live'
+
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false })
+const version = await send('Browser.getVersion')
+const result = { browser: { product: version.product, userAgent: version.userAgent, headless: /Headless/i.test(version.userAgent) }, viewport: '1920x1080', phase: STEPS, steps: {} }
+
+if (STEPS === 'live') {
+  // ── 1. Live, the seeded SUPERVISOR, through the form: Devices & Inputs on the Core's data ──
+  await navigate(`${ORIGIN}/login`)
+  const coreMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+  takeNetwork()
+  const arrived = await signInThroughTheForm(supervisor, 'supervisor')
+  const devices = await toDevices()
+  result.steps.liveSupervisor = { loginCoreMode: coreMode, dashboardShown: arrived, devicesShown: devices, facts: await devFacts('live supervisor'), screenshot: await screenshot('70_devices_live_supervisor.png'), network: takeNetwork() }
+
+  // ── 2. The tablet's drawer as SUPERVISOR (PAIRING_MANAGE): "Paired devices" from operation 19 (note G6) ──
+  {
+    const opened = await openTabletDrawer()
+    const facts = await drawerFacts('drawer supervisor')
+    const shot = await screenshot('70_drawer_paired_devices_supervisor.png')
+    await escape()
+    result.steps.drawerSupervisor = { ...opened, facts, screenshot: shot, network: takeNetwork() }
+  }
+
+  // ── 3. D-5 through the kebab as SUPERVISOR: Identify on Camera 1 (DIAGNOSTICS_RUN, every role) ──
+  {
+    const menu = await openMenu('CAM-01')
+    const pressed = await pressItem('Identify')
+    const toastShown = await waitToast('Camera 1 is blinking its indicator')
+    const facts = await devFacts('after identify')
+    const shot = await screenshot('70_devices_live_identify.png')
+    result.steps.identify = { menu, pressed, toastShown, facts, screenshot: shot, network: takeNetwork() }
+  }
+
+  // ── 4. What the Core answers this SUPERVISOR for operation 48 (a page request: the UI does not offer Restart to this role) ──
+  {
+    const answer = await evaluate(
+      `(async () => { const r = await fetch('/api/v1/device/CAM-01/restart', { method: 'POST', credentials: 'same-origin' }); let body = null; try { body = await r.json() } catch {} return { status: r.status, code: body?.error?.code ?? null, permission: body?.error?.details?.permission ?? null } })()`,
+      'restart as supervisor',
+    )
+    await sleep(1000)
+    result.steps.restartAsSupervisor = { answer, network: takeNetwork() }
+  }
+
+  // ── 5. Sign out; the seeded TECHNICIAN through the form (D152 ruling 4); B-7 through the kebab ──
+  {
+    const signOut = await signOutByPage()
+    takeNetwork()
+    const arrived = await signInThroughTheForm(technician, 'technician')
+    const devices = await toDevices()
+    result.steps.liveTechnician = { signOut, dashboardShown: arrived, devicesShown: devices, facts: await devFacts('live technician'), network: takeNetwork() }
+  }
+  {
+    const menu = await openMenu('MIC-01')
+    const pressed = await pressItem('Test signal')
+    const toastShown = await waitToast('Test signal sent to MIC 1')
+    await sleep(300)
+    result.steps.testSignal = { menu, pressed, toastShown, facts: await devFacts('after test signal'), network: takeNetwork() }
+  }
+  {
+    const menu = await openMenu('CAM-02')
+    const pressed = await pressItem('Restart')
+    const toastShown = await waitToast('Camera 2 restarted')
+    await sleep(500)
+    const facts = await devFacts('after restart')
+    const shot = await screenshot('70_devices_live_technician_restart.png')
+    result.steps.restart = { menu, pressed, toastShown, facts, screenshot: shot, network: takeNetwork() }
+    await sleep(4000)
+    result.steps.restart.statusFourSecondsLater = (await devFacts('restart + 4 s')).status
+  }
+
+  // ── 6. The tablet's drawer as TECHNICIAN (no PAIRING_MANAGE): the tablet-link sentence, no registry read ──
+  {
+    const opened = await openTabletDrawer()
+    const facts = await drawerFacts('drawer technician')
+    const shot = await screenshot('70_drawer_paired_devices_technician.png')
+    await escape()
+    result.steps.drawerTechnician = { ...opened, facts, screenshot: shot, network: takeNetwork() }
+  }
+}
+
+if (STEPS === 'offline') {
+  // ── 7. The same tab, after the check stopped its backend: a command meets the presenter (LB-6, CL-22) ──
+  {
+    const until = Date.now() + 20000
+    let mode = null
+    while (Date.now() < until) {
+      mode = await evaluate(`document.querySelector('[data-testid="shell-mode"]')?.textContent?.trim() ?? null`, 'shell mode')
+      if (mode && /OFFLINE|RECONNECTING/.test(mode)) break
+      await sleep(250)
+    }
+    const before = await devFacts('offline before')
+    const menu = await openMenu('CAM-01')
+    const pressed = await pressItem('Identify')
+    const presenterToast = await waitToast('Nothing was changed.')
+    await sleep(400)
+    const facts = await devFacts('offline after')
+    const shot = await screenshot('70_devices_live_offline_command.png')
+    result.steps.offlineCommand = { shellModeSeen: mode, before, menu, pressed, presenterToast, facts, screenshot: shot, network: takeNetwork() }
+  }
+
+  // ── 8. Simulated mode (the stored choice wins over the lane's preset). Sign In needs mock-core on
+  // 127.0.0.1:4400, which this check may not start (F63-3): when the form's button is disabled, the
+  // simulator's own stored sign-in (`dems.auth`: operator ID and time, no credential) is written
+  // instead, as W63 did (its DV-2). ──
+  {
+    await evaluate(`localStorage.setItem('dems.core.mode.v1', 'SIMULATED')`, 'store SIMULATED')
+    takeNetwork()
+    await navigate(`${ORIGIN}/login`)
+    await waitFor('page-login', true, 15000)
+    const coreMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+    await sleep(1500)
+    const submitDisabled = await evaluate(`document.querySelector('[data-testid="login-submit"]')?.hasAttribute('disabled') || document.querySelector('[data-testid="login-submit"]')?.getAttribute('aria-disabled') === 'true'`, 'submit disabled')
+    let path
+    if (!submitDisabled) {
+      path = 'form'
+      await signInThroughTheForm(supervisor, 'simulated supervisor')
+    } else {
+      path = 'stored simulated sign-in (dems.auth), because Sign In is disabled while mock-core is offline'
+      await evaluate(`sessionStorage.setItem('dems.auth', JSON.stringify({ operatorId: ${JSON.stringify(supervisor.id)}, issuedAt: Date.now() }))`, 'simulated stored sign-in')
+    }
+    await navigate(`${ORIGIN}/devices`, 4000)
+    const devicesShown = await waitFor('page-devices', true, 20000)
+    await waitFor('device-menu-MIC-02', true, 15000)
+    await sleep(3000)
+    const facts = await devFacts('simulated')
+    const shot = await screenshot('70_devices_simulated.png')
+    const menu = await openMenu('CAM-01')
+    await escape()
+    const opened = await openTabletDrawer()
+    await sleep(300)
+    const drawer = await drawerFacts('simulated drawer')
+    const drawerShot = await screenshot('70_drawer_pairing_simulated.png')
+    await escape()
+    const network = takeNetwork()
+    result.steps.simulated = {
+      loginCoreMode: coreMode,
+      submitDisabledOnTheLoginPage: submitDisabled,
+      signInPath: path,
+      devicesShown,
+      facts,
+      screenshot: shot,
+      menu,
+      drawer: { ...opened, facts: drawer, screenshot: drawerShot },
+      apiRequestsToTheDevServer: network.api.length,
+      socketsToTheDevServerWs: network.sockets.filter((s) => s.url.startsWith(`ws://127.0.0.1:${vitePort}/ws`)).length,
+      network,
+    }
+    await evaluate(`localStorage.removeItem('dems.core.mode.v1'); sessionStorage.removeItem('dems.auth')`, 'leave the origin as found')
+  }
+}
+result.elapsedSeconds = Math.round((Date.now() - started) / 1000)
+
+// Last line of defence: the password may not be in what is written, whatever a page showed.
+let text = JSON.stringify(result, null, 2)
+if (text.includes(DEMO_OPERATOR_PASSWORD)) text = text.split(DEMO_OPERATOR_PASSWORD).join('***')
+text = text.replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+writeFileSync(outJson, `${text}\n`)
+console.log(text)
+ws.close()

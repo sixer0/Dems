@@ -1,0 +1,5 @@
+-- lock state (end of the commands; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: NONE
+   fingerprints enrolled: "count":0

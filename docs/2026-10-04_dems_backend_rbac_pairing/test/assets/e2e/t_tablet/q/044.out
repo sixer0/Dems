@@ -1,0 +1,12 @@
+tap 784,755 at 10:15:08.172
+slept 4500 ms
+screencap 18b_settings_notifications.png (421550 bytes) at 10:15:13.041
+tap 784,880 at 10:15:13.165
+slept 4500 ms
+screencap 18c_settings_security_privacy.png (428878 bytes) at 10:15:17.912
+tap 784,1108 at 10:15:17.987
+slept 4500 ms
+screencap 18d_settings_device_settings.png (413113 bytes) at 10:15:22.670
+tap 784,1233 at 10:15:22.730
+slept 4500 ms
+screencap 18e_settings_storage_management.png (485735 bytes) at 10:15:27.421

@@ -1,0 +1,44 @@
+start 06:34:09
+737442720739e74d9f0035557788eddf8a95d8a5
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.25s
+exit packaged=0
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 964ms
+exit plain=0
+end 06:34:12
+start 06:35:42
+cb4869870d175d62b6668cf9425098f677c8ae7b
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.21s
+exit packaged(var=9999)=0
+✓ built in 1.03s
+exit packaged(var=4421)=0
+✓ built in 999ms
+exit plain(unset)=0
+end 06:35:47
+--- diff -r before-packaged after-packaged-var9999
+IDENTICAL
+--- diff -r before-packaged after-packaged-var4421
+IDENTICAL
+--- diff -r before-plain after-plain
+IDENTICAL
+--- file counts
+before-packaged 511 files, tree sha256 27f7a8b43ebaebcb
+after-packaged-var9999 511 files, tree sha256 27f7a8b43ebaebcb
+after-packaged-var4421 511 files, tree sha256 27f7a8b43ebaebcb
+before-plain 511 files, tree sha256 6e74094d06b9b93d
+after-plain 511 files, tree sha256 6e74094d06b9b93d
+--- CSP meta in packaged index.html (before / after)
+/Users/gsp-budi/Documents/DEMS/.cache/proof-harness/build/after-packaged-var9999/index.html:1
+/Users/gsp-budi/Documents/DEMS/.cache/proof-harness/build/after-plain/index.html:0
+/Users/gsp-budi/Documents/DEMS/.cache/proof-harness/build/before-plain/index.html:0
+/Users/gsp-budi/Documents/DEMS/.cache/proof-harness/build/before-packaged/index.html:1
+--- proxy strings in any built file
+(end)

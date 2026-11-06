@@ -1,0 +1,414 @@
+// W81 lane check: the Paired Devices page in Live mode in a real headless Chromium, over raw CDP
+// (Node's built-in WebSocket; no install). The helpers (lines up to `takeNetwork`) are W55's driver
+// as W63 and W70 used it, unchanged; `clickAt`, `waitToast`, `signInThroughTheForm`, `signOutByPage`
+// are W70's, unchanged; the steps are this row's. The sign-in goes THROUGH THE FORM from the
+// project's own seed constants (the password is never printed or written).
+// Usage: node --import tsx .cache/w81/lane/cdp-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir> <outDir>
+//
+// THE PAIRING CODE: the driver reads the issued digits into one variable of this process, for one
+// purpose — to count afterwards how often they occur in the files this check produced and in the two
+// server logs (`codeScan`, counts only). They are never printed, never written, never returned in a
+// fact. Before the screenshot of the active code, page script masks the digits (transparent text on a
+// grey box) and hides the QR (which encodes the code); the screenshot is taken only when the page
+// confirms both masks are in effect. Network records hold method, URL without query and status; no
+// response body is ever requested (the issue's answer holds the code).
+//
+// What is never stored or printed: a request body, a cookie value, the seeded password, a
+// `Runtime.evaluate` expression. Cookie values are cut to their length; URLs lose their query
+// values; only named elements and booleans are read from the Dashboard.
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+// The seeded demo operator, read from the project's own seed source (never printed).
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir, outDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+if (!supervisor || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source has no SUPERVISOR or no demo password constant')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map() // requestId -> { method, url, status }
+let sockets = new Map() // requestId -> { url, status, frames: [type...], cookieSent }
+let consoleLines = []
+let loadFired = false
+
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+const typeOf = (payload) => {
+  try {
+    return JSON.parse(payload).type ?? '(no type)'
+  } catch {
+    return '(not JSON)'
+  }
+}
+const pick = (headers, name) => {
+  for (const [key, value] of Object.entries(headers ?? {})) if (key.toLowerCase() === name) return value
+  return null
+}
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    // The error of a failed call is reported by its code only: its text can quote the expression.
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      // Never `p.request.postData`.
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Network.webSocketCreated':
+      sockets.set(p.requestId, { url: cleanUrl(p.url), status: null, frames: [] })
+      break
+    case 'Network.webSocketWillSendHandshakeRequest': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.cookieSent = pick(p.request.headers, 'cookie') ? 'yes (value not recorded)' : 'no'
+      break
+    }
+    case 'Network.webSocketHandshakeResponseReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.webSocketFrameReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry && entry.frames.length < 400) entry.frames.push(typeOf(p.response.payloadData))
+      break
+    }
+    case 'Network.webSocketClosed': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.closed = true
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 420)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+
+/** Runs page script. A failure is reported without the expression and without the page's own message. */
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs) // the dev client's socket, the lazy route chunk, the entrance motion
+  return loadFired
+}
+
+/** Waits until the page holds (or no longer holds) an element with this test ID. Returns whether it did in time. */
+const waitFor = async (testId, present = true, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`document.querySelector('[data-testid="${testId}"]') !== null`, `wait ${testId}`)
+    if (found === present) return true
+    await sleep(150)
+  }
+  return false
+}
+
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  const file = join(assetsDir, name)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return file
+}
+
+/** Types into the input of a field by script: focus, select what is there, insert. The text is not echoed. */
+const typeInto = async (fieldTestId, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector('[data-testid="${fieldTestId}"] input'); if (!el) return false; el.focus(); el.select(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const press = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`)
+
+/** What the page did since the last call, and a new record for what follows. */
+const takeNetwork = () => {
+  const taken = {
+    api: [...requests.values()].filter((entry) => entry.url.includes('/api/v1/')),
+    origins: [...new Set([...requests.values()].map((entry) => { try { return new URL(entry.url).origin } catch { return '(other)' } }))].sort(),
+    sockets: [...sockets.values()]
+      .filter((entry) => entry.url.endsWith('/ws'))
+      .map((entry) => ({ url: entry.url, status: entry.status, cookieSent: entry.cookieSent ?? null, closed: entry.closed === true, frameCount: entry.frames.length, firstTypes: entry.frames.slice(0, 4), distinctTypes: [...new Set(entry.frames)].sort() })),
+    console: consoleLines,
+  }
+  requests = new Map()
+  sockets = new Map()
+  consoleLines = []
+  return taken
+}
+
+
+
+/** A real click (mouse moved, pressed, released) at the centre of the element with this test ID, or of a menu item by the start of its text. */
+const clickAt = async (selectorScript, label) => {
+  const box = await evaluate(
+    `(() => { const el = ${selectorScript}; if (!el) return null; el.scrollIntoView({ block: 'center', inline: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`,
+    `locate ${label}`,
+  )
+  if (!box) return false
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y })
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+  return true
+}
+const clickTestId = (testId) => clickAt(`document.querySelector('[data-testid="${testId}"]')`, testId)
+
+const waitToast = async (needle, timeoutMs = 10000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`[...document.querySelectorAll('[data-slot="toast"]')].some((el) => (el.textContent ?? '').includes(${JSON.stringify(needle)}))`, 'toast')
+    if (found) return true
+    await sleep(120)
+  }
+  return false
+}
+const waitAny = async (testIds, timeoutMs = 12000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`${JSON.stringify(testIds)}.find((id) => document.querySelector('[data-testid="' + id + '"]') !== null) ?? null`, 'wait any')
+    if (found) return found
+    await sleep(150)
+  }
+  return null
+}
+const signInThroughTheForm = async (operator, label) => {
+  await waitFor('page-login', true, 15000)
+  await typeInto('login-username-field', operator.username, `${label} username`)
+  await typeInto('login-password-field', DEMO_OPERATOR_PASSWORD, `${label} password`)
+  await press('login-submit')
+  const arrived = await waitFor('page-dashboard', true, 25000)
+  await sleep(2500) // the hand-off and the shell's entrance
+  return arrived
+}
+const signOutByPage = async () => {
+  const answer = await evaluate(
+    `(async () => { const r = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return { status: r.status } })()`,
+    'sign-out',
+  )
+  const back = await waitFor('page-login', true, 15000)
+  await sleep(1500)
+  return { ...answer, loginShown: back }
+}
+
+// ════════════════════════════════════ W81: the steps ════════════════════════════════════
+
+/** Named facts of the Paired Devices page. Never the digits of a code: only whether six are shown. */
+const pdFacts = (label) =>
+  evaluate(
+    `(() => {
+      const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+      const text = (id) => q(id)?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+      const code = q('pd-code')
+      const summary = q('pd-summary')
+      return {
+        href: location.origin + location.pathname,
+        search: location.search,
+        hash: location.hash,
+        onPage: q('page-paired-devices') !== null,
+        shellMode: text('shell-mode'),
+        panels: ['issue', 'devices'].filter((id) => q('panel-' + id) !== null),
+        issueState: q('pd-issue-panel')?.getAttribute('data-state') ?? null,
+        codeShown: code !== null,
+        codeDigitCount: code ? (code.textContent.match(/\\d/g) ?? []).length : 0,
+        qrShown: q('pd-qr') !== null,
+        qrLabel: q('pd-qr')?.getAttribute('aria-label') ?? null,
+        countdownSeconds: q('pd-countdown')?.getAttribute('data-seconds') ?? null,
+        countdownTone: q('pd-countdown')?.getAttribute('data-tone') ?? null,
+        attempts: text('pd-attempts'),
+        cancelShown: q('pd-cancel-code') !== null,
+        issueShown: q('pd-issue') !== null,
+        list: q('pd-devices-table') ? 'table' : q('pd-empty') ? 'empty' : q('pd-loading') ? 'loading' : q('pd-error') ? 'error' : null,
+        listText: text('pd-empty'),
+        rows: [...document.querySelectorAll('[data-testid^="pd-device-"]')].map((row) => row.getAttribute('data-testid')),
+        summary: summary ? { paired: summary.getAttribute('data-paired'), online: summary.getAttribute('data-online') } : null,
+        storageKeys: { local: Object.keys(localStorage), session: Object.keys(sessionStorage) },
+        toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((el) => el.textContent?.replace(/\\s+/g, ' ').trim()),
+      }
+    })()`,
+    label,
+  )
+
+/** Masks the digits (transparent text on a grey box) and hides the QR, which encodes the code. */
+const MASK_CSS = [
+  '[data-testid="pd-code"] .pd-code-group { color: transparent !important; text-shadow: none !important; background: rgb(255 255 255 / 0.22) !important; border-radius: 8px !important; }',
+  '[data-testid="pd-qr"] { visibility: hidden !important; }',
+  '.pd-qr-tile { position: relative !important; background: #3a3a3a !important; }',
+  ".pd-qr-tile::after { content: 'QR masked for this screenshot'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; color: #e5e5e5; font: 600 13px sans-serif; line-height: 1.3; padding: 12px; }",
+].join('\n')
+const mask = async () => {
+  await evaluate(`(() => { const s = document.createElement('style'); s.id = 'w81-mask'; s.textContent = ${JSON.stringify(MASK_CSS)}; document.head.appendChild(s); return true })()`, 'mask')
+  await sleep(150)
+  return evaluate(
+    `(() => {
+      const groups = [...document.querySelectorAll('[data-testid="pd-code"] .pd-code-group')]
+      const svg = document.querySelector('[data-testid="pd-qr"]')
+      const transparent = groups.length === 2 && groups.every((group) => { const c = getComputedStyle(group).color; return c === 'rgba(0, 0, 0, 0)' || c === 'transparent' })
+      const qrHidden = svg !== null && getComputedStyle(svg).visibility === 'hidden'
+      return { digitGroups: groups.length, transparent, qrHidden }
+    })()`,
+    'mask check',
+  )
+}
+const unmask = () => evaluate(`(() => { document.getElementById('w81-mask')?.remove(); return true })()`, 'unmask')
+
+const started = Date.now()
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false })
+const version = await send('Browser.getVersion')
+const result = { browser: { product: version.product, userAgent: version.userAgent, headless: /Headless/i.test(version.userAgent) }, viewport: '1920x1080', steps: {} }
+const shots = []
+let secret = '' // the issued digits, for the count-only scan at the end; never printed or written
+
+// ── 1. Live, the seeded SUPERVISOR, through the form; the Paired Devices page from the sidebar ──
+await navigate(`${ORIGIN}/login`)
+const coreMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+takeNetwork()
+const arrived = await signInThroughTheForm(supervisor, 'supervisor')
+const linked = await evaluate(`(() => { const a = document.querySelector('a[href="/admin/devices"]'); if (!a) return false; a.click(); return true })()`, 'sidebar paired devices')
+const shown = await waitFor('pd-issue-panel', true, 20000)
+await waitAny(['pd-empty', 'pd-devices-table', 'pd-error'], 15000)
+await sleep(2500) // the route's entrance and the panels' beats
+{
+  const facts = await pdFacts('idle')
+  shots.push('81_paired_devices_live_idle.png')
+  result.steps.idle = { loginCoreMode: coreMode, dashboardShown: arrived, sidebarEntry: linked, pageShown: shown, facts, screenshot: await screenshot('81_paired_devices_live_idle.png'), network: takeNetwork() }
+}
+
+// ── 2. Issue ONE code; mask the digits and the QR; the screenshot only when both masks hold ──
+{
+  const pressed = await clickTestId('pd-issue')
+  const codeShown = await waitFor('pd-code', true, 15000)
+  await sleep(1500) // the scramble (600 ms) is over
+  for (let i = 0; i < 10 && !/^\d{6}$/.test(secret); i++) {
+    secret = String(await evaluate(`document.querySelector('[data-testid="pd-code"]')?.textContent?.replace(/\\s+/g, '') ?? ''`, 'read for the scan'))
+    if (!/^\d{6}$/.test(secret)) await sleep(300)
+  }
+  const inPage = await evaluate(
+    `(() => { const c = document.querySelector('[data-testid="pd-code"]')?.textContent?.replace(/\\s+/g, '') ?? ''; if (c.length !== 6) return null; const values = [...Object.keys(localStorage), ...Object.values(localStorage), ...Object.keys(sessionStorage), ...Object.values(sessionStorage), location.href, document.cookie]; return values.filter((v) => String(v).includes(c)).length })()`,
+    'storage and URL count',
+  )
+  const maskCheck = await mask()
+  const factsAtShot = await pdFacts('active, masked')
+  let shot = null
+  if (maskCheck.transparent && maskCheck.qrHidden) {
+    shots.push('81_paired_devices_live_code_masked.png')
+    shot = await screenshot('81_paired_devices_live_code_masked.png')
+  }
+  await sleep(3000)
+  const factsThreeSecondsLater = await pdFacts('active, 3 s later')
+  result.steps.issue = {
+    pressed,
+    codeShown,
+    codeReadForScan: /^\d{6}$/.test(secret),
+    storageAndUrlHits: inPage,
+    maskCheck,
+    screenshot: shot ?? 'NOT TAKEN: a mask did not hold',
+    facts: factsAtShot,
+    countdownThreeSecondsLater: { seconds: factsThreeSecondsLater.countdownSeconds, tone: factsThreeSecondsLater.countdownTone, state: factsThreeSecondsLater.issueState },
+    network: takeNetwork(),
+  }
+}
+
+// ── 3. Cancel the code: Idle with the toast; the list ──
+{
+  const pressed = await clickTestId('pd-cancel-code')
+  const toastShown = await waitToast('Pairing code cancelled')
+  const idle = await waitFor('pd-issue', true, 10000)
+  await unmask()
+  await sleep(600)
+  const facts = await pdFacts('cancelled')
+  shots.push('81_paired_devices_live_cancelled.png')
+  result.steps.cancel = { pressed, toastShown, idle, facts, screenshot: await screenshot('81_paired_devices_live_cancelled.png'), network: takeNetwork() }
+}
+
+// ── 4. What the Core holds now (a page read of operation 16: no active code), then sign out ──
+{
+  const status = await evaluate(
+    `(async () => { const r = await fetch('/api/v1/pairing/code', { credentials: 'same-origin' }); let body = null; try { body = await r.json() } catch {} return { status: r.status, active: body?.active === null ? null : body?.active ? 'present' : 'unknown' } })()`,
+    'status after cancel',
+  )
+  const signOut = await signOutByPage()
+  result.steps.after = { status, signOut, network: takeNetwork() }
+}
+
+// ── 5. The count-only scan for the issued digits and their QR payload ──
+{
+  const files = [
+    ...shots.map((name) => join(assetsDir, name)),
+    join(outDir, 'chrome.log'),
+    '.locks/core-server.lane3.log',
+    '.locks/core-server.lane3.vite.log',
+  ]
+  const count = (text, needle) => (needle === '' ? -1 : text.split(needle).length - 1)
+  const codeScan = {}
+  for (const file of files) {
+    if (!existsSync(file)) {
+      codeScan[file] = 'absent'
+      continue
+    }
+    const text = readFileSync(file).toString('latin1')
+    codeScan[file] = { code: count(text, secret), qrPayload: count(text, secret === '' ? '' : `DEMS-PAIR:1:${secret}`) }
+  }
+  const resultText = JSON.stringify(result)
+  codeScan['browser_live.json (this result)'] = { code: count(resultText, secret), qrPayload: count(resultText, `DEMS-PAIR:1:${secret}`) }
+  result.codeScan = { scannedFor: secret === '' ? 'NOTHING: the code was not read' : 'the issued six digits and DEMS-PAIR:1:<digits> (the values are not recorded)', counts: codeScan }
+}
+secret = ''
+
+result.seconds = Math.round((Date.now() - started) / 1000)
+writeFileSync(outJson, JSON.stringify(result, null, 2))
+console.log(`steps ${Object.keys(result.steps).join(', ')}; ${result.seconds} s`)
+ws.close()

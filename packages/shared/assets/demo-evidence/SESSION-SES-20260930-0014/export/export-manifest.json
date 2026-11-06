@@ -1,0 +1,109 @@
+{
+  "schema": "dems.export-manifest/1",
+  "demo": true,
+  "notice": "DEMO - synthetic evidence package for the DEMS demo stack. Not evidence and not for production: it is signed with a DEMO key derived from a published seed.",
+  "payload": {
+    "representation": "Original track files (DEMO excerpts, unencrypted)",
+    "files": [
+      {
+        "trackId": "VIDEO-01",
+        "path": "EXP-000031/payload/VIDEO-01.mp4",
+        "bytes": 888860,
+        "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
+      },
+      {
+        "trackId": "VIDEO-02",
+        "path": "EXP-000031/payload/VIDEO-02.mp4",
+        "bytes": 867740,
+        "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
+      },
+      {
+        "trackId": "AUDIO-01",
+        "path": "EXP-000031/payload/AUDIO-01.m4a",
+        "bytes": 256172,
+        "sha256": "ad6aa4e1591259a027c832793f8f784d67fd59f0a092937c059de1caa0577c78"
+      },
+      {
+        "trackId": "AUDIO-02",
+        "path": "EXP-000031/payload/AUDIO-02.m4a",
+        "bytes": 255781,
+        "sha256": "728b535907b3cb993941be4554b997d1d26a41301cfc7f5cdd977f8dc16aed0d"
+      }
+    ]
+  },
+  "sessionManifest": {
+    "path": "EXP-000031/evidence/manifest.json",
+    "sha256": "403909dc0ed7d1e91bd6bf07ec3bb3c8c6a02c0bc236b465fb93dd780239dee1",
+    "tracks": [
+      {
+        "trackId": "VIDEO-01",
+        "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
+      },
+      {
+        "trackId": "VIDEO-02",
+        "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
+      },
+      {
+        "trackId": "AUDIO-01",
+        "sha256": "ad6aa4e1591259a027c832793f8f784d67fd59f0a092937c059de1caa0577c78"
+      },
+      {
+        "trackId": "AUDIO-02",
+        "sha256": "728b535907b3cb993941be4554b997d1d26a41301cfc7f5cdd977f8dc16aed0d"
+      }
+    ]
+  },
+  "signature": {
+    "path": "EXP-000031/evidence/signature.sig",
+    "algorithm": "Ed25519",
+    "keyId": "DEMO-KEY-EVSIGN-01",
+    "certificate": "EXP-000031/evidence/device-certificate.pem",
+    "certificateSha256": "760be9296d40f7d89320fdc65f767a4b9a3788f4b6a5caf8d405a9d698a5779a",
+    "chain": [
+      "Self-signed DEMO device certificate (no CA)"
+    ]
+  },
+  "export": {
+    "exportId": "EXP-000031",
+    "exportedAt": "2026-09-30T16:14:00.000+07:00",
+    "exportingOperator": {
+      "id": "OPR-002",
+      "displayName": "AKP Andi Pratama",
+      "role": "SUPERVISOR"
+    }
+  },
+  "source": {
+    "device": {
+      "id": "DEMS-IR-01",
+      "name": "Interview Room 1",
+      "serialNumber": "DEC-2026-IR01-000117",
+      "certificateSha256": "760be9296d40f7d89320fdc65f767a4b9a3788f4b6a5caf8d405a9d698a5779a"
+    },
+    "sessionId": "SES-20260930-0014",
+    "evidenceId": "EV-20260930-0004",
+    "caseNumber": "LP/2026/0930-0004"
+  },
+  "destination": {
+    "id": "Case file transfer (simulated)",
+    "type": "CASE_FILE_TRANSFER"
+  },
+  "package": {
+    "file": "EXP-000031.zip",
+    "bytes": 2276249,
+    "hashAlgorithm": "SHA-256",
+    "sha256": "d888f5449d1eb552c9113cb98a144aa7a9d21f14fa393a2de9c52efcea059e97",
+    "entries": 10,
+    "verification": {
+      "sourceVerifiedAt": "2026-09-30T16:13:40.000+07:00",
+      "sourceResult": "PASS",
+      "packageResult": "PASS",
+      "note": "Source tracks and manifest signature verified before export (§19.3 rule 3); package hash computed after the build."
+    }
+  },
+  "authorization": {
+    "purpose": "Prosecutor request",
+    "reference": "AUD-000039",
+    "permission": "EVIDENCE_EXPORT",
+    "role": "SUPERVISOR"
+  }
+}

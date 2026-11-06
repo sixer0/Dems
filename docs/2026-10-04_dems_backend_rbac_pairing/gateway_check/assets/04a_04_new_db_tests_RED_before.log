@@ -1,0 +1,507 @@
+
+ RUN  v5.0.3 /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1a/before/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_60a_tmdjmher_
+[test:db] stale sweep: dropped 0; kept 12 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_60a_tmdjmher_tpl_schema: built in 261 ms (create 81 ms, hook 175 ms)
+[test:db] template dems_test_step_60a_tmdjmher_tpl_seed: built in 399 ms (create 126 ms, hook 270 ms)
+ × |db| src/core/__tests__/unit-guard.db.test.ts > what the guard refuses reaches no connection > fourteen refusals inside one unit: the transaction is not failed, the unit commits, nothing is left on the connection 21ms
+   → current transaction is aborted, commands ignored until end of transaction block
+ ✓ |db| src/core/__tests__/unit-guard.db.test.ts > what the guard refuses reaches no connection > what two of them do on a plain connection, without the guard: a table that outlives the transaction, and a commit in the middle 12ms
+ ✓ |db| src/core/__tests__/unit-guard.db.test.ts > the second protection: the protocol > the server refuses a text with two commands in the extended protocol (42601) and runs both in the simple one 12ms
+ ✓ |db| src/core/__tests__/unit-guard.db.test.ts > row statements in the forms modules write still run > through unit.query and through the query builder, with and without values 25ms
+ × |db| src/core/__tests__/connection-lost.db.test.ts > the socket of the unit's connection is closed while the unit holds the chain lock > during a statement: 503 DATABASE_UNAVAILABLE, nothing stored, the lock is free at once, and the next unit commits on a new connection 27ms
+   → expected Error: Connection terminated unexpectedly to be an instance of PipelineFailure
+ × |db| src/core/__tests__/connection-lost.db.test.ts > the socket of the unit's connection is closed while the unit holds the chain lock > between two statements, and the work returns normally: no commit, 503 121ms
+   → expected Error: Connection terminated unexpectedly to match object { statusCode: 503, …(1) }
+ × |db| src/core/__tests__/connection-lost.db.test.ts > in the app, on the runtime pool > the request answers 503 NOT_READY; ready.database goes off and, because the database answers, on again; the next request commits 38ms
+   → expected 500 to be 503 // Object.is equality
+ × |db| src/core/__tests__/connection-lost.db.test.ts > at the end of the file > the chain of this database verifies over all rows 1ms
+   → expected 0 to be greater than or equal to 2
+ ✓ |db| src/core/__tests__/search-path.db.test.ts > the hazard (finding F53), shown on the real server > with the default search path a temporary table called audit_log is found before the real one 16ms
+ × |db| src/core/__tests__/search-path.db.test.ts > a unit of work on a connection that holds temporary tables called audit_log and events > appends to the PUBLIC tables: the rows are stored, the temporary tables stay empty, the chain verifies 27ms
+   → expected { pid: 16172, path: '"$user", public' } to deeply equal { pid: 16172, path: 'public,pg_temp' }
+ × |db| src/core/__tests__/search-path.db.test.ts > a unit of work on a connection that holds temporary tables called audit_log and events > the query builder on the unit reads and changes the real tables too 17ms
+   → expected +0 to be 4 // Object.is equality
+ × |db| src/core/__tests__/search-path.db.test.ts > a unit of work on a connection that holds temporary tables called audit_log and events > a unit that rolls back leaves the path of the session as it was, and the next unit pins it again 15ms
+   → expected undefined to deeply equal { seq: 1, id: 'AUD-000001', …(12) }
+ × |db| src/core/__tests__/search-path.db.test.ts > at the end of the file > the chain of this database verifies over all rows 1ms
+   → expected 0 to be greater than or equal to 2
+ × |db| src/plugins/db/__tests__/search-path.db.test.ts > every connection of the runtime pool > has the pinned search path, reported by the server in exactly that text 29ms
+   → expected [ '"$user", public', …(3) ] to deeply equal [ undefined, undefined, …(2) ]
+ × |db| src/plugins/db/__tests__/search-path.db.test.ts > every connection of the runtime pool > finds the real table by its bare name although a temporary table of that name is on the connection 15ms
+   → expected { audit: false, events: false } to deeply equal { audit: true, events: true }
+ ✓ |db| src/plugins/db/__tests__/search-path.db.test.ts > every connection of the runtime pool > the control: a pool WITHOUT the option has the default path, and there the temporary table is found first 21ms
+ × |db| src/plugins/db/__tests__/search-path.db.test.ts > boot step B-1 against the server > passes for the runtime pool: the boot goes on to the checks after it 498ms
+   → expected true to be false // Object.is equality
+ × |db| src/plugins/db/__tests__/search-path.db.test.ts > boot step B-1 against the server > stops the boot for a pool that was built without the option: B-1, SEARCH_PATH_NOT_PINNED, and what was found 120ms
+   → expected 'B-6' to be 'B-1' // Object.is equality
+ × |db| src/plugins/db/__tests__/search-path.db.test.ts > boot step B-1 against the server > stops the boot for a pool whose option names the temporary schema first 107ms
+   → expected 'B-6' to be 'B-1' // Object.is equality
+ × |db| src/plugins/db/__tests__/search-path.db.test.ts > a default that is stored for the database > does not reach a connection of the runtime pool: the start-up option of the client wins 208ms
+   → expected 'pg_temp, public' to be undefined // Object.is equality
+ ✓ |db| src/plugins/logger/__tests__/error-keys.db.test.ts > the premise: what the database and the query builder really throw > a wrapper that holds the statement and its parameters, around the driver's error with SQLSTATE 23505 and a DETAIL 3ms
+ × |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > key err 7ms
+   → expected { type: 'Error', …(2) } to match object { code: '23505', message: '23505' }
+(2 matching properties omitted from actual)
+ × |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > key error 2ms
+   → expected [ 'the statement', …(3) ] to deeply equal []
+ × |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > key cause 2ms
+   → expected [ 'the statement', …(3) ] to deeply equal []
+ × |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > key nested 1ms
+   → expected [ 'the statement', …(3) ] to deeply equal []
+ × |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > key in a list 1ms
+   → expected [ 'the statement', …(3) ] to deeply equal []
+ × |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > key the driver's error alone 1ms
+   → expected [ 'the statement', 'the DETAIL', …(1) ] to deeply equal []
+ × |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > the description: the wrapper's name, the driver's SQLSTATE and name, and frames only 1ms
+   → expected { errorName: 'Error', …(1) } to match object { errorName: 'Error', …(2) }
+(1 matching property omitted from actual)
+ ✓ |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > the pipeline's own line for that unit carries the SQLSTATE too 0ms
+ × |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > as an unexpected failure of a request: 500 without a detail; the log and the persistent error log hold the SQLSTATE only 48ms
+   → expected { type: 'Error', …(2) } to match object { type: 'Error', code: '23505', …(2) }
+(1 matching property omitted from actual)
+ × |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > the whole captured log of this file holds none of it 1ms
+   → expected [ 'the statement', …(3) ] to deeply equal []
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 24 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |db| src/core/__tests__/connection-lost.db.test.ts > the socket of the unit's connection is closed while the unit holds the chain lock > during a statement: 503 DATABASE_UNAVAILABLE, nothing stored, the lock is free at once, and the next unit commits on a new connection
+AssertionError: expected Error: Connection terminated unexpectedly to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.db.test.ts:106:19
+    104|     );
+    105|
+    106|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+    107|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+    108|     // What the driver reports for a connection that ended without not…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/24]⎯
+
+ FAIL  |db| src/core/__tests__/connection-lost.db.test.ts > the socket of the unit's connection is closed while the unit holds the chain lock > between two statements, and the work returns normally: no commit, 503
+AssertionError: expected Error: Connection terminated unexpectedly to match object { statusCode: 503, …(1) }
+
+- Expected
++ Received
+
+- {
+-   "reason": "DATABASE_UNAVAILABLE",
+-   "statusCode": 503,
++ Error {
++   "message": "Connection terminated unexpectedly",
+  }
+
+ ❯ src/core/__tests__/connection-lost.db.test.ts:152:19
+    150|       }),
+    151|     );
+    152|     expect(error).toMatchObject({ statusCode: 503, reason: 'DATABASE_U…
+       |                   ^
+    153|     expect(await readHead(owner)).toEqual(before);
+    154|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/24]⎯
+
+ FAIL  |db| src/core/__tests__/connection-lost.db.test.ts > in the app, on the runtime pool > the request answers 503 NOT_READY; ready.database goes off and, because the database answers, on again; the next request commits
+AssertionError: expected 500 to be 503 // Object.is equality
+
+- Expected
++ Received
+
+- 503
++ 500
+
+ ❯ src/core/__tests__/connection-lost.db.test.ts:187:29
+    185|
+    186|     const lost = await app.inject({ method: 'POST', url: '/api/v1/scra…
+    187|     expect(lost.statusCode).toBe(503);
+       |                             ^
+    188|     expect((lost.json() as { error: { code: string } }).error.code).to…
+    189|     // The probe the pool started at the loss has answered: the databa…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/24]⎯
+
+ FAIL  |db| src/core/__tests__/connection-lost.db.test.ts > at the end of the file > the chain of this database verifies over all rows
+AssertionError: expected 0 to be greater than or equal to 2
+ ❯ src/core/__tests__/connection-lost.db.test.ts:210:25
+    208|     const rows = await readTrail(owner);
+    209|     const head = await readHead(owner);
+    210|     expect(rows.length).toBeGreaterThanOrEqual(2);
+       |                         ^
+    211|     expect(linkProblems(rows)).toEqual([]);
+    212|     expect(verifyTrail(rows, head)).toEqual({ ok: true, checked: rows.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/24]⎯
+
+ FAIL  |db| src/core/__tests__/search-path.db.test.ts > a unit of work on a connection that holds temporary tables called audit_log and events > appends to the PUBLIC tables: the rows are stored, the temporary tables stay empty, the chain verifies
+AssertionError: expected { pid: 16172, path: '"$user", public' } to deeply equal { pid: 16172, path: 'public,pg_temp' }
+
+- Expected
++ Received
+
+  {
+-   "path": "public,pg_temp",
++   "path": "\"$user\", public",
+    "pid": 16172,
+  }
+
+ ❯ src/core/__tests__/search-path.db.test.ts:81:28
+     79|
+     80|     // The same connection, and the pinned path inside the unit.
+     81|     expect(outcome.inside).toEqual({ pid, path: PINNED });
+       |                            ^
+     82|     // The row and the event are in the real tables, read on another c…
+     83|     const rows = await readTrail(owner);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/24]⎯
+
+ FAIL  |db| src/core/__tests__/search-path.db.test.ts > a unit of work on a connection that holds temporary tables called audit_log and events > the query builder on the unit reads and changes the real tables too
+AssertionError: expected +0 to be 4 // Object.is equality
+
+- Expected
++ Received
+
+- 4
++ 0
+
+ ❯ src/core/__tests__/search-path.db.test.ts:114:28
+    112|       return { operators: Number(rows[0]?.n), head };
+    113|     });
+    114|     expect(seen.operators).toBe(real);
+       |                            ^
+    115|     expect(seen.head).toEqual(await readHead(owner));
+    116|     expect(await count(pool, 'operators')).toBe(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/24]⎯
+
+ FAIL  |db| src/core/__tests__/search-path.db.test.ts > a unit of work on a connection that holds temporary tables called audit_log and events > a unit that rolls back leaves the path of the session as it was, and the next unit pins it again
+AssertionError: expected undefined to deeply equal { seq: 1, id: 'AUD-000001', …(12) }
+
+- Expected:
+{
+  "actorId": null,
+  "at": 1924992000000,
+  "category": "SYSTEM",
+  "details": {},
+  "deviceId": null,
+  "evidenceId": null,
+  "hash": "[hex omitted]",
+  "id": "AUD-000001",
+  "message": "The next unit",
+  "prevHash": "[hex omitted]",
+  "seq": 1,
+  "sessionId": null,
+  "severity": "INFO",
+  "type": "SYSTEM_BOOT",
+}
+
++ Received:
+undefined
+
+ ❯ src/core/__tests__/search-path.db.test.ts:133:45
+    131|     expect(await count(pool, 'pg_temp.audit_log')).toBe(0);
+    132|     const row = await pipeline.run('test.next', (unit) => unit.audit.a…
+    133|     expect((await readTrail(owner)).at(-1)).toEqual(row);
+       |                                             ^
+    134|     expect(await count(pool, 'pg_temp.audit_log')).toBe(0);
+    135|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/24]⎯
+
+ FAIL  |db| src/core/__tests__/search-path.db.test.ts > at the end of the file > the chain of this database verifies over all rows
+AssertionError: expected 0 to be greater than or equal to 2
+ ❯ src/core/__tests__/search-path.db.test.ts:142:25
+    140|     const rows = await readTrail(owner);
+    141|     const head = await readHead(owner);
+    142|     expect(rows.length).toBeGreaterThanOrEqual(2);
+       |                         ^
+    143|     expect(linkProblems(rows)).toEqual([]);
+    144|     expect(verifyTrail(rows, head)).toEqual({ ok: true, checked: rows.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/24]⎯
+
+ FAIL  |db| src/core/__tests__/unit-guard.db.test.ts > what the guard refuses reaches no connection > fourteen refusals inside one unit: the transaction is not failed, the unit commits, nothing is left on the connection
+error: current transaction is aborted, commands ignored until end of transaction block
+ ❯ ../../../../../../../../../../Users/gsp-budi/Documents/DEMS/node_modules/pg/lib/client.js:694:17
+ ❯ UnitState.executeAsWriter src/core/unit-of-work.ts:272:14
+    270|         parameters?: unknown[],
+    271|       ) => Promise<QueryResult<Row>>;
+    272|       return await (values === undefined ? run(query) : run(query, [..…
+       |              ^
+    273|     } catch (error) {
+    274|       this.#failure ??= { error };
+ ❯ src/core/__tests__/unit-guard.db.test.ts:74:17
+ ❯ runUnit src/core/pipeline.ts:155:15
+ ❯ execute src/core/pipeline.ts:211:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { length: 144, severity: 'ERROR', code: '25P02', detail: undefined, hint: undefined, position: undefined, internalPosition: undefined, internalQuery: undefined, where: undefined, schema: undefined, table: undefined, dataType: undefined, constraint: undefined, file: 'postgres.c', routine: 'exec_simple_query' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/24]⎯
+
+ FAIL  |db| src/plugins/db/__tests__/search-path.db.test.ts > every connection of the runtime pool > has the pinned search path, reported by the server in exactly that text
+AssertionError: expected [ '"$user", public', …(3) ] to deeply equal [ undefined, undefined, …(2) ]
+
+- Expected
++ Received
+
+  [
+-   undefined,
+-   undefined,
+-   undefined,
+-   undefined,
++   "\"$user\", public",
++   "\"$user\", public",
++   "\"$user\", public",
++   "\"$user\", public",
+  ]
+
+ ❯ src/plugins/db/__tests__/search-path.db.test.ts:65:47
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/24]⎯
+
+ FAIL  |db| src/plugins/db/__tests__/search-path.db.test.ts > every connection of the runtime pool > finds the real table by its bare name although a temporary table of that name is on the connection
+AssertionError: expected { audit: false, events: false } to deeply equal { audit: true, events: true }
+
+- Expected
++ Received
+
+  {
+-   "audit": true,
+-   "events": true,
++   "audit": false,
++   "events": false,
+  }
+
+ ❯ src/plugins/db/__tests__/search-path.db.test.ts:87:29
+     85|         "SELECT 'audit_log'::regclass = 'public.audit_log'::regclass A…
+     86|       );
+     87|       expect(named.rows[0]).toEqual({ audit: true, events: true });
+       |                             ^
+     88|       // The temporary tables exist, and are reached only by their sch…
+     89|       expect((await client.query("SELECT 'pg_temp.audit_log'::regclass…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/24]⎯
+
+ FAIL  |db| src/plugins/db/__tests__/search-path.db.test.ts > boot step B-1 against the server > passes for the runtime pool: the boot goes on to the checks after it
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/plugins/db/__tests__/search-path.db.test.ts:111:81
+    109|     expect((error as BootError).stepId).toBe('B-6');
+    110|     expect(passed.slice(0, 1)).toEqual(['B-1']);
+    111|     expect(log.lines().some((line) => line['code'] === SEARCH_PATH_NOT…
+       |                                                                                 ^
+    112|   });
+    113|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/24]⎯
+
+ FAIL  |db| src/plugins/db/__tests__/search-path.db.test.ts > boot step B-1 against the server > stops the boot for a pool that was built without the option: B-1, SEARCH_PATH_NOT_PINNED, and what was found
+AssertionError: expected 'B-6' to be 'B-1' // Object.is equality
+
+Expected: "B-1"
+Received: "B-6"
+
+ ❯ src/plugins/db/__tests__/search-path.db.test.ts:118:41
+    116|     const { app, error, passed, log } = await bootOn(target, (connecti…
+    117|     expect(error).toBeInstanceOf(BootError);
+    118|     expect((error as BootError).stepId).toBe('B-1');
+       |                                         ^
+    119|     expect((error as BootError).cause).toMatchObject({ name: 'Database…
+    120|     expect(passed).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/24]⎯
+
+ FAIL  |db| src/plugins/db/__tests__/search-path.db.test.ts > boot step B-1 against the server > stops the boot for a pool whose option names the temporary schema first
+AssertionError: expected 'B-6' to be 'B-1' // Object.is equality
+
+Expected: "B-1"
+Received: "B-6"
+
+ ❯ src/plugins/db/__tests__/search-path.db.test.ts:149:41
+    147|         }),
+    148|     );
+    149|     expect((error as BootError).stepId).toBe('B-1');
+       |                                         ^
+    150|     expect(log.lines().find((line) => line['msg'] === 'boot check fail…
+    151|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/24]⎯
+
+ FAIL  |db| src/plugins/db/__tests__/search-path.db.test.ts > a default that is stored for the database > does not reach a connection of the runtime pool: the start-up option of the client wins
+AssertionError: expected 'pg_temp, public' to be undefined // Object.is equality
+
+- Expected:
+undefined
+
++ Received:
+"pg_temp, public"
+
+ ❯ src/plugins/db/__tests__/search-path.db.test.ts:166:32
+    164|
+    165|     const pool = serverPool({ runtime: db.run.connectionOn(target.name…
+    166|     expect(await pathOf(pool)).toBe(RUNTIME_SEARCH_PATH);
+       |                                ^
+    167|
+    168|     // And the boot check sees the same on the app's own pool.
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/24]⎯
+
+ FAIL  |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > key err
+AssertionError: expected { type: 'Error', …(2) } to match object { code: '23505', message: '23505' }
+(2 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "code": "23505",
+-   "message": "23505",
++   "message": "Error",
+  }
+
+ ❯ src/plugins/logger/__tests__/error-keys.db.test.ts:103:23
+    101|     expect(leaks(JSON.stringify(line))).toEqual([]);
+    102|     const described = path.reduce<unknown>((current, key) => (current …
+    103|     expect(described).toMatchObject({ code: '23505', message: '23505' …
+       |                       ^
+    104|   });
+    105|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/24]⎯
+
+ FAIL  |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > key error
+ FAIL  |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > key cause
+ FAIL  |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > key nested
+ FAIL  |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > key in a list
+AssertionError: expected [ 'the statement', …(3) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "the statement",
++   "the parameter",
++   "the DETAIL",
++   "the constraint",
++ ]
+
+ ❯ src/plugins/logger/__tests__/error-keys.db.test.ts:101:41
+     99|     const line = log.lines().find((entry) => entry['msg'] === message);
+    100|     expect(line).toBeDefined();
+    101|     expect(leaks(JSON.stringify(line))).toEqual([]);
+       |                                         ^
+    102|     const described = path.reduce<unknown>((current, key) => (current …
+    103|     expect(described).toMatchObject({ code: '23505', message: '23505' …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/24]⎯
+
+ FAIL  |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > key the driver's error alone
+AssertionError: expected [ 'the statement', 'the DETAIL', …(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "the statement",
++   "the DETAIL",
++   "the constraint",
++ ]
+
+ ❯ src/plugins/logger/__tests__/error-keys.db.test.ts:101:41
+     99|     const line = log.lines().find((entry) => entry['msg'] === message);
+    100|     expect(line).toBeDefined();
+    101|     expect(leaks(JSON.stringify(line))).toEqual([]);
+       |                                         ^
+    102|     const described = path.reduce<unknown>((current, key) => (current …
+    103|     expect(described).toMatchObject({ code: '23505', message: '23505' …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/24]⎯
+
+ FAIL  |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > the description: the wrapper's name, the driver's SQLSTATE and name, and frames only
+AssertionError: expected { errorName: 'Error', …(1) } to match object { errorName: 'Error', …(2) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "causeName": "error",
+-   "code": "23505",
+    "errorName": "Error",
+  }
+
+ ❯ src/plugins/logger/__tests__/error-keys.db.test.ts:108:25
+    106|   it('the description: the wrapper\'s name, the driver\'s SQLSTATE and…
+    107|     const description = describeError(thrown);
+    108|     expect(description).toMatchObject({ errorName: 'Error', code: '235…
+       |                         ^
+    109|     expect(leaks(JSON.stringify(description))).toEqual([]);
+    110|     for (const line of String(description.stackTrace).split('\n')) exp…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/24]⎯
+
+ FAIL  |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > as an unexpected failure of a request: 500 without a detail; the log and the persistent error log hold the SQLSTATE only
+AssertionError: expected { type: 'Error', …(2) } to match object { type: 'Error', code: '23505', …(2) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "causeType": "error",
+-   "code": "23505",
+-   "message": "23505",
++   "message": "Error",
+    "type": "Error",
+  }
+
+ ❯ src/plugins/logger/__tests__/error-keys.db.test.ts:133:27
+    131|
+    132|     const line = own.lines().find((entry) => entry['msg'] === 'unexpec…
+    133|     expect(line?.['err']).toMatchObject({ type: 'Error', code: '23505'…
+       |                           ^
+    134|     const persisted = readFileSync(file, 'utf8');
+    135|     expect(JSON.parse(persisted.split('\n')[0] ?? '{}')).toMatchObject…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/24]⎯
+
+ FAIL  |db| src/plugins/logger/__tests__/error-keys.db.test.ts > logged under any key: the SQLSTATE, and nothing of the statement, its parameters or the DETAIL > the whole captured log of this file holds none of it
+AssertionError: expected [ 'the statement', …(3) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "the statement",
++   "the parameter",
++   "the DETAIL",
++   "the constraint",
++ ]
+
+ ❯ src/plugins/logger/__tests__/error-keys.db.test.ts:142:31
+    140|   it('the whole captured log of this file holds none of it', () => {
+    141|     expect(log.lines().length).toBeGreaterThan(6);
+    142|     expect(leaks(log.text())).toEqual([]);
+       |                               ^
+    143|   });
+    144| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/24]⎯
+
+
+ Test Files  5 failed (5)
+      Tests  24 failed | 7 passed (31)
+   Start at  15:30:17
+   Duration  8.29s (tests 41%, import 30%, transform 29%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 193 ms; 0 remain with the run prefix dems_test_step_60a_tmdjmher_

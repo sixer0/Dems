@@ -1,0 +1,143 @@
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > imports the contract, the heartbeat client and one type of the light Live API, and nothing else 1ms
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > takes only a type from the light Live API, so nothing of src/live is loaded with the socket client 2ms
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > imports nothing from the simulator folder, from src/live/source, from src/live/testing or from src/client 0ms
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > imports no package at all: no Node built-in, no React, no device framework, no state library 0ms
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > what it loads at run time is the contract, the domain enums and the heartbeat client: no React file, no simulator engine 1ms
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > AC-C-02: the file names no node:, react-native, expo, window or document (comments included) 0ms
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > uses no platform global: the only global looked up is WebSocket, and only inside the default factory 1ms
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > writes nothing to the console: every report goes to the injected onError 0ms
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > the clock, the random source and the timer functions are injected: each global is named once, as a default 0ms
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > reads the backoff and the limits from the existing constants and repeats none of their values 0ms
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > never builds a URL and never puts a header value into a message: the URL is passed on as it was given 0ms
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > uses erasable syntax only: no enum, no namespace, no parameter property 0ms
+ ✓ test/realtime-live-platform-neutral.test.ts > static scan of src/realtime/live-socket-client.ts > the heartbeat client itself is untouched by this row: it still has no send and knows nothing of the Live client 0ms
+ ✓ test/heartbeat-client.test.ts > createHeartbeatClient > goes CONNECTING → LIVE → STALE → OFFLINE → CONNECTING → LIVE and resyncs once 4ms
+ ✓ test/heartbeat-client.test.ts > createHeartbeatClient > drops invalid messages without changing state 0ms
+ ✓ test/heartbeat-client.test.ts > createHeartbeatClient > backs off 500, 1000, 2000, 4000, 8000, 8000 ms (+ up to 250 ms jitter) 0ms
+ ✓ test/heartbeat-client.test.ts > createHeartbeatClient > notifies subscribers and keeps snapshot identity between changes 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > the fixtures are messages of the contract 12ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > is exported by @dems/shared/realtime beside the heartbeat client 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > opens one socket at the injected URL, without headers on the web, and sends nothing before hello 1ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > OPERATOR: hello, then subscribe, then the snapshot, then deltas in order; ONLINE only at the snapshot 2ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > ordering: a delta before the snapshot of its connection is never handed on, and is reported once 3ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > ordering: after a reconnect no delta is handed on before the snapshot of the new connection 3ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > ANONYMOUS: ONLINE at hello, and no client message is ever sent 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > DEVICE: ONLINE at hello, and no client message is ever sent 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > a state message or a meter frame sent to a connection that is not OPERATOR is dropped and reported 1ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > the control messages are handed on in the order the server sent them 2ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > mobile: the headers function is asked at every connect and its value goes to the factory, never into the URL 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > a headers function that returns null opens the socket without headers 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > a headers function that returns undefined opens the socket without headers 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > a headers function that returns an empty object opens the socket without headers 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > the default factory calls the global WebSocket with the URL alone, or with the headers as the third argument 9ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > without a global WebSocket and without a factory the client reports it and keeps retrying; nothing is thrown 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > refuses the URL "http://127.0.0.1:4420/ws": a credential never travels in a URL (SR-38) 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > refuses the URL "ws://127.0.0.1:4420/ws?token=ses_fixture": a credential never travels in a URL (SR-38) 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > refuses the URL "ws://127.0.0.1:4420/ws#ses_fixture": a credential never travels in a URL (SR-38) 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > refuses the URL "ws://operator:fixture@127.0.0.1:4420/ws": a credential never travels in a URL (SR-38) 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > refuses the URL "ws://": a credential never travels in a URL (SR-38) 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > refuses the URL "/ws": a credential never travels in a URL (SR-38) 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > refuses the URL "": a credential never travels in a URL (SR-38) 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > accepts the URL "ws://127.0.0.1:4420/ws" 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > accepts the URL "wss://core.example/ws" 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > accepts the URL "ws://127.0.0.1:5173/ws" 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > accepts the URL "ws://localhost:4421" 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > refuses syncTimeoutMs 0 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > refuses syncTimeoutMs -1 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > refuses syncTimeoutMs NaN 0ms
+ ✓ test/realtime-live-socket.test.ts > connect, hello, subscribe, snapshot, deltas > refuses syncTimeoutMs Infinity 0ms
+ ✓ test/realtime-live-socket.test.ts > the heartbeat view is fed from the one socket (CL-7) > gives the same snapshots as the heartbeat client, step by step, for the same messages 2ms
+ ✓ test/realtime-live-socket.test.ts > the heartbeat view is fed from the one socket (CL-7) > is a HeartbeatClient: unbound subscribe and getSnapshot work, and the snapshot keeps its identity between changes 3ms
+ ✓ test/realtime-live-socket.test.ts > the heartbeat view is fed from the one socket (CL-7) > reads both forms of the server time: epoch milliseconds in hello, ISO-8601 in heartbeat 0ms
+ ✓ test/realtime-live-socket.test.ts > the heartbeat view is fed from the one socket (CL-7) > the link turns STALE after HEARTBEAT_STALE_AFTER_MS without a heartbeat, and back on the next one 1ms
+ ✓ test/realtime-live-socket.test.ts > the heartbeat view is fed from the one socket (CL-7) > a hello that is followed by no heartbeat at all still turns the link STALE 1ms
+ ✓ test/realtime-live-socket.test.ts > resync on a revision gap or a newer epoch (AC-C-15) > a gap sends one resync, drops deltas until the snapshot, and reports RESYNCING then RESYNCED 2ms
+ ✓ test/realtime-live-socket.test.ts > resync on a revision gap or a newer epoch (AC-C-15) > at most one resync in 2 s: a storm of gaps sends exactly one 1ms
+ ✓ test/realtime-live-socket.test.ts > resync on a revision gap or a newer epoch (AC-C-15) > at most one resync in 2 s: a second gap inside the interval waits, and no two resyncs are closer than 2 s 4ms
+ ✓ test/realtime-live-socket.test.ts > resync on a revision gap or a newer epoch (AC-C-15) > the 2 s rule holds across a reconnect 2ms
+ ✓ test/realtime-live-socket.test.ts > resync on a revision gap or a newer epoch (AC-C-15) > a delta of a newer epoch sends resync; the snapshot of that epoch replaces the replica 2ms
+ ✓ test/realtime-live-socket.test.ts > resync on a revision gap or a newer epoch (AC-C-15) > a snapshot of a new epoch that the server sends by itself is applied without a resync (RT-7) 2ms
+ ✓ test/realtime-live-socket.test.ts > resync on a revision gap or a newer epoch (AC-C-15) > a delta the replica already holds is dropped without a resync 1ms
+ ✓ test/realtime-live-socket.test.ts > resync on a revision gap or a newer epoch (AC-C-15) > requestResync: the consumer asks for a snapshot, under the same 2 s rule 2ms
+ ✓ test/realtime-live-socket.test.ts > resync on a revision gap or a newer epoch (AC-C-15) > no answer to a resync within the deadline: the socket is given up, and the new connection resynchronises 2ms
+ ✓ test/realtime-live-socket.test.ts > resync on a revision gap or a newer epoch (AC-C-15) > no hello within the deadline: the socket is given up and the backoff starts 0ms
+ ✓ test/realtime-live-socket.test.ts > resync on a revision gap or a newer epoch (AC-C-15) > no snapshot within the deadline: the socket is given up and the backoff starts 0ms
+ ✓ test/realtime-live-socket.test.ts > resync on a revision gap or a newer epoch (AC-C-15) > an ANONYMOUS connection has no deadline after hello: it stays open for the heartbeat 0ms
+ ✓ test/realtime-live-socket.test.ts > meter frames: the latest wins, nothing is queued (RT-8, CL-11b) > each frame goes to onMeters at once; the client keeps one frame, the newest 1ms
+ ✓ test/realtime-live-socket.test.ts > meter frames: the latest wins, nothing is queued (RT-8, CL-11b) > meter frames are handed on while a resync is pending: they carry no revision and are never held 1ms
+ ✓ test/realtime-live-socket.test.ts > meter frames: the latest wins, nothing is queued (RT-8, CL-11b) > meters: false sends no subscribe; setMetersWanted sends subscribe and unsubscribe once each 1ms
+ ✓ test/realtime-live-socket.test.ts > meter frames: the latest wins, nothing is queued (RT-8, CL-11b) > the wish survives a reconnect, and the kept frame does not 1ms
+ ✓ test/realtime-live-socket.test.ts > meter frames: the latest wins, nothing is queued (RT-8, CL-11b) > an OPERATOR hello without the meters topic gets no subscribe 1ms
+ ✓ test/realtime-live-socket.test.ts > meter frames: the latest wins, nothing is queued (RT-8, CL-11b) > never sends more than LIVE_SOCKET_SEND_BUDGET client messages in the period of the server limit 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4401 after session.ended SIGNED_OUT: reported as SESSION_ENDED with the reason, and nothing reconnects 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4401 after session.ended IDLE_EXPIRED: reported as SESSION_ENDED with the reason, and nothing reconnects 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4401 after session.ended ABSOLUTE_EXPIRED: reported as SESSION_ENDED with the reason, and nothing reconnects 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4401 after session.ended ROTATED: reported as SESSION_ENDED with the reason, and nothing reconnects 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4401 after session.ended USER_DISABLED: reported as SESSION_ENDED with the reason, and nothing reconnects 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4401 after session.ended TOKEN_REUSE: reported as SESSION_ENDED with the reason, and nothing reconnects 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4401 with no session.ended before it (an invalid bearer value): SESSION_ENDED without a reason, no reconnect 0ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4401 alone on an open OPERATOR connection, with no control message before it: SESSION_ENDED, and nothing reconnects 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4403 alone on an open OPERATOR connection, with no control message before it: DEVICE_REVOKED, and nothing reconnects 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4403 before hello: DEVICE_REVOKED, no reconnect 0ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4401 before hello: SESSION_ENDED, no reconnect 0ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4403 after device.revoked REVOKED: reported as DEVICE_REVOKED with the reason, and nothing reconnects 0ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4403 after device.revoked UNPAIRED: reported as DEVICE_REVOKED with the reason, and nothing reconnects 0ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4403 right after the hello of a revoked bearer value: DEVICE_REVOKED, no reconnect 0ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 1001 server shutdown: reconnects after RECONNECT_BACKOFF_MS[0] and expects a snapshot 2ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 1013 connection cap: reconnects after RECONNECT_BACKOFF_MS[0] and expects a snapshot 2ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4408 slow consumer: reconnects after RECONNECT_BACKOFF_MS[0] and expects a snapshot 2ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 1008 protocol violation: reconnects after RECONNECT_BACKOFF_MS[0] and expects a snapshot 2ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 1000 normal closure by the server: reconnects after RECONNECT_BACKOFF_MS[0] and expects a snapshot 2ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 1006 abnormal closure: reconnects after RECONNECT_BACKOFF_MS[0] and expects a snapshot 2ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 1011 server error: reconnects after RECONNECT_BACKOFF_MS[0] and expects a snapshot 2ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > no code at all: reconnects after RECONNECT_BACKOFF_MS[0] and expects a snapshot 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 1001 again and again: the delays are RECONNECT_BACKOFF_MS, and the last one repeats 0ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 1013 again and again: the delays are RECONNECT_BACKOFF_MS, and the last one repeats 0ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > 4408 again and again: the delays are RECONNECT_BACKOFF_MS, and the last one repeats 0ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > the jitter is RECONNECT_JITTER_MS at most 0ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > the first heartbeat of the new connection ends the backoff: the next loss waits RECONNECT_BACKOFF_MS[0] again 2ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > a socket error reconnects with the backoff; the late close of that socket is ignored 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > a close whose code the runtime did not hand on is still the end the server announced 2ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > web: a cookie that no longer resolves stays connected as ANONYMOUS, and an ordinary close reconnects 0ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > reconnect(reason) after an end opens a new socket at once, with headers asked afresh 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > reconnect(reason) on an open socket closes it with 1000 and holds exactly one socket 2ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > reconnect(reason) while waiting for the backoff cancels the timer: "Retry now" connects at once 1ms
+ ✓ test/realtime-live-socket.test.ts > close codes (AC-C-16) > reconnect(reason) does nothing before start() and after stop() 0ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > just started: no timer is left, the socket is closed with 1000, both views are OFFLINE 0ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > after hello: no timer is left, the socket is closed with 1000, both views are OFFLINE 0ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > online: no timer is left, the socket is closed with 1000, both views are OFFLINE 1ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > a resync pending: no timer is left, the socket is closed with 1000, both views are OFFLINE 1ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > a second resync waiting for the 2 s rule: no timer is left, the socket is closed with 1000, both views are OFFLINE 2ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > waiting for the backoff: no timer is left, the socket is closed with 1000, both views are OFFLINE 1ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > ended by 4401: no timer is left, the socket is closed with 1000, both views are OFFLINE 1ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > ended by 4403: no timer is left, the socket is closed with 1000, both views are OFFLINE 1ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > closed before hello, waiting for the backoff: no timer is left, the socket is closed with 1000, both views are OFFLINE 0ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > messages and a close of the stopped socket that were kept by the runtime are ignored 1ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > start() after stop() begins a new run: a new socket, attempt 0, CONNECT as the cause 2ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > stop() called from inside the headers function: the socket that was being opened is closed and not kept 0ms
+ ✓ test/realtime-live-socket.test.ts > stop() closes cleanly and leaves no timer > a socket whose close() throws does not stop stop() 0ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > an invalid frame is dropped, counted and reported with a code, and the report never holds the frame 3ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a schema report names the message type, the issue and the place, with member names only 3ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a delta the schema refuses is dropped; the next delta shows the gap and the client resynchronises 2ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a message before hello, and a second hello, are dropped and reported; a heartbeat before hello feeds the view 1ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a handler that throws never escapes a socket callback: it is reported, and the client goes on 1ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > an onError that throws never escapes either, and the report is still counted 0ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a failure inside the client itself does not escape a socket callback or a timer callback either 0ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > without an onError the client still counts, and writes nothing to the console 0ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a socket factory that throws is reported and retried with the backoff 0ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a headers function that throws opens no socket, is reported without its text, and is asked again 0ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a headers function that returns a value with a line break opens no socket, is reported without its text, and is asked again 0ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a headers function that returns a name that is not a header name opens no socket, is reported without its text, and is asked again 0ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a headers function that returns a value that is not text opens no socket, is reported without its text, and is asked again 0ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a send that throws is reported; the socket is given up and the backoff starts 0ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a handler may call stop(): nothing more is handed on, and no timer is left 1ms
+ ✓ test/realtime-live-socket.test.ts > every incoming frame is validated; nothing is thrown out of a socket callback (CL-10) > a handler may call reconnect(): onEnd opens the anonymous socket of the web console at once 1ms
+
+ Test Files  3 passed (3)
+      Tests  134 passed (134)
+   Start at  10:23:49
+   Duration  355ms (transform 40%, tests 34%, import 24%, worker 1%)
+

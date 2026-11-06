@@ -1,0 +1,103 @@
+## 2026-10-05T19:19:45.266Z npm run test -w @dems/mobile -- --maxWorkers=2 src/features/settings src/runtime/live-settings.test.tsx
+passed    5/5  src/features/settings/heartbeat-release-gate.test.tsx
+passed    7/7  src/features/settings/live-settings-biometric.test.tsx
+passed    8/8  src/features/settings/live-settings-boundary.test.tsx
+passed   24/24  src/features/settings/live-settings-sites.test.tsx
+passed    6/6  src/features/settings/settings-live-model.test.ts
+passed   14/14  src/features/settings/settings-live-static.test.ts
+passed    6/6  src/features/settings/settings-model.test.ts
+passed   11/11  src/features/settings/settings-screen.test.tsx
+passed    2/2  src/runtime/live-settings.test.tsx
+suites 9/9, tests 83/83
+# src/features/settings/heartbeat-release-gate.test.tsx
+  PASS Heartbeat Core link in release builds (06 §2.6, D112) > pure gate: Heartbeat only in debug builds; Simulated always; an unavailable choice falls back
+  PASS Heartbeat Core link in release builds (06 §2.6, D112) > release: setCoreLinkSource(HEARTBEAT) is ignored and nothing is written
+  PASS Heartbeat Core link in release builds (06 §2.6, D112) > release: a HEARTBEAT value stored by a debug build hydrates as SIMULATED
+  PASS Heartbeat Core link in release builds (06 §2.6, D112) > release: Settings shows the Heartbeat option disabled with the developer-only hint; pressing it changes nothing
+  PASS Heartbeat Core link in release builds (06 §2.6, D112) > debug: the Heartbeat option stays enabled (dev lanes unchanged)
+# src/features/settings/live-settings-biometric.test.tsx
+  PASS a session created by password on this tablet (MB-1, MB-2) > not enrolled: the switch is usable; its description is the screen-lock sentence, never "simulated", never a hardware claim
+  PASS a session created by password on this tablet (MB-1, MB-2) > turning it on calls operation 7 once and stores the token and its marker; the switch is then on (AC-C-68)
+  PASS a session created by password on this tablet (MB-1, MB-2) > enrolled: turning it off calls operation 7 with `enabled: false` and deletes both items
+  PASS a session created by password on this tablet (MB-1, MB-2) > the Core cannot be told (outage): one truthful toast — nothing changed — and both items stay
+  PASS a session created by password on this tablet (MB-1, MB-2) > the marker says `protected: true`: the description says the token is read only after the device's check — still no hardware claim
+  PASS a session created with the fingerprint (AC-C-68) > the switch is disabled with the MB-1 sentence, and a press sends nothing
+  PASS SIMULATED keeps its words (CPM1-1 changes the LIVE wording only) > the switch reads "… Simulated identity binding." exactly as before, and none of the LIVE sentences shows
+# src/features/settings/live-settings-boundary.test.tsx
+  PASS SIMULATED → LIVE (§3.3, AC-C-31) > selecting LIVE shows the dialog; confirming signs the operator out of the simulator and lands on /pair (no credential)
+  PASS SIMULATED → LIVE (§3.3, AC-C-31) > with a credential the Core confirms, the same switch lands on /login
+  PASS SIMULATED → LIVE (§3.3, AC-C-31) > Cancel changes nothing: still signed in, still SIMULATED, nothing stored, nothing sent
+  PASS SIMULATED → LIVE (§3.3, AC-C-31) > SIMULATED → HEARTBEAT stays instant: no dialog, no sign-out (§3.3 step 1)
+  PASS LIVE → SIMULATED (§3.3; CPM1-2) > the dialog holds while the Core is asked; the sign-out (operation 5) is sent once and answered; then SIMULATED, on /login
+  PASS LIVE → SIMULATED (§3.3; CPM1-2) > LIVE → HEARTBEAT crosses the boundary too: dialog, sign-out at the Core, then the simulator with the mock-core link
+  PASS LIVE → SIMULATED (§3.3; CPM1-2) > the link down: the sign-out ends the session here (D80) and the switch still lands on /login — the Core is owed it (W100)
+  PASS a release build offers no LIVE (MD-3, AC-C-83) > the LIVE segment is disabled: a press opens no dialog, signs nobody out and stores nothing
+# src/features/settings/live-settings-sites.test.tsx
+  PASS S2-7: Run diagnostics (operation 65) > success: the sheet opens only after the Core accepted the run; busy at once, spinner late (LB-1); one request; the Core's words
+  PASS S2-7: Run diagnostics (operation 65) > refusal: a 403 NOT_PERMITTED is the denied toast; the sheet stays closed and the button is released
+  PASS S2-7: Run diagnostics (operation 65) > outage: "Core server unreachable" with "Nothing was changed."; the sheet stays closed; no automatic retry (LB-6)
+  PASS S2-7: Run diagnostics (operation 65) > a limit (429) is worded as a limit, never as an outage (LB-10)
+  PASS S2-7: Install update (operation 67) > success (TECHNICIAN, MAINTENANCE): the started toast only after the Core's 202; DEMO chip and the Core's words
+  PASS S2-7: Install update (operation 67) > refusal: a SUPERVISOR lacks MAINTENANCE: the Core's 403 (its `notPermitted` example) is the denied toast naming the Technician role
+  PASS S2-7: Install update (operation 67) > a session is open: the Core's 409 is the warning the simulator's refusal shows
+  PASS S2-7: Install update (operation 67) > outage: the offline toast; nothing changes
+  PASS S2-7: the Demo controls (operations 73, 74, 52, 72, 33) > inject and clear MIC 2 clip: the toast after the 204; the clear sends the latch reset as the NEXT command; the Core's words
+  PASS S2-7: the Demo controls (operations 73, 74, 52, 72, 33) > load a scenario (answer first): the chip and the toast only once the snapshot of the new epoch is in (CL-18); Reset loads idle
+  PASS S2-7: the Demo controls (operations 73, 74, 52, 72, 33) > recover a session in FAULT (operation 33): the toast after the 202
+  PASS S2-7: the Demo controls (operations 73, 74, 52, 72, 33) > DEMO_DISABLED: the flag was turned off after the sign-in — the 403 says so truthfully, and the button is released
+  PASS S2-7: the Demo controls (operations 73, 74, 52, 72, 33) > refusal: the Core's 403 NOT_PERMITTED (its `notPermitted` example) is the denied toast
+  PASS S2-7: the Demo controls (operations 73, 74, 52, 72, 33) > outage: the offline toast; nothing is injected
+  PASS AC-C-52: the Demo controls show in LIVE mode only with DEMO_CONTROL and the Core's demo flag > SUPERVISOR with the flag on: the panel
+  PASS AC-C-52: the Demo controls show in LIVE mode only with DEMO_CONTROL and the Core's demo flag > INVESTIGATOR (no DEMO_CONTROL): no panel, one true line; no demo request can be sent
+  PASS AC-C-52: the Demo controls show in LIVE mode only with DEMO_CONTROL and the Core's demo flag > SUPERVISOR, the Core server without its demo flag: no panel, the flag line
+  PASS AC-C-52: the Demo controls show in LIVE mode only with DEMO_CONTROL and the Core's demo flag > a role change the Core pushes takes the panel away (`session.updated`, §6.3)
+  PASS S5-7: the role's permissions in the Profile sheet > SUPERVISOR: the shared table's ten grants (W16's three included), labelled, under the Core's words; a pushed role change re-lists them
+  PASS S5-7: the role's permissions in the Profile sheet > the link down: the list is a display hint and stays; no toast, no request
+  PASS StrictMode (D158, F69-1): nothing of Settings starts on mount; one press is one request > maintenance under StrictMode sends no command at mount
+  PASS StrictMode (D158, F69-1): nothing of Settings starts on mount; one press is one request > security under StrictMode sends no command at mount
+  PASS StrictMode (D158, F69-1): nothing of Settings starts on mount; one press is one request > preferences under StrictMode sends no command at mount
+  PASS StrictMode (D158, F69-1): nothing of Settings starts on mount; one press is one request > Run diagnostics under StrictMode: one press, one request
+# src/features/settings/settings-live-model.test.ts
+  PASS the LIVE boundary of the Core link source (§3.3) > only a change into or out of LIVE crosses it; SIMULATED <-> HEARTBEAT and no change do not
+  PASS the LIVE boundary of the Core link source (§3.3) > the data mode a source shows: HEARTBEAT is SIMULATED data (§3.1)
+  PASS the biometric switch (CPM1-1, MB-1, MB-6a, AC-C-68) > without LIVE inputs it is exactly the step-88 view, with the simulated note
+  PASS the biometric switch (CPM1-1, MB-1, MB-6a, AC-C-68) > LIVE: worded on how the token is stored; a session created with the fingerprint disables it whatever else holds
+  PASS the biometric switch (CPM1-1, MB-1, MB-6a, AC-C-68) > the note keys resolve, and none of the LIVE ones says "simulated" or claims hardware protection (MB-6a (3))
+  PASS who sees the Demo controls (AC-C-52) > SIMULATED as before (presentation mode hides them); LIVE only with DEMO_CONTROL and the demo flag
+# src/features/settings/settings-live-static.test.ts
+  PASS Settings takes the Core through the light Live API (CLG c, AC-C-53) > reads the folder: every production file, sub-folders included (one new file: the mode switch)
+  PASS Settings takes the Core through the light Live API (CLG c, AC-C-53) > no production file calls the simulator's action hook
+  PASS Settings takes the Core through the light Live API (CLG c, AC-C-53) > no production file reads `.actions` of a `Sim` (translation keys in quotes are no reads)
+  PASS Settings takes the Core through the light Live API (CLG c, AC-C-53) > S2-7: every command is `useCoreActions` through `settle`, the presenter first in LIVE; the sheet, the toasts and the chip in `ok`
+  PASS Settings takes the Core through the light Live API (CLG c, AC-C-53) > §3.3: the switch signs out through the Core action and stores the source in `done`; nothing here navigates
+  PASS the pending control is the runtime's (09b §8, F.10; LB-1, S3-1) > `usePendingPress`, `busyState` and `PendingSpinner` come from `@/runtime`; the folder holds no copy
+  PASS the pending control is the runtime's (09b §8, F.10; LB-1, S3-1) > the mode dialog holds while the sign-out is out: Cancel disabled, a dismissal ignored, the confirm busy with the spinner late
+  PASS what belongs to the runtime stays there (rules 3, 4, 7 and 9) > the folder names no network API, no Core server address, no secure-store package, no Live source module
+  PASS what belongs to the runtime stays there (rules 3, 4, 7 and 9) > timers and storage: only the two step-88 files that had them (the preference store, the sheet presence); no new one
+  PASS what belongs to the runtime stays there (rules 3, 4, 7 and 9) > one LIVE idiom (rule 5): every file that picks the LIVE wording reads `useCoreLink().source === 'LIVE'`
+  PASS the copy (rule 8; §3.2; MB-6a (3)) > the LIVE copy says nothing about a simulation, and the biometric LIVE note claims no hardware protection
+  PASS the copy (rule 8; §3.2; MB-6a (3)) > the copy of Simulated mode is unchanged: the step-88 leaves, byte for byte (the LIVE leaves are additive)
+  PASS the copy (rule 8; §3.2; MB-6a (3)) > no SIM-GAP marker was added or removed (KI-07): the two of step 88, as at acaff20
+  PASS the copy (rule 8; §3.2; MB-6a (3)) > SIMULATED keeps the former description of the biometric switch; LIVE words it from the view
+# src/features/settings/settings-model.test.ts
+  PASS settings model > MB 10 rows: Application 3, System 5, in mockup order; System opens the existing screens
+  PASS settings model > demo faults: the §4.15 nine, MIC targets, critical flags match the simulator
+  PASS settings model > notifications: switched categories filter their kinds; critical kinds always notify
+  PASS settings model > biometric switch: on only for the bound operator; needs enrolled hardware to turn on
+  PASS settings model > permissions follow the simulator RBAC; diagnostics and update views
+  PASS settings prefs parser (dems.mobile.prefs.v1) > reads only the Settings fields; mistyped fields count as absent; partial notifications fill from defaults
+# src/features/settings/settings-screen.test.tsx
+  PASS Settings > phone portrait: MB 10 regions G1–G4 in order, the account row, every row label, 0 missing keys
+  PASS Settings > phone: sections push /settings/<section>; System rows open the existing screens; Back goes back
+  PASS Settings > tablet landscape: categories 320 dp | section pane, App Preferences by default, selection through ?selected=
+  PASS Settings > tablet landscape: ?selected=about opens About in the pane and marks its row
+  PASS Settings > App Preferences: every switch and choice merges into dems.mobile.prefs.v1 (D57); Login reads presentation mode (D88)
+  PASS Settings > Notifications: a switch per category, merged as one object; Critical stays on and disabled
+  PASS Settings > System Maintenance: Demo controls inject MIC 2 clip and Storage full (MA-30), clear, Reset; hidden in presentation mode
+  PASS Settings > System Maintenance: Run diagnostics starts the simulator run and the sheet follows the eight checks
+  PASS Settings > Security & Privacy: auto-lock shows the 15-minute policy; Lock console and Sign out go through the runtime auth
+  PASS Settings > About DEMS: v2.4.1, DEMS-IR-01, DEMO labels, licences sheet, Stack diagnostics link
+  PASS Settings > Account row opens the Profile sheet: role, demo permissions, Lock console
+# src/runtime/live-settings.test.tsx
+  PASS Settings → Core link source, with LIVE in the list (MD-3) > debug build: three segments, each with its text; SIMULATED is the selected one
+  PASS Settings → Core link source, with LIVE in the list (MD-3) > release build: the LIVE segment is disabled, like the HEARTBEAT one

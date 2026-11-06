@@ -1,0 +1,12 @@
+clicktext "Open Session Monitor": BUTTON at 10:54:22.228
+wait page-session-monitor: true at 10:54:22.345
+slept 3000
+eval: {"at":"10:54:25","state":"RECORDING","duration":"00:00:23","meters":["-17","-52"]}
+shot R2_06_web_monitor_1.png at 10:54:25.527
+slept 3000
+eval: {"at":"10:54:28","state":"RECORDING","duration":"00:00:26","meters":["-16","-52"]}
+shot R2_07_web_monitor_2.png at 10:54:28.691
+press sm-action-end: true at 10:54:28.712
+wait sm-end-dialog: true at 10:54:28.718
+slept 500
+typed into sm-end-reason: R2 latency run complete (E2E-T web stop)

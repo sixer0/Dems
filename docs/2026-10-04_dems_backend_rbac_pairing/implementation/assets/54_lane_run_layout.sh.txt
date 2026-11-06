@@ -1,0 +1,78 @@
+#!/bin/sh
+# W54 lane check, second pass (lane 3): the layout of the shell after two corrections of this row,
+# against the REAL Core server (the SUPERVISOR's sidebar holds the ADMINISTRATION group) and in
+# Simulated mode. Same rules as run_lane.sh: inside the lane lock, only this check's own listeners
+# are stopped, no credential is printed.
+#   /usr/bin/lockf -k -t 900 .locks/core-server.lane3.lock /bin/sh .cache/w54/lane/run_layout.sh
+set -u
+K=3; PORT=4423; VITE=5178; DEV=9398
+OUT=.cache/w54/lane/out
+ASSETS=docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets
+CHROME="$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell"
+[ -n "${TMPDIR:-}" ] || { echo "ABORT: TMPDIR is not set"; exit 6; }
+PROFILE="${TMPDIR%/}/w54-chrome-profile"
+mkdir -p "$OUT" "$ASSETS"
+stamp() { date '+%H:%M:%S'; }
+say() { echo; echo "== $(stamp) $*"; }
+listening() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+BACK_PID=""; VITE_PID=""; CHROME_PID=""; STARTED_BACK=0; STARTED_VITE=0; STARTED_CHROME=0
+stop_all() {
+  say "stop what this check started"
+  if [ "$STARTED_CHROME" = 1 ]; then kill "$CHROME_PID" 2>/dev/null; wait "$CHROME_PID" 2>/dev/null; P=$(lsof -nP -tiTCP:$DEV -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && kill $P 2>/dev/null; echo "chrome stopped"; fi
+  if [ "$STARTED_VITE" = 1 ]; then
+    kill "$VITE_PID" 2>/dev/null; wait "$VITE_PID" 2>/dev/null; echo "vite: npm exit status $?"
+    i=0; while listening $VITE && [ $i -lt 20 ]; do i=$((i + 1)); sleep 0.25; done
+    P=$(lsof -nP -tiTCP:$VITE -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && { echo "vite: fallback kill of the listener $P"; kill $P 2>/dev/null; }
+    : > .locks/core-server.lane$K.vite.pid
+  fi
+  if [ "$STARTED_BACK" = 1 ]; then
+    kill "$BACK_PID" 2>/dev/null; wait "$BACK_PID" 2>/dev/null; echo "backend: npm exit status $?"
+    i=0; while listening $PORT && [ $i -lt 40 ]; do i=$((i + 1)); sleep 0.25; done
+    P=$(lsof -nP -tiTCP:$PORT -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && { echo "backend: fallback kill of the listener $P"; kill $P 2>/dev/null; sleep 1; }
+  fi
+  : > .locks/core-server.lane$K.pid
+  [ -d "$PROFILE" ] && rm -rf "$PROFILE"
+  say "listeners left on $PORT, $VITE, $DEV (expect none):"
+  lsof -nP -iTCP:$PORT -iTCP:$VITE -iTCP:$DEV -sTCP:LISTEN; echo "lsof exit $? (1 with no output: no listener)"
+  date '+%Y-%m-%d %H:%M:%S %Z'
+}
+trap stop_all EXIT
+
+say "0. the three ports must be free before anything is started"
+for p in $PORT $VITE $DEV; do
+  if listening $p; then echo "port $p is in use:"; lsof -nP -iTCP:$p -sTCP:LISTEN; echo "ABORT: not this check's listener"; exit 3; fi
+done
+echo "free: $PORT $VITE $DEV"; date '+%Y-%m-%d %H:%M:%S %Z'; uptime
+npm run db:status -w @dems/core-server -- --database dems_lane_$K > "$OUT/db_status_before_layout.txt" 2>&1; echo "db:status exit $?"
+
+say "1. the lane backend and Vite"
+env -u DEMS_DEMO_CONTROLS DEMS_CORE_PORT=$PORT npm run start -w @dems/core-server > .locks/core-server.lane$K.log 2>&1 &
+BACK_PID=$!; STARTED_BACK=1; echo $BACK_PID > .locks/core-server.lane$K.pid
+i=0; code=000
+while [ $i -lt 240 ]; do
+  code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$PORT/api/v1/health 2>/dev/null)
+  [ "$code" = "200" ] && break
+  kill -0 "$BACK_PID" 2>/dev/null || break
+  i=$((i + 1)); sleep 0.25
+done
+[ "$code" = "200" ] || { echo "ABORT: the backend did not boot (last status $code)"; tail -15 .locks/core-server.lane$K.log; exit 4; }
+echo "backend up after $i quarter seconds"
+DEMS_CORE_PROXY_PORT=$PORT VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port $VITE --strictPort > .locks/core-server.lane$K.vite.log 2>&1 &
+VITE_PID=$!; STARTED_VITE=1; echo $VITE_PID > .locks/core-server.lane$K.vite.pid
+i=0; until listening $VITE || [ $i -ge 120 ]; do i=$((i + 1)); sleep 0.25; done
+listening $VITE || { echo "ABORT: Vite does not listen"; exit 5; }
+echo "-- health through the dev server: $(curl -s http://127.0.0.1:$VITE/api/v1/health | grep -o '"service":"[^"]*"')"
+echo "-- listeners on mock-core's port 4400 (not started and not used here):"; lsof -nP -iTCP:4400 -sTCP:LISTEN; echo "lsof exit $?"
+
+say "2. the layout in a real browser"
+rm -rf "$PROFILE"
+"$CHROME" --remote-debugging-port=$DEV --remote-debugging-address=127.0.0.1 --user-data-dir="$PROFILE" --no-first-run --disable-background-networking --disable-component-update --disable-sync --disable-default-apps --disable-domain-reliability --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost" --window-size=1440,900 about:blank > "$OUT/chrome_layout.log" 2>&1 &
+CHROME_PID=$!; STARTED_CHROME=1
+i=0; until curl -s http://127.0.0.1:$DEV/json/version >/dev/null 2>&1 || [ $i -ge 60 ]; do i=$((i + 1)); sleep 0.25; done
+node --import tsx .cache/w54/lane/layout-driver.mjs $DEV $VITE "$OUT/layout.json" "$ASSETS"; echo "layout-driver exit $?"
+
+say "3. lane database after this pass"
+npm run db:status -w @dems/core-server -- --database dems_lane_$K > "$OUT/db_status_after_layout.txt" 2>&1; echo "db:status exit $?"
+echo "-- row counts that differ (before / after):"
+diff "$OUT/db_status_before_layout.txt" "$OUT/db_status_after_layout.txt" | grep -E '^[<>]' | head -20
+echo "-- the backend's log: lines $(wc -l < .locks/core-server.lane$K.log); lines with level error or fatal: $(grep -c '"level":\(50\|60\)\|"level":"\(error\|fatal\)"' .locks/core-server.lane$K.log)"

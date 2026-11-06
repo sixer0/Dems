@@ -1,0 +1,269 @@
+// E2E-T (lane 2, dems2_tablet = emulator-5556): a queue-driven UI driver for the TABLET layout,
+// adapted from W67's attempt-2 driver (implementation/assets/67_drive_q.mts.txt).
+// The agent writes numbered command files (`<out>/q/NNN.cmd`) after reading the previous screencap;
+// the driver runs them in order, writes `NNN.out`, a screencap `NNN.png` (unless `noshot`), and one
+// line `ACK NNN ...` to `<out>/q/events.log`. Exits on `done <code>` or after 600 s without a command.
+//
+// Credential rules: `password` types the demo password from the shared dataset constant (never printed,
+// logged or written) and ONLY when the IME's curEditorInfo for com.dems.demo.tablet is a password field.
+// After `password` no screencap is taken until a sign-in request is answered 200 (`waitlog signin`); if
+// it is not answered 200, the app is force-stopped (fields cleared) before anything else.
+// Nothing is typed or tapped unless the app has the focus and no keyguard shows.
+// `ids` (uiautomator dump) is only issued by the agent on screens other than Login, Summary and Home.
+//   node --import tsx t_drive_q.mts <serial> <out> <T0 "MM-DD HH:MM:SS.000">
+import { execFileSync } from 'node:child_process';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset';
+
+const [serial, out, t0] = process.argv.slice(2);
+if (!serial || !out || !t0) {
+  console.error('usage: t_drive_q.mts <serial> <out> <T0>');
+  process.exit(64);
+}
+if (serial !== 'emulator-5556') {
+  console.error('this driver addresses emulator-5556 only');
+  process.exit(64);
+}
+const APP = 'com.dems.demo.tablet';
+const Q = `${out}/q2`;
+mkdirSync(Q, { recursive: true });
+const BIG = { encoding: 'utf8' as const, maxBuffer: 256 * 1024 * 1024 };
+const adb = (...args: string[]): string => execFileSync('adb', ['-s', serial, ...args], BIG);
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const stamp = () => {
+  const d = new Date();
+  return `${d.toTimeString().slice(0, 8)}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+};
+const event = (line: string) => {
+  appendFileSync(`${Q}/events.log`, `${stamp()} ${line}\n`);
+  console.log(`-- ${stamp()} ${line}`);
+};
+const SECRET = /\b(dvc|ses|bio)_[A-Za-z0-9_-]+/g;
+const scrub = (text: string): string => text.split(DEMO_OPERATOR_PASSWORD).join('***').replace(SECRET, '$1_***');
+const jsLog = (): string => adb('logcat', '-d', '-T', t0, '-v', 'time', '-s', 'ReactNativeJS:V');
+
+function focused(): boolean {
+  const window = adb('shell', 'dumpsys', 'window');
+  return /isKeyguardShowing=false/.test(window) && /mCurrentFocus=.*com\.dems\.demo\.tablet/.test(window);
+}
+function keyguard(): boolean {
+  return /isKeyguardShowing=true/.test(adb('shell', 'dumpsys', 'window'));
+}
+/** The focused editor's inputType from the IME's curEditorInfo, only when it belongs to the app. */
+function editorInputType(): number | null {
+  const dump = adb('shell', 'dumpsys', 'input_method');
+  const block = /curEditorInfo:\s*\n\s*inputType=0x([0-9a-f]+)[\s\S]*?packageName=(\S+)/.exec(dump);
+  if (!block || block[2] !== APP) return null;
+  return Number.parseInt(block[1]!, 16);
+}
+const isPasswordType = (type: number | null): boolean =>
+  type !== null && (type & 0xf) === 0x1 && [0x80, 0x90, 0xe0].includes(type & 0xff0);
+
+const PATTERNS: Record<string, RegExp> = {
+  signin: /DEMS-LIVE\] POST \/api\/v1\/auth\/sign-in (\d{3})/,
+  signout: /DEMS-LIVE\] POST \/api\/v1\/auth\/sign-out (\d{3})/,
+  create: /DEMS-LIVE\] POST \/api\/v1\/session (\d{3})/,
+  precheck: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/precheck (\d{3})/,
+  ack: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/precheck\/acknowledge (\d{3})/,
+  start: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/start (\d{3})/,
+  stop: /DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/stop (\d{3})/,
+  any: /DEMS-LIVE\] (?:GET|POST|PUT|PATCH|DELETE) \S+ (\d{3})/,
+};
+const seen = new Set<string>();
+let passwordPending = false;
+let shotSeq = 0;
+
+async function waitLog(name: string, seconds: number): Promise<string> {
+  const pattern = PATTERNS[name];
+  if (!pattern) return `unknown pattern ${name}`;
+  for (let waited = 0; waited < seconds; waited += 1) {
+    const line = jsLog()
+      .split('\n')
+      .find((l) => pattern.test(l) && !seen.has(l));
+    if (line !== undefined) {
+      seen.add(line);
+      const status = pattern.exec(line)?.[1] ?? '?';
+      if (name === 'signin') {
+        if (status === '200') passwordPending = false;
+        else return `signin ${status}`;
+      }
+      return `${name} ${status} (${line.slice(0, 18)} ${line.replace(/^.*DEMS-LIVE\] /, '').replace(/ [0-9a-f]{8}-[0-9a-f-]{27}\s*$/, '')})`;
+    }
+    await sleep(1000);
+  }
+  return `${name} NOT SEEN in ${seconds} s`;
+}
+
+function shot(path: string): string {
+  if (passwordPending) return 'screencap refused: a password was typed and the sign-in is not answered 200';
+  const png = execFileSync('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], { maxBuffer: BIG.maxBuffer });
+  writeFileSync(path, png);
+  return `screencap ${path.split('/').pop()} (${png.length} bytes) at ${stamp()}`;
+}
+
+function operator(role: string) {
+  return OPERATORS.find((o) => o.role === role.toUpperCase());
+}
+
+async function run(line: string): Promise<string> {
+  const [verb, ...rest] = line.trim().split(/\s+/);
+  switch (verb) {
+    case 'tap':
+      if (!focused()) return `NOT FOCUSED (keyguard ${keyguard()}): tap skipped`;
+      adb('shell', 'input', 'tap', rest[0]!, rest[1]!);
+      return `tap ${rest[0]},${rest[1]} at ${stamp()}`;
+    case 'long':
+      if (!focused()) return 'NOT FOCUSED: long press skipped';
+      adb('shell', 'input', 'swipe', rest[0]!, rest[1]!, rest[0]!, rest[1]!, rest[2] ?? '2300');
+      return `long ${rest[0]},${rest[1]} ${rest[2] ?? '2300'} ms`;
+    case 'swipe':
+      if (!focused()) return 'NOT FOCUSED: swipe skipped';
+      adb('shell', 'input', 'swipe', rest[0]!, rest[1]!, rest[2]!, rest[3]!, rest[4] ?? '400');
+      return `swipe ${rest.slice(0, 4).join(',')} ${rest[4] ?? '400'} ms`;
+    case 'text': {
+      if (!focused()) return 'NOT FOCUSED: text skipped';
+      const type = editorInputType();
+      if (isPasswordType(type)) return 'REFUSED: the focused editor is a password field';
+      adb('shell', 'input', 'text', rest.join('%s'));
+      return `text typed (${rest.join(' ')}); editor inputType 0x${(type ?? 0).toString(16)}`;
+    }
+    case 'username': {
+      const op = operator(rest[0] ?? 'INVESTIGATOR');
+      if (!focused() || !op) return 'NOT FOCUSED or no operator: username skipped';
+      const type = editorInputType();
+      if (type === null) return 'REFUSED: no editor of the app is focused';
+      if (isPasswordType(type)) return 'REFUSED: the focused editor is a password field';
+      adb('shell', 'input', 'text', op.username);
+      return `username typed (${op.username}); editor inputType 0x${type.toString(16)}`;
+    }
+    case 'password': {
+      if (!focused()) return 'NOT FOCUSED: password skipped';
+      const type = editorInputType();
+      if (!isPasswordType(type)) return `REFUSED: the focused editor is not a password field (inputType 0x${(type ?? 0).toString(16)}); nothing typed`;
+      passwordPending = true;
+      adb('shell', 'input', 'text', DEMO_OPERATOR_PASSWORD); // never printed
+      return `password typed (not shown); editor inputType 0x${(type ?? 0).toString(16)}`;
+    }
+    case 'key':
+      if (!focused()) return 'NOT FOCUSED: key skipped';
+      adb('shell', 'input', 'keyevent', rest[0]!);
+      return `key ${rest[0]} at ${stamp()}`;
+    case 'link': {
+      // One device-shell string, the URL single-quoted (an unquoted & splits the command on the device).
+      const url = rest[0]!;
+      if (/^demsdemo:\/\/\/\?|^demsdemo:\/\/\/$/.test(url) && /motion=/.test(url)) return 'REFUSED: never launch at / with motion=';
+      if (!/^demsdemo:\/\/\/[A-Za-z0-9/_?=&.-]*$/.test(url)) return 'REFUSED: unexpected characters in the link';
+      const r = adb('shell', `am start -a android.intent.action.VIEW -d '${url}' ${APP}`);
+      return `deep link ${url} at ${stamp()}: ${r.trim().split('\n').pop()}`;
+    }
+    case 'waitlog': {
+      const result = await waitLog(rest[0]!, Number(rest[1] ?? '20'));
+      if (rest[0] === 'signin' && passwordPending) {
+        adb('shell', 'am', 'force-stop', APP);
+        passwordPending = false;
+        return `${result}; the app was force-stopped (fields cleared) before any screencap`;
+      }
+      return result;
+    }
+    case 'sleep':
+      await sleep(Number(rest[0] ?? '1000'));
+      return `slept ${rest[0]} ms`;
+    case 'shot':
+      return shot(`${out}/${rest[0]}.png`);
+    case 'mark':
+      return `mark ${rest.join(' ')} at ${stamp()}`;
+    case 'focus':
+      return `focused ${focused()}; keyguard ${keyguard()}; editor inputType 0x${(editorInputType() ?? 0).toString(16)}`;
+    case 'jslog': {
+      // DEMS-LIVE request lines since T0: time, method, path, status (request IDs and anything token-shaped cut).
+      const lines = jsLog()
+        .split('\n')
+        .filter((l) => l.includes('DEMS-LIVE]'))
+        .map((l) => scrub(`${l.slice(0, 18)} ${l.replace(/^.*DEMS-LIVE\] /, '').replace(/ [0-9a-f]{8}-[0-9a-f-]{27}\s*$/, '')}`));
+      writeFileSync(`${out}/${rest[0] ?? 'jslog'}.txt`, `${lines.join('\n')}\n`);
+      return `jslog ${rest[0] ?? 'jslog'}.txt: ${lines.length} lines`;
+    }
+    case 'jserr': {
+      const lines = jsLog().split('\n').filter((l) => /\bE ReactNativeJS|Error|misuse/.test(l)).map((l) => scrub(l.slice(0, 300)));
+      writeFileSync(`${out}/${rest[0] ?? 'jserr'}.txt`, `${lines.join('\n')}\n`);
+      return `jserr ${rest[0] ?? 'jserr'}.txt: ${lines.length} lines`;
+    }
+    case 'ids': {
+      // Every node with a resource-id, text or content-desc: id, text (cut to 80), bounds. No password
+      // field shows its value in this dump; the agent never issues it on Login, Summary or Home.
+      const name = rest[0] ?? `ids_${Date.now()}`;
+      try {
+        execFileSync('adb', ['-s', serial, 'shell', 'uiautomator', 'dump', '/sdcard/e2e_t.xml'], { ...BIG, timeout: 12000 });
+        const xml = adb('shell', 'cat', '/sdcard/e2e_t.xml');
+        const nodes = [...xml.matchAll(/<node\b[^>]*>/g)].map((m) => m[0]);
+        const rows = nodes
+          .map((n) => ({
+            id: (/ resource-id="([^"]*)"/.exec(n)?.[1] ?? '').replace(/^.*:id\//, ''),
+            text: (/ text="([^"]*)"/.exec(n)?.[1] ?? '').slice(0, 80),
+            desc: (/ content-desc="([^"]*)"/.exec(n)?.[1] ?? '').slice(0, 80),
+            pw: / password="true"/.test(n),
+            b: / bounds="([^"]*)"/.exec(n)?.[1] ?? '',
+          }))
+          .filter((n) => n.id || n.text || n.desc)
+          .map((n) => scrub(`${n.id}\t${n.pw ? '(password field)' : n.text}\t${n.desc}\t${n.b}`));
+        writeFileSync(`${out}/q/${name}.txt`, `${rows.join('\n')}\n`);
+        return `ids: ${rows.length} nodes -> q/${name}.txt`;
+      } catch {
+        return 'ids: uiautomator could not dump within 12 s';
+      }
+    }
+    default:
+      return `unknown command: ${line}`;
+  }
+}
+
+async function main(): Promise<number> {
+  let next = 1;
+  for (;;) {
+    const id = String(next).padStart(3, '0');
+    const file = `${Q}/${id}.cmd`;
+    let waited = 0;
+    while (!existsSync(file) && waited < 600_000) {
+      await sleep(200);
+      waited += 200;
+    }
+    if (!existsSync(file)) {
+      event(`EXIT 6 no command ${id} within 600 s`);
+      return 6;
+    }
+    await sleep(150);
+    const lines = readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('#'));
+    const results: string[] = [];
+    let noshot = false;
+    for (const line of lines) {
+      if (line === 'noshot') {
+        noshot = true;
+        continue;
+      }
+      const done = /^done\s+(\d+)/.exec(line);
+      if (done) {
+        writeFileSync(`${Q}/${id}.out`, `${results.join('\n')}\ndone ${done[1]}\n`);
+        event(`ACK ${id} done ${done[1]}`);
+        return Number(done[1]);
+      }
+      try {
+        results.push(await run(line));
+      } catch (error) {
+        results.push(`ERROR in "${line.split(/\s+/)[0]}": ${scrub(error instanceof Error ? error.message.split('\n')[0]! : 'unknown')}`);
+      }
+    }
+    if (!noshot) results.push(shot(`${Q}/${id}.png`));
+    shotSeq += 1;
+    writeFileSync(`${Q}/${id}.out`, `${results.join('\n')}\n`);
+    event(`ACK ${id} | ${results.join(' | ')}`);
+    next += 1;
+  }
+}
+
+main().then(
+  (status) => process.exit(status),
+  (error: unknown) => {
+    event(`EXIT 1 failed: ${error instanceof Error ? scrub(error.message) : 'unknown'}`);
+    process.exit(1);
+  },
+);

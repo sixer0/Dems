@@ -1,0 +1,68 @@
+#!/bin/bash
+# genrun.sh <name> <early|s30|bm>: one R-P-1 run on lane 1 (plain, no stall): budi starts on the phone wizard,
+# andi.pratama stops on the web 5176 while the phone shows the monitor. One recording covers start -> stop -> Summary.
+#   early: confirm as soon as the web shows RECORDING (about 2 s after the Core's start)
+#   s30:   confirm about 31 s after the start
+#   e5:    confirm about 7 s after the start (monitor drawn)
+#   xearly: confirm at once (aims at the phone's 'Starting...' moment)
+#   bm:    about 10 s after the start the phone adds a Bookmark (marker); the web confirms right after its answer
+NAME=$1; V=$2
+./wizard.sh $NAME
+case $V in early) LIM=28;; s30) LIM=60;; bm) LIM=50;; e5) LIM=45;; xearly) LIM=100;; esac
+REC='w1 until 15000 (()=>{const s=document.querySelector('"'"'[data-testid="page-session-monitor"]'"'"')?.getAttribute('"'"'data-session-state'"'"'); return s==='"'"'RECORDING'"'"' ? s : false})()'
+cat <<B
+p rec start $NAME $LIM
+p tap 540 2257
+p waitlog start 25
+$REC
+B
+case $V in
+  early) cat <<B
+w1 press sm-action-end
+w1 wait sm-end-dialog present 5000
+sleep 400
+w1 type [data-testid="sm-end-reason"] RF PH $NAME early web stop
+w1 press sm-end-confirm
+B
+  ;;
+  e5) cat <<B
+sleep 6000
+w1 press sm-action-end
+w1 wait sm-end-dialog present 5000
+sleep 400
+w1 type [data-testid="sm-end-reason"] RF PH $NAME web stop about 7 s after the start
+w1 press sm-end-confirm
+B
+  ;;
+  xearly) cat <<B
+w1 press sm-action-end
+w1 wait sm-end-dialog present 5000
+w1 type [data-testid="sm-end-reason"] RF PH $NAME web stop at once after the start
+w1 press sm-end-confirm
+B
+  ;;
+  s30) cat <<B
+sleep 24000
+w1 press sm-action-end
+w1 wait sm-end-dialog present 5000
+sleep 400
+w1 type [data-testid="sm-end-reason"] RF PH $NAME web stop after 30 s
+sleep 4500
+w1 press sm-end-confirm
+B
+  ;;
+  bm) cat <<B
+sleep 8500
+w1 press sm-action-end
+w1 wait sm-end-dialog present 5000
+sleep 400
+w1 type [data-testid="sm-end-reason"] RF PH $NAME web stop right after a bookmark
+p tap 408 1636
+sleep 3000
+p tap 540 2256
+p waitlog marker 15
+w1 press sm-end-confirm
+B
+  ;;
+esac
+./finish.sh $NAME

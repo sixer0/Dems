@@ -1,0 +1,27 @@
+// Scratch (W68): does the runtime's banner stick on another screen too? Uses W67's bed read-only.
+import '../session-new/testing/session-new-test-setup';
+import '@/navigation/testing/router-harness';
+import { afterEach, beforeEach, expect, it } from '@jest/globals';
+import { act } from '@testing-library/react-native';
+import { renderLiveSessionNew, resetLiveSessionNewBed, type LiveSessionNewBed } from '../session-new/testing/live-session-new-bed';
+
+let bed: LiveSessionNewBed | null = null;
+beforeEach(async () => { await resetLiveSessionNewBed(); });
+afterEach(() => { bed?.stop(); bed = null; });
+const rt = () => { const r = (globalThis as any).__DEMS_DEBUG__?.runtime?.(); return `${r?.coreLink?.state}/${r?.coreLink?.heartbeat} banner=${r?.banner}`; };
+
+for (const wait of [false, true]) {
+  it(`session-new screen, real wait during outage: ${wait}`, async () => {
+    const b = await renderLiveSessionNew();
+    bed = b;
+    await b.openFlow();
+    b.setReachable(false);
+    await b.flush();
+    await b.elapse(1_000, 250);
+    if (wait) await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+    b.setReachable(true);
+    await b.elapse(4_000, 250);
+    console.log(`WAIT=${wait}`, rt());
+    expect(true).toBe(true);
+  });
+}

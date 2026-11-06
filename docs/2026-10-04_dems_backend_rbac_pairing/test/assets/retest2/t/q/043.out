@@ -1,0 +1,8 @@
+swipe 1280,1300,1280,300 600 ms
+slept 800 ms
+swipe 1280,1300,1280,300 600 ms
+slept 1500 ms
+screencap E3_05_summary_bottom_run3.png (241533 bytes) at 17:21:39.819
+tap 1350,1431 at 17:21:39.975
+slept 3500 ms
+screencap S01_home.png (241533 bytes) at 17:21:43.986

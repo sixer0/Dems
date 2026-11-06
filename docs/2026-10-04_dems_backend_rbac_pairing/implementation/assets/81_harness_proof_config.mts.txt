@@ -1,0 +1,45 @@
+// W81 proof of the proposed harness change (rule M15: no file of the tree is modified). The app's own
+// Vite / Vitest configuration plus ONE plugin that inserts text into ONE module while it is
+// transformed, in memory. W81_PROOF=status adds only the status answer; W81_PROOF=pairing adds the two
+// answers this row proposes; W81_PROOF=both adds
+// also an answer for W77's getRoleMatrix (to show the rest of the cascade is W77's); unset = baseline.
+import { writeFileSync } from 'node:fs'
+import { fileURLToPath, URL } from 'node:url'
+import { mergeConfig } from 'vite'
+import appConfig from '../../../apps/core-web/vite.config.ts'
+
+const here = fileURLToPath(new URL('./', import.meta.url))
+const web = fileURLToPath(new URL('../../../apps/core-web/', import.meta.url))
+const mode = process.env.W81_PROOF ?? ''
+const ANCHOR = "  answered('listUsers', () => (core.alive() ? fake.example('listUsers', 200, 'seeded') : fake.example('listUsers', 401, 'notSignedIn')))\n"
+const PAIRING = [
+  "  // Plan row W81: the Paired Devices page reads these two on every visit; a page row scripts its own answers.",
+  "  answered('getPairingCodeStatus', () => (core.alive() ? fake.example('getPairingCodeStatus', 200, 'none') : fake.example('getPairingCodeStatus', 401, 'notSignedIn')))",
+  "  answered('listPairedDevices', () => (core.alive() ? { status: 200, body: { devices: [] } } : fake.example('listPairedDevices', 401, 'notSignedIn')))",
+].join('\n') + '\n'
+const MATRIX = "  answered('getRoleMatrix', () => (core.alive() ? fake.example('getRoleMatrix', 200) : fake.example('getRoleMatrix', 401, 'notSignedIn')))\n"
+
+function proofPlugin() {
+  return {
+    name: 'w81-harness-proof',
+    enforce: 'pre' as const,
+    transform(code: string, moduleId: string) {
+      if (mode === '') return null
+      const file = moduleId.split('?')[0] ?? ''
+      if (!file.endsWith('/src/runtime/testing/live-harness.ts')) return null
+      const count = code.split(ANCHOR).length - 1
+      if (count !== 1) throw new Error(`W81 proof: the anchor occurs ${count} times`)
+      writeFileSync(`${process.env.W81_APPLIED_DIR}/${mode}`, 'applied\n')
+      const STATUS_ONLY = PAIRING.split('\n').filter((line) => !line.includes("'listPairedDevices'")).join('\n')
+      const added = mode === 'status' ? STATUS_ONLY : PAIRING + (mode === 'both' ? MATRIX : '')
+      return { code: code.replace(ANCHOR, () => ANCHOR + added), map: null }
+    },
+  }
+}
+
+const base = typeof appConfig === 'function' ? await appConfig({ command: 'serve', mode: 'test', isPreview: false, isSsrBuild: false }) : appConfig
+const { plugins = [], ...rest } = base
+export default {
+  ...mergeConfig(rest, { root: web, cacheDir: `${here}vite-cache`, test: { root: web } }),
+  plugins: [proofPlugin(), ...plugins],
+}

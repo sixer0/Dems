@@ -1,0 +1,40 @@
+// Scratch runner configuration of plan row W53 (blueprint step 75), outside the repository
+// (rule M15): the workspace's own Vitest configuration plus ONE load-time transform of ONE file,
+// the row's own test file `test/acceptance/restart.test.ts`. No file of the tree is changed.
+//
+//   W53_MUTATION=<id>   one text of the test file is replaced (mutations.json: id, note, from, to).
+//                       The text must occur exactly once. A mutation changes the TEST'S INPUT (a
+//                       row changed behind the server, a step left out), never production code.
+//   W53_APPEND=<file>   the content of a scratch file is appended to the test file (exploration).
+import { readFileSync } from 'node:fs';
+import { mergeConfig } from '/Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/config.js';
+import base from '/Users/gsp-budi/Documents/DEMS/apps/core-server/vitest.config.ts';
+
+const ROOT = '/Users/gsp-budi/Documents/DEMS/apps/core-server';
+const FILE = `${ROOT}/test/acceptance/restart.test.ts`;
+const mutations = JSON.parse(readFileSync(new URL('./mutations.json', import.meta.url), 'utf8'));
+const chosen = process.env.W53_MUTATION ?? '';
+const mutation = chosen === '' ? null : mutations.find((entry) => entry.id === chosen);
+if (chosen !== '' && !mutation) throw new Error(`no mutation ${chosen}`);
+const append = process.env.W53_APPEND ?? '';
+
+const plugin = {
+  name: 'w53-test-input',
+  enforce: 'pre',
+  load(id) {
+    if (mutation === null && append === '') return null;
+    if (id.split('?')[0] !== FILE) return null;
+    let source = readFileSync(FILE, 'utf8');
+    if (mutation !== null) {
+      const parts = source.split(mutation.from);
+      if (parts.length !== 2) throw new Error(`mutation ${mutation.id}: the text to replace occurs ${parts.length - 1} time(s), not once`);
+      source = parts.join(mutation.to);
+    }
+    if (append !== '') source += `\n${readFileSync(append, 'utf8')}`;
+    return source;
+  },
+};
+
+const merged = mergeConfig(base, { root: ROOT, plugins: [plugin] });
+merged.test.projects = merged.test.projects.map((project) => ({ ...project, plugins: [plugin] }));
+export default merged;

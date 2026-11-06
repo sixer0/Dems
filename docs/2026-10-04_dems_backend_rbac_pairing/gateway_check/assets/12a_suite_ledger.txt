@@ -1,0 +1,19 @@
+# CF-M1 suite ledger (apps/mobile)
+## typecheck: npx tsc --noEmit -> exit 0 (16:13)
+## lint: npx eslint . -> exit 0 (16:13)
+## full suite run 1 (16:14, host load 8-11): npm run test -- --maxWorkers=2
+FAIL src/features/pairing/pairing-live.test.tsx (31.687 s)
+Test Suites: 1 failed, 169 passed, 170 total
+Tests:       1 failed, 1893 passed, 1894 total
+Time:        307.557 s
+  ● a refused code (AC-C-76, SR-29) › 423: the countdown to the Core's `lockedUntil` on the Live clock; the slots are disabled; the text blames nobody
+
+    thrown: "Exceeded timeout of 5000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+-> fixed: jest.setTimeout(30_000) in src/features/pairing/pairing-live.test.tsx (same class as the controller's note on pairing-handoff-routes.test.tsx)
+## full suite run 2 (16:21, final tree): npm run test -- --maxWorkers=2
+Test Suites: 170 passed, 170 total
+Tests:       1894 passed, 1894 total
+Time:        205.673 s, estimated 288 s
+suite exit 0
+## after the last test edit (16:26): npx eslint (the two pairing test files) -> exit 0; npx tsc --noEmit -> exit 0

@@ -1,0 +1,23 @@
+$ node --import tsx docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/22_finding_f1_reproduction.ts
+ill-formed strings in the recording scenario before any input: []
+
+note: 168 code units, well-formed: true
+ill-formed strings after addNote: [ 'state.session.timeline[28].detail' ]
+the timeline entry ends with (JSON): aaaaaaaaaa\ud83d…"
+
+destination: 130 code units, well-formed: true
+EvidenceExportRequest accepts it (API-13 holds for the input): true
+exportEvidence: {"ok":true,"status":202,"exportId":"EXP-000032"}
+ill-formed strings after exportEvidence: [
+  'state.evidence[3].custody[3].detail',
+  'state.audit.rows[222].details.destination'
+]
+the audit row: EVIDENCE_EXPORTED seq 223 | details.destination ends with (JSON): ddd\ud83d"
+UTF-8 of an unpaired high surrogate: efbfbd (U+FFFD: the stored text would differ from the hashed text)
+
+the slice schemas of contract B accept this state:
+  session: true
+  audit: true
+  events: true
+  evidence: true
+exit=0

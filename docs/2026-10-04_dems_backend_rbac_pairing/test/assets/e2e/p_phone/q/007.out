@@ -1,0 +1,8 @@
+09:49:35.410 mark a03 at 09:49:35.410
+09:49:35.471 tap 324,2278
+09:49:35.757 slept 2500 ms
+09:49:38.517 declared screen sessions
+09:49:38.697 screencap 06_sessions_hub.png 09:49:38.697..09:49:40.762
+09:49:41.210 ids(11): screen-sessions@540,1102 ; sessions-list@540,1173 ; sessions-refresh@540,1247 ; sessions-rows@540,1247 ; sessions-start@540,363 "Start New Session" ; sessions-search@540,531 "Search session ID, subject, or case number…" ; sessions-filters@407,662 "Filter sessions" ; sessions-filter-ALL@91,662 "All" ; sessions-filter-SEALED@242,662 "Sealed" ; sessions-filter-INCOMPLETE@470,662 "Incomplete" ; sessions-filter-TODAY@691,662 "Today"
+09:49:45.515 serverlog since a03 (0):
+    

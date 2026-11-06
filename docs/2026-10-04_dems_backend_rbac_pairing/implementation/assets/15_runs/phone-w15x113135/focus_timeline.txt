@@ -1,0 +1,1 @@
+11:31:45 mCurrentFocus=Window{c28cf43 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}

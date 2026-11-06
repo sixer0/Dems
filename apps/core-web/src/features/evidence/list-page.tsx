@@ -1,0 +1,245 @@
+import { useCallback, useMemo, useState } from 'react'
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
+import { Button, Card } from '@heroui/react'
+import { motion } from 'motion/react'
+import { BadgeCheck, CircleDot, Hourglass, Layers, Share2, type LucideIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { CoreMode, useCoreMode } from '@dems/shared/live'
+import { EvidenceStatus, Permission, selectCan, selectEvidence, selectEvidenceStats, useSim, useSimReady } from '@dems/shared/sim'
+import { AnimatedNumber } from '@/components/ui/animated-number'
+import { RoleReason } from '@/components/role-reason'
+import { browserMatchMedia, useMediaQuery } from '@/motion/use-media-query'
+import { useMotionPolicy } from '@/motion'
+import { LIST_BEAT_MS, usePanelVariants, useStaggerVariants } from './choreography'
+import { sessionsWithoutItem } from '@/features/sessions/model'
+import { EvidenceTable } from './evidence-table'
+import { ExportWizard } from './export-wizard'
+import { buildEvidenceRows, STATUS_FILTERS, type EvidenceRow } from './model'
+import { rememberHeaderOrigin, requestAutoVerify } from './pending-actions'
+import { EvidencePreview } from './preview-card'
+import { selectOperators } from './selectors'
+import { subjectTypeFromSearch } from './sim-adapter'
+import { EvidenceToolbar, type EvidenceFilters } from './toolbar'
+import { useArchiveEvidence } from './use-archive'
+import { useEvidenceTable } from './use-evidence-table'
+
+const listRoute = getRouteApi('/_app/evidence/')
+
+/** ≥ 1280 px the sticky preview is beside the table; below it a row action opens the detail page. */
+// Fix wave J (JW-10): the preview pane stands beside the table only where the table's columns still fit (`evidence.css`).
+const PREVIEW_QUERY = '(min-width: 1600px)'
+
+type SearchPatch = Partial<Record<'q' | 'status' | 'caseType' | 'investigator' | 'from' | 'to', string | undefined>>
+
+const STATUS_VALUES = new Set<string>(Object.values(EvidenceStatus))
+function isEvidenceStatus(value: string | undefined): value is EvidenceStatus {
+  return value !== undefined && STATUS_VALUES.has(value)
+}
+
+/**
+ * Evidence list body (`/evidence`; 01_specs §14.5.3; research/04 §5.1; mobile MB 5; 03_motion_spec
+ * M-PG-EVID), lazily loaded under the page shell in `index.tsx`: five KPI cards, the toolbar, the
+ * TanStack table (10 per page, AC-64) and the sticky preview. Filters live in the URL search (step 38
+ * route schema). Export opens the wizard for one row or the bulk selection.
+ *
+ * Archive is settle site B-1 (backend task, plan row W69; `use-archive.ts`): the row menu closes at
+ * the press; while the archive is out the table is marked busy and that row's menu trigger shows
+ * the kit's spinner after `LIVE_PENDING_REVEAL_MS`. In Simulated mode it settles in the press.
+ */
+export function EvidenceListBody() {
+  const { t } = useTranslation()
+  const m = useMotionPolicy()
+  const search = listRoute.useSearch()
+  const navigateList = listRoute.useNavigate()
+  const navigate = useNavigate()
+  const { archive: archiveEvidence, control: archiving } = useArchiveEvidence()
+  const ready = useSimReady()
+  const items = useSim(selectEvidence)
+  const operators = useSim(selectOperators)
+  const stats = useSim(selectEvidenceStats)
+  const canArchive = useSim((s) => selectCan(s, Permission.EVIDENCE_REVIEW))
+  const roleMayExport = useSim((s) => selectCan(s, Permission.EVIDENCE_EXPORT))
+  const wide = useMediaQuery(PREVIEW_QUERY, browserMatchMedia())
+
+  // Wave H C2 (G94-14): in Live mode a bundled thumbnail joins a demo item only (`buildEvidenceRow`).
+  const live = useCoreMode() === CoreMode.LIVE
+  const rows = useMemo(() => buildEvidenceRows(items, operators, { live }), [items, live, operators])
+  const filters: EvidenceFilters = useMemo(
+    () => ({
+      q: search.q,
+      status: search.status,
+      subjectType: subjectTypeFromSearch(search.caseType),
+      investigator: search.investigator,
+      from: search.from,
+      to: search.to,
+    }),
+    [search.q, search.status, search.caseType, search.investigator, search.from, search.to],
+  )
+  const model = useEvidenceTable(rows, filters, search.page)
+
+  const sessionHistory = useSim((s) => s.sessionHistory)
+  const orphanSessions = useMemo(() => sessionsWithoutItem(sessionHistory, search.q), [sessionHistory, search.q])
+
+  const [previewId, setPreviewId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [wizard, setWizard] = useState<{ key: number; ids: string[]; open: boolean }>({ key: 0, ids: [], open: false })
+
+  const previewRow = rows.find((row) => row.id === previewId) ?? model.pageRows[0] ?? null
+  const wizardRows = wizard.ids.map((id) => rows.find((row) => row.id === id)).filter((row): row is EvidenceRow => Boolean(row))
+
+  const investigators = useMemo(() => {
+    const ids = new Set(items.map((item) => item.investigatorId))
+    return operators.filter((operator) => ids.has(operator.id))
+  }, [items, operators])
+
+  const statusCounts = useMemo(() => {
+    const counts = Object.fromEntries(STATUS_FILTERS.map((status) => [status, 0])) as Record<EvidenceStatus | 'ALL', number>
+    for (const item of items) counts[item.status] += 1
+    counts.ALL = items.length
+    return counts
+  }, [items])
+
+  const updateSearch = useCallback(
+    (patch: SearchPatch) => {
+      const { status, ...rest } = patch
+      void navigateList({
+        search: (previous) => ({
+          ...previous,
+          ...rest,
+          ...('status' in patch ? { status: isEvidenceStatus(status) ? status : undefined } : {}),
+          page: undefined,
+        }),
+        replace: true,
+      })
+    },
+    [navigateList],
+  )
+  const clearFilters = useCallback(() => {
+    void navigateList({ search: {}, replace: true })
+  }, [navigateList])
+  const goToPage = useCallback(
+    (page: number) => {
+      void navigateList({ search: (previous) => ({ ...previous, page: page > 1 ? page : undefined }), replace: true })
+    },
+    [navigateList],
+  )
+
+  const openDetail = useCallback(
+    (row: EvidenceRow, origin: Element | null, tab?: 'integrity') => {
+      rememberHeaderOrigin(row.id, origin)
+      void navigate({ to: '/evidence/$evidenceId', params: { evidenceId: row.id }, search: tab ? { tab } : {} })
+    },
+    [navigate],
+  )
+
+  const openWizard = useCallback((ids: string[]) => {
+    setWizard((previous) => ({ key: previous.key + 1, ids, open: true }))
+  }, [])
+
+  const archive = useCallback((row: EvidenceRow) => archiveEvidence(row.id, 'list'), [archiveEvidence])
+
+  const kpiVariants = useStaggerVariants(LIST_BEAT_MS.kpis, 60)
+  const toolbarVariants = usePanelVariants(LIST_BEAT_MS.toolbar)
+  const tableVariants = usePanelVariants(LIST_BEAT_MS.table)
+  const previewVariants = usePanelVariants(LIST_BEAT_MS.preview)
+
+  const kpis: { id: string; label: string; value: number; icon: LucideIcon; tone: string }[] = [
+    { id: 'total', label: t('evidence.kpi.total'), value: stats.total, icon: Layers, tone: 'accent' },
+    { id: 'sealed', label: t('evidence.kpi.sealed'), value: stats.sealed, icon: BadgeCheck, tone: 'sealed' },
+    { id: 'recorded', label: t('evidence.kpi.recorded'), value: stats.recorded, icon: CircleDot, tone: 'success' },
+    { id: 'exported', label: t('evidence.kpi.exported'), value: stats.exported, icon: Share2, tone: 'info' },
+    { id: 'pending', label: t('evidence.kpi.pending'), value: stats.pending, icon: Hourglass, tone: 'warning' },
+  ]
+
+  return (
+    <div className="evi-body" data-testid="evidence-list-body">
+
+      <motion.section className="evi-kpis" aria-label={t('evidence.kpi.label')} variants={kpiVariants} initial="hidden" animate="visible">
+        {kpis.map((kpi) => (
+          <motion.div key={kpi.id} variants={m.variants.panel} className="evi-kpi-cell">
+            <Card variant="secondary" className="evi-kpi" data-kpi={kpi.id} data-tone={kpi.tone}>
+              <span className="evi-kpi-icon" aria-hidden="true">
+                <kpi.icon className="size-5" />
+              </span>
+              <span className="evi-kpi-text">
+                <span className="evi-kpi-label">{kpi.label}</span>
+                <AnimatedNumber value={kpi.value} from={0} className="evi-kpi-value" />
+              </span>
+            </Card>
+          </motion.div>
+        ))}
+      </motion.section>
+
+      <motion.div variants={toolbarVariants} initial="hidden" animate="visible">
+        <EvidenceToolbar filters={filters} investigators={investigators} statusCounts={statusCounts} onChange={updateSearch} onClear={clearFilters} />
+      </motion.div>
+
+      {/* Fix wave J (JW-22): a search that names a session WITHOUT an evidence item (quarantined, never recorded) said only
+          "No evidence matches". It now says that the session exists and where it is listed. */}
+      {orphanSessions.length > 0 ? (
+        <p className="evi-session-hint" role="status" data-testid="evidence-session-hint" data-count={orphanSessions.length}>
+          {t('web.waveJ.sessions.evidenceHint', { count: orphanSessions.length })}{' '}
+          <Link to="/session/history" search={{ q: search.q }} className="dems-popover-link" data-testid="evidence-session-hint-link">
+            {t('web.waveJ.sessions.evidenceHintLink')}
+          </Link>
+        </p>
+      ) : null}
+
+      {selectedIds.size > 0 ? (
+        <div className="evi-bulk" role="status" data-testid="evidence-bulk">
+          <span>{t('evidence.table.selected', { count: selectedIds.size })}</span>
+          <Button size="sm" variant="primary" isDisabled={!roleMayExport} aria-describedby={roleMayExport ? undefined : 'evidence-bulk-export-reason'} onPress={() => openWizard([...selectedIds])} data-testid="evidence-bulk-export">
+            <Share2 className="size-4" aria-hidden="true" />
+            {t('evidence.table.bulkExport', { count: selectedIds.size })}
+          </Button>
+          {/* Fix wave J (JW-14 / JW-25): the one bulk action, disabled with its reason for a role that may not export. */}
+          {roleMayExport ? null : <RoleReason id="evidence-bulk-export-reason" permission={Permission.EVIDENCE_EXPORT} />}
+          <Button size="sm" variant="ghost" onPress={() => setSelectedIds(new Set())}>
+            {t('evidence.table.clearSelection')}
+          </Button>
+        </div>
+      ) : null}
+
+      <div className="evi-list-grid">
+        <motion.div className="evi-list-main" variants={tableVariants} initial="hidden" animate="visible">
+          <Card className="evi-table-card">
+            <EvidenceTable
+              model={model}
+              loading={!ready}
+              previewId={wide ? (previewRow?.id ?? null) : null}
+              selectedIds={selectedIds}
+              canArchive={canArchive}
+              busyId={archiving.key}
+              pendingId={archiving.pending ? archiving.key : null}
+              onSelectionChange={setSelectedIds}
+              onRowAction={(row) => (wide ? setPreviewId(row.id) : openDetail(row, null))}
+              onView={(row, origin) => openDetail(row, origin)}
+              onVerify={(row, origin) => {
+                requestAutoVerify(row.id)
+                openDetail(row, origin, 'integrity')
+              }}
+              onExport={(targets) => openWizard(targets.map((row) => row.id))}
+              onArchive={archive}
+              onPageChange={goToPage}
+              onClearFilters={clearFilters}
+            />
+          </Card>
+        </motion.div>
+        {wide ? (
+          <motion.aside className="evi-list-aside" variants={previewVariants} initial="hidden" animate="visible" aria-label={t('evidence.preview.title')}>
+            <EvidencePreview row={previewRow} onOpen={(row, origin) => openDetail(row, origin)} onExport={(row) => openWizard([row.id])} />
+          </motion.aside>
+        ) : null}
+      </div>
+
+      {wizardRows.length > 0 ? (
+        <ExportWizard
+          key={wizard.key}
+          rows={wizardRows}
+          isOpen={wizard.open}
+          onOpenChange={(open) => setWizard((previous) => ({ ...previous, open }))}
+        />
+      ) : null}
+    </div>
+  )
+}

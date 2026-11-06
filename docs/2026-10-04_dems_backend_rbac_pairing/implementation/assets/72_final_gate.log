@@ -1,0 +1,64 @@
+## 2026-10-06 01:12:40 WIB CLG (a): the three folders' test files at acaff20
+apps/mobile/src/features/session-finalizing/finalizing.model.test.ts
+apps/mobile/src/features/session-finalizing/session-finalizing-screen.test.tsx
+apps/mobile/src/features/session-finalizing/testing/flow-harness.tsx
+apps/mobile/src/features/session-finalizing/testing/flow-test-setup.ts
+apps/mobile/src/features/session-summary/session-summary-screen.test.tsx
+apps/mobile/src/features/session-summary/summary.model.test.ts
+apps/mobile/src/features/sessions/sessions-model.test.ts
+apps/mobile/src/features/sessions/sessions-screen.test.tsx
+apps/mobile/src/features/sessions/testing/sessions-harness.tsx
+apps/mobile/src/features/sessions/testing/sessions-test-setup.ts
+$ git diff --stat acaff20 -- <those 9 files>
+(end: 0 lines)
+$ git diff --stat acaff20 -- apps/mobile/src/features/session-finalizing apps/mobile/src/features/sessions
+(end: 0 lines)
+$ git status --short --untracked-files=all -- the three folders
+ M apps/mobile/src/features/session-summary/i18n.ts
+ M apps/mobile/src/features/session-summary/session-summary-screen.tsx
+ M apps/mobile/src/features/session-summary/use-summary.ts
+?? apps/mobile/src/features/session-finalizing/live-finalizing.test.tsx
+?? apps/mobile/src/features/session-summary/live-summary-sites.test.tsx
+?? apps/mobile/src/features/session-summary/summary-live-static.test.ts
+?? apps/mobile/src/features/session-summary/testing/live-summary-bed.tsx
+?? apps/mobile/src/features/sessions/live-sessions.test.tsx
+$ git diff --stat acaff20 -- apps/mobile/src/features/session-summary
+ apps/mobile/src/features/session-summary/i18n.ts   |  6 ++
+ .../session-summary/session-summary-screen.tsx     | 93 ++++++++++++++++++----
+ .../src/features/session-summary/use-summary.ts    | 91 ++++++++++++++++-----
+ 3 files changed, 152 insertions(+), 38 deletions(-)
+## KI-07: 13 IDs / 62 markers (acaff20: 13 / 62)
+## apps/mobile/src/features/settings/heartbeat-release-gate.test.tsx vs b90a3c6: 0 lines
+## 01:12:52 CLG (c)
+$ grep -rnE "useSimActions|\.actions" apps/mobile/src/features/{session-finalizing,session-summary,sessions} --include='*.ts' --include='*.tsx' | grep -vE '\.test\.|/testing/' | grep -vE "styles\.actions|'[a-z.-]*\.actions\.[A-Za-z]+'"
+/Users/gsp-budi/Documents/DEMS/apps/mobile/src/features/sessions/i18n.ts:8: * `common.actions.startNewSession`, `common.faultKind.*`, `session.details.*` (key-value labels)
+(exit of the last grep: 0 ; 1 = nothing found)
+-- the lines the filter removed (translation keys and styles):
+apps/mobile/src/features/session-summary/session-summary-screen.tsx:109:        toast.show({ variant: 'danger', label: t('features.session-summary.actions.navig
+apps/mobile/src/features/session-summary/session-summary-screen.tsx:297:  const hint = acknowledging ? t('features.session-summary.actions.acknowledgeHint') : u
+apps/mobile/src/features/session-summary/session-summary-screen.tsx:299:    <View style={[styles.actions, wide ? styles.actionsWide : null]} testID="summary-act
+apps/mobile/src/features/session-summary/session-summary-screen.tsx:302:        <Button.Label numberOfLines={1}>{t('common.actions.done')}</Button.Label>
+apps/mobile/src/features/session-summary/use-summary.ts:182:          toast.show({ variant: 'danger', label: t('features.session-summary.actions.failed') });
+apps/mobile/src/features/sessions/i18n.ts:8: * `common.actions.startNewSession`, `common.faultKind.*`, `session.details.*` (key-value labels)
+apps/mobile/src/features/sessions/use-hand-off.ts:28:        toast.show({ variant: 'danger', label: t('features.sessions.detail.actions.navigateFailed') });
+apps/mobile/src/features/sessions/session-detail.tsx:258:  if (row.pendingSummary) buttons.push({ id: 'summary', label: t('features.sessions.detail.actions.open
+apps/mobile/src/features/sessions/session-detail.tsx:262:      label: t('features.sessions.detail.actions.viewEvidence'),
+apps/mobile/src/features/sessions/session-detail.tsx:268:    buttons.push({ id: 'evidence', label: t('features.sessions.detail.actions.viewRecorded'), variant: 
+apps/mobile/src/features/sessions/session-detail.tsx:273:    <View style={[styles.actions, isMultiPane ? styles.actionsRow : null]} testID="session-detail-actio
+apps/mobile/src/features/sessions/hub-top.tsx:164:        <Button.Label>{setup ? t('features.sessions.start.continueSetup') : t('common.actions.startNewSession'
+## 01:13:02 CLG (c), the filter also drops back-quoted translation keys in comments
+$ grep -rnE "useSimActions|\.actions" <the three folders> --include='*.ts' --include='*.tsx' | grep -vE '\.test\.|/testing/' | grep -vE "styles\.actions|['\`][a-z.-]*\.actions\.[A-Za-z]+['\`]"
+(exit of the last grep: 1 ; 1 = nothing found)
+## 2026-10-06 01:13:17 WIB  1:13  2 users, load averages: 4.14 5.71 5.95
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+exit=0
+Test Suites: 128 passed, 128 total
+Tests:       1580 passed, 1580 total
+Time:        114.66 s, estimated 190 s
+## 01:15:12 $ npm run typecheck -w @dems/mobile
+exit=0
+## 01:15:18 $ npm run lint -w @dems/mobile
+exit=0
+> @dems/mobile@0.1.0 lint
+> eslint .
+## finished 01:15:31

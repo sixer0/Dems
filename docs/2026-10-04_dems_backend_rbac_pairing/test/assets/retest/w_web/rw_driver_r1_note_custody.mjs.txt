@@ -1,0 +1,147 @@
+// R-W Part 1: note drawer title as SUPERVISOR + timeline title, then E2E-W1-1 custody actor of RECORDING_STOPPED.
+// Lane 3 only: loads the demo 'Recording' scenario from System & Demo Control (no tablet on lane 3), adds ONE note as
+// andi.pratama (SUPERVISOR), ends the session from the web (press and hold, reason, confirm), opens the sealed item's
+// chain of custody and compares the RECORDING_STOPPED actor with the RECORDING_STOPPED audit row.
+// Commands sent: sign-in, reads, demo scenario load (Recording), one note, one stop, sign-out. No demo reset.
+import { launch, openPage, signIn, signOutMenu, makeRun, writeEvents, sleep } from './rt_lib.mjs'
+
+const R = makeRun('r1_note_custody')
+process.on('unhandledRejection', (e) => R.log(`unhandled: ${e?.message ?? e}`))
+const browser = await launch(R.log)
+let page
+const demoStatus = () => page.fetchJson('/api/v1/demo/status', `(b) => ({ scenario: b?.scenario, epoch: b?.epoch, activeFaults: (b?.activeFaults ?? []).map((f) => f.kind), lastResetAt: b?.lastResetAt ? new Date(b.lastResetAt).toISOString() : null })`)
+const current = () => page.fetchJson('/api/v1/session/current', `(b) => { const s = b?.session ?? b; return s ? { id: s.id ?? null, state: s.state ?? null, createdBy: s.createdBy ?? null, investigatorId: s.investigatorId ?? null, startedAt: s.startedAt ? new Date(s.startedAt).toISOString() : null, evidenceId: s.evidenceId ?? null } : null }`)
+const nav = async (label, testid) => {
+  const res = await page.clickByText('nav a, aside a', label)
+  const ok = await page.waitFor(testid, true, 15000)
+  await sleep(2500)
+  return { clicked: res.found, ok }
+}
+try {
+  page = await openPage(browser.cdp, R.log)
+  await page.viewport(1440, 900)
+  page.setLabel('Login')
+  await page.goto('/login', 2000)
+  R.record('signedIn', { ok: await signIn(page, 'andi.pratama', R.log) })
+
+  // ── Load the demo Recording scenario (lane 3 only) ──
+  page.setLabel('System & Demo Control')
+  R.record('before', { demo: await demoStatus(), session: await current() })
+  R.record('navSystem', await nav('System', 'page-system'))
+  await page.eval(`document.querySelector('[data-testid="system-panel-demo"]').scrollIntoView({ block: 'start', behavior: 'instant' })`)
+  await sleep(600)
+  if (!(await page.exists('system-demo-body'))) {
+    // The panel's switch: press its visible control (the input itself is visually hidden).
+    await page.eval(`(() => { const i = document.querySelector('[data-testid="system-demo-toggle"]'); let n = i; for (let k = 0; k < 5 && n; k++) { if (n.getAttribute?.('data-slot') === 'switch' || n.tagName === 'LABEL') break; n = n.parentElement } const c = n?.querySelector('[data-slot="switch-content"], [data-slot="switch-control"]') ?? n; document.querySelectorAll('[data-rw-target]').forEach((e) => e.removeAttribute('data-rw-target')); c?.setAttribute('data-rw-target', '1') })()`)
+    await page.click('[data-rw-target="1"]')
+    await sleep(1200)
+  }
+  R.record('demoPanel', { body: await page.exists('system-demo-body'), text: await page.text('system-demo-body', 400) })
+  await page.click('system-demo-scenario')
+  await sleep(700)
+  const opt = await page.clickByText('[role="listbox"] [role="option"]', 'Recording')
+  await sleep(500)
+  R.record('scenarioChosen', { option: opt.found, value: await page.text('system-demo-scenario', 80) })
+  await page.click('system-demo-load')
+  await page.waitFor('system-demo-confirm', true, 8000)
+  await sleep(600)
+  R.record('loadConfirm', await page.text('system-demo-confirm', 500))
+  await page.shot('p1_note_01_demo_load_recording_confirm.png')
+  await page.click('system-demo-confirm-go')
+  await sleep(5500)
+  R.record('afterLoad', { demo: await demoStatus(), session: await current(), toasts: (await page.facts()).toasts })
+  await page.shot('p1_note_02_demo_recording_loaded.png')
+  R.record('auditAfterLoad', await page.auditTail(3))
+
+  // ── Session Monitor: note as SUPERVISOR ──
+  page.setLabel('Session Monitor')
+  R.record('navMonitor', await nav('Session Monitor', 'page-session-monitor'))
+  await sleep(1500)
+  R.record('monitor', { banner: await page.text('sm-status-banner', 300), noteAction: await page.text('sm-action-note', 120), session: await current() })
+  await page.shot('p1_note_03_session_monitor_recording.png')
+  await page.click('sm-action-note')
+  await page.waitFor('sm-note-drawer', true, 8000)
+  await sleep(900)
+  R.record('noteDrawer', await page.eval(`(() => { const d = document.querySelector('[data-testid="sm-note-drawer"]'); return { ariaLabel: d?.getAttribute('aria-label'), dataRole: d?.getAttribute('data-role'), heading: d?.querySelector('h1, h2, h3, [slot="title"], [data-slot="drawer-heading"]')?.innerText?.trim() ?? null, headerText: d?.innerText?.replace(/\\s+/g, ' ').trim().slice(0, 160) } })()`, 'drawer'))
+  await page.type('sm-note-input', 'R-W re-test note: supervisor checks the note drawer title on lane three.')
+  await sleep(300)
+  await page.shot('p1_note_04_supervisor_note_drawer.png')
+  const noteAt = Date.now()
+  await page.click('sm-note-submit')
+  const toast = await page.waitForFn(`[...document.querySelectorAll('[data-slot="toast"]')].some((t) => /Note added/i.test(t.textContent ?? ''))`, 10000)
+  await sleep(1500)
+  const timelineOk = await page.waitForFn(`[...document.querySelectorAll('[data-testid="session-timeline"] [data-kind="NOTE"]')].length > 0`, 10000)
+  await sleep(800)
+  R.record('noteSaved', {
+    toast,
+    noteSubmittedAt: new Date(noteAt).toISOString(),
+    toasts: (await page.facts()).toasts,
+    drawerOpen: await page.exists('sm-note-drawer'),
+    timelineNoteItems: await page.eval(`[...document.querySelectorAll('[data-testid="session-timeline"] [data-kind="NOTE"]')].map((e) => e.innerText.replace(/\\s+/g, ' ').trim().slice(0, 200))`, 'tl'),
+    timelineOk,
+  })
+  await page.eval(`(() => { const n = [...document.querySelectorAll('[data-testid="session-timeline"] [data-kind="NOTE"]')].pop(); n?.scrollIntoView({ block: 'center', behavior: 'instant' }) })()`)
+  await sleep(600)
+  await page.shot('p1_note_05_timeline_supervisor_note_added.png')
+  const tlClip = await page.elementClip('session-timeline', 10, 700)
+  if (tlClip) await page.shot('p1_note_05b_timeline_clip.png', tlClip)
+  R.record('auditNote', await page.auditTail(2, '&type=NOTE_ADDED'))
+
+  // ── End the session from the web as SUPERVISOR ──
+  const dialogs = await page.eval(`[...document.querySelectorAll('[role="dialog"]')].length`)
+  if (dialogs) { await page.key('Escape'); await sleep(800) }
+  const endPress = await page.click('sm-action-end', { hold: 2600, after: 900 })
+  const endDialog = await page.waitFor('sm-end-dialog', true, 8000)
+  R.record('endDialog', { endPress, open: endDialog, text: await page.text('sm-end-dialog', 300) })
+  await page.shot('p1_note_06_end_session_dialog.png')
+  await page.type('sm-end-reason', 'R-W re-test: interview ended by the supervisor from the web console')
+  await sleep(300)
+  const stopAt = Date.now()
+  await page.click('sm-end-confirm')
+  await sleep(1500)
+  for (let i = 0; i < 30 && !(await page.exists('sm-final-sealed')); i += 1) await sleep(1000)
+  const sealedText = await page.text('sm-final-sealed', 300)
+  R.record('sealed', { stopPressedAt: new Date(stopAt).toISOString(), sealedText, sealedIn: await page.text('sm-sealed-in', 120), session: await current() })
+  await page.shot('p1_note_07_session_sealed.png')
+  const evidenceId = (sealedText ?? '').match(/EV-\d{8}-\d{4}/)?.[0] ?? null
+  R.record('auditStop', await page.auditTail(3, '&type=RECORDING_STOPPED'))
+  R.record('auditStart', await page.auditTail(3, '&type=RECORDING_STARTED'))
+
+  // ── Chain of custody of the sealed item ──
+  page.setLabel('Evidence detail (sealed item)')
+  await page.click('sm-final-view-evidence')
+  await page.waitFor('page-evidence-detail', true, 15000)
+  await sleep(2500)
+  await page.click('evidence-tab-integrity')
+  await page.waitFor('evidence-custody', true, 15000)
+  await sleep(1500)
+  const id = evidenceId ?? (await page.eval(`(location.pathname.match(/EV-\\d{8}-\\d{4}/) ?? [null])[0]`, 'id'))
+  R.record('custodyUi', {
+    evidenceId: id,
+    rows: await page.eval(`[...document.querySelectorAll('[data-testid="evidence-custody"] tbody tr')].map((r) => [...r.querySelectorAll('td')].map((c) => c.innerText.replace(/\\s+/g, ' ').trim().slice(0, 90)))`, 'custodyRows'),
+  })
+  await page.eval(`document.querySelector('[data-testid="evidence-custody"]').scrollIntoView({ block: 'start', behavior: 'instant' })`)
+  await sleep(600)
+  await page.shot('p1_note_08_sealed_item_custody_full.png')
+  await page.shot('p1_note_08b_sealed_item_custody.png', await page.elementClip('evidence-custody', 8, 880))
+  R.record('coreRecord', await page.fetchJson(`/api/v1/evidence/${id}`, `(b) => { const e = b?.evidence; return { id: e?.id, sessionId: e?.sessionId, status: e?.status, investigatorId: e?.investigatorId, custody: (e?.custody ?? []).map((c) => ({ action: c.action, actorId: c.actorId ?? null, at: new Date(c.at).toISOString(), detail: c.detail ?? c.reason ?? null })), notes: (e?.notes ?? []).map((n) => ({ authorId: n.authorId, text: String(n.text ?? '').slice(0, 80) })) } }`))
+  R.record('operators', await page.fetchJson('/api/v1/admin/users', `(b) => (b?.users ?? b?.items ?? b ?? []).map?.((u) => ({ id: u.id, name: u.displayName ?? u.name, role: u.role })) ?? null`))
+
+  // ── Session Monitor after sealing; demo status ──
+  page.setLabel('Session Monitor (after seal)')
+  R.record('navMonitor2', await nav('Session Monitor', 'page-session-monitor'))
+  R.record('monitorAfter', { banner: await page.text('sm-status-banner', 300), session: await current(), demo: await demoStatus() })
+  await page.shot('p1_note_09_session_monitor_after_seal.png')
+
+  page.setLabel('Sign out')
+  R.record('signOut', await signOutMenu(page, R.log))
+} catch (error) {
+  R.log(`FAILED: ${error.message}`)
+  R.obs.error = error.message
+  try { if (page) await page.shot('p1_note_99_failure_state.png') } catch { /* no page */ }
+  try { if (page) R.record('signOutAfterFailure', await page.eval(`fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: '{}' }).then((r) => r.status)`, 'signout')) } catch { /* gone */ }
+} finally {
+  if (page) R.record('consoleNetwork', writeEvents(R.run, page.events))
+  await browser.close()
+  R.flush()
+}

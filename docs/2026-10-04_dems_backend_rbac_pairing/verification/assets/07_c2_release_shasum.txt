@@ -1,0 +1,93 @@
+# 2026-10-07 10:29:53 WIB
+## release/web
+  sums: 5ba6368f7785fe8acaa1484d7c31528b39ffb0bd3b1caed12845b9eac7d87e65  DEMS-Web-Demo-0.1.0-windows-x64.zip
+  sums: 4f0f9e83c5ff9cfb49d918022155e0bd029b17514c626f396df71933dae97c59  DEMS-Web-Demo-0.1.0-macos-arm64.zip
+  sums: 78ae50d8dd3cf67ce4e7972af4e7d511a8672859624d49f7cc8dd3f4824b05eb  DEMS-Web-Demo-0.1.0-linux-x64.tar.gz
+  sums: a24dcbd37291b0d70b62c2864d4e8ab75782f70000e4c32a06322de67a0b8583  DEMS-Web-Demo-0.1.0-macos-x64.zip
+  sums: 0859baa495125c8f5bdb054099105bf04accbeb1a61935d593b75dbdbf1ca6ae  DEMS-Web-Demo-0.1.0-windows-x64-signed-runtime.zip
+  sums: a5c50d058cc3479ce82e3350dac354fb240e4f06e1682b63579ddf93596e0226  DEMS-Web-Demo-0.1.0-any-os-node.zip
+$ shasum -a 256 -c SHA256SUMS.txt
+DEMS-Web-Demo-0.1.0-windows-x64.zip: OK
+DEMS-Web-Demo-0.1.0-macos-arm64.zip: OK
+DEMS-Web-Demo-0.1.0-linux-x64.tar.gz: OK
+DEMS-Web-Demo-0.1.0-macos-x64.zip: OK
+DEMS-Web-Demo-0.1.0-windows-x64-signed-runtime.zip: OK
+DEMS-Web-Demo-0.1.0-any-os-node.zip: OK
+exit=0
+$ shasum -a 256 -c DEMS-Web-Demo-0.1.0-any-os-node.zip.sha256
+DEMS-Web-Demo-0.1.0-any-os-node.zip: OK
+exit=0
+$ shasum -a 256 -c DEMS-Web-Demo-0.1.0-linux-x64.tar.gz.sha256
+DEMS-Web-Demo-0.1.0-linux-x64.tar.gz: OK
+exit=0
+$ shasum -a 256 -c DEMS-Web-Demo-0.1.0-macos-arm64.zip.sha256
+DEMS-Web-Demo-0.1.0-macos-arm64.zip: OK
+exit=0
+$ shasum -a 256 -c DEMS-Web-Demo-0.1.0-macos-x64.zip.sha256
+DEMS-Web-Demo-0.1.0-macos-x64.zip: OK
+exit=0
+$ shasum -a 256 -c DEMS-Web-Demo-0.1.0-windows-x64-signed-runtime.zip.sha256
+DEMS-Web-Demo-0.1.0-windows-x64-signed-runtime.zip: OK
+exit=0
+$ shasum -a 256 -c DEMS-Web-Demo-0.1.0-windows-x64.zip.sha256
+DEMS-Web-Demo-0.1.0-windows-x64.zip: OK
+exit=0
+## release/android
+  sums: 0009f33d60e9038201b7aa54c9ef1af750db9b852401affba56fbb9d3c345ecd  DEMS-Demo-0.1.0.apk
+  sums: 58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd  licenses/Apache-2.0-MaterialSymbols.txt
+  sums: 5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57  licenses/OFL-1.1-Inter.txt
+  sums: b2fe5e8987594e9ffd1d2ca52a2f5d73eb8335243893c5d6254b5ad69269591d  licenses/OFL-1.1-JetBrainsMono.txt
+  sums: ab609b0e110d622435ff337cdf233288556e011bbf9bd0550be98846c0630819  licenses/OFL-1.1-Orbitron.txt
+  sums: 45609f79aba608821be48b9af7d31e079c667f0c594f0c89764d58af77d1cd6a  licenses/README.txt
+  sums: cea29c2439f40e6816b2c55cf2d10773e210bd4572163abf2da70a4f243ebfe5  licenses/THIRD-PARTY-LICENSES.txt
+  sums: 4cbdec5c7db06edc1592e8b2c66a01f150e560aacdbe2e579265f8c9c5d7920f  licenses/THIRD_PARTY_NOTICES.md
+$ shasum -a 256 -c SHA256SUMS.txt
+DEMS-Demo-0.1.0.apk: OK
+licenses/Apache-2.0-MaterialSymbols.txt: OK
+licenses/OFL-1.1-Inter.txt: OK
+licenses/OFL-1.1-JetBrainsMono.txt: OK
+licenses/OFL-1.1-Orbitron.txt: OK
+licenses/README.txt: OK
+licenses/THIRD-PARTY-LICENSES.txt: OK
+licenses/THIRD_PARTY_NOTICES.md: OK
+exit=0
+$ shasum -a 256 -c DEMS-Demo-0.1.0.apk.sha256
+DEMS-Demo-0.1.0.apk: OK
+exit=0
+## stat (mtimes)
+release/android:
+total 278544
+-rw-r--r--@ 1 gsp-budi  staff       1091 Oct  1 10:41:28 2026 BUILD-INFO.txt
+-rw-r--r--@ 1 gsp-budi  staff  142592154 Oct  1 10:41:26 2026 DEMS-Demo-0.1.0.apk
+-rw-r--r--@ 1 gsp-budi  staff         86 Oct  1 10:41:26 2026 DEMS-Demo-0.1.0.apk.sha256
+-rw-r--r--@ 1 gsp-budi  staff       8189 Oct  1 11:33:39 2026 INSTALL-ANDROID.md
+-rw-r--r--@ 1 gsp-budi  staff        766 Oct  1 11:22:52 2026 SHA256SUMS.txt
+drwxr-xr-x@ 9 gsp-budi  staff        288 Oct  1 11:22:52 2026 licenses
+
+release/web:
+total 854680
+-rw-r--r--@ 1 gsp-budi  staff     20172 Oct  1 11:48:31 2026 BUILD-INFO.txt
+-rw-r--r--@ 1 gsp-budi  staff     92414 Oct  1 11:45:58 2026 BUILD-INPUTS.txt
+-rw-r--r--@ 1 gsp-budi  staff  37196089 Oct  1 11:45:56 2026 DEMS-Web-Demo-0.1.0-any-os-node.zip
+-rw-r--r--@ 1 gsp-budi  staff       102 Oct  1 11:45:58 2026 DEMS-Web-Demo-0.1.0-any-os-node.zip.sha256
+-rw-r--r--@ 1 gsp-budi  staff  83886762 Oct  1 11:45:48 2026 DEMS-Web-Demo-0.1.0-linux-x64.tar.gz
+-rw-r--r--@ 1 gsp-budi  staff       103 Oct  1 11:45:58 2026 DEMS-Web-Demo-0.1.0-linux-x64.tar.gz.sha256
+-rw-r--r--@ 1 gsp-budi  staff  80746025 Oct  1 11:45:44 2026 DEMS-Web-Demo-0.1.0-macos-arm64.zip
+-rw-r--r--@ 1 gsp-budi  staff       102 Oct  1 11:45:58 2026 DEMS-Web-Demo-0.1.0-macos-arm64.zip.sha256
+-rw-r--r--@ 1 gsp-budi  staff  83136920 Oct  1 11:45:52 2026 DEMS-Web-Demo-0.1.0-macos-x64.zip
+-rw-r--r--@ 1 gsp-budi  staff       100 Oct  1 11:45:58 2026 DEMS-Web-Demo-0.1.0-macos-x64.zip.sha256
+-rw-r--r--@ 1 gsp-budi  staff  76256035 Oct  1 11:45:55 2026 DEMS-Web-Demo-0.1.0-windows-x64-signed-runtime.zip
+-rw-r--r--@ 1 gsp-budi  staff       117 Oct  1 11:45:58 2026 DEMS-Web-Demo-0.1.0-windows-x64-signed-runtime.zip.sha256
+-rw-r--r--@ 1 gsp-budi  staff  76213194 Oct  1 11:45:41 2026 DEMS-Web-Demo-0.1.0-windows-x64.zip
+-rw-r--r--@ 1 gsp-budi  staff       102 Oct  1 11:45:58 2026 DEMS-Web-Demo-0.1.0-windows-x64.zip.sha256
+-rw-r--r--@ 1 gsp-budi  staff       626 Oct  1 11:45:58 2026 SHA256SUMS.txt
+
+## cross-check: each artifact hash appears in task 1 report.md (committed 4b708c8, unchanged since)
+DEMS-Web-Demo-0.1.0-windows-x64.zip 5ba6368f7785fe8acaa1484d7c31528b39ffb0bd3b1caed12845b9eac7d87e65 -> grep -c in task-1 report.md: 1
+DEMS-Web-Demo-0.1.0-macos-arm64.zip 4f0f9e83c5ff9cfb49d918022155e0bd029b17514c626f396df71933dae97c59 -> grep -c in task-1 report.md: 1
+DEMS-Web-Demo-0.1.0-linux-x64.tar.gz 78ae50d8dd3cf67ce4e7972af4e7d511a8672859624d49f7cc8dd3f4824b05eb -> grep -c in task-1 report.md: 1
+DEMS-Web-Demo-0.1.0-macos-x64.zip a24dcbd37291b0d70b62c2864d4e8ab75782f70000e4c32a06322de67a0b8583 -> grep -c in task-1 report.md: 1
+DEMS-Web-Demo-0.1.0-windows-x64-signed-runtime.zip 0859baa495125c8f5bdb054099105bf04accbeb1a61935d593b75dbdbf1ca6ae -> grep -c in task-1 report.md: 1
+DEMS-Web-Demo-0.1.0-any-os-node.zip a5c50d058cc3479ce82e3350dac354fb240e4f06e1682b63579ddf93596e0226 -> grep -c in task-1 report.md: 1
+DEMS-Demo-0.1.0.apk 0009f33d60e9038201b7aa54c9ef1af750db9b852401affba56fbb9d3c345ecd -> grep -c in task-1 report.md: 1
+## files under release/ not in a SHA256SUMS list: .DS_Store, RUN-ON-ANOTHER-PC.md, */BUILD-INFO.txt, web/BUILD-INPUTS.txt, android/INSTALL-ANDROID.md, the *.sha256 and SHA256SUMS.txt themselves

@@ -1,0 +1,10 @@
+
+> dems-demo@0.1.0 pg:start
+> node scripts/pg/start.mjs
+
+waiting for server to start.... done
+server started
+pg:start: started, PID 48897, listening on 127.0.0.1:4432 (TCP only, no Unix socket)
+  postgres 48897 gsp-budi    5u  IPv4 0x4bc550eff7ffaf58      0t0  TCP 127.0.0.1:4432 (LISTEN)
+  PID file: .locks/postgres.pid. Stop with "npm run pg:stop".
+exit=0

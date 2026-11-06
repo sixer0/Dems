@@ -1,0 +1,33 @@
+FIXTURE  device-two-outputs-48k-interleaved
+BASIS    DEVICE_ABRIDGED
+SOURCE   row MM3, capture 33 "product_stallS1" (test/mm3_macos_microphone_loss.md s8.2; .cache/task4-mm/session3.log): the user's USB interface at 48,000 Hz, device index 0, the product's list with -t 12 and TWO MEASURING OUTPUTS more (#2 a file, #3 a null output behind a filter that prints one line per packet), the reader of output 1 stalled, exit status 0
+ABRIDGED every line below is a line of that start as recorded, in its order. TAKEN OUT: the lines of the two measuring outputs (the third mapping line "-> #3:0", the lines "Output #2", "Output #3" and the two lines under it, the closing lines of out#2 and out#3); the record itself had already dropped the per-packet lines of output #3. So this is NOT a whole standard error text
+WHY KEPT  it holds what no whole record holds: two lines of the helper's own threads RUN INTO EACH OTHER (lines 7 to 9 below: "detected:Pure channel mapping detected: 0", and a line that is only a tag and " 2"). On the device a line of one thread can be broken by another
+CHANGED  the pointers (the record prints 0x<ptr>) are synthetic numbers; the two pipe paths are synthetic. No device name stands in these lines
+--- helper standard error ---
+Input #0, avfoundation, from 'none:0':
+  Duration: N/A, start: 399373.417875, bitrate: 9216 kb/s
+  Stream #0:0: Audio: pcm_f32le, 48000 Hz, 5.1, flt, 9216 kb/s, start 399373.417875
+Stream mapping:
+  Stream #0:0 -> #0:0 (pcm_f32le (native) -> pcm_f32le (native))
+  Stream #0:0 -> #1:0 (pcm_f32le (native) -> pcm_f32le (native))
+[Parsed_pan_0 @ 0x600002c84000] Pure channel mapping detected:Pure channel mapping detected: 0
+[Parsed_pan_0 @ 0x600002c84000] Pure channel mapping detected: 0
+[Parsed_pan_0 @ 0x600002c84180]  2
+Output #0, fifo, to '/synthetic/run/MIC-01.pcm':
+  Metadata:
+    encoder         : Lavf63.1.102
+  Stream #0:0: Audio: pcm_f32le, 48000 Hz, mono, flt, 1536 kb/s
+    Metadata:
+      encoder         : Lavc63.1.102 pcm_f32le
+Output #1, fifo, to '/synthetic/run/MIC-02.pcm':
+  Metadata:
+    encoder         : Lavf63.1.102
+  Stream #1:0: Audio: pcm_f32le, 48000 Hz, mono, flt, 1536 kb/s
+    Metadata:
+      encoder         : Lavc63.1.102 pcm_f32le
+[fifo @ 0x600001e4c500] FIFO queue full
+[fifo @ 0x600001e4c500] FIFO queue flushed
+[out#0/fifo @ 0x600003d08000] video:0KiB audio:2034KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+[out#1/fifo @ 0x600003d08300] video:0KiB audio:2034KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+size=N/A time=00:00:12.00 bitrate=N/A speed=0.999x elapsed=0:00:12.01    

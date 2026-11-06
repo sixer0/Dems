@@ -1,0 +1,20 @@
+# main Core (4420) request lines 05:58:00Z-06:00:40Z (time UTC, method, route, status, principal), read from .cache/manual/main-server.log for the R-W 5173 Simulated check (browser up 05:58:30.677Z-05:58:56.5Z attempt 1 and 05:59:33.614Z-06:00:08.664Z run 2). None is from this row: its Live paths were failed inside its browser.
+2026-10-06T05:58:00.154Z GET /api/v1/health 200 -
+2026-10-06T05:58:10.227Z GET /api/v1/health 200 -
+2026-10-06T05:58:20.315Z GET /api/v1/health 200 -
+2026-10-06T05:58:30.336Z GET /api/v1/health 200 -
+2026-10-06T05:58:40.369Z GET /api/v1/health 200 -
+2026-10-06T05:58:50.418Z GET /api/v1/health 200 -
+2026-10-06T05:58:58.761Z GET /api/v1/pairing/devices 200 operator:OPR-002
+2026-10-06T05:58:58.778Z GET /api/v1/audit 200 operator:OPR-002
+2026-10-06T05:59:00.461Z GET /api/v1/health 200 -
+2026-10-06T05:59:10.484Z GET /api/v1/health 200 -
+2026-10-06T05:59:20.508Z GET /api/v1/health 200 -
+2026-10-06T05:59:30.536Z GET /api/v1/health 200 -
+2026-10-06T05:59:40.573Z GET /api/v1/health 200 -
+2026-10-06T05:59:50.616Z GET /api/v1/health 200 -
+2026-10-06T06:00:00.843Z GET /api/v1/health 200 -
+2026-10-06T06:00:10.934Z GET /api/v1/health 200 -
+2026-10-06T06:00:20.961Z GET /api/v1/health 200 -
+2026-10-06T06:00:30.987Z GET /api/v1/health 200 -
+2026-10-06T06:00:34.208Z GET /api/v1/health 200 -

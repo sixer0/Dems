@@ -1,0 +1,104 @@
+{
+ "check": "H-4",
+ "run": "h10_drift_run1",
+ "worker_encoders": 1,
+ "files": {
+  "cam1.mp4": {
+   "bytes": 130861,
+   "streams": [
+    [
+     "video",
+     "h264",
+     "Constrained Baseline",
+     null,
+     null
+    ],
+    [
+     "audio",
+     "aac",
+     "LC",
+     "48000",
+     1
+    ]
+   ],
+   "audio_packets": 1900,
+   "audio_payload_bytes": 41162,
+   "audio_digest_of_packet_hashes": "b165030f111e4ce34b7424381ad96125345414ea8aa064f5ca25a30707b3c47e",
+   "audio_streamhash": "0,a,SHA256=e67f68994637368c5c2c1d7c780a5ea3ccbab6f57138f8888e72ad01d7ac2bc2",
+   "video_packets": 1600,
+   "decoded_frames": {
+    "video": 1600,
+    "audio": 1900
+   },
+   "decode_rc": 0,
+   "decode_error_lines": 0,
+   "box_walk": {
+    "tiles_exactly": true,
+    "boxes": {
+     "ftyp": 1,
+     "moov": 1,
+     "moof": 32,
+     "mdat": 32,
+     "mfra": 1
+    }
+   },
+   "playable": true
+  },
+  "cam2.mp4": {
+   "bytes": 130861,
+   "streams": [
+    [
+     "video",
+     "h264",
+     "Constrained Baseline",
+     null,
+     null
+    ],
+    [
+     "audio",
+     "aac",
+     "LC",
+     "48000",
+     1
+    ]
+   ],
+   "audio_packets": 1900,
+   "audio_payload_bytes": 41162,
+   "audio_digest_of_packet_hashes": "b165030f111e4ce34b7424381ad96125345414ea8aa064f5ca25a30707b3c47e",
+   "audio_streamhash": "0,a,SHA256=e67f68994637368c5c2c1d7c780a5ea3ccbab6f57138f8888e72ad01d7ac2bc2",
+   "video_packets": 1600,
+   "decoded_frames": {
+    "video": 1600,
+    "audio": 1900
+   },
+   "decode_rc": 0,
+   "decode_error_lines": 0,
+   "box_walk": {
+    "tiles_exactly": true,
+    "boxes": {
+     "ftyp": 1,
+     "moov": 1,
+     "moof": 32,
+     "mdat": 32,
+     "mfra": 1
+    }
+   },
+   "playable": true
+  }
+ },
+ "cross_file": {
+  "count_equal": true,
+  "packets_differing_any_field": 0,
+  "packets_differing_payload": 0,
+  "first_difference": null
+ },
+ "vs_encoder_manifest": {
+  "encoder0_packets": 1900,
+  "cam1_payload_mismatches": 0,
+  "cam2_payload_mismatches": 0,
+  "counts_equal": true
+ },
+ "audio_byte_identical": true,
+ "both_files_carry_encoder0_packets": true,
+ "verdict": "PASS"
+}

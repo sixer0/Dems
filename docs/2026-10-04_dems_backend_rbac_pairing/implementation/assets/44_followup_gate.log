@@ -1,0 +1,40 @@
+# Step 66 (W44), follow-up after the fix round (decision D84): final gate, from /Users/gsp-budi/Documents/DEMS (no cd; every command as written)
+## 2026-10-04 14:34:47 WIB $ npm run test -w @dems/shared -- --maxWorkers=2
+ Test Files  68 passed (68)
+      Tests  1747 passed (1747)
+   Start at  14:34:47
+   Duration  7.51s (tests 56%, import 34%, transform 9%, worker 1%)
+exit=0
+## 14:34:54 the 28 test files that exist at acaff20 (git ls-tree -r acaff20 --name-only packages/shared/test), alone
+ Test Files  28 passed (28)
+      Tests  517 passed (517)
+exit=0
+## 14:34:57 the ten files of this row, alone (every test name is in 44_followup_tests_verbose.log)
+ Test Files  10 passed (10)
+      Tests  323 passed (323)
+exit=0
+## 14:35:00 the live socket client's own test files, unedited, alone
+ Test Files  2 passed (2)
+      Tests  130 passed (130)
+exit=0
+## 14:35:01 $ npm run typecheck -w @dems/shared
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 14:35:04 $ npm run lint -w @dems/shared
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+## 14:35:04 $ npm run typecheck -w @dems/core-web
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+## 14:35:14 $ npm run typecheck -w @dems/mobile
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 14:35:19 done

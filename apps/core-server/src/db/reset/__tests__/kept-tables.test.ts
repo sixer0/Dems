@@ -1,0 +1,427 @@
+// The eighteen kept tables (thirteen until integration pass I-9c): the list, the statements and the comparison of row images (plan row
+// W29; database contract §8.5 "Kept tables", R-5c, R-6; dbc-3 §E.1 and blueprint row 54 add the
+// three capture tables and their `upsert` carry mode; dbc-3 §B.13 and blueprint row 114 add
+// `stt_config` as the twelfth). Database-free.
+import { getTableColumns, getTableName } from 'drizzle-orm';
+import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
+import { describe, expect, it } from 'vitest';
+import * as schema from '../../schema';
+import {
+  CANCEL_ACTIVE_CODES_STATEMENT,
+  CARRY_CHUNK_ROWS,
+  CAPTURE_KEPT_TABLES,
+  KEPT_TABLES,
+  KEPT_TABLE_NAMES,
+  LAST_SIGN_IN_STATEMENT,
+  LINEAGE_INSERT_STATEMENT,
+  NEWEST_LINEAGE_STATEMENT,
+  READ_PAIRING_CODES_STATEMENT,
+  carryStatement,
+  chunked,
+  compareCarried,
+  imagesAsJsonArray,
+  insertCarriedStatement,
+  keptCounts,
+  readImagesStatement,
+  updateCarriedStatement,
+  upsertCarriedStatement,
+  type KeptImages,
+  type PairingCodeImage,
+} from '../kept-tables';
+
+const table = (name: string) => {
+  const found = KEPT_TABLES.find((entry) => entry.name === name);
+  if (found === undefined) throw new Error(`not a kept table: ${name}`);
+  return found;
+};
+
+describe('the kept list', () => {
+  it('is the eighteen tables of the contract, in the carry-over order of R-5c', () => {
+    // Thirteen until integration pass I-9c (review 120 F-6; schema design 03 section 3.3): the five tables of task 4's
+    // schema sets A to C join before the lineage, in the design's modes.
+    expect(KEPT_TABLE_NAMES).toEqual([
+      'registry_counters',
+      'console_settings',
+      'pairing_codes',
+      'paired_devices',
+      'device_credentials',
+      'auth_sessions',
+      'biometric_tokens',
+      'capture_devices',
+      'capture_device_credentials',
+      'capture_config',
+      'stt_config',
+      'core_media_store',
+      'capture_device_streams',
+      'capture_audio_inputs',
+      'capture_network_config',
+      'host_network_aliases',
+      'installation_acceptances',
+      'audit_chain_history',
+    ]);
+    // The two tables the seed writes are updated; the six it leaves empty are inserted into; the
+    // three capture tables of OD-19 and the STT configuration of R-8 are carried by `upsert`
+    // (D-DB-08), and so is the media store root of PE-0013-01 (the seed writes no row of it); the
+    // lineage is last.
+    expect(KEPT_TABLES.map((entry) => entry.mode)).toEqual([
+      'update',
+      'update',
+      'insert',
+      'insert',
+      'insert',
+      'insert',
+      'insert',
+      'upsert',
+      'upsert',
+      'upsert',
+      'upsert',
+      'upsert',
+      'upsert',
+      'upsert',
+      'upsert',
+      'insert',
+      'insert',
+      'insert',
+    ]);
+  });
+
+  it('I-9c (F-6): the five tables of task 4 cross a reset - streams and inputs after the device they extend, the lineage still last', () => {
+    const position = (name: string): number => KEPT_TABLE_NAMES.indexOf(name);
+    for (const name of ['capture_device_streams', 'capture_audio_inputs']) {
+      expect(position(name), name).toBeGreaterThan(position('capture_devices'));
+      expect(table(name).mode, name).toBe('upsert');
+    }
+    expect(table('capture_network_config').mode).toBe('upsert');
+    expect(table('host_network_aliases').mode).toBe('insert');
+    expect(table('installation_acceptances').mode).toBe('insert');
+    expect(KEPT_TABLE_NAMES.at(-1)).toBe('audit_chain_history');
+    // The one two-column key: a stream row is (device, profile). Every other kept table has one key column.
+    expect(table('capture_device_streams').keys).toEqual(['device_id', 'profile']);
+    expect(table('capture_device_streams').key).toBe('device_id');
+    for (const entry of KEPT_TABLES.filter((candidate) => candidate.name !== 'capture_device_streams')) expect(entry.keys, entry.name).toEqual([entry.key]);
+  });
+
+  it('I-9c: a two-column key is read in the order of BOTH columns and carried on BOTH (mutation: one key column - red)', () => {
+    const streams = table('capture_device_streams');
+    expect(readImagesStatement(streams)).toBe('SELECT to_jsonb(k)::text AS image FROM public.capture_device_streams AS k ORDER BY k."device_id", k."profile"');
+    const upsert = upsertCarriedStatement(streams);
+    expect(upsert).toContain('ON CONFLICT ("device_id", "profile") DO UPDATE SET');
+    // Neither key column is assigned; every other column is.
+    expect(upsert).not.toContain('"device_id" = EXCLUDED');
+    expect(upsert).not.toContain('"profile" = EXCLUDED');
+    expect(upsert).toContain('"onvif_profile_token" = EXCLUDED."onvif_profile_token"');
+    expect(upsert).toContain('"read_at" = EXCLUDED."read_at"');
+    expect(insertCarriedStatement(streams)).toMatch(/ORDER BY c\."device_id", c\."profile"$/);
+    expect(updateCarriedStatement(streams)).toMatch(/WHERE n\."device_id" = c\."device_id" AND n\."profile" = c\."profile"$/);
+    expect(upsertCarriedStatement(table('capture_audio_inputs'))).toContain('ON CONFLICT ("device_id") DO UPDATE SET');
+    expect(upsertCarriedStatement(table('capture_network_config'))).toContain('ON CONFLICT ("singleton") DO UPDATE SET');
+    expect(insertCarriedStatement(table('host_network_aliases'))).toMatch(/ORDER BY c\."id"$/);
+  });
+
+  it('the STT configuration singleton joins after the capture selector and before the lineage', () => {
+    const position = (name: string): number => KEPT_TABLE_NAMES.indexOf(name);
+    expect(position('capture_config')).toBeLessThan(position('stt_config'));
+    expect(position('stt_config')).toBeLessThan(position('audit_chain_history'));
+    expect(table('stt_config').mode).toBe('upsert');
+    expect(table('stt_config').key).toBe('singleton');
+    // The columns of the carried image are the table's own, in table order (dbc-3 §B.13).
+    expect(table('stt_config').columns).toEqual([
+      'singleton',
+      'enabled',
+      'backend',
+      'endpoint',
+      'model',
+      'language',
+      'diarization',
+      'credential_kind',
+      'credential_ref',
+      'secret_ciphertext',
+      'nonce',
+      'revision',
+      'updated_by',
+      'updated_at',
+    ]);
+    // The carried statement is the upsert shape: the seeded row of key true is replaced, never
+    // duplicated, and no secret column is dropped from the image.
+    const statement = upsertCarriedStatement(table('stt_config'));
+    expect(statement).toContain('ON CONFLICT ("singleton") DO UPDATE SET');
+    expect(statement).toContain('"secret_ciphertext" = EXCLUDED."secret_ciphertext"');
+    expect(statement).toContain('"nonce" = EXCLUDED."nonce"');
+  });
+
+  it('the three capture tables join in their own FK order: devices, then credentials, then the selector', () => {
+    expect(CAPTURE_KEPT_TABLES).toEqual(['capture_devices', 'capture_device_credentials', 'capture_config']);
+    const position = (name: string): number => KEPT_TABLE_NAMES.indexOf(name);
+    expect(position('capture_devices')).toBeLessThan(position('capture_device_credentials'));
+    expect(position('capture_device_credentials')).toBeLessThan(position('capture_config'));
+    // They sit between the biometric tokens and the lineage, which stays last.
+    expect(position('capture_devices')).toBeGreaterThan(position('biometric_tokens'));
+    expect(position('capture_config')).toBeLessThan(position('audit_chain_history'));
+  });
+
+  it('each key is the primary key of the typed schema, and each column list is the table\'s own', () => {
+    const tables: Record<string, PgTable> = {
+      registry_counters: schema.registryCounters,
+      console_settings: schema.consoleSettings,
+      pairing_codes: schema.pairingCodes,
+      paired_devices: schema.pairedDevices,
+      device_credentials: schema.deviceCredentials,
+      auth_sessions: schema.authSessions,
+      biometric_tokens: schema.biometricTokens,
+      capture_devices: schema.captureDevices,
+      capture_device_credentials: schema.captureDeviceCredentials,
+      capture_config: schema.captureConfig,
+      stt_config: schema.sttConfig,
+      core_media_store: schema.coreMediaStore,
+      capture_device_streams: schema.captureDeviceStreams,
+      capture_audio_inputs: schema.captureAudioInputs,
+      capture_network_config: schema.captureNetworkConfig,
+      host_network_aliases: schema.hostNetworkAliases,
+      installation_acceptances: schema.installationAcceptances,
+      audit_chain_history: schema.auditChainHistory,
+    };
+    for (const entry of KEPT_TABLES) {
+      const typed = tables[entry.name];
+      if (typed === undefined) throw new Error(entry.name);
+      expect(getTableName(typed)).toBe(entry.name);
+      const columns = Object.values(getTableColumns(typed));
+      // A one-column key is marked on its column; a two-column key is a table-level primary key (I-9c).
+      const single = columns.filter((column) => column.primary).map((column) => column.name);
+      const declared = single.length > 0 ? single : getTableConfig(typed).primaryKeys.flatMap((key) => key.columns.map((column) => column.name));
+      expect(declared, entry.name).toEqual([...entry.keys]);
+      expect(entry.columns, entry.name).toEqual(columns.map((column) => column.name));
+    }
+    expect(table('auth_sessions').columns).toEqual([
+      'id', 'token_hash', 'operator_id', 'device_id', 'method', 'issued_at', 'last_seen_at', 'absolute_expires_at', 'ended_at', 'end_reason',
+    ]);
+    expect(table('audit_chain_history').columns).toEqual([
+      'reset_no', 'epoch', 'head_hash', 'row_count', 'first_seq', 'last_seq', 'reset_at', 'actor_id', 'reason', 'scenario',
+    ]);
+  });
+
+  it('a parent is carried before the rows that name it', () => {
+    const position = (name: string): number => KEPT_TABLE_NAMES.indexOf(name);
+    expect(position('pairing_codes')).toBeLessThan(position('paired_devices'));
+    expect(position('paired_devices')).toBeLessThan(position('device_credentials'));
+    expect(position('paired_devices')).toBeLessThan(position('auth_sessions'));
+    expect(position('paired_devices')).toBeLessThan(position('biometric_tokens'));
+  });
+});
+
+describe('the statements', () => {
+  it('a row is read as one image, in primary-key order', () => {
+    expect(readImagesStatement(table('auth_sessions'))).toBe('SELECT to_jsonb(k)::text AS image FROM public.auth_sessions AS k ORDER BY k."id"');
+    expect(readImagesStatement(table('audit_chain_history'))).toBe('SELECT to_jsonb(k)::text AS image FROM public.audit_chain_history AS k ORDER BY k."reset_no"');
+  });
+
+  it('a pairing code is read with its image and with the image without the three columns the reset may rewrite', () => {
+    expect(READ_PAIRING_CODES_STATEMENT).toBe(
+      "SELECT k.id::text AS id, k.state::text AS state, to_jsonb(k)::text AS image, (to_jsonb(k) - 'state' - 'closed_at' - 'closed_by_operator_id')::text AS rest, " +
+        'k.closed_at::text AS closed_at, k.closed_by_operator_id::text AS closed_by FROM public.pairing_codes AS k ORDER BY k."id"',
+    );
+  });
+
+  it('an insert names every column and takes the rows as one JSON parameter', () => {
+    expect(insertCarriedStatement(table('device_credentials'))).toBe(
+      'INSERT INTO public.device_credentials ("device_id", "current_hash", "next_hash", "rotated_at") ' +
+        'SELECT c."device_id", c."current_hash", c."next_hash", c."rotated_at" ' +
+        'FROM jsonb_populate_recordset(NULL::public.device_credentials, $1::jsonb) AS c ORDER BY c."device_id"',
+    );
+    // The lineage is inserted in reset_no order (LN-1).
+    expect(insertCarriedStatement(table('audit_chain_history'))).toMatch(/ORDER BY c\."reset_no"$/);
+  });
+
+  it('an update sets every column but the key from the carried row', () => {
+    expect(updateCarriedStatement(table('registry_counters'))).toBe(
+      'UPDATE public.registry_counters AS n SET "next_value" = c."next_value" ' +
+        'FROM jsonb_populate_recordset(NULL::public.registry_counters, $1::jsonb) AS c WHERE n."name" = c."name"',
+    );
+    expect(updateCarriedStatement(table('console_settings'))).toBe(
+      'UPDATE public.console_settings AS n SET "presentation_mode" = c."presentation_mode", "time_format" = c."time_format", ' +
+        '"notify_warnings" = c."notify_warnings", "notify_sound" = c."notify_sound", "updated_at" = c."updated_at" ' +
+        'FROM jsonb_populate_recordset(NULL::public.console_settings, $1::jsonb) AS c WHERE n."singleton" = c."singleton"',
+    );
+    expect(carryStatement(table('registry_counters'))).toBe(updateCarriedStatement(table('registry_counters')));
+    expect(carryStatement(table('auth_sessions'))).toBe(insertCarriedStatement(table('auth_sessions')));
+  });
+
+  it('an upsert carries every column and replaces the seeded row of the same key (D-DB-08)', () => {
+    const devices = upsertCarriedStatement(table('capture_devices'));
+    // A carried device with the id of a built-in updates that row; one the seed does not know is inserted.
+    expect(devices).toContain('INSERT INTO public.capture_devices');
+    expect(devices).toContain('ON CONFLICT ("id") DO UPDATE SET');
+    expect(devices).toContain('"kind" = EXCLUDED."kind"');
+    expect(devices).toContain('$1::jsonb');
+    // It is not an insert (no bare INSERT ... SELECT without ON CONFLICT) and not an update.
+    expect(carryStatement(table('capture_devices'))).toBe(devices);
+    expect(devices).not.toMatch(/ORDER BY/);
+    // The selector keys on its singleton boolean; the credentials key on the device id.
+    expect(upsertCarriedStatement(table('capture_config'))).toContain('ON CONFLICT ("singleton") DO UPDATE SET');
+    expect(upsertCarriedStatement(table('capture_device_credentials'))).toContain('ON CONFLICT ("device_id") DO UPDATE SET');
+  });
+
+  it('no statement holds a value: every one has exactly one parameter, the JSON array', () => {
+    for (const entry of KEPT_TABLES) {
+      const statement = carryStatement(entry);
+      expect(statement.match(/\$\d+/g), entry.name).toEqual(['$1']);
+      expect(statement).toContain('$1::jsonb');
+      expect(statement).not.toMatch(/'[^']*'/);
+    }
+  });
+
+  it('the two statements of R-5d and the lineage insert of R-5e', () => {
+    expect(CANCEL_ACTIVE_CODES_STATEMENT).toBe(
+      "UPDATE public.pairing_codes SET state = 'CANCELLED', closed_at = $1::bigint, closed_by_operator_id = $2::text WHERE state = 'ACTIVE'",
+    );
+    expect(LAST_SIGN_IN_STATEMENT).toBe(
+      'UPDATE public.operators AS o SET last_sign_in_at = s.newest FROM (SELECT operator_id, max(issued_at) AS newest FROM public.auth_sessions GROUP BY operator_id) AS s WHERE o.id = s.operator_id',
+    );
+    expect(LINEAGE_INSERT_STATEMENT).toBe(
+      'INSERT INTO public.audit_chain_history (reset_no, epoch, head_hash, row_count, first_seq, last_seq, reset_at, actor_id, reason, scenario) ' +
+        'VALUES ($1::bigint, $2::bigint, $3::text, $4::bigint, $5::bigint, $6::bigint, $7::bigint, $8::text, $9::text, $10::text)',
+    );
+  });
+
+  it('the newest lineage row is found by the number, not by its text', () => {
+    // `ORDER BY reset_no` would sort the text of the select list: '9' after '10'.
+    expect(NEWEST_LINEAGE_STATEMENT).toMatch(/FROM public\.audit_chain_history AS h ORDER BY h\.reset_no DESC LIMIT 1$/);
+    expect(NEWEST_LINEAGE_STATEMENT).not.toMatch(/ORDER BY reset_no/);
+  });
+});
+
+describe('images', () => {
+  it('are joined into one JSON array without being parsed', () => {
+    expect(imagesAsJsonArray([])).toBe('[]');
+    // A number beyond 2^53 and a byte string stay exactly as PostgreSQL wrote them.
+    const images = ['{"id": 9007199254740993, "h": "\\\\x00ff"}', '{"id": 2, "h": null}'];
+    expect(imagesAsJsonArray(images)).toBe(`[${images[0]},${images[1]}]`);
+    expect(imagesAsJsonArray(images)).toContain('9007199254740993');
+  });
+
+  it('are sent in chunks of 500 rows', () => {
+    expect(CARRY_CHUNK_ROWS).toBe(500);
+    const rows = Array.from({ length: 1201 }, (_, index) => String(index));
+    expect(chunked(rows).map((chunk) => chunk.length)).toEqual([500, 500, 201]);
+    expect(chunked(rows).flat()).toEqual(rows);
+    expect(chunked([])).toEqual([]);
+  });
+});
+
+describe('R-6: carried over unchanged', () => {
+  const code = (id: string, state: string, more: Partial<PairingCodeImage> = {}): PairingCodeImage => ({
+    id,
+    state,
+    image: `{"id": "${id}", "state": "${state}"}`,
+    rest: `{"id": "${id}"}`,
+    closedAt: state === 'ACTIVE' ? null : '100',
+    closedBy: null,
+    ...more,
+  });
+  const read = (images: Record<string, string[]>, pairingCodes: PairingCodeImage[] = []): KeptImages => ({
+    images: { ...Object.fromEntries(KEPT_TABLE_NAMES.map((name) => [name, []])), ...images, pairing_codes: pairingCodes.map((entry) => entry.image) },
+    pairingCodes,
+  });
+  const expectation = { now: '5000', actorId: 'OPR-002', lineageAppended: true };
+
+  const carried = read(
+    {
+      registry_counters: ['{"name": "device"}', '{"name": "pairingCode"}'],
+      console_settings: ['{"singleton": true}'],
+      auth_sessions: ['{"id": "a"}', '{"id": "b"}'],
+      audit_chain_history: ['{"reset_no": 1}'],
+    },
+    [code('PCD-000001', 'REDEEMED'), code('PCD-000002', 'ACTIVE')],
+  );
+  const built = read(
+    {
+      registry_counters: ['{"name": "device"}', '{"name": "pairingCode"}'],
+      console_settings: ['{"singleton": true}'],
+      auth_sessions: ['{"id": "a"}', '{"id": "b"}'],
+      audit_chain_history: ['{"reset_no": 1}', '{"reset_no": 2}'],
+    },
+    [code('PCD-000001', 'REDEEMED'), code('PCD-000002', 'CANCELLED', { closedAt: '5000', closedBy: 'OPR-002' })],
+  );
+
+  it('equal images, the ACTIVE code closed by this reset, and one more lineage row: no problem', () => {
+    expect(compareCarried(carried, built, expectation)).toEqual([]);
+    expect(keptCounts(carried)).toMatchObject({ registry_counters: 2, console_settings: 1, pairing_codes: 2, auth_sessions: 2, audit_chain_history: 1, paired_devices: 0 });
+  });
+
+  it('a changed, a missing and an extra row are each named by table and position, never by value', () => {
+    const changed = read({ ...built.images, auth_sessions: ['{"id": "a"}', '{"id": "B"}'] }, [...built.pairingCodes]);
+    expect(compareCarried(carried, changed, expectation)).toEqual(['auth_sessions: row 2 differs from the row that was read.']);
+    const missing = read({ ...built.images, auth_sessions: ['{"id": "a"}'] }, [...built.pairingCodes]);
+    expect(compareCarried(carried, missing, expectation)).toEqual(['auth_sessions: 2 row(s) were read, 2 are expected and 1 are in the new database.']);
+    const extra = read({ ...built.images, paired_devices: ['{"id": "DEV-0009"}'] }, [...built.pairingCodes]);
+    expect(compareCarried(carried, extra, expectation)).toEqual(['paired_devices: 0 row(s) were read, 0 are expected and 1 are in the new database.']);
+  });
+
+  it('the lineage must grow by exactly one when a chain was discarded, and not at all otherwise', () => {
+    const notAppended = read({ ...built.images, audit_chain_history: ['{"reset_no": 1}'] }, [...built.pairingCodes]);
+    expect(compareCarried(carried, notAppended, expectation)).toEqual(['audit_chain_history: 1 row(s) were read, 2 are expected and 1 are in the new database.']);
+    expect(compareCarried(carried, notAppended, { ...expectation, lineageAppended: false })).toEqual([]);
+    expect(compareCarried(carried, built, { ...expectation, lineageAppended: false })).toEqual([
+      'audit_chain_history: 1 row(s) were read, 1 are expected and 2 are in the new database.',
+    ]);
+    const rewritten = read({ ...built.images, audit_chain_history: ['{"reset_no": 1, "x": 1}', '{"reset_no": 2}'] }, [...built.pairingCodes]);
+    expect(compareCarried(carried, rewritten, expectation)).toEqual(['audit_chain_history: row 1 differs from the row that was read.']);
+  });
+
+  it.each([
+    ['still ACTIVE', { state: 'ACTIVE', closedAt: null, closedBy: null }],
+    ['closed at another instant', { closedAt: '4999' }],
+    ['closed by another operator', { closedBy: 'OPR-001' }],
+    ['closed by nobody although an operator reset', { closedBy: null }],
+    ['another column changed too', { rest: '{"id": "PCD-000002", "failed_attempts": 0}' }],
+    ['closed with another state', { state: 'EXPIRED' }],
+  ])('the code that was ACTIVE: %s is a problem', (_label, change) => {
+    const wrong = read(built.images as Record<string, string[]>, [
+      code('PCD-000001', 'REDEEMED'),
+      code('PCD-000002', 'CANCELLED', { closedAt: '5000', closedBy: 'OPR-002', ...change }),
+    ]);
+    expect(compareCarried(carried, wrong, expectation)).toEqual(['pairing_codes: the code that was ACTIVE (row 2) is not closed as CANCELLED by this reset.']);
+  });
+
+  it('a code that was not ACTIVE must be equal as a whole', () => {
+    const wrong = read(built.images as Record<string, string[]>, [
+      code('PCD-000001', 'REDEEMED', { image: '{"id": "PCD-000001", "state": "CANCELLED"}' }),
+      code('PCD-000002', 'CANCELLED', { closedAt: '5000', closedBy: 'OPR-002' }),
+    ]);
+    expect(compareCarried(carried, wrong, expectation)).toEqual(['pairing_codes: row 1 differs from the row that was read.']);
+  });
+
+  it('from the command line the closing operator is null', () => {
+    const byNobody = read(built.images as Record<string, string[]>, [
+      code('PCD-000001', 'REDEEMED'),
+      code('PCD-000002', 'CANCELLED', { closedAt: '5000', closedBy: null }),
+    ]);
+    expect(compareCarried(carried, byNobody, { ...expectation, actorId: null })).toEqual([]);
+  });
+
+  it('a database that was never seeded has no counter and no settings row: the seed\'s rows stay', () => {
+    const neverSeeded = read({});
+    const fresh = read({ registry_counters: ['{"name": "device"}', '{"name": "pairingCode"}'], console_settings: ['{"singleton": true}'] });
+    expect(compareCarried(neverSeeded, fresh, { now: '5000', actorId: null, lineageAppended: false })).toEqual([]);
+    // But when rows of such a table WERE read, they must be the rows in the new database.
+    const other = read({ ...built.images, registry_counters: ['{"name": "device", "next_value": 9}', '{"name": "pairingCode"}'] }, [...built.pairingCodes]);
+    expect(compareCarried(carried, other, expectation)).toEqual(['registry_counters: row 1 differs from the row that was read.']);
+  });
+
+  it('an upsert table: every carried row is present in the order read, and a seed row the old database did not know may sit beside them', () => {
+    // No lineage row is involved here, so the comparison must not expect the appended one.
+    const exp = { now: '5000', actorId: 'OPR-002', lineageAppended: false };
+    // A discovered device (CAM-99) plus a built-in (CAM-01) were read from the old database.
+    const carriedUpsert = read({ capture_devices: ['{"id": "CAM-01"}', '{"id": "CAM-99"}'] });
+    // The new database holds both carried rows, and a second built-in the seed wrote that the old
+    // database did not carry (D-DB-08): the carried rows are found in order among the extras.
+    const withSeedExtra = read({ capture_devices: ['{"id": "CAM-01"}', '{"id": "CAM-02"}', '{"id": "CAM-99"}'] });
+    expect(compareCarried(carriedUpsert, withSeedExtra, exp)).toEqual([]);
+    // A carried row that did not survive is named by table and position, never by value.
+    const lost = read({ capture_devices: ['{"id": "CAM-01"}'] });
+    expect(compareCarried(carriedUpsert, lost, exp)).toEqual([
+      'capture_devices: row 2 of the rows that were read is not in the new database.',
+    ]);
+    // An upsert table is never required to be empty on a first build (it is not an `insert` table).
+    expect(compareCarried(read({}), withSeedExtra, exp)).toEqual([]);
+  });
+});

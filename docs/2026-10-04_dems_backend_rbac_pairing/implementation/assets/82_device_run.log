@@ -1,0 +1,149 @@
+
+== 01:59:13 0. before (no reset): ports free?; dems_lane_1 counts
+   audit_log                237
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 01:59:14 1. start the lane-1 backend with the demo flag on
+npm PID 25346, listener PID 25395
+   "port":4421,"database":"dems_lane_1","demoControls":true
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T18:59:15.911Z","uptimeMs":333,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 01:59:15 2. device session: phone, Metro 8083, tcp:4420 -> tcp:4421 (cap 600 s)
+[device-session phone 01:59:15] lock held; hard cap 600 s, until 02:09:15 (watchdog PID 25444)
+[device-session phone 01:59:16] session serial: emulator-5554 (dems2_phone)
+[device-session phone 01:59:16] emulator-5554: screen awake, no keyguard
+[device-session phone 01:59:16] Metro PID 25480 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session phone 01:59:19] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 01:59:19] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 01:59:19] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), Metro 8083
+-- before: prefs {"coreLinkSource":"SIMULATED"}; simulator auth 
+-- am start -W -d 'demsdemo:///login?core=SIMULATED&motion=off'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 2 s for runtime.sim.hydrated
+-- simulator auth at the start: 
+-- 01:59:34 == A. SIMULATED, then the segment LIVE: the dialog, the simulator's sign-out, LIVE Login ==
+-- 01:59:40 screencap 82_a1_simulated_login.png (1718970 bytes)
+-- 01:59:40 tapped the username field at 540,1105
+-- 01:59:42 tapped the handwriting coach's Cancel (empty space when none) at 540,2338
+-- 01:59:43 tapped the username field at 540,1105
+-- 01:59:43 typed the operator username (budi.santoso)
+-- 01:59:44 tapped the password field at 540,1265
+-- 01:59:45 typed the demo password (not shown)
+-- 01:59:45 pressed the keypad's go key
+-- 01:59:52 screencap 82_a2_simulated_after_signin_offer_check.png (362467 bytes)
+-- 01:59:52 tapped the app's biometric offer: "Not now" at 540,1444
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+-- 01:59:54 deep link demsdemo:///settings/preferences
+-- 01:59:59 segments: SIMULATED [92,1436][355,1530] selected; HEARTBEAT [365,1436][852,1530]; LIVE [863,1436][1009,1530]
+-- 01:59:59 labels: "Simulated" [92,1436][355,1530], "Simulated" [123,1451][323,1514], "mock-core heartbeat" [365,1436][852,1530], "mock-core heartbeat" [396,1451][820,1514], "Live" [863,1436][1009,1530], "Live" [894,1451][977,1514]
+-- 01:59:59 hint: "Simulated runs the Core inside the app. mock-core heartbeat follows the mock-core service on this computer. Live uses the Core server on this computer through adb reverse. The tablet must be paired." [84,1558][996,1823]
+-- 01:59:59 OK   SIMULATED is the selected segment
+-- 02:00:00 screencap 82_a3_simulated_preferences.png (310984 bytes)
+-- 02:00:02 tapped settings-core-link-LIVE at 936,1483
+-- 02:00:06 OK   the §3.3 dialog is open
+-- 02:00:06 dialog: "Switch to Live mode?, You will be signed out and the console reloads. Simulated data and Live data are separate." [53,944][1028,1480] | "Switch to Live mode?" [105,996][975,1070] | "You will be signed out and the console reloads. Simulated data and Live data are separate." [105,1070][975,1259] | "Cancel" [237,1302][466,1428] | "Cancel" [281,1333][421,1396] | "Switch to Live mode" [487,1302][976,1428] | "Switch to Live mode" [529,1333][934,1396]
+-- 02:00:06 screencap 82_a4_dialog_to_live.png (340350 bytes)
+-- 02:00:08 tapped settings-core-mode-confirm at 732,1365
+-- 02:00:10 OK   the Live source mounted after the confirm (runtime.live.ready)
+-- 02:00:10 OK   the switch was logged (settings.coreLink.switch)
+-- 02:00:10 LIVE Login mounted (its sign-in status request): GET /api/v1/auth/status 200
+-- 02:00:10 OK   landed on the LIVE Login (it asks for the sign-in status at mount)
+-- 02:00:10 OK   no Core sign-out for the SIMULATED -> LIVE switch (the simulator signed out locally)
+-- 02:00:15 screencap 82_a5_live_login_after_switch.png (1720489 bytes)
+-- 02:00:15 == B. LIVE: sign-in, Settings ==
+-- 02:00:15 tapped the username field at 540,1105
+-- 02:00:16 tapped the handwriting coach's Cancel (empty space when none) at 540,2338
+-- 02:00:17 tapped the username field at 540,1105
+-- 02:00:18 typed the operator username (andi.pratama)
+-- 02:00:19 tapped the password field at 540,1265
+-- 02:00:19 typed the demo password (not shown)
+-- 02:00:20 pressed the keypad's go key
+-- 02:00:21 the app's sign-in: POST /api/v1/auth/sign-in 200
+-- 02:00:28 screencap 82_b1_live_after_signin_offer_check.png (390173 bytes)
+-- 02:00:28 tapped the app's biometric offer: "Not now" at 540,1444
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+-- 02:00:30 deep link demsdemo:///settings/preferences
+-- 02:00:35 segments: SIMULATED [92,1436][355,1530]; HEARTBEAT [365,1436][852,1530]; LIVE [863,1436][1009,1530] selected
+-- 02:00:35 labels: "Simulated" [92,1436][355,1530], "Simulated" [123,1451][323,1514], "mock-core heartbeat" [365,1436][852,1530], "mock-core heartbeat" [396,1451][820,1514], "Live" [863,1436][1009,1530], "Live" [894,1451][977,1514]
+-- 02:00:35 OK   LIVE is the selected segment
+-- 02:00:35 screencap 82_b2_live_preferences.png (310702 bytes)
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+-- 02:00:35 deep link demsdemo:///settings/security
+-- 02:00:41 biometric switch: checked=false enabled=true
+-- 02:00:41 biometric texts: "Biometric sign-in" [42,210][1038,315] | "Biometric sign-in" [84,347][828,410] | "Biometric sign-in" [84,347][828,410] | "Fingerprint enrolled on this device. Biometric sign-in asks for this device's screen-lock check." [84,415][828,574] | "Biometric sign-in, off" [870,429][996,492]
+-- 02:00:41 OK   the LIVE wording of the switch (screen-lock sentence)
+-- 02:00:41 OK   no "Simulated identity binding" in LIVE
+-- 02:00:41 screencap 82_b3_live_security.png (244127 bytes)
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+-- 02:00:41 deep link demsdemo:///settings/maintenance
+-- 02:00:47 tapped settings-demo-trigger at 540,1369
+-- 02:00:50 FAIL the Demo controls panel is shown (DEMO_CONTROL and the demo flag)
+-- 02:00:50 maintenance texts: "Eight health checks on the Core, one after another." [84,325][996,451] | "DEMO" [857,725][996,777] | "DEMO" [878,730][975,772] | "The Core server runs a demonstration update: no software is installed." [84,946][996,1030] | "Install update" [84,1062][996,1209] | "Install update" [422,1098][731,1172] | "Demo controls" [45,1295][1035,1442] | "Demo controls" [182,1337][478,1400] | "DEMO" [510,1337][649,1389] | "DEMO" [531,1342][628,1384]
+-- 02:00:50 texts that say "simulat" on this screen: none
+-- 02:00:51 screencap 82_b4_live_maintenance_demo.png (191738 bytes)
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+-- 02:00:51 deep link demsdemo:///settings
+-- 02:00:56 tapped settings-account-row at 540,452
+-- 02:01:01 profile: "Role: Supervisor" [263,1075][1028,1128] | "Permissions" [53,1222][1028,1275] | "The Core server checks every action against your role." [53,2036][1028,2078]
+-- 02:01:01 permission rows: SESSION_START, SESSION_NOTE, EVIDENCE_VIEW, DIAGNOSTICS_RUN, EVIDENCE_REVIEW, EVIDENCE_EXPORT, AUDIT_EXPORT, PAIRING_MANAGE, USER_ADMIN, DEMO_CONTROL
+-- 02:01:01 screencap 82_b5_live_profile.png (239336 bytes)
+-- 02:01:04 tapped settings-profile-sheet-close at 986,938
+-- 02:01:05 == C. the segment SIMULATED: the dialog, the Core's sign-out, SIMULATED Login (the last mode) ==
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+-- 02:01:06 deep link demsdemo:///settings/preferences
+-- 02:01:11 tapped settings-core-link-SIMULATED at 224,1483
+-- 02:01:14 OK   the §3.3 dialog is open
+-- 02:01:14 dialog: "Switch to Simulated mode?, You will be signed out and the console reloads. Simulated data and Live data are separate." [53,944][1028,1480] | "Switch to Simulated mode?" [105,996][975,1070] | "You will be signed out and the console reloads. Simulated data and Live data are separate." [105,1070][975,1259] | "Cancel" [120,1302][349,1428] | "Cancel" [164,1333][304,1396] | "Switch to Simulated mode" [370,1302][976,1428] | "Switch to Simulated mode" [412,1333][934,1396]
+-- 02:01:15 screencap 82_c1_dialog_to_simulated.png (344692 bytes)
+-- 02:01:17 tapped settings-core-mode-confirm at 673,1365
+-- 02:01:19 the Core's sign-out: POST /api/v1/auth/sign-out 204
+-- 02:01:19 OK   the Core answered the sign-out (204) before the switch
+-- 02:01:19 OK   the simulator mounted after the sign-out (runtime.sim.hydrated)
+-- 02:01:25 screencap 82_c2_simulated_login_after_switch.png (1718888 bytes)
+-- 02:01:25 OK   nothing more goes to the Core server in SIMULATED
+-- 02:01:25 OK   credential/token lines in the JS log: 0
+-- 02:01:26 OK   demo operations sent: 0 (nothing was pressed in the panel)
+-- 02:01:26 OK   biometric enrolment requests: 0 (the switch was not pressed)
+-- 02:01:26 checks failed: 1
+-- flow exit: 1
+-- Core request lines of the sitting (method, path template, status):
+      2 DEMS-LIVE] GET /api/v1/auth/status 200
+      1 DEMS-LIVE] POST /api/v1/auth/touch 200
+      1 DEMS-LIVE] POST /api/v1/auth/sign-out 204
+      1 DEMS-LIVE] POST /api/v1/auth/sign-in 200
+      1 DEMS-LIVE] GET /api/v1/pairing/device 200
+      1 DEMS-LIVE] GET /api/v1/auth/session 401
+-- prefs after: {"coreLinkSource":"SIMULATED"}
+-- remove this row's dump file only: adb shell rm /sdcard/w82.xml
+   ls: /sdcard/w82.xml: No such file or directory
+-- lock at end: isKeyguardShowing=false
+[device-session phone 02:01:27] Metro 25480 stopped
+[device-session phone 02:01:27] session ended with status 1
+device session exit=1
+
+== 02:01:27 3. backend requests during the session
+      1 GET /api/v1/auth/session 401 principal=device
+      2 GET /api/v1/auth/status 200 principal=device
+      1 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/device 200 principal=device
+      1 POST /api/v1/auth/sign-in 200 principal=device
+      1 POST /api/v1/auth/sign-out 204 principal=operator
+      1 POST /api/v1/auth/touch 200 principal=operator
+-- demo operations in the server log (must be 0): 0
+-- bearer/cookie/credential lines in the server log (must be 0): 0
+
+== 02:01:27 4. stop the backend; nothing left
+lsof exit 1 (1 = none)
+
+reverse rules listed above (none expected)
+   audit_log                241
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 02:01:28 end
+exit=1

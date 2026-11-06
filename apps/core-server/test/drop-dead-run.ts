@@ -1,0 +1,46 @@
+// Removes the databases of ONE named run that was stopped before its teardown, through the test
+// helper's own guarded entry (`TestRun.dropDeadRun`, row W11b, decision D111; npm script added by
+// fix round B2b item 13, follow-up FU-DN-3). Nothing here builds a statement: the helper checks the
+// name, the liveness lock of the run and the sessions on its databases, and refuses when the run is
+// alive or somebody still works in it.
+//
+//   DEMS_TEST_STEP=<your row> npm run test:db:drop-run -w @dems/core-server -- dems_test_<label>_<stamp>_
+//
+// Role dems_owner on 127.0.0.1:4432 (the helper reads its connection file itself). Prints names,
+// counts and times; never a credential.
+import { DbTestHelperError } from './helpers/db/errors';
+import { TestRun } from './helpers/db/run';
+
+const prefix = process.argv[2];
+if (process.argv.length !== 3 || prefix === undefined) {
+  console.error('usage: drop-dead-run.ts <run prefix: dems_test_<label>_<stamp>_>   (one prefix, exactly)');
+  process.exit(2);
+}
+
+function clock(): string {
+  const now = new Date();
+  return `${now.toTimeString().slice(0, 8)}.${String(now.getMilliseconds()).padStart(3, '0')}`;
+}
+
+// A run of its own, as every caller of the helper has: it creates no database.
+const run = await TestRun.start({ resolveDefinition: async () => null });
+let code = 0;
+try {
+  console.log(`[${clock()}] caller: run ${run.identity.prefix}* as ${run.server.role} on ${run.server.address}:${run.server.port}, PostgreSQL ${run.server.version}`);
+  console.log(`[${clock()}] asked to remove the run ${prefix}*`);
+  const report = await run.dropDeadRun(prefix);
+  console.log(`[${clock()}] dropped ${report.dropped.length} database(s) in ${Math.round(report.ms)} ms:`);
+  for (const name of report.dropped) console.log(`    ${name}`);
+  console.log(`    remaining with that prefix: ${report.remaining.length}${report.remaining.length > 0 ? ` (${report.remaining.join(', ')})` : ''}`);
+  for (const failure of report.failed) console.log(`    not dropped ${failure.name}: ${failure.reason}`);
+  console.log(`    forced drops that needed a retry: ${run.retriedDrops.length}`);
+  if (report.remaining.length > 0) code = 1;
+} catch (error) {
+  code = 1;
+  if (error instanceof DbTestHelperError) console.log(`[${clock()}] REFUSED (${error.code}): ${error.message}`);
+  else throw error;
+} finally {
+  const end = await run.teardown();
+  console.log(`[${clock()}] caller's run closed: dropped ${end.dropped.length}, remaining ${end.remaining.length}`);
+}
+process.exit(code);

@@ -1,0 +1,13 @@
+10:49:50.345 key 4
+10:49:50.758 slept 1500 ms
+10:49:52.389 screencap 99d_retest_back_guard_dialog.png 10:49:52.389..10:49:53.525
+10:49:53.644 device-host clock offset ms: -247, -256, -258, -255, -248
+10:49:54.100 screenrecord retest_go_home started (pid 16358) at 10:49:54.704
+10:49:55.025 mark r02 at 10:49:55.025
+10:49:55.203 tap 539,1380
+10:49:55.752 slept 8000 ms
+10:50:03.846 screenrecord retest_go_home pulled; frames extracted at 5 fps
+10:50:08.670 declared screen unknown
+10:50:08.744 screencap 99e_retest_after_go_home.png 10:50:08.744..10:50:09.472
+10:50:09.547 serverlog since r02 (0):
+    

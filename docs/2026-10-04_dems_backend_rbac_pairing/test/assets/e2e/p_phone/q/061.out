@@ -1,0 +1,17 @@
+10:27:15.554 mark b04 at 10:27:15.554
+10:27:15.630 tap 244,2252
+10:27:15.942 slept 2500 ms
+10:27:18.476 declared screen home
+10:27:18.506 screencap 59_sc3_s3_phone_home_after_done.png 10:27:18.506..10:27:18.739
+10:27:18.772 corelog (1): 10:27:15.696 POST /api/v1/session/{id}/summary/acknowledge 204
+10:27:18.844 press sm-final-close ok at 10:27:18.900
+10:27:18.990 slept 800 ms
+10:27:19.813 nav / load=true
+10:27:23.030 wait page-dashboard present: 0 ms (at 10:27:23.030)
+10:27:23.107 screenshot 59w_sc3_s3_web_dashboard_idle.png 10:27:23.107..10:27:23.288
+10:27:23.375 js => {"idle":false,"rec":false}
+10:27:23.446 serverlog since b04 (4):
+    10:27:15.956 POST /api/v1/session/:id/summary/acknowledge 204 operator:OPR-001
+    10:27:19.826 [socket closed] operator:OPR-002
+    10:27:19.914 GET /api/v1/auth/session 200 operator:OPR-002
+    10:27:19.923 [socket opened] operator:OPR-002

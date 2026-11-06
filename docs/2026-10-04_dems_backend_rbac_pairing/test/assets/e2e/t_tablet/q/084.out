@@ -1,0 +1,6 @@
+swipe 1920,1350,1920,450 600 ms
+slept 1200 ms
+swipe 1920,1350,1920,450 600 ms
+slept 1500 ms
+screencap B31c_tablet_custody_after_web_verify.png (728514 bytes) at 10:48:22.898
+ids: 155 nodes -> q/tablet_custody_after_verify.txt

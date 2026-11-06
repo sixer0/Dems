@@ -1,0 +1,90 @@
+--- .cache/rollback/W12d.core-client.ts.pre	2026-10-04 11:07:32
++++ packages/shared/src/client/core-client.ts	2026-10-04 11:07:32
+@@ -239,12 +239,18 @@
+ type QueryOf<Op> = Op extends { readonly query: { readonly schema: infer Name } }
+   ? { readonly query?: SchemaInput<Name> }
+   : { readonly query?: CoreQuery };
++
++/**
++ * The three parts of one operation's input. Distributive on purpose: for a union of operations it
++ * gives one intersection per operation. Written as `ParamsOf<U> & BodyOf<U> & QueryOf<U>` over a
++ * union `U`, the compiler would build the cross product of three unions, which for a table of n
++ * operations has n * n * n members and is refused above 100,000 (TS2590): that is n = 47.
++ */
++type InputOfOperation<Op> = Op extends unknown ? ParamsOf<Op> & BodyOf<Op> & QueryOf<Op> : never;
+ 
+ /** The typed input of operation `Id`. Loose when the table is not `as const`. */
+ export type CoreCallInput<Ops extends CoreOperationTable, Id extends string> =
+-  IsLiteralTable<Ops> extends true
+-    ? ParamsOf<OperationOf<Ops, Id>> & BodyOf<OperationOf<Ops, Id>> & QueryOf<OperationOf<Ops, Id>>
+-    : CoreLooseCallInput;
++  IsLiteralTable<Ops> extends true ? InputOfOperation<OperationOf<Ops, Id>> : CoreLooseCallInput;
+ 
+ /** The typed success of operation `Id`: one member per documented 2xx status. `unknown` data when the table is not `as const`. */
+ export type CoreCallSuccessOf<Ops extends CoreOperationTable, Id extends string> =
+--- .cache/rollback/W12d.client-core.test.ts.pre	2026-10-04 11:07:32
++++ packages/shared/test/client-core.test.ts	2026-10-04 11:07:32
+@@ -480,9 +480,14 @@
+ 
+   it('each of them resolves as a success with undefined data', async () => {
+     for (const operation of BODILESS) {
+-      const requestExample = Object.values(CORE_API_EXAMPLES[operation.operationId]?.request ?? {})[0]?.value;
++      const examples = CORE_API_EXAMPLES[operation.operationId];
++      const requestExample = Object.values(examples?.request ?? {})[0]?.value;
+       const { client } = mobileClient(() => ({ status: 204 }));
+-      const result = await client.call(operation.operationId, requestExample !== undefined ? { body: requestExample } : {});
++      // Contract C: ten of the 204 operations have a path parameter (`cancelSession`, `archiveEvidence`, ...).
++      const result = await client.call(operation.operationId, {
++        ...(examples?.pathParams ? { params: examples.pathParams } : {}),
++        ...(requestExample !== undefined ? { body: requestExample } : {}),
++      });
+       expect(result, operation.operationId).toMatchObject({ ok: true, status: 204, data: undefined });
+     }
+   });
+--- .cache/rollback/W12d.client-types.test.ts.pre	2026-10-04 11:07:32
++++ packages/shared/test/client-types.test.ts	2026-10-04 11:07:54
+@@ -30,6 +30,7 @@
+   type CoreFetch,
+   type CoreLooseCallInput,
+   type CoreOperationId,
++  type CoreQuery,
+   type RegistryTable,
+ } from '../src/client';
+ 
+@@ -204,7 +205,35 @@
+     expect(started.data.state).toBe('RECORDING');
+   });
+ 
+-  // Never run: each line must be a compile error.
++  it('the input type of the full registry can be evaluated: one intersection per operation, not a cross product (TS2590)', () => {
++    // Regression for contract C (75 operations). Written as `ParamsOf<U> & BodyOf<U> & QueryOf<U>` over
++    // the union U of all operations, the input type is a cross product of n * n * n members, and the
++    // compiler refuses a union above 100,000 (n = 47): the first typed `client.call` of a program
++    // then fails with TS2590 and NO later call is type-checked (the `misuse` lines below were reported
++    // as unused `@ts-expect-error`). `InputOfOperation` in core-client.ts distributes over the union.
++    expect(CORE_API_OPERATIONS.length).toBeGreaterThanOrEqual(47); // large enough to reach the limit
++
++    // The input over ALL operation IDs, as the compiler sees it in the generic `call` signature.
++    type AnyInput = CoreCallInput<RegistryTable, CoreOperationId>;
++    expectTypeOf<AnyInput>().not.toBeAny();
++    expectTypeOf<AnyInput>().not.toBeNever();
++
++    // For a literal ID: exactly that operation's three parts, in one member.
++    type ExportInput = CoreCallInput<RegistryTable, 'exportEvidence'>;
++    expectTypeOf<ExportInput>().toEqualTypeOf<
++      { readonly params: { readonly id: string } } & { readonly body: EvidenceExportRequest } & { readonly query?: CoreQuery }
++    >();
++    expectTypeOf<{ readonly params: { readonly id: string }; readonly body: EvidenceExportRequest }>().toExtend<ExportInput>();
++    // A cross product would let one operation's path parameter stand without that operation's body. It does not:
++    expectTypeOf<{ readonly params: { readonly id: string } }>().not.toExtend<ExportInput>();
++    expectTypeOf<{ readonly body: EvidenceExportRequest }>().not.toExtend<ExportInput>();
++    // And each operation's input is one member of the input over all IDs.
++    expectTypeOf<ExportInput>().toExtend<AnyInput>();
++  });
++
++  // Never run: each line must be a compile error. They are also the other half of the TS2590
++  // regression: with the cross product in place the compiler stopped checking typed calls, and every
++  // directive below was reported as unused.
+   const misuse = (): void => {
+     // @ts-expect-error an ID the registry does not hold
+     void client.call('noSuchOperation');

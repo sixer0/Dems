@@ -1,0 +1,442 @@
+// W75 lane check: the Security & Audit page (sites A9, A7; the lineage line; the matrix) in Live mode in a real
+// headless Chromium, over raw CDP (Node's built-in WebSocket; no install). The helpers (lines up to
+// `takeNetwork`) are W55's driver as W63 used it, unchanged except the operators it reads; the steps
+// are this row's. Sign-ins go THROUGH THE FORM, from the project's own seed constants. A9 is pressed
+// on the chain panel; A7 exports with a reason and the downloaded file is read back (row count only).
+// Usage: node --import tsx .cache/w75/lane/cdp-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+//
+// What is never stored or printed: a request body, a cookie value, the seeded password, a
+// `Runtime.evaluate` expression. Cookie values are cut to their length; URLs lose their query
+// values; only named elements and booleans are read from the pages.
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { join } from 'node:path'
+// The seeded demo operator, read from the project's own seed source (never printed).
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+const investigator = OPERATORS.find((operator) => operator.role === 'INVESTIGATOR')
+if (!supervisor || !investigator || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source has no SUPERVISOR, no INVESTIGATOR or no demo password constant')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map() // requestId -> { method, url, status }
+let sockets = new Map() // requestId -> { url, status, frames: [type...], cookieSent }
+let consoleLines = []
+let loadFired = false
+
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+const typeOf = (payload) => {
+  try {
+    return JSON.parse(payload).type ?? '(no type)'
+  } catch {
+    return '(not JSON)'
+  }
+}
+const pick = (headers, name) => {
+  for (const [key, value] of Object.entries(headers ?? {})) if (key.toLowerCase() === name) return value
+  return null
+}
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    // The error of a failed call is reported by its code only: its text can quote the expression.
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      // Never `p.request.postData`.
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Network.webSocketCreated':
+      sockets.set(p.requestId, { url: cleanUrl(p.url), status: null, frames: [] })
+      break
+    case 'Network.webSocketWillSendHandshakeRequest': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.cookieSent = pick(p.request.headers, 'cookie') ? 'yes (value not recorded)' : 'no'
+      break
+    }
+    case 'Network.webSocketHandshakeResponseReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.webSocketFrameReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry && entry.frames.length < 400) entry.frames.push(typeOf(p.response.payloadData))
+      break
+    }
+    case 'Network.webSocketClosed': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.closed = true
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 420)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+
+/** Runs page script. A failure is reported without the expression and without the page's own message. */
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs) // the dev client's socket, the lazy route chunk, the entrance motion
+  return loadFired
+}
+
+/** Waits until the page holds (or no longer holds) an element with this test ID. Returns whether it did in time. */
+const waitFor = async (testId, present = true, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`document.querySelector('[data-testid="${testId}"]') !== null`, `wait ${testId}`)
+    if (found === present) return true
+    await sleep(150)
+  }
+  return false
+}
+
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  const file = join(assetsDir, name)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return file
+}
+
+/** Types into the input of a field by script: focus, select what is there, insert. The text is not echoed. */
+const typeInto = async (fieldTestId, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector('[data-testid="${fieldTestId}"] input'); if (!el) return false; el.focus(); el.select(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const press = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`)
+
+/** What the page did since the last call, and a new record for what follows. */
+const takeNetwork = () => {
+  const taken = {
+    api: [...requests.values()].filter((entry) => entry.url.includes('/api/v1/')),
+    origins: [...new Set([...requests.values()].map((entry) => { try { return new URL(entry.url).origin } catch { return '(other)' } }))].sort(),
+    sockets: [...sockets.values()]
+      .filter((entry) => entry.url.endsWith('/ws'))
+      .map((entry) => ({ url: entry.url, status: entry.status, cookieSent: entry.cookieSent ?? null, closed: entry.closed === true, frameCount: entry.frames.length, firstTypes: entry.frames.slice(0, 4), distinctTypes: [...new Set(entry.frames)].sort() })),
+    console: consoleLines,
+  }
+  requests = new Map()
+  sockets = new Map()
+  consoleLines = []
+  return taken
+}
+
+
+
+
+// ════════════════════════════════════ W75: the steps ════════════════════════════════════
+
+const DOWNLOADS = join(process.cwd(), '.cache/w75/lane/out/downloads')
+const EXPORT_REASON = 'W75 lane check of the audit export file'
+
+/** Named facts of the Security & Audit page, and booleans over its words (the page holds no credential). */
+const auditFacts = (label) =>
+  evaluate(
+    `(() => {
+      const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+      const text = (id) => q(id)?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+      const labels = [...document.body.querySelectorAll('[aria-label], [title], [alt]')].map((el) => ['aria-label', 'title', 'alt'].map((n) => el.getAttribute(n) ?? '').join(' ')).join(' ')
+      const words = (document.body.textContent ?? '') + ' ' + labels
+      const matrix = q('rbac-matrix')
+      return {
+        href: location.origin + location.pathname,
+        onPage: q('page-security-audit') !== null,
+        shellMode: text('shell-mode'),
+        shellCoreMode: document.querySelector('.dems-shell')?.getAttribute('data-core-mode') ?? null,
+        bannerState: q('security-banner')?.getAttribute('data-state') ?? null,
+        banner: text('security-banner'),
+        posture: text('posture-state'),
+        controls: [...document.querySelectorAll('[data-control]')].map((el) => el.getAttribute('data-control') + ':' + el.getAttribute('data-status')),
+        chainStatus: q('chain-status')?.getAttribute('data-chain-status') ?? null,
+        chainStatusText: text('chain-status'),
+        verified: q('chain-verified')?.getAttribute('data-verified') ?? null,
+        verifiedText: text('chain-verified'),
+        stored: text('chain-stored'),
+        storedState: q('chain-stored')?.getAttribute('data-stored') ?? null,
+        earlier: text('chain-earlier'),
+        earlierEntries: [...document.querySelectorAll('[data-testid="chain-earlier-entry"]')].map((el) => el.textContent?.replace(/\\s+/g, ' ').trim()),
+        auditCount: q('panel-audit')?.querySelector('.sa-card-subtitle')?.textContent ?? null,
+        matrixSource: matrix?.getAttribute('data-matrix-source') ?? null,
+        matrixRows: matrix ? matrix.querySelectorAll('[role="row"]').length : null,
+        matrixState: q('rbac-matrix-loading') ? 'loading' : q('rbac-matrix-failed') ? 'failed' : matrix ? 'table' : null,
+        rbacSubtitle: q('panel-rbac')?.querySelector('.sa-card-subtitle')?.textContent ?? null,
+        operators: [...document.querySelectorAll('[data-operator]')].map((el) => el.getAttribute('data-operator')),
+        authFeed: [...(q('auth-feed')?.querySelectorAll('li') ?? [])].slice(0, 5).map((el) => el.textContent?.replace(/\\s+/g, ' ').trim()),
+        exportButtonDisabled: q('export-audit')?.getAttribute('aria-disabled') === 'true' || q('export-audit')?.hasAttribute('data-disabled'),
+        dialog: q('export-audit-dialog') !== null,
+        dialogText: text('export-audit-dialog'),
+        result: text('export-audit-result'),
+        fileRows: q('export-audit-file')?.getAttribute('data-rows') ?? null,
+        pages: text('export-audit-pages'),
+        saysSimulated: /simulat/i.test(words),
+        simulatedWords: (words.match(/[^.]{0,40}simulat[^.]{0,30}/gi) ?? []).slice(0, 6),
+        toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((el) => el.textContent?.replace(/\\s+/g, ' ').trim()),
+      }
+    })()`,
+    label,
+  )
+
+const waitToast = async (needle, timeoutMs = 10000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`[...document.querySelectorAll('[data-slot="toast"]')].some((el) => (el.textContent ?? '').includes(${JSON.stringify(needle)}))`, 'toast')
+    if (found) return true
+    await sleep(150)
+  }
+  return false
+}
+const signInThroughTheForm = async (operator, label) => {
+  await waitFor('page-login', true, 15000)
+  await typeInto('login-username-field', operator.username, `${label} username`)
+  await typeInto('login-password-field', DEMO_OPERATOR_PASSWORD, `${label} password`)
+  await press('login-submit')
+  const arrived = await waitFor('page-dashboard', true, 25000)
+  await sleep(2500)
+  return arrived
+}
+const signOutByPage = async () => {
+  const answer = await evaluate(
+    `(async () => { const r = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return { status: r.status } })()`,
+    'sign-out',
+  )
+  const back = await waitFor('page-login', true, 15000)
+  await sleep(1500)
+  return { ...answer, loginShown: back }
+}
+const openPage = async (path, testId, lastPanel) => {
+  await navigate(`${ORIGIN}${path}`, 2500)
+  const shown = await waitFor(testId, true, 20000)
+  if (lastPanel) await waitFor(lastPanel, true, 15000)
+  await sleep(3000)
+  return shown
+}
+/** The Core's own security status (operation 58) and chain status (operation 60), by page requests with the page's cookie. */
+const coreStatus = () =>
+  evaluate(
+    `(async () => {
+      const s = await fetch('/api/v1/security/status', { credentials: 'same-origin' }); let sb = null; try { sb = await s.json() } catch {}
+      return { status: s.status, posture: sb?.security?.posture ?? null, tamper: sb?.security?.tamper ?? null, auditTotal: sb?.auditTotal ?? null, auditHead: typeof sb?.auditHead === 'string' ? sb.auditHead.slice(0, 16) : null, securityKeys: sb?.security ? Object.keys(sb.security) : null, securityFlags: sb?.security ? Object.fromEntries(Object.entries(sb.security).filter(([, v]) => typeof v !== 'object')) : null }
+    })()`,
+    'core status',
+  )
+
+const started = Date.now()
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false })
+mkdirSync(DOWNLOADS, { recursive: true })
+await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: DOWNLOADS, eventsEnabled: true })
+const version = await send('Browser.getVersion')
+const result = { browser: { product: version.product, userAgent: version.userAgent, headless: /Headless/i.test(version.userAgent) }, viewport: '1920x1080', steps: {} }
+
+// ── 1. Live, the seeded SUPERVISOR through the form; the Security & Audit page on the Core's data ──
+await navigate(`${ORIGIN}/login`)
+const loginMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+takeNetwork()
+const arrived = await signInThroughTheForm(supervisor, 'supervisor')
+const shown = await openPage('/security-audit', 'page-security-audit', 'panel-rbac')
+await waitFor('rbac-matrix', true, 15000)
+await sleep(1500)
+const statusBefore = await coreStatus()
+result.steps.livePage = { loginCoreMode: loginMode, signedIn: arrived, shown, coreStatus: statusBefore, facts: await auditFacts('live page'), screenshot: await screenshot('75_security_audit_live.png'), network: takeNetwork() }
+// F63-6: the shell's integrity pill beside the page's posture; which check of the pill is not OK.
+await press('secure-pill')
+await waitFor('integrity-checklist', true, 5000)
+await sleep(600)
+result.steps.shellPill = {
+  pill: await evaluate(`document.querySelector('[data-testid="secure-pill"]')?.textContent?.replace(/\\s+/g, ' ').trim() ?? null`, 'pill text'),
+  checks: await evaluate(`[...document.querySelectorAll('[data-testid="integrity-checklist"] li')].map((el) => (el.getAttribute('data-status') ?? '') + ' | ' + (el.textContent ?? '').replace(/\\s+/g, ' ').trim())`, 'pill checks'),
+  tabletLink: await evaluate(`(async () => { const r = await fetch('/api/v1/devices', { credentials: 'same-origin' }); return { status: r.status } })()`, 'devices status'),
+  screenshot: await screenshot('75_shell_pill_live.png'),
+}
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+await sleep(500)
+// The matrix panel, scrolled into view.
+await evaluate(`document.querySelector('[data-testid="panel-rbac"]')?.scrollIntoView({ block: 'center' }); true`, 'scroll rbac')
+await sleep(800)
+result.steps.liveMatrix = { screenshot: await screenshot('75_rbac_matrix_live.png') }
+
+// ── 2. A9: Verify chain; the stored-chain line; the lineage line when the Core has one ──
+await evaluate(`document.querySelector('[data-testid="panel-chain"]')?.scrollIntoView({ block: 'center' }); true`, 'scroll chain')
+await sleep(500)
+await press('verify-chain')
+const verifiedShown = await waitFor('chain-verified', true, 10000)
+await sleep(1200)
+const chainFacts = await auditFacts('after verify')
+const chainShot = await screenshot('75_chain_verified_live.png')
+let lineage = null
+if (chainFacts.earlier) {
+  await press('chain-earlier')
+  const listed = await waitFor('chain-earlier-list', true, 5000)
+  await sleep(600)
+  lineage = { listed, facts: (await auditFacts('lineage list')).earlierEntries, screenshot: await screenshot('75_chain_lineage_live.png') }
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await sleep(500)
+}
+const chainCore = await evaluate(
+  `(async () => { const r = await fetch('/api/v1/audit/chain', { credentials: 'same-origin' }); let b = null; try { b = await r.json() } catch {} return { status: r.status, view: b?.view ?? null, stored: b?.stored ? { ...b.stored, head: String(b.stored.head).slice(0, 16) } : null, lineageTotal: b?.lineageTotal ?? null, lineage: (b?.lineage ?? []).map((e) => ({ epoch: e.epoch, rows: e.rows, head: String(e.head).slice(0, 12), resetAt: e.resetAt, actorId: e.actorId, scenario: e.scenario, reason: e.reason })) } })()`,
+  'chain status',
+)
+result.steps.verify = { verifiedShown, facts: { verified: chainFacts.verified, verifiedText: chainFacts.verifiedText, stored: chainFacts.stored, storedState: chainFacts.storedState, earlier: chainFacts.earlier, chainStatus: chainFacts.chainStatus }, coreChainStatusByPageRequest: chainCore, screenshot: chainShot, lineage, network: takeNetwork() }
+
+// ── 3. A7: Export audit with a reason; the file built from all pages of operation 59 ──
+await evaluate(`document.querySelector('[data-testid="panel-audit"]')?.scrollIntoView({ block: 'start' }); true`, 'scroll audit')
+await sleep(500)
+const before = await coreStatus()
+await press('export-audit')
+const dialogShown = await waitFor('export-audit-dialog', true, 8000)
+await sleep(800)
+const focused = await evaluate(`(() => { const el = document.querySelector('[data-testid="export-audit-dialog"] textarea'); if (!el) return false; el.focus(); return document.activeElement === el })()`, 'focus reason')
+if (focused) await send('Input.insertText', { text: EXPORT_REASON })
+await sleep(400)
+const dialogFacts = await auditFacts('dialog')
+const dialogShot = await screenshot('75_export_dialog_live.png')
+await press('export-confirm')
+const accepted = await waitToast('Audit export accepted by the Core', 15000)
+const resultShown = await waitFor('export-audit-result', true, 30000)
+await sleep(1500)
+const exportFacts = await auditFacts('after export')
+const exportShot = await screenshot('75_export_live.png')
+// The file the page handed to the browser.
+let file = null
+for (let i = 0; i < 60 && !file; i++) {
+  // The newest file (a later pass must not read an earlier pass's file; fixed after pass 2, see the row's document §8).
+  const names = readdirSync(DOWNLOADS).filter((name) => name.endsWith('.json') && statSync(join(DOWNLOADS, name)).mtimeMs >= started)
+  if (names.length > 0) {
+    const name = names.sort((x, y) => statSync(join(DOWNLOADS, y)).mtimeMs - statSync(join(DOWNLOADS, x)).mtimeMs)[0]
+    const text = readFileSync(join(DOWNLOADS, name), 'utf8')
+    const parsed = JSON.parse(text)
+    const seqs = parsed.rows.map((row) => row.seq)
+    file = {
+      name,
+      bytes: Buffer.byteLength(text),
+      sha256: createHash('sha256').update(text).digest('hex'),
+      kind: parsed.kind,
+      exportId: parsed.exportId,
+      rows: parsed.rows.length,
+      firstSeq: seqs[0] ?? null,
+      lastSeq: seqs.at(-1) ?? null,
+      contiguous: seqs.every((seq, index) => seq === index + 1),
+      chain: { rows: parsed.chain.rows, head: String(parsed.chain.head).slice(0, 16) },
+      containsAuditExported: parsed.rows.some((row) => row.type === 'AUDIT_EXPORTED' && row.details?.exportId === parsed.exportId),
+    }
+  } else await sleep(250)
+}
+const after = await coreStatus()
+const exportRow = await evaluate(
+  `(async () => { const r = await fetch('/api/v1/audit?order=DESC&limit=5', { credentials: 'same-origin' }); let b = null; try { b = await r.json() } catch {} const row = (b?.rows ?? []).find((x) => x.type === 'AUDIT_EXPORTED'); return row ? { seq: row.seq, actorId: row.actorId, exportId: row.details?.exportId ?? null, detailsRows: row.details?.rows ?? null, prevHash: String(row.prevHash).slice(0, 16), reasonRecorded: row.details?.reason === ${JSON.stringify(EXPORT_REASON)}, destination: row.details?.destination ?? null } : null })()`,
+  'export row',
+)
+result.steps.export = { dialogShown, dialog: { destinationLine: dialogFacts.dialogText, saysSimulated: /simulat/i.test(dialogFacts.dialogText ?? '') }, dialogScreenshot: dialogShot, accepted, resultShown, facts: { result: exportFacts.result, fileRows: exportFacts.fileRows, toasts: exportFacts.toasts }, screenshot: exportShot, coreStatusBefore: before, coreStatusAfter: after, file, exportRowOnTheCore: exportRow, network: takeNetwork() }
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+await sleep(600)
+
+// ── 4. Simulated mode (the stored choice wins over the lane's preset; F63-3: the simulator's stored sign-in) ──
+{
+  const signOut = await signOutByPage()
+  await evaluate(`localStorage.setItem('dems.core.mode.v1', 'SIMULATED')`, 'store SIMULATED')
+  takeNetwork()
+  await navigate(`${ORIGIN}/login`)
+  await waitFor('page-login', true, 15000)
+  const coreMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+  await sleep(1200)
+  await evaluate(`sessionStorage.setItem('dems.auth', JSON.stringify({ operatorId: ${JSON.stringify(supervisor.id)}, issuedAt: Date.now() }))`, 'simulated stored sign-in')
+  const pageShown = await openPage('/security-audit', 'page-security-audit', 'panel-rbac')
+  await evaluate(`document.querySelector('[data-testid="panel-chain"]')?.scrollIntoView({ block: 'center' }); true`, 'scroll chain')
+  await press('verify-chain')
+  await waitFor('chain-verified', true, 10000)
+  await sleep(1200)
+  const facts = await auditFacts('simulated page')
+  const shot = await screenshot('75_security_audit_simulated.png')
+  await evaluate(`window.scrollTo(0, 0); true`, 'top')
+  await sleep(500)
+  const topShot = await screenshot('75_security_audit_simulated_top.png')
+  const network = takeNetwork()
+  result.steps.simulated = {
+    signOutOfLive: signOut,
+    loginCoreMode: coreMode,
+    signInPath: 'stored simulated sign-in (dems.auth), F63-3',
+    pageShown,
+    facts,
+    screenshot: shot,
+    topScreenshot: topShot,
+    apiRequestsToTheDevServer: network.api.length,
+    socketsToTheDevServerWs: network.sockets.filter((s) => s.url.startsWith(`ws://127.0.0.1:${vitePort}/ws`)).length,
+    network,
+  }
+  await evaluate(`localStorage.removeItem('dems.core.mode.v1'); sessionStorage.removeItem('dems.auth')`, 'leave the origin as found')
+}
+result.elapsedSeconds = Math.round((Date.now() - started) / 1000)
+
+let text = JSON.stringify(result, null, 2)
+if (text.includes(DEMO_OPERATOR_PASSWORD)) text = text.split(DEMO_OPERATOR_PASSWORD).join('***')
+text = text.replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+writeFileSync(outJson, `${text}\n`)
+console.log(`the output held the seeded password before redaction: ${JSON.stringify(result).includes(DEMO_OPERATOR_PASSWORD)}`)
+console.log(`elapsed ${result.elapsedSeconds} s`)
+ws.close()

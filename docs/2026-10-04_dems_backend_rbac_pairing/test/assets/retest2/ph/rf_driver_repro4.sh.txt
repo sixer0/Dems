@@ -1,0 +1,7 @@
+#!/bin/bash
+cd /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/rfph
+until [ "$(date +%H%M%S)" \> "181215" ]; do sleep 5; done
+for i in 1 2 3 4; do
+  printf "mark r4_$i\np top\np shot rfph4_repro_0${i}\np corelog 6\n" | node send.mjs q_phone 60
+  sleep 55
+done

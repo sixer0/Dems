@@ -1,0 +1,45 @@
+{
+  "SPAudioDataType" : [
+    {
+      "_items" : [
+        {
+          "_name" : "DEMS Aggregate Room",
+          "coreaudio_device_input" : 7,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_aggregate"
+        },
+        {
+          "_name" : "DEMS Hexa 6",
+          "coreaudio_device_input" : 6,
+          "coreaudio_device_output" : 6,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_usb"
+        },
+        {
+          "_name" : "DEMS Wireless Headset",
+          "coreaudio_device_input" : 1,
+          "coreaudio_device_srate" : 16000,
+          "coreaudio_device_transport" : "coreaudio_device_type_bluetooth"
+        },
+        {
+          "_name" : "DEMS Network Stage Box",
+          "coreaudio_device_input" : 8,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_avb"
+        },
+        {
+          "_name" : "DEMS No Transport Word",
+          "coreaudio_device_input" : 2,
+          "coreaudio_device_srate" : 48000
+        },
+        {
+          "_name" : "DEMS Built-in Input",
+          "coreaudio_device_input" : 1,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_builtin"
+        }
+      ],
+      "_name" : "coreaudio_device"
+    }
+  ]
+}

@@ -1,0 +1,179 @@
+### 001.cmd
+# Login, fixed coordinates (phone portrait 1080x2424)
+shot login_live
+tap 540 1105
+sleep 900
+username
+sleep 400
+tap 540 1265
+sleep 900
+focus
+### 001.out
+screencap 72_phone_login_live.png (1720479 bytes)
+tap 540,1105
+slept 900 ms
+username typed (budi.santoso); editor inputType 0x80001
+slept 400 ms
+tap 540,1265
+slept 900 ms
+focused true; editor inputType 0x80081
+screencap 001.png (1232184 bytes)
+### 002.cmd
+# typed only if the IME reports a password field
+password
+sleep 300
+key 66
+waitlog signin 30
+sleep 4500
+### 002.out
+password typed (not shown); editor inputType 0x80081
+slept 300 ms
+key 66
+signin 200 (POST /api/v1/auth/sign-in 200)
+slept 4500 ms
+screencap 002.png (394991 bytes)
+### 003.cmd
+# the app's biometric offer: Not now; then the Sessions hub
+shot home_offer_live
+tap 541 1441
+sleep 1500
+link demsdemo:///sessions
+sleep 3000
+shot hub_live_before
+ids sessions
+### 003.out
+screencap 72_phone_home_offer_live.png (394991 bytes)
+tap 541,1441
+slept 1500 ms
+deep link demsdemo:///sessions
+slept 3000 ms
+screencap 72_phone_hub_live_before.png (523448 bytes)
+ids: screen-sessions[0,0][1080,2204] sessions-list[0,63][1080,2204] sessions-refresh[0,210][1080,2204] sessions-rows[0,210][1080,2204] sessions-start[42,210][1038,357] sessions-search[42,389][1038,515] sessions-filters[42,546][771,620] sessions-filter-ALL[42,546][140,620] sessions-filter-SEALED[155,546][329,620] sessions-filter-INCOMPLETE[345,546][594,620] sessions-filter-TODAY[610,546][771,620] session-row-SES-20261005-0026[42,652][1038,921] session-row-id-SES-20261005-0026[331,678][793,726] session-row-status-SES-20261005-0026[823,726][1012,778] session-row-subject-SES-20261005-0026[331,842][534,894] session-row-duration-SES-20261005-0026[555,847][709,889] session-row-SES-20261005-0023[42,947][1038,1216] session-row-id-SES-20261005-0023[331,973][793,1021] session-row-status-SES-20261005-0023[823,1021][1012,1073] session-row-subject-SES-20261005-0023[331,1137][534,1189] session-row-duration-SES-20261005-0023[555,1142][709,1184] session-row-SES-20261005-0022[42,1242][1038,1511] session-row-id-SES-20261005-0022[331,1268][793,1316] session-row-status-SES-20261005-0022[823,1316][1012,1368] session-row-subject-SES-20261005-0022[331,1432][456,1484] session-row-duration-SES-20261005-0022[477,1437][631,1479] session-row-SES-20261005-0021[42,1537][1038,1806] session-row-id-SES-20261005-0021[331,1563][793,1611] session-row-status-SES-20261005-0021[823,1611][1012,1663] session-row-subject-SES-20261005-0021[331,1727][456,1779] session-row-duration-SES-20261005-0021[477,1732][631,1774] session-row-SES-20261005-0020[42,1832][1038,2101] session-row-id-SES-20261005-0020[331,1858][793,1906] session-row-status-SES-20261005-0020[823,1906][1012,1958] session-row-subject-SES-20261005-0020[331,2022][492,2074] session-row-duration-SES-20261005-0020[513,2027][667,2069] session-row-SES-20261005-0019[42,2127][1038,2204] session-row-id-SES-20261005-0019[331,2153][793,2201] session-row-status-SES-20261005-0019[823,2201][1012,2204]
+screencap 003.png (523460 bytes)
+### 004.cmd
+# Start Session step 1 (W67's measured centres): fill-in number, Saksi... TERSANGKA chip, name
+link demsdemo:///session/new?step=1
+sleep 3000
+tap 912 668
+sleep 700
+tap 229 915
+sleep 700
+tap 540 1230
+sleep 900
+text W72 Device Check
+sleep 1200
+ids session-new
+### 004.out
+deep link demsdemo:///session/new?step=1
+slept 3000 ms
+tap 912,668
+slept 700 ms
+tap 229,915
+slept 700 ms
+tap 540,1230
+slept 900 ms
+text typed (W72 Device Check); editor inputType 0x2001
+slept 1200 ms
+ids: screen-session-new[0,0][1080,2424] session-new-header[0,63][1080,210] session-new-back[21,63][168,210] session-new-profile-menu[912,63][1059,210] session-new-stepper-root[42,231][1038,389] session-new-stepper[42,231][1038,389] session-new-stepper-step-0[113,336][303,389] session-new-stepper-step-1[426,336][655,389] session-new-stepper-step-2[824,336][920,389] session-new-scroll[0,421][1080,2162] session-new-step-1[42,421][1038,2162] session-new-info[42,421][1038,2162] session-new-case-number[84,605][996,730] session-new-scan[860,616][965,721] session-new-subject-type[84,857][996,973] session-new-subject-TERSANGKA[84,857][374,973] session-new-subject-SAKSI[395,857][685,973] session-new-subject-LAINNYA[706,857][996,973] session-new-subject-gloss[84,993][996,1046] session-new-subject-name[84,1167][996,1293] session-new-investigator[84,1419][996,1545] session-new-room[84,1671][996,1797] session-new-profile[84,1923][996,2049] session-new-notes[84,2169][996,2162] session-new-next[42,2183][1038,2330]
+screencap 004.png (229993 bytes)
+### 005.cmd
+tap 540 2256
+waitlog create 15
+waitlog precheck 15
+sleep 6500
+### 005.out
+tap 540,2256
+create 201 (POST /api/v1/session 201)
+precheck 202 (POST /api/v1/session/{id}/precheck 202)
+slept 6500 ms
+screencap 005.png (498164 bytes)
+### 006.cmd
+tap 540 2256
+sleep 1800
+shot ready_live
+tap 540 2256
+waitlog start 15
+sleep 3000
+### 006.out
+tap 540,2256
+slept 1800 ms
+screencap 72_phone_ready_live.png (251441 bytes)
+tap 540,2256
+start 200 (POST /api/v1/session/{id}/start 200)
+slept 3000 ms
+screencap 006.png (529861 bytes)
+### 007.cmd
+shot monitor_live
+tap 539 2266
+sleep 1500
+### 007.out
+screencap 72_phone_monitor_live.png (522458 bytes)
+tap 539,2266
+slept 1500 ms
+screencap 007.png (304288 bytes)
+### 008.cmd
+tap 539 1278
+sleep 800
+text W72 device check end
+sleep 1000
+shot end_dialog_live
+tap 809 1621
+waitlog stop 15
+shot finalizing_live_1
+sleep 1000
+shot finalizing_live_2
+sleep 1200
+shot finalizing_live_3
+sleep 1200
+shot finalizing_live_4
+sleep 3500
+### 008.out
+tap 539,1278
+slept 800 ms
+text typed (W72 device check end); editor inputType 0x24001
+slept 1000 ms
+screencap 72_phone_end_dialog_live.png (312748 bytes)
+tap 809,1621
+stop 202 (POST /api/v1/session/{id}/stop 202)
+screencap 72_phone_finalizing_live_1.png (317584 bytes)
+slept 1000 ms
+screencap 72_phone_finalizing_live_2.png (206279 bytes)
+slept 1200 ms
+screencap 72_phone_finalizing_live_3.png (204374 bytes)
+slept 1200 ms
+screencap 72_phone_finalizing_live_4.png (205597 bytes)
+slept 3500 ms
+screencap 008.png (205340 bytes)
+### 009.cmd
+sleep 2500
+shot summary_pending_live
+tap 246 2254
+waitlog ack 15
+sleep 2500
+### 009.out
+slept 2500 ms
+screencap 72_phone_summary_pending_live.png (200842 bytes)
+tap 246,2254
+ack 204 (POST /api/v1/session/{id}/summary/acknowledge 204)
+slept 2500 ms
+screencap 009.png (445549 bytes)
+### 010.cmd
+link demsdemo:///sessions
+sleep 3000
+shot hub_live_after
+link demsdemo:///session/summary/SES-20261006-0027
+sleep 3500
+shot summary_acknowledged_live
+noshot
+### 010.out
+deep link demsdemo:///sessions
+slept 3000 ms
+screencap 72_phone_hub_live_after.png (599896 bytes)
+deep link demsdemo:///session/summary/SES-20261006-0027
+slept 3500 ms
+screencap 72_phone_summary_acknowledged_live.png (201041 bytes)
+### 011.cmd
+done 0
+### 011.out
+
+done 0

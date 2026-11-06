@@ -1,0 +1,249 @@
+  console.info
+  console.info
+  console.info
+  console.info
+  console.error
+  console.info
+  console.error
+  console.info
+  console.warn
+  console.warn
+  console.info
+  console.warn
+  console.info
+  console.warn
+  console.info
+  console.warn
+  console.info
+  console.info
+  console.info
+  console.info
+  console.info
+  console.info
+  console.error
+  console.info
+  console.info
+  console.warn
+  console.info
+  console.error
+  console.info
+  console.warn
+  console.info
+  console.error
+  console.error
+  console.error
+  console.error
+  console.error
+  console.info
+  console.error
+  console.info
+  console.info
+  console.info
+  console.info
+  console.error
+  console.error
+  console.warn
+  console.info
+  console.error
+  console.error
+  console.info
+  console.warn
+  console.info
+PASS src/runtime/live-device.test.tsx
+  the pairing state at start (MP-9, MP-10)
+    ✓ no stored credential: CHECKING, then UNPAIRED; the socket is anonymous and operation 21 is not asked
+    ✓ a stored credential: PAIRED at once, before the Core answers; the runtime is ready after the storage read alone
+    ✓ the credential is read ONCE: every request and every socket afterwards takes it from memory (D81)
+    ✓ an item that cannot be used counts as absent (MP-4): UNPAIRED, no credential presented, the item left as it is
+    ✓ a storage that does not answer: the device counts as unpaired after the budget, and the runtime becomes ready
+    ✓ the Core unreachable at start: the device stays PAIRED, and operation 21 is asked again when the link is up
+  a credential the Core does not know (AC-C-79, MP-10)
+    ✓ 401 on operation 21: the stored items are deleted, the gate is UNPAIRED with the notice `unknown`, and the socket is reopened without a credential
+    ✓ the socket alone says so (close 4401 with nobody signed in): operation 21 is asked, and its 401 deletes the credential
+    ✓ a 4401 while the Core cannot be asked deletes nothing: the device stays PAIRED
+  a revoked device (AC-C-78, §6.6)
+    ✓ `device.revoked` REVOKED on the socket
+    ✓ a close with 4403 and no message before it
+    ✓ a 403 `DEVICE_REVOKED` on a REST call
+    ✓ `device.revoked` UNPAIRED: the same deletion, with the notice `unpaired`
+    ✓ a sign-out keeps the pairing: the session token is dropped, the device credential is presented again
+    ✓ the clean-up that gave up (brief row 14): the credential is forgotten and the socket is asked for anew
+  operations that want the device itself (decision D118)
+    ✓ the biometric sign-in carries the DEVICE credential while a session token is in memory; every other call carries the session token
+    ✓ 403 `DEVICE_NOT_PAIRED` with `details.reason: DEVICE_CREDENTIAL_REQUIRED` is an ordinary failed action: the credential stays, the gate stays PAIRED, nobody is signed out
+  a 429 on redeem (decision D116)
+    ✓ means "wait `retry-after`", never "wrong code": the action rejects as a limit and no failed attempt is counted
+  `session.updated`: a role change while signed in (AC-C-49, §6.3)
+    ✓ the gated controls change in place and one notice names the new role; nobody is signed out, nothing is reloaded
+  offline, and a limit (AC-C-59, LB-6, LB-10, CL-22)
+    ✓ link down: a command rejects at once, five presses show one toast, and no request is sent
+    ✓ a 429 is worded as a limit, with the seconds of `retry-after`; the link, the banner and the mode stay as they are
+  the link comes back ([CS:§3.5])
+    ✓ the resync bus is emitted once when the Live socket is back: the "Resynced" banner, and the route resync that hangs on the bus
+  coming back to the foreground (brief row 15)
+    ✓ a STALE link is reconnected at once; an ONLINE link is left alone
+  the secrets port of a device (brief rows 11 to 13)
+    ✓ `pair`: the credential is in the secure store before the action settles; the gate opens; the next socket presents it
+    ✓ a credential that cannot be stored: the action is refused as NOT_AVAILABLE, the registration is removed with ONE unpair, and nothing is kept
+    ✓ a biometric storage that fails, or does not answer, never costs the session
+    ✓ the budget of a storage call is inside the wait of the Live source
+    ✓ the biometric port of the sign-in row is passed the rotated token, after the session token is in memory
+  what the runtime exposes (MP-3)
+    ✓ the adapters object has no member that returns a credential; the Live source is found behind its `Sim`
+    ✓ nothing the app can read back holds the credential: the pairing gate, the store of the replica, the log
+    ✓ the socket factory of the app passes the headers as React Native takes them, and offers no subprotocol
+    ✓ a Live source that was built without the adapters is refused by the provider, with a message that says what to inject
+  console.warn
+  console.error
+  console.error
+  console.info
+  console.info
+PASS src/runtime/live-screens.test.tsx
+  an unpaired tablet in LIVE mode
+    ✓ the Pair screen draws on the replica: no Core data, the code slots, and the source the runtime reports is LIVE
+    ✓ Stack Check shows the Core server: its heartbeat on the one socket, and its health
+  console.warn
+  console.info
+  console.info
+  console.warn
+  console.info
+  console.error
+  console.info
+  console.info
+  console.info
+PASS src/runtime/live-health.test.tsx
+  Stack Check in LIVE mode: the health of the Core server (FC-9, D69)
+    ✓ reads operation 1 through the typed client: the answer names `dems-core-server`, and no raw request is made
+    ✓ the Core server unreachable: the query is in its error state and the screen says "Core unreachable"
+    ✓ an answer outside the contract is not shown: the typed client refuses it
+    ✓ the link comes back: the health is read again at once
+  a change of the Core link source
+    ✓ an answer of mock-core is never shown as the Core server's: each service has its own query
+  Stack Check in SIMULATED mode: mock-core, as before
+    ✓ reads mock-core with the shared health call; nothing goes to the Core server
+  console.warn
+  console.error
+  console.info
+  console.error
+PASS src/runtime/live-settings.test.tsx
+  Settings → Core link source, with LIVE in the list (MD-3)
+    ✓ debug build: three segments, each with its text; SIMULATED is the selected one
+    ✓ release build: the LIVE segment is disabled, like the HEARTBEAT one
+  console.info
+  console.info
+  console.info
+  console.info
+  console.info
+  console.info
+  console.warn
+  console.info
+  console.info
+PASS src/runtime/live-runtime.test.tsx
+  SIMULATED and HEARTBEAT: nothing of the Live layer starts (MD-5, SC8)
+    ✓ SIMULATED with the simulator the runtime creates: no request, no socket to the Core server, no Live source
+    ✓ HEARTBEAT with the simulator the runtime creates: no request, no socket to the Core server, no Live source
+    ✓ the default source is SIMULATED: a fresh app starts the simulator and reads its snapshot
+  LIVE: the Live source is the data source (MD-5, AC-C-29)
+    ✓ a stored LIVE at a cold start: the Live source runs, the simulator never reads or writes its snapshot, the mock-core client is stopped
+    ✓ crossing the LIVE boundary swaps the data source; SIMULATED and HEARTBEAT share the simulator
+    ✓ an injected simulator is used as it is: a LIVE preference then reads as SIMULATED and no Live source is built
+  release build: Simulated only (MD-3, MD-6, AC-C-28)
+    ✓ a LIVE value stored by a debug build starts the simulator: no Live source, no request, no socket
+    ✓ a LIVE preference that reaches the runtime all the same is not followed
+    ✓ a build that holds no Live source (MD-6): LIVE falls back to the simulator, and the log says so
+    ✓ `createMobileLive` builds nothing in a release build
+  the runtime log of a LIVE start
+    ✓ holds no credential, and says the Live source is ready
+  console.error
+PASS src/runtime/live-core-link.test.tsx
+  the three sources (MD-3)
+    ✓ SIMULATED is the default; LIVE is the third source
+    ✓ pure gate (AC-C-28): Simulated always; HEARTBEAT and LIVE only in a debug build; an unavailable choice falls back
+    ✓ the stored value: the three names are read, anything else is the default
+    ✓ the link state: HEARTBEAT and LIVE follow the heartbeat they are given, SIMULATED the tablet link
+    ✓ a runtime that holds a simulator never reports LIVE
+    ✓ debug: LIVE can be chosen, is stored by merge, and hydrates again
+  release build: LIVE is not reachable (AC-C-28, MD-3)
+    ✓ a LIVE value stored by a debug build hydrates as SIMULATED
+    ✓ `setCoreLinkSource(LIVE)` is ignored and nothing is written
+    ✓ the source decision of the runtime is SIMULATED whatever is stored and whatever the launch URL says
+  the connection banner follows the link in LIVE as in HEARTBEAT
+    ✓ HEARTBEAT: CONNECTING is a transient and keeps the banner; OFFLINE and STALE show it; coming back shows "Resynced"
+    ✓ LIVE: CONNECTING is a transient and keeps the banner; OFFLINE and STALE show it; coming back shows "Resynced"
+    ✓ SIMULATED is as before: the simulator has no CONNECTING state to wait out
+  the pairing member of the contract (MP-9, MP-11)
+    ✓ is optional: a contract built without it has no such member, and the gate does not block
+    ✓ blocks while a required pairing is not PAIRED, the check included
+  the debug parameter `core=` (MD-7, AC-C-32)
+    ✓ demsdemo:///pair?core=LIVE → LIVE
+    ✓ demsdemo:///stack-check?motion=slow&core=LIVE → LIVE
+    ✓ demsdemo:///?core=SIMULATED → SIMULATED
+    ✓ demsdemo:///home?core=HEARTBEAT#x → HEARTBEAT
+    ✓ demsdemo:///pair?core=%4CIVE → LIVE
+    ✓ demsdemo:///pair?core=live → null
+    ✓ demsdemo:///pair?core=LIVE2 → null
+    ✓ demsdemo:///pair?core= → null
+    ✓ demsdemo:///pair?score=LIVE → null
+    ✓ demsdemo:///pair?core=%E0%A4%A → null
+    ✓ demsdemo:///pair → null
+    ✓ demsdemo:///pair?x=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&core=LIVE → null
+    ✓ null → null
+    ✓ debug build, launch URL: `core=LIVE` sets and stores the source before the runtime decides its data source
+    ✓ debug build: a launch with `core=SIMULATED` puts the default back over a stored LIVE
+    ✓ a value that is already the source changes and stores nothing
+    ✓ debug build, a later deep link: `core=` switches the source while the app runs
+    ✓ release build: `core=LIVE` does nothing, at launch and as a later link
+    ✓ release build: even a hook that is forced on applies no `core=` (the block is under the build flag)
+  what the redeem request says about the device (MP-5)
+    ✓ the model name, at most 60 characters; "Android device" when the platform gives none; no hardware identifier
+  `scenario=` in LIVE mode (MD-7, AC-C-32)
+    ✓ is ignored and logged when the data source is the Live source: no demo control is called
+    ✓ is ignored when the same URL asks for LIVE: the simulator that is about to be replaced loads nothing
+    ✓ with the simulator it loads as before
+  console.info
+  console.warn
+  console.info
+  console.info
+  console.info
+PASS src/runtime/live-core-errors.test.tsx
+  a limit is not an outage (LB-10)
+    ✓ a 429 is worded as a limit, with the seconds of `retry-after`
+    ✓ `retry-after` 0.2 is shown in whole seconds, rounded up: "Try again in 1 s."
+    ✓ `retry-after` 59.01 is shown in whole seconds, rounded up: "Try again in 60 s."
+    ✓ `retry-after` 1 is shown in whole seconds, rounded up: "Try again in 1 s."
+    ✓ without a usable `retry-after` (null) it still reads as a limit, with no number
+    ✓ without a usable `retry-after` (0) it still reads as a limit, with no number
+    ✓ without a usable `retry-after` (-3) it still reads as a limit, with no number
+    ✓ without a usable `retry-after` (NaN) it still reads as a limit, with no number
+    ✓ without a usable `retry-after` (Infinity) it still reads as a limit, with no number
+    ✓ the status decides, whatever the reason and the code say: a 429 never gets the offline wording
+  no answer from the Core server (LB-6, LB-7)
+    ✓ a command that was not sent, or got no answer: "Core server unreachable. Nothing was changed."
+    ✓ a time-out: the command may have been applied, and the text says so
+    ✓ the four codes of the Live source and the typed client (brief row 20)
+    ✓ an answer the Core could not give (500, a contract violation) is neither an outage nor a limit
+  a refusal of the Core (§6.2, LB-5)
+    ✓ 403: the denied toast names the first role that holds the permission
+    ✓ the role of a permission, as the web console orders the roles; an any-of rule takes the first holder of any
+    ✓ 401: the operator is signed out
+    ✓ `NOT_AVAILABLE`, and the envelope codes without a simulator class
+    ✓ every other error is the call site's own: its existing branch stays (LB-5)
+    ✓ a presentation holds keys and numbers only: nothing of the error's own text
+  one toast in three seconds (LB-6)
+    ✓ the coalescer admits a kind once per window, each kind on its own
+  the presenter as a hook
+    ✓ a denial is shown every time, with the role and the error haptic
+    ✓ five refusals on a dead link are one toast; after the window the next one shows again
+    ✓ a limit shortly after an outage still shows: the kinds are counted apart
+    ✓ `STOPPED` is handled and silent; an error that is not the presenter's is handed back
+PASS src/runtime/live-no-raw-fetch.test.tsx
+  no raw request to the Core server (D69, D34-6 a)
+    ✓ the matchers find every way of calling the network, and nothing else
+    ✓ reads the whole source tree, production files only
+    ✓ rule 1: no production file calls `fetch` or another network API itself (the debug probe is the one exemption)
+    ✓ rule 1: the socket constructor is named by the socket factory of the adapters only
+    ✓ rule 2: one production file names the Core server's address: the adapters of the Live source
+    ✓ rule 3: the adapters hand the address to the typed client and to the Live socket client, and make no request themselves
+    ✓ the shared package: outside the typed client, the only raw `fetch` is the health read of mock-core
+Test Suites: 8 passed, 8 total
+Tests:       122 passed, 122 total

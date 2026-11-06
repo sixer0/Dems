@@ -1,0 +1,252 @@
+=== BASELINE | no mutation: the tree as it is, through the scratch configuration | 18:45:01
+exit 0
+   1       Tests  34 passed (34)
+   1  Test Files  1 passed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 135 ms; 0 remain with the run prefix dems_test_step_69_tmdsn23x_
+=== P01 | apps/core-server/src/plugins/permission-guard/decision.ts: AUTHENTICATED lets a paired DEVICE through (any principal instead of an OPERATOR) | 18:45:08
+exit 1
+   1       Tests  3 failed | 31 passed (34)
+   1      × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1      × DEVICE: a paired device with no operator: its device credential as a bearer value 97ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 7ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 100 ms; 0 remain with the run prefix dems_test_step_69_tmdsn9x0_
+   1 [w47-harness] mutation P01 applied to apps/core-server/src/plugins/permission-guard/decision.ts (load 1)
+=== P02 | apps/core-server/src/plugins/permission-guard/decision.ts: the permission is not checked: every OPERATOR passes a rule that names one | 18:45:16
+exit 1
+   1       Tests  14 failed | 20 passed (34)
+   1      × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1      × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 4ms
+   1      × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 193ms
+   1      × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 143ms
+   1      × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 143ms
+   1      × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 133ms
+   1      × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 129ms
+   1      × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 126ms
+   1      × a holder of DEMO_CONTROL gets 403 DEMO_DISABLED and no row; the other roles 403 NOT_PERMITTED and one row, whatever the flag; nobody 401 178ms
+   1      × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 95ms
+   1      × a permission taken from a role that should have it: exactly the cells that grant opened go red 89ms
+   1      × a role that loses the permission is refused with 403 and exactly one ACCESS_DENIED row on each of them, at its next request, on the web and on the device 89ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 7ms
+   1      × the session of one role presented where the cell expects another: every cell is red, and where both are refused the row names the wrong actor and the wrong role 89ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 97 ms; 0 remain with the run prefix dems_test_step_69_tmdsnhup_
+   1 [w47-harness] mutation P02 applied to apps/core-server/src/plugins/permission-guard/decision.ts (load 1)
+=== P03 | apps/core-server/src/plugins/permission-guard/decision.ts: a retired device is not refused: it is treated as an anonymous caller everywhere | 18:45:23
+exit 1
+   1       Tests  5 failed | 29 passed (34)
+   1      × RETIRED_DEVICE: a retired device: the credential of a REVOKED device 106ms
+   1      × RETIRED_DEVICE_SESSION: a retired device: the session token of an operator who was signed in on the device when it was revoked 120ms
+   1      × UNPAIRED_CREDENTIAL: a retired device: the old credential of a device that unpaired itself (state UNPAIRED) 108ms
+   1      × a retired device presented where the cell expects a PAIRED one: every cell is red, and the device operations answer 403 DEVICE_REVOKED 103ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 8ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 111 ms; 0 remain with the run prefix dems_test_step_69_tmdsnnlw_
+   1 [w47-harness] mutation P03 applied to apps/core-server/src/plugins/permission-guard/decision.ts (load 1)
+=== P04 | apps/core-server/src/plugins/permission-guard/index.ts: the denial row is not written (the refusal is still answered) | 18:45:30
+exit 1
+   1       Tests  17 failed | 17 passed (34)
+   1      × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1      × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 6ms
+   1      × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 190ms
+   1      × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 117ms
+   1      × RETIRED_DEVICE: a retired device: the credential of a REVOKED device 161ms
+   1      × RETIRED_DEVICE_SESSION: a retired device: the session token of an operator who was signed in on the device when it was revoked 168ms
+   1      × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 170ms
+   1      × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 211ms
+   1      × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 106ms
+   1      × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 134ms
+   1      × UNPAIRED_CREDENTIAL: a retired device: the old credential of a device that unpaired itself (state UNPAIRED) 142ms
+   1      × a holder of DEMO_CONTROL gets 403 DEMO_DISABLED and no row; the other roles 403 NOT_PERMITTED and one row, whatever the flag; nobody 401 269ms
+   1      × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 117ms
+   1      × a permission taken from a role that should have it: exactly the cells that grant opened go red 122ms
+   1      × a role that loses the permission is refused with 403 and exactly one ACCESS_DENIED row on each of them, at its next request, on the web and on the device 73ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 27ms
+   1      × the session of one role presented where the cell expects another: every cell is red, and where both are refused the row names the wrong actor and the wrong role 115ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 134 ms; 0 remain with the run prefix dems_test_step_69_tmdsnu97_
+   1 [w47-harness] mutation P04 applied to apps/core-server/src/plugins/permission-guard/index.ts (load 1)
+=== P05 | apps/core-server/src/plugins/permission-guard/index.ts: an audited refusal takes no place in the denial budget | 18:45:37
+exit 1
+   1       Tests  1 failed | 33 passed (34)
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 15ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 141 ms; 0 remain with the run prefix dems_test_step_69_tmdso2dl_
+   1 [w47-harness] mutation P05 applied to apps/core-server/src/plugins/permission-guard/index.ts (load 1)
+=== P06 | apps/core-server/src/plugins/authenticate/index.ts: two credentials in one request are not refused at stage 4 (the request goes on as anonymous) | 18:45:49
+exit 1
+   1       Tests  5 failed | 29 passed (34)
+   1      × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 1ms
+   1      × AC-B-81, SR-73: the four credential-misuse cells answer 401 CREDENTIAL_CONFLICT, 403, 401 and 401, resolve no principal and change nothing 1ms
+   1      × COOKIE_AND_BEARER: the cookie of a web session AND the bearer value of a device session in one request (web console Origin) 121ms
+   1      × DEVICE_TOKEN_AS_COOKIE: a device session's token sent as the cookie (web console Origin) 162ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 17ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 164 ms; 0 remain with the run prefix dems_test_step_69_tmdsod2c_
+   1 [w47-harness] mutation P06 applied to apps/core-server/src/plugins/authenticate/index.ts (load 1)
+=== P07 | apps/core-server/src/plugins/permission-guard/decision.ts: the demo flag is not checked for an operator | 18:46:03
+exit 1
+   1       Tests  2 failed | 32 passed (34)
+   1      × a holder of DEMO_CONTROL gets 403 DEMO_DISABLED and no row; the other roles 403 NOT_PERMITTED and one row, whatever the flag; nobody 401 302ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 11ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 142 ms; 0 remain with the run prefix dems_test_step_69_tmdsosxn_
+   1 [w47-harness] mutation P07 applied to apps/core-server/src/plugins/permission-guard/decision.ts (load 1)
+=== P08 | apps/core-server/src/plugins/permission-guard/denial.ts: the ACCESS_DENIED row of a missing permission names no actor | 18:46:15
+exit 1
+   1       Tests  12 failed | 22 passed (34)
+   1      × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1      × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 435ms
+   1      × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 252ms
+   1      × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 301ms
+   1      × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 250ms
+   1      × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 232ms
+   1      × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 228ms
+   1      × a holder of DEMO_CONTROL gets 403 DEMO_DISABLED and no row; the other roles 403 NOT_PERMITTED and one row, whatever the flag; nobody 401 239ms
+   1      × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 155ms
+   1      × a permission taken from a role that should have it: exactly the cells that grant opened go red 151ms
+   1      × a role that loses the permission is refused with 403 and exactly one ACCESS_DENIED row on each of them, at its next request, on the web and on the device 89ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 10ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 123 ms; 0 remain with the run prefix dems_test_step_69_tmdsp4hh_
+   1 [w47-harness] mutation P08 applied to apps/core-server/src/plugins/permission-guard/denial.ts (load 1)
+=== P09 | apps/core-server/src/plugins/permission-guard/denial.ts: the refusal of exportAudit writes ACCESS_DENIED instead of EXPORT_DENIED (and no event) | 18:46:26
+exit 1
+   1       Tests  9 failed | 25 passed (34)
+   1      × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1      × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 1ms
+   1      × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 495ms
+   1      × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 396ms
+   1      × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 364ms
+   1      × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 379ms
+   1      × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 160ms
+   1      × a permission taken from a role that should have it: exactly the cells that grant opened go red 162ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 9ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 177 ms; 0 remain with the run prefix dems_test_step_69_tmdspeiq_
+   1 [w47-harness] mutation P09 applied to apps/core-server/src/plugins/permission-guard/denial.ts (load 1)
+=== P10 | apps/core-server/src/plugins/origin-guard/origin-decision.ts: a bearer request with a web console origin passes the Origin guard | 18:46:39
+exit 1
+   1       Tests  4 failed | 30 passed (34)
+   1      × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 1ms
+   1      × AC-B-81, SR-73: the four credential-misuse cells answer 401 CREDENTIAL_CONFLICT, 403, 401 and 401, resolve no principal and change nothing 1ms
+   1      × BEARER_WITH_WEB_ORIGIN: the bearer value of a valid device session with a web console Origin 218ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 10ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 249 ms; 0 remain with the run prefix dems_test_step_69_tmdspsgn_
+   1 [w47-harness] mutation P10 applied to apps/core-server/src/plugins/origin-guard/origin-decision.ts (load 1)
+=== P11 | apps/core-server/src/modules/identity/session-store.ts: ID-13 broken: the cookie also resolves a session that is bound to a device | 18:46:49
+exit 1
+   1       Tests  4 failed | 30 passed (34)
+   1      × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 1ms
+   1      × AC-B-81, SR-73: the four credential-misuse cells answer 401 CREDENTIAL_CONFLICT, 403, 401 and 401, resolve no principal and change nothing 1ms
+   1      × DEVICE_TOKEN_AS_COOKIE: a device session's token sent as the cookie (web console Origin) 258ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 15ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 206 ms; 0 remain with the run prefix dems_test_step_69_tmdsq2lg_
+   1 [w47-harness] mutation P11 applied to apps/core-server/src/modules/identity/session-store.ts (load 1)
+=== P12 | apps/core-server/src/plugins/permission-guard/decision.ts: a DEVICE operation is open to a web console session | 18:47:03
+exit 1
+   1       Tests  7 failed | 27 passed (34)
+   1      × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1      × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 463ms
+   1      × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 390ms
+   1      × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 370ms
+   1      × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 317ms
+   1      × a permission taken from a role that should have it: exactly the cells that grant opened go red 305ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 14ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 187 ms; 0 remain with the run prefix dems_test_step_69_tmdsqg74_
+   1 [w47-harness] mutation P12 applied to apps/core-server/src/plugins/permission-guard/decision.ts (load 1)
+=== P13 | apps/core-server/src/plugins/throttle/limits.ts: the denial budget is 19, not 20: the test, which moves the clock at 20, must meet a 429 | 18:47:19
+exit 1
+   1       Tests  13 failed | 21 passed (34)
+   1      × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1      × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 7ms
+   1      × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 421ms
+   1      × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 218ms
+   1      × RETIRED_DEVICE: a retired device: the credential of a REVOKED device 285ms
+   1      × RETIRED_DEVICE_SESSION: a retired device: the session token of an operator who was signed in on the device when it was revoked 321ms
+   1      × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 258ms
+   1      × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 239ms
+   1      × UNPAIRED_CREDENTIAL: a retired device: the old credential of a device that unpaired itself (state UNPAIRED) 278ms
+   1      × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 243ms
+   1      × a permission taken from a role that should have it: exactly the cells that grant opened go red 218ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 44ms
+   1      × the session of one role presented where the cell expects another: every cell is red, and where both are refused the row names the wrong actor and the wrong role 248ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 184 ms; 0 remain with the run prefix dems_test_step_69_tmdsqwud_
+   1 [w47-harness] mutation P13 applied to apps/core-server/src/plugins/throttle/limits.ts (load 1)
+=== P14 | apps/core-server/src/plugins/permission-guard/decision.ts: the condition DEVICE_SESSION is not held: a web session passes stage 6 on setBiometricEnrollment | 18:47:35
+exit 1
+   1       Tests  7 failed | 27 passed (34)
+   1      × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1      × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 535ms
+   1      × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 438ms
+   1      × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 437ms
+   1      × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 355ms
+   1      × a permission taken from a role that should have it: exactly the cells that grant opened go red 346ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 23ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 217 ms; 0 remain with the run prefix dems_test_step_69_tmdsrcw1_
+   1 [w47-harness] mutation P14 applied to apps/core-server/src/plugins/permission-guard/decision.ts (load 1)
+=== P15 | apps/core-server/src/plugins/permission-guard/decision.ts: the condition CONSOLE_IDENTITY is not held at stage 6 (the sign-in route still checks it itself: same status, same code) | 18:47:51
+exit 1
+   1       Tests  5 failed | 29 passed (34)
+   1      × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1      × AC-B-81, SR-73: the four credential-misuse cells answer 401 CREDENTIAL_CONFLICT, 403, 401 and 401, resolve no principal and change nothing 1ms
+   1      × UNPAIRED_DEVICE: an unpaired device: no credential and no Origin, as the mobile app sends before it is paired 121ms
+   1      × WEB_TOKEN_AS_BEARER: a web session's token sent as a bearer value (no Origin) 154ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 11ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 269 ms; 0 remain with the run prefix dems_test_step_69_tmdsrr0v_
+   1 [w47-harness] mutation P15 applied to apps/core-server/src/plugins/permission-guard/decision.ts (load 1)
+=== P16 | apps/core-server/src/plugins/permission-guard/denial.ts: the row and the answer of a missing permission name another permission | 18:48:03
+exit 1
+   1       Tests  12 failed | 22 passed (34)
+   1      × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1      × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 553ms
+   1      × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 449ms
+   1      × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 471ms
+   1      × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 384ms
+   1      × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 351ms
+   1      × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 379ms
+   1      × a holder of DEMO_CONTROL gets 403 DEMO_DISABLED and no row; the other roles 403 NOT_PERMITTED and one row, whatever the flag; nobody 401 399ms
+   1      × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 242ms
+   1      × a permission taken from a role that should have it: exactly the cells that grant opened go red 272ms
+   1      × a role that loses the permission is refused with 403 and exactly one ACCESS_DENIED row on each of them, at its next request, on the web and on the device 157ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 13ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 523 ms; 0 remain with the run prefix dems_test_step_69_tmdss4xf_
+   1 [w47-harness] mutation P16 applied to apps/core-server/src/plugins/permission-guard/denial.ts (load 1)
+=== P17 | apps/core-server/src/plugins/permission-guard/access-rules.ts: a retired device may also call getSignInStatus | 18:48:19
+exit 1
+   1       Tests  4 failed | 30 passed (34)
+   1      × RETIRED_DEVICE: a retired device: the credential of a REVOKED device 272ms
+   1      × RETIRED_DEVICE_SESSION: a retired device: the session token of an operator who was signed in on the device when it was revoked 263ms
+   1      × UNPAIRED_CREDENTIAL: a retired device: the old credential of a device that unpaired itself (state UNPAIRED) 254ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 8ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 124 ms; 0 remain with the run prefix dems_test_step_69_tmdsskg6_
+   1 [w47-harness] mutation P17 applied to apps/core-server/src/plugins/permission-guard/access-rules.ts (load 1)
+=== P18 | apps/core-server/src/plugins/throttle/limits.ts: the strict limit of a class key is 29, not 30 | 18:48:31
+exit 1
+   1       Tests  7 failed | 27 passed (34)
+   1      × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1      × AC-B-81, SR-73: the four credential-misuse cells answer 401 CREDENTIAL_CONFLICT, 403, 401 and 401, resolve no principal and change nothing 1ms
+   1      × ANONYMOUS: an unauthenticated caller: a signed-out web console (no credential; a web console Origin on a POST, none on a GET) 402ms
+   1      × DEVICE_TOKEN_AS_COOKIE: a device session's token sent as the cookie (web console Origin) 174ms
+   1      × UNPAIRED_DEVICE: an unpaired device: no credential and no Origin, as the mobile app sends before it is paired 262ms
+   1      × WEB_TOKEN_AS_BEARER: a web session's token sent as a bearer value (no Origin) 171ms
+   1      × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 11ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 174 ms; 0 remain with the run prefix dems_test_step_69_tmdsswuc_
+   1 [w47-harness] mutation P18 applied to apps/core-server/src/plugins/throttle/limits.ts (load 1)
+=== P19 | packages/shared/src/api/administration.ts: THE REGISTRY is changed: operations 11 to 14 name PAIRING_MANAGE instead of USER_ADMIN (the same role holds both, so no caller is answered differently) | 18:48:43
+exit 1
+   1       Tests  2 failed | 32 passed (34)
+   1      × each permission is enforced at exactly the operations spec §4.3 lists for it 1ms
+   1      × every registry entry has the method, the path, the access rule, the conditions and the audit rule of its row 9ms
+   1  Test Files  1 failed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 339 ms; 0 remain with the run prefix dems_test_step_69_tmdst738_
+   1 [w47-harness] mutation P19 applied to packages/shared/src/api/administration.ts (load 1)

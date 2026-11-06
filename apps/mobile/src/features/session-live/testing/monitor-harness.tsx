@@ -1,0 +1,151 @@
+/**
+ * Test-only harness for the Session Monitor suites (step 79). Never import it from app code.
+ *
+ * It renders a small Expo Router tree around the REAL `/session/live` route file (so the route's
+ * RECORDING policy and the screen's back guard run as on a device) inside the real `AppProviders`
+ * with an injected, hydrated test simulator (step 73's `createTestSim`: manual clock and
+ * scheduler). The simulator is signed in as the first demo operator and holds the recording
+ * scenario (session 0024, 00:18:42 elapsed, D61), exactly what `?scenario=recording` loads.
+ *
+ * Only this feature's route is real: Home and Finalizing are one-line stand-ins, so the suites do
+ * not depend on screens that other steps build at the same time (P11).
+ *
+ * Import `@/navigation/testing/router-harness` FIRST in a test file (its first import prepares the
+ * module mocks Expo Router and Skia need), then this module.
+ */
+import { jest } from '@jest/globals';
+import { QueryClient } from '@tanstack/react-query';
+import { Stack, router } from 'expo-router';
+import { Profiler, type ProfilerOnRenderCallback, type ReactNode } from 'react';
+import { act } from '@testing-library/react-native';
+import { Text } from 'react-native';
+import type { Metrics } from 'react-native-safe-area-context';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS, ScenarioName, type Sim } from '@dems/shared/sim';
+import SessionLiveRoute from '@/app/(app)/session/live';
+import { TEST_INSETS, WINDOWS, renderRoutes, resetShellState, setWindow, type WindowName } from '@/navigation/testing/router-harness';
+import { AppProviders } from '@/providers';
+import { FakeHeartbeatSocket, createTestSim, flushAsync, type TestSim } from '@/runtime/testing/test-sim';
+import { SHEET_EXIT_MS } from '../use-sheet-presence';
+
+/** Lets the providers' one async start-up update (the Core-link preference read) settle. */
+export const settle = flushAsync;
+
+/**
+ * Puts the runner's fake clock in place for a closing sheet (row-25 review finding F3, blueprint row
+ * 97). Call it BEFORE the press or the delta that closes the sheet: the exit timer of
+ * `useSheetPresence` is then armed on the fake clock and `waitForSheetExit` plays it without a real
+ * wait. `nextTick`, `queueMicrotask` and `setImmediate` stay real (the pattern of
+ * live-session-live-link.test.tsx): promise jobs and `act` hand-overs must not wait on an advance.
+ *
+ * First one hand-over on a real 0 ms timer: the worklets mock runs a frame-callback registration of
+ * the open sheet on such a timer, and timers of one delay fire in the order they were set, so every
+ * registration made so far has run before the clock changes. Without it the sheet's unregistration
+ * (fake clock) could run before its registration (real queue). A hand-over, not a duration.
+ */
+export async function holdSheetExitClock(): Promise<void> {
+  await act(async () => {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+}
+
+/**
+ * Plays a closing sheet's exit window (`useSheetPresence`) on the clock `holdSheetExitClock` put in
+ * place, after which the sheet unmounts, and gives the real timers back. No real time passes.
+ */
+export async function waitForSheetExit(): Promise<void> {
+  await act(async () => {
+    jest.advanceTimersByTime(SHEET_EXIT_MS + 50);
+  });
+  jest.useRealTimers();
+}
+
+export interface MonitorHarnessOptions {
+  window?: WindowName;
+  /** Wraps the tree in a React Profiler (render counting, MA-16 screen form). */
+  onRender?: ProfilerOnRenderCallback;
+  /** Load the recording scenario (default true). */
+  recording?: boolean;
+  /**
+   * `/home` (default): the monitor is pushed over Home by `openMonitor()`. `/session/live`: the
+   * monitor is the only route, as after a sign-in or relaunch resync (F-79-1).
+   */
+  initialUrl?: '/home' | '/session/live';
+  /**
+   * Task 3 M5 (row 73; register MB-13): who is signed in, by username (default: the first demo
+   * operator, the investigator who opened the recording scenario's session). The mic switch is for
+   * that session holder or a SUPERVISOR (OD-09), so its gate tests sign in the other roles.
+   */
+  operator?: string;
+}
+
+export interface MonitorHarness extends TestSim {
+  app: ReturnType<typeof renderRoutes>;
+  sockets: FakeHeartbeatSocket[];
+  /** Opens the monitor the way the app does (pushed over Home), so Back has somewhere to go. */
+  openMonitor(): void;
+}
+
+function monitorRoot(sim: Sim, window: WindowName, sockets: FakeHeartbeatSocket[], onRender?: ProfilerOnRenderCallback) {
+  const { width, height } = WINDOWS[window];
+  const metrics: Metrics = { frame: { x: 0, y: 0, width, height }, insets: TEST_INSETS };
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  return function MonitorTestRoot() {
+    const tree: ReactNode = (
+      <AppProviders
+        sim={sim}
+        safeAreaMetrics={metrics}
+        queryClient={queryClient}
+        heartbeatSocketFactory={() => {
+          const socket = new FakeHeartbeatSocket();
+          sockets.push(socket);
+          return socket;
+        }}
+      >
+        <Stack screenOptions={{ headerShown: false }} />
+      </AppProviders>
+    );
+    return onRender ? (
+      <Profiler id="monitor" onRender={onRender}>
+        {tree}
+      </Profiler>
+    ) : (
+      tree
+    );
+  };
+}
+
+/** Renders Home with the monitor route available; call `openMonitor()` to push it. */
+export function renderMonitorApp({
+  window = 'phonePortrait',
+  onRender,
+  recording = true,
+  initialUrl = '/home',
+  operator: username,
+}: MonitorHarnessOptions = {}): MonitorHarness {
+  resetShellState();
+  setWindow(window);
+  const test = createTestSim();
+  const operator = username === undefined ? OPERATORS[0]! : OPERATORS.find((entry) => entry.username === username);
+  if (operator === undefined) throw new Error(`monitor harness: no demo operator "${username}"`);
+  const signIn = test.sim.actions.signIn(operator.username, DEMO_OPERATOR_PASSWORD);
+  if (!signIn.ok) throw new Error('monitor harness: demo sign-in failed');
+  if (recording) test.sim.actions.loadScenario(ScenarioName.RECORDING);
+  const sockets: FakeHeartbeatSocket[] = [];
+  const routes = {
+    _layout: monitorRoot(test.sim, window, sockets, onRender),
+    index: () => <Text testID="screen-index">index</Text>,
+    home: () => <Text testID="screen-home">home</Text>,
+    'session/live': SessionLiveRoute,
+    'session/finalizing': () => <Text testID="screen-session-finalizing">finalizing</Text>,
+  };
+  const app = renderRoutes(routes, initialUrl);
+  return {
+    ...test,
+    app,
+    sockets,
+    openMonitor() {
+      act(() => router.push('/session/live' as never));
+    },
+  };
+}

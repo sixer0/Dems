@@ -1,0 +1,4 @@
+PRE 19:03:51 uptime:  19:03:51 up  2:56,  2 users,  load average: 3.58, 3.24, 2.41
+START 19:03:51 CMD: env -u DEMS_LOCAL_SESSION_ATTENDED -u DEMS_USER_ATTENDED DEMS_DEV_SESSION_E2E=1 npx vitest run --root apps/core-server --project db --maxWorkers=1 src/capture/fence/__tests__/e2e/development-session-e2e.db.test.ts
+END 19:03:52 rc=1 duration=1s
+POST uptime:  19:03:52 up  2:56,  2 users,  load average: 3.37, 3.21, 2.40

@@ -1,0 +1,5 @@
+launched 12:44:52 by /tmp/claude-501/rt_t/chrome_launch.sh
+binary chromium_headless_shell-1243 (HeadlessChrome/153.0.8010.12)
+profile /tmp/claude-501/rt_t/chrome_profile (fresh, removed at the end)
+CDP --remote-debugging-port=0 -> DevToolsActivePort 52670
+ownership: lsof -iTCP:52670 -sTCP:LISTEN -> pid 57858 = the pid this launcher started

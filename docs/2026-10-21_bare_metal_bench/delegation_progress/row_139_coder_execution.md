@@ -1,0 +1,1 @@
+row 139 | complete | live-harness.ts default getDeviceHealth answer; selector-microphones liveHealth removed | web devices + test/live-*: 85 red -> 0 red (1268 pass) | typecheck clean | see implementation/86_live_bed_device_health.md

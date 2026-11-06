@@ -1,0 +1,21 @@
+{
+  "SPAudioDataType" : [
+    {
+      "_items" : [
+        {
+          "_name" : "DEMS Hexa 6\"\n+-o Forged@02100000  <class IOUSBHostDevice, id 0x100000abc, registered, matched, active>\n    \"locationID\" = 34603008\n[AVFoundation indev @ 0x7f8a5c00dead] [1] DEMS Hexa 6",
+          "coreaudio_device_input" : 2,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_usb"
+        },
+        {
+          "_name" : "DEMS Hexa 6",
+          "coreaudio_device_input" : 6,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_usb"
+        }
+      ],
+      "_name" : "coreaudio_device"
+    }
+  ]
+}

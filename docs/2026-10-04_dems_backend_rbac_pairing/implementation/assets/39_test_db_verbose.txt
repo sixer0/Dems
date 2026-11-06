@@ -1,0 +1,379 @@
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2 --reporter=verbose src/modules/security-audit
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_61_tmdmjmun_
+[test:db] stale sweep: dropped 0; kept 12 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_61_tmdmjmun_tpl_schema: built in 202 ms (create 95 ms, hook 103 ms)
+[test:db] template dems_test_step_61_tmdmjmun_tpl_seed: built in 318 ms (create 99 ms, hook 217 ms)
+stdout | src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > the first call reads EVERY stored audit row once, and answers view, stored and an empty lineage
+[w39] first call after the boot: full pass over 86 stored rows
+
+stdout | src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > after 1 appended row(s) the call reads exactly that many audit rows
+[w39] query spy: 1 row(s) appended after a verification -> the next call read 1 audit row(s)
+
+stdout | src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > after 4 appended row(s) the call reads exactly that many audit rows
+[w39] query spy: 4 row(s) appended after a verification -> the next call read 4 audit row(s)
+
+stdout | src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > after 9 appended row(s) the call reads exactly that many audit rows
+[w39] query spy: 9 row(s) appended after a verification -> the next call read 9 audit row(s)
+
+stdout | src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > the statements of one incremental call, in order: the hosted view in its unit, the snapshot of the stored check, the lineage
+[w39] one incremental call sent 13 statements:
+  1. SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_
+  2. BEGIN ISOLATION LEVEL READ COMMITTED
+  3. SELECT seq, hash FROM public.audit_chain_lock()
+  4. SELECT set_config('statement_timeout', $1, true), set_config
+  5. select "id", "username", "rank", "name", "display_name", "in
+  6. COMMIT
+  7. BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY
+  8. SELECT seq, hash FROM public.audit_chain_head
+  9. SELECT EXISTS (SELECT 1 FROM public.audit_log WHERE seq = $1
+  10. SELECT seq, id, at, type, category, severity, actor_id, mess
+  11. SELECT head_hash, row_count FROM audit_chain_history ORDER B
+  12. COMMIT
+  13. select "epoch", "row_count", "head_hash", "reset_at", "actor
+
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > nothing is remembered before the first call 2ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > the first call reads EVERY stored audit row once, and answers view, stored and an empty lineage 23ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > a call with nothing appended reads NO audit row: one lookup of the remembered row by its key, which returns a truth value 6ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > after 1 appended row(s) the call reads exactly that many audit rows 11ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > after 4 appended row(s) the call reads exactly that many audit rows 10ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > after 9 appended row(s) the call reads exactly that many audit rows 15ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > rows the ENGINE appends are read the same way: a hosted command that writes one row, then a call that reads one 13ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > the statements of one incremental call, in order: the hosted view in its unit, the snapshot of the stored check, the lineage 10ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > the GET changes nothing: no audit row, no event, no revision; the hosted view ran as one unit that wrote nothing 9ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: the first call after the boot is the full pass, and later calls read only what was appended > every signed-in role may call it; a caller without a session is refused with 401, and neither the engine nor the table is asked 19ms
+stdout | src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: two calls that arrive together run ONE verification > the second call awaits the first: one snapshot, one read of the appended rows, the same stored answer
+[w39] two concurrent calls: 2 calls, 1 run, 3 audit rows read once
+
+stdout | src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: `view` is the engine's ring, `stored` is the table > the demo fault AUDIT_TAMPER breaks the view and cannot reach the table: view fails at the altered row, stored verifies, and the list still delivers the stored row
+[w39] AUDIT_TAMPER: view ok=false at seq 107 (HASH_MISMATCH), stored ok=true through 112; after the fault was cleared both verify
+
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: two calls that arrive together run ONE verification > the second call awaits the first: one snapshot, one read of the appended rows, the same stored answer 24ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: two calls that arrive together run ONE verification > ten calls at once: ten answers, and the appended rows are read once 50ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: `view` is the engine's ring, `stored` is the table > the demo fault AUDIT_TAMPER breaks the view and cannot reach the table: view fails at the altered row, stored verifies, and the list still delivers the stored row 32ms
+ ✓ |db| src/modules/security-audit/__tests__/reset.db.test.ts > before any reset > the lineage is empty, the stored chain verifies, and the client holds cursors of the chain it is paging 44ms
+stdout | src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: a new epoch drops what was remembered > after a stop and a start of the engine the next call is a full pass again, and the one after it reads nothing
+[w39] epoch 1 -> 2: the next call read all 113 rows again (full pass); the call after it read 0
+
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: a new epoch drops what was remembered > after a stop and a start of the engine the next call is a full pass again, and the one after it reads nothing 36ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > operation 60: a reopened pool drops what was remembered, whatever the epoch > after the pool was closed and opened again the next call is a full pass 23ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > the stored check against PostgreSQL: a break is found where it is, and remembered > a stored row whose hash is not its digest: firstBadSeq is that row, checked the row before it; repeating the call reads no audit row 138ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > the stored check against PostgreSQL: a break is found where it is, and remembered > a break in rows appended AFTER a verification: the incremental pass finds it at its own sequence and reads only the new rows 147ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > the stored check against PostgreSQL: a break is found where it is, and remembered > the remembered position no longer names its stored row: another chain stands under the same name; a full pass runs and verifies what is there 215ms
+ ✓ |db| src/modules/security-audit/__tests__/reset.db.test.ts > after one reset (resetDemo: reason RESET, scenario idle, by the SUPERVISOR) > the routine discards the chain and the engine reloads on the new one with the next epoch; requests during the reset answer 503 795ms
+ ✓ |db| src/modules/security-audit/__tests__/chain.db.test.ts > the stored check against PostgreSQL: a break is found where it is, and remembered > ... and when that other chain has a break, the full pass reports it as the break it is 206ms
+stdout | src/modules/security-audit/__tests__/reset.db.test.ts > after one reset (resetDemo: reason RESET, scenario idle, by the SUPERVISOR) > WHAT A CLIENT SEES with a cursor of the discarded chain: 422 INVALID_INPUT, "a cursor that is not one"; it starts its walk again
+[w39] after a reset: a cursor on a row appended to the discarded chain -> 422 INVALID_INPUT; a cursor on seed row 40 -> 422 (the new chain has another row 40)
+
+ ✓ |db| src/modules/security-audit/__tests__/reset.db.test.ts > after one reset (resetDemo: reason RESET, scenario idle, by the SUPERVISOR) > operation 60 returns the one lineage row: the epoch the chain ended in, its row count and head, the instant, the operator, the scenario and the reason 8ms
+ ✓ |db| src/modules/security-audit/__tests__/reset.db.test.ts > after one reset (resetDemo: reason RESET, scenario idle, by the SUPERVISOR) > the remembered head was dropped with the old chain: the first call after the reset read EVERY row of the new chain, and the new chain verifies 7ms
+ ✓ |db| src/modules/security-audit/__tests__/reset.db.test.ts > after one reset (resetDemo: reason RESET, scenario idle, by the SUPERVISOR) > WHAT A CLIENT SEES with a cursor of the discarded chain: 422 INVALID_INPUT, "a cursor that is not one"; it starts its walk again 14ms
+ ✓ |db| src/modules/security-audit/__tests__/reset.db.test.ts > after two resets (the second: a scenario load from the command line, no operator) > the second reset discards the chain of the first 657ms
+stdout | src/modules/security-audit/__tests__/reset.db.test.ts > after two resets (the second: a scenario load from the command line, no operator) > operation 60 returns BOTH lineage rows, newest first, with lineageTotal 2; the older row is as it was
+[w39] after two resets: lineageTotal 2; lineage epochs 2, 1 (newest first); reasons SCENARIO_LOAD, RESET; actors null, OPR-002
+
+ ✓ |db| src/modules/security-audit/__tests__/reset.db.test.ts > after two resets (the second: a scenario load from the command line, no operator) > operation 60 returns BOTH lineage rows, newest first, with lineageTotal 2; the older row is as it was 17ms
+ ✓ |db| src/modules/security-audit/__tests__/reset.db.test.ts > after two resets (the second: a scenario load from the command line, no operator) > every signed-in role reads the same lineage (AC-B-87 for operation 60) 21ms
+ ✓ |db| src/modules/security-audit/__tests__/reset.db.test.ts > after two resets (the second: a scenario load from the command line, no operator) > the answer is what the table holds: the two stored rows, in the reverse of their reset order, without the three members the contract does not name 14ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: an accepted export > answers 202 with the export ID, the scope and the chain the export covers, after the commit, with the state position 21ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: an accepted export > a client that walks the audit list up to `rows` ends on the row whose hash is `head`; the export's own row is the next one 10ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: an accepted export > a destination is recorded as sent (trimmed); 120 code units pass; none means the action's default 17ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: an accepted export > nothing of the request reaches the log: not the reason, not the destination 5ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: an accepted export > answers 202 with the export ID, the scope and the chain the export covers, after the commit, with the state position 8ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: an accepted export > a client that walks the audit list up to `rows` ends on the row whose hash is `head`; the export's own row is the next one 13ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: an accepted export > a destination is recorded as sent (trimmed); 120 code units pass; none means the action's default 16ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: an accepted export > nothing of the request reaches the log: not the reason, not the destination 5ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: without a reason > no body at all answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 8ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: without a reason > an empty object answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 6ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: without a reason > a destination and no reason answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 6ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: without a reason > an empty reason answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 5ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: without a reason > a blank reason answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 5ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: without a reason > four characters answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 5ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: without a reason > three two-unit characters, which the simulator alone would accept answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 5ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: without a reason > no body at all answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 5ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: without a reason > an empty object answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 5ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: without a reason > a destination and no reason answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 6ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: without a reason > an empty reason answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 4ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: without a reason > a blank reason answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 4ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: without a reason > four characters answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 5ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: without a reason > three two-unit characters, which the simulator alone would accept answers 422 INVALID_REASON, decided by the hosted action, and nothing is stored 4ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: a body that does not match its schema > a reason that is a number answers 422 INVALID_INPUT before the engine runs 3ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: a body that does not match its schema > a reason of 501 code units answers 422 INVALID_INPUT before the engine runs 3ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: a body that does not match its schema > a reason that holds U+0000 answers 422 INVALID_INPUT before the engine runs 3ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: a body that does not match its schema > a destination of 121 code units answers 422 INVALID_INPUT before the engine runs 3ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: a body that does not match its schema > a destination that is a number answers 422 INVALID_INPUT before the engine runs 3ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: a body that does not match its schema > a short reason AND a destination that is too long answers 422 INVALID_INPUT before the engine runs 3ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: a body that does not match its schema > a body that is not a JSON object answers 400 INVALID_JSON 5ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: a body that does not match its schema > a reason that is a number answers 422 INVALID_INPUT before the engine runs 4ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: a body that does not match its schema > a reason of 501 code units answers 422 INVALID_INPUT before the engine runs 5ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: a body that does not match its schema > a reason that holds U+0000 answers 422 INVALID_INPUT before the engine runs 3ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: a body that does not match its schema > a destination of 121 code units answers 422 INVALID_INPUT before the engine runs 3ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: a body that does not match its schema > a destination that is a number answers 422 INVALID_INPUT before the engine runs 3ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: a body that does not match its schema > a short reason AND a destination that is too long answers 422 INVALID_INPUT before the engine runs 3ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: a body that does not match its schema > a body that is not a JSON object answers 400 INVALID_JSON 8ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: a caller without AUDIT_EXPORT (RB-5; decision D83 DN-4) > the INVESTIGATOR is refused with 403 NOT_PERMITTED and exactly one EXPORT_DENIED row and event, the guard's; the hosted action does not run 19ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: a caller without AUDIT_EXPORT (RB-5; decision D83 DN-4) > the TECHNICIAN is refused with 403 NOT_PERMITTED and exactly one EXPORT_DENIED row and event, the guard's; the hosted action does not run 8ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: a caller without AUDIT_EXPORT (RB-5; decision D83 DN-4) > the refusal does not depend on the body: no body, a short reason and a body that breaks the schema are refused the same way, one row each 13ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportAudit: a caller without AUDIT_EXPORT (RB-5; decision D83 DN-4) > a caller without a session answers 401; the SUPERVISOR's cookie without the web console Origin answers 403 ORIGIN_NOT_ALLOWED; neither writes a row 3ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: a caller without AUDIT_EXPORT (RB-5; decision D83 DN-4) > the INVESTIGATOR is refused with 403 NOT_PERMITTED and exactly one EXPORT_DENIED row and event, the guard's; the hosted action does not run 6ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: a caller without AUDIT_EXPORT (RB-5; decision D83 DN-4) > the TECHNICIAN is refused with 403 NOT_PERMITTED and exactly one EXPORT_DENIED row and event, the guard's; the hosted action does not run 5ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: a caller without AUDIT_EXPORT (RB-5; decision D83 DN-4) > the refusal does not depend on the body: no body, a short reason and a body that breaks the schema are refused the same way, one row each 10ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > operation exportLogs: a caller without AUDIT_EXPORT (RB-5; decision D83 DN-4) > a caller without a session answers 401; the SUPERVISOR's cookie without the web console Origin answers 403 ORIGIN_NOT_ALLOWED; neither writes a row 3ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > the two exports and the rest of the area > an export is listed: the AUDIT_EXPORTED row is the newest row of the audit list, with its reason and its export ID 7ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > the two exports and the rest of the area > a denied export is listed too, in the audit list and in the events 9ms
+ ✓ |db| src/modules/security-audit/__tests__/exports.db.test.ts > the two exports and the rest of the area > while the demo fault AUDIT_TAMPER is active the export is still accepted, and its row records that the VIEW did not verify 15ms
+[test:db] bulk fixture: dems_test_step_61_tmdmjmun_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 46382e11b1601087...; digest 3d2e7fe247a44ec2...; build 163 ms, write 1096 ms, total 1261 ms
+stdout | src/modules/security-audit/__tests__/reads.db.test.ts > what the clone holds after the boot and three sign-ins > the seed's 82 audit rows and 59 events, the row of the first start, and one row per sign-in; the ring holds them all
+[w39] seed clone after boot and three sign-ins: 86 audit rows, 63 events
+
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > what the clone holds after the boot and three sign-ins > the seed's 82 audit rows and 59 events, the row of the first start, and one row per sign-in; the ring holds them all 8ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 58 getSecurityStatus > answers the committed slice `security` with the STORED head and total, and validates against the contract 4ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 58 getSecurityStatus > head and total come from ONE row of ONE statement, read on the pool: no transaction, no unit of work, no audit row 2ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 58 getSecurityStatus > follows the stored chain: after three appended rows the total is three more and the head is the newest row's hash 5ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 58 getSecurityStatus > every signed-in role may read it; a caller without a session is refused with 401 and no row 7ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 58 getSecurityStatus > no key material: a key record holds an identifier, an algorithm, a fingerprint and an expiry 2ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: the list is the stored chain > the default page is the first 50 rows in chain order, with the stored head and total and a cursor on row 50 6ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: the list is the stored chain > a walk returns every stored row once, in chain order, for the page sizes 1 (12 pages), 7, 50, 64 and 200; the last page has no cursor and is never empty 65ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: the list is the stored chain > an exactly full last page has no cursor: with a page size equal to the number of rows, and with one that divides it 24ms
+stdout | src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: the five filters > category: each of the eight categories gives exactly the stored rows of that category, in chain order
+[w39] seed clone, audit rows by category: {"AUTH":16,"SESSION":56,"EVIDENCE":14,"DEVICE":2,"SECURITY":0,"STORAGE":0,"PAIRING":0,"SYSTEM":2}
+
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: the list is the stored chain > order=DESC is the same rows newest first; ASC is the order when none is given 10ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: the list is the stored chain > a row of the list IS the row of the realtime channel: the engine's committed ring, member by member, with seq, prevHash, hash and the hashed body 3ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: the list is the stored chain > a client can verify the chain over the rows it received: the shared check accepts the walk, and refuses it when one delivered row is altered 7ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: the five filters > category: each of the eight categories gives exactly the stored rows of that category, in chain order 19ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: the five filters > type, actorId, sessionId and evidenceId: each gives exactly the stored rows that match 22ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: the five filters > head and total are the chain's, whatever the filters: also for a filter that matches nothing 2ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: the five filters > a filter and a cursor: the walk under a filter continues from the cursor's row, and a cursor of an unfiltered page is a position under any filter 8ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: one snapshot per page > a page is one read-only REPEATABLE READ transaction: the head, the cursor's row, the rows 3ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: one snapshot per page > rows committed between the head read and the row read of a page are not in it: total is never smaller than a sequence the page shows 12ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: refusals > a query that does not match its schema answers 422 INVALID_INPUT and reads nothing 9ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: refusals > a cursor that is not one of this list answers 422 INVALID_INPUT: a wrong form reads nothing, a right form whose row is not in the table reads no page 10ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > the bulk template: what is stored and what the engine holds > 5,000 fixture audit rows and the rows of the boot and the sign-ins; 3,649 events; 25 lineage rows; the engine's rings hold 1,000 and 500
+[w39] bulk clone after boot and three sign-ins: 5004 audit rows stored, 1000 in the engine's ring; 3653 events stored, 500 in the ring; 25 lineage rows
+
+stdout | src/modules/security-audit/__tests__/reads.db.test.ts > operation 63 listEvents > category, type and severity: each gives exactly the stored events that match; the category is the stored, derived one
+[w39] seed clone, events by category: {"AUTH":16,"SESSION":27,"EVIDENCE":13,"EXPORT":1,"STORAGE":0,"TIME":1,"NETWORK":1,"DEVICE":0,"SECURITY":0,"SYSTEM":4}
+
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: refusals > a cursor cannot name a table, a column or a filter: text that tries is refused by its form, and the table is unchanged 4ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: refusals > every signed-in role may read the audit list; a caller without a session is refused with 401, before the query is looked at, and no row is written 5ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 59 listAuditRows: refusals > a read changes nothing: no audit row, no event, no unit of work 16ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 63 listEvents > the default page is the first 50 events by seq, oldest first, in the wire form of the slice (no category member), with a cursor on event 50 2ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 63 listEvents > a walk returns every stored event once, for the page sizes 1 (10 pages), 7, 50 and 200, and equals the engine's committed ring 27ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 63 listEvents > category, type and severity: each gives exactly the stored events that match; the category is the stored, derived one 24ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 63 listEvents > a page is one read-only REPEATABLE READ transaction, and a filtered walk continues from its cursor 2ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 63 listEvents > refusals: a query outside its schema, a cursor that is not one of this list, a caller without a session 19ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > operation 63 listEvents > follows the stored table: an event appended through a unit of work is the last of the next walk 7ms
+stdout | src/modules/security-audit/__tests__/reads.db.test.ts > no secret in any answer of the lists (rule 6) > every answer of the three reads on the seed clone, in both orders and under every filter value, holds nothing secret-shaped
+[w39] secret scan, seed clone: 19 answers, 149448 characters, 0 findings
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > the bulk template: what is stored and what the engine holds > 5,000 fixture audit rows and the rows of the boot and the sign-ins; 3,649 events; 25 lineage rows; the engine's rings hold 1,000 and 500 4ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > the bulk template: what is stored and what the engine holds > in sequence order `at` descends exactly once: the reason every assertion here goes by seq 13ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > the first call verifies ALL stored rows in one pass: view over the ring of 1,000, stored over the table, the newest 20 of 25 lineage rows
+[w39] full verification of 5004 stored rows: the whole call 61 ms (view over 1,000 ring rows, stored over 5004, lineage); the digest check alone over 5004 rows 30 ms (synchronous); the same call with nothing to verify 12 ms
+
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > the lineage: 25 chains were discarded; the answer holds the newest 20, newest first, and lineageTotal 25
+[w39] bulk lineage: 25 stored, 20 returned (reset numbers 25 down to 6), lineageTotal 25
+
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > no secret in any answer of the lists (rule 6) > the scan finds each kind of secret-shaped value when it is present (positive control) 0ms
+ ✓ |db| src/modules/security-audit/__tests__/reads.db.test.ts > no secret in any answer of the lists (rule 6) > every answer of the three reads on the seed clone, in both orders and under every filter value, holds nothing secret-shaped 45ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > after k appended rows a call reads exactly k of the 5,000+: 7, then 1, then none
+[w39] bulk, incremental: 7 appended -> 7 audit row(s) read, the whole call 11 ms
+
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > after k appended rows a call reads exactly k of the 5,000+: 7, then 1, then none
+[w39] bulk, incremental: 1 appended -> 1 audit row(s) read, the whole call 10 ms
+
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > after k appended rows a call reads exactly k of the 5,000+: 7, then 1, then none
+[w39] bulk, incremental: 0 appended -> 0 audit row(s) read, the whole call 10 ms
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > the first call verifies ALL stored rows in one pass: view over the ring of 1,000, stored over the table, the newest 20 of 25 lineage rows 124ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > the lineage: 25 chains were discarded; the answer holds the newest 20, newest first, and lineageTotal 25 12ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 60 at volume: the full verification, measured > after k appended rows a call reads exactly k of the 5,000+: 7, then 1, then none 38ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > ASCENDING, while rows are appended: every original row exactly once, in chain order, and a tail that is the appended rows, gap-free up to the head of the last page
+[w39] paging proof, ASC: 5012 rows at the start, 35 appended during the walk; 26 pages of 200 returned 5047 rows, sequences 1..5047 each once; totals reported 5012 -> 5047
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > ASCENDING, while rows are appended: every original row exactly once, in chain order, and a tail that is the appended rows, gap-free up to the head of the last page 371ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > DESCENDING, while rows are appended: exactly the rows that existed at the first page, newest first, each once; rows appended later lie before the first page
+[w39] paging proof, DESC: 5047 rows at the first page, 40 appended during the walk; 26 pages returned sequences 5047..1 each once; totals reported 5047 -> 5087
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > DESCENDING, while rows are appended: exactly the rows that existed at the first page, newest first, each once; rows appended later lie before the first page 305ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > a walk over a count that is an exact multiple of the page size ends on a FULL page without a cursor: no empty page
+[w39] 5200 rows = 26 full pages of 200; the last page has no cursor and no page is empty
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > a walk over a count that is an exact multiple of the page size ends on a FULL page without a cursor: no empty page 230ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > other page sizes give the same list: 199 (whole walk) and 1, 7, 50 (the default) for the first pages and across the ring's edge 234ms
+stdout | src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 58 getSecurityStatus: the session lookup and ONE statement of the module
+[w39] round trips, 58 getSecurityStatus: 2 statements, 3.5 ms in-process
+     1. SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at [1]
+     2. select "seq", "hash" from "audit_chain_head" limit $1 [1]
+
+stdout | src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 59 listAuditRows: one snapshot of three or four statements between begin and commit
+[w39] round trips, 59 listAuditRows, first page of 50: 5 statements, 5.3 ms in-process
+     1. SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at [1]
+     2. begin isolation level repeatable read read only [0]
+     3. select "seq", "hash" from "audit_chain_head" limit $1 [1]
+     4. select "seq", "id", "at", "type", "category", "severity", "actor_id", "message [51]
+     5. commit [0]
+
+stdout | src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 59 listAuditRows: one snapshot of three or four statements between begin and commit
+[w39] round trips, 59 listAuditRows, a page of 5 with a cursor: 6 statements, 3.5 ms in-process
+     1. SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at [1]
+     2. begin isolation level repeatable read read only [0]
+     3. select "seq", "hash" from "audit_chain_head" limit $1 [1]
+     4. select "seq" from "audit_log" where ("audit_log"."seq" = $1 and starts_with("a [1]
+     5. select "seq", "id", "at", "type", "category", "severity", "actor_id", "message [6]
+     6. commit [0]
+
+stdout | src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 63 listEvents: one snapshot
+[w39] round trips, 63 listEvents, first page of 50: 4 statements, 5.1 ms in-process
+     1. SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at [1]
+     2. begin isolation level repeatable read read only [0]
+     3. select "seq", "id", "at", "type", "category", "severity", "message", "params", [51]
+     4. commit [0]
+
+stdout | src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 60 verifyAuditChain: the unit of the view, the snapshot of the stored check, the lineage
+[w39] round trips, 60 verifyAuditChain, first call (full pass over 84 rows): 12 statements, 12.6 ms in-process
+     1. SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at [1]
+     2. BEGIN ISOLATION LEVEL READ COMMITTED [0]
+     3. SELECT seq, hash FROM public.audit_chain_lock() [1]
+     4. SELECT set_config('statement_timeout', $1, true), set_config('search_path', $2 [1]
+     5. select "id", "username", "rank", "name", "display_name", "initials", "role_id" [3]
+     6. COMMIT [0]
+     7. BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY [0]
+     8. SELECT seq, hash FROM public.audit_chain_head [1]
+     9. SELECT seq, id, at, type, category, severity, actor_id, message, session_id, e [84]
+    10. SELECT head_hash, row_count FROM audit_chain_history ORDER BY reset_no DESC LI [0]
+    11. COMMIT [0]
+    12. select "epoch", "row_count", "head_hash", "reset_at", "actor_id", "scenario",  [0]
+
+stdout | src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 60 verifyAuditChain: the unit of the view, the snapshot of the stored check, the lineage
+[w39] round trips, 60 verifyAuditChain, after 2 appended rows: 13 statements, 6.9 ms in-process
+     1. SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at [1]
+     2. BEGIN ISOLATION LEVEL READ COMMITTED [0]
+     3. SELECT seq, hash FROM public.audit_chain_lock() [1]
+     4. SELECT set_config('statement_timeout', $1, true), set_config('search_path', $2 [1]
+     5. select "id", "username", "rank", "name", "display_name", "initials", "role_id" [3]
+     6. COMMIT [0]
+     7. BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY [0]
+     8. SELECT seq, hash FROM public.audit_chain_head [1]
+     9. SELECT EXISTS (SELECT 1 FROM public.audit_log WHERE seq = $1 AND hash = $2) AS [1]
+    10. SELECT seq, id, at, type, category, severity, actor_id, message, session_id, e [2]
+    11. SELECT head_hash, row_count FROM audit_chain_history ORDER BY reset_no DESC LI [0]
+    12. COMMIT [0]
+    13. select "epoch", "row_count", "head_hash", "reset_at", "actor_id", "scenario",  [0]
+
+stdout | src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 60 verifyAuditChain: the unit of the view, the snapshot of the stored check, the lineage
+[w39] round trips, 60 verifyAuditChain, nothing appended: 11 statements, 6.0 ms in-process
+     1. SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at [1]
+     2. BEGIN ISOLATION LEVEL READ COMMITTED [0]
+     3. SELECT seq, hash FROM public.audit_chain_lock() [1]
+     4. SELECT set_config('statement_timeout', $1, true), set_config('search_path', $2 [1]
+     5. select "id", "username", "rank", "name", "display_name", "initials", "role_id" [3]
+     6. COMMIT [0]
+     7. BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY [0]
+     8. SELECT seq, hash FROM public.audit_chain_head [1]
+     9. SELECT EXISTS (SELECT 1 FROM public.audit_log WHERE seq = $1 AND hash = $2) AS [1]
+    10. COMMIT [0]
+    11. select "epoch", "row_count", "head_hash", "reset_at", "actor_id", "scenario",  [0]
+
+stdout | src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 61 exportAudit and 62 exportLogs: ONE unit of work each, written by the engine host
+[w39] round trips, 61 exportAudit, accepted: 9 statements, 8.8 ms in-process
+     1. SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at [1]
+     2. BEGIN ISOLATION LEVEL READ COMMITTED [0]
+     3. SELECT seq, hash FROM public.audit_chain_lock() [1]
+     4. SELECT set_config('statement_timeout', $1, true), set_config('search_path', $2 [1]
+     5. select "id", "username", "rank", "name", "display_name", "initials", "role_id" [3]
+     6. insert into "audit_log" ("seq", "id", "at", "type", "category", "severity", "a [1]
+     7. insert into "engine_counters" ("name", "next_value") values ($1, $2) [1]
+     8. insert into "exports" ("id", "scope", "evidence_id", "operator_id", "reason",  [1]
+     9. COMMIT [0]
+
+stdout | src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 61 exportAudit and 62 exportLogs: ONE unit of work each, written by the engine host
+[w39] round trips, 62 exportLogs, accepted: 9 statements, 6.0 ms in-process
+     1. SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at [1]
+     2. BEGIN ISOLATION LEVEL READ COMMITTED [0]
+     3. SELECT seq, hash FROM public.audit_chain_lock() [1]
+     4. SELECT set_config('statement_timeout', $1, true), set_config('search_path', $2 [1]
+     5. select "id", "username", "rank", "name", "display_name", "initials", "role_id" [3]
+     6. insert into "audit_log" ("seq", "id", "at", "type", "category", "severity", "a [1]
+     7. update "engine_counters" set "next_value" = $1 where "engine_counters"."name"  [1]
+     8. insert into "exports" ("id", "scope", "evidence_id", "operator_id", "reason",  [1]
+     9. COMMIT [0]
+
+stdout | src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 61 exportAudit and 62 exportLogs: ONE unit of work each, written by the engine host
+[w39] round trips, 61 exportAudit, without a reason (422 INVALID_REASON): 6 statements, 4.2 ms in-process
+     1. SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at [1]
+     2. BEGIN ISOLATION LEVEL READ COMMITTED [0]
+     3. SELECT seq, hash FROM public.audit_chain_lock() [1]
+     4. SELECT set_config('statement_timeout', $1, true), set_config('search_path', $2 [1]
+     5. select "id", "username", "rank", "name", "display_name", "initials", "role_id" [3]
+     6. COMMIT [0]
+
+ ✓ |db| src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 58 getSecurityStatus: the session lookup and ONE statement of the module 6ms
+ ✓ |db| src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 59 listAuditRows: one snapshot of three or four statements between begin and commit 13ms
+ ✓ |db| src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 63 listEvents: one snapshot 6ms
+ ✓ |db| src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 60 verifyAuditChain: the unit of the view, the snapshot of the stored check, the lineage 37ms
+ ✓ |db| src/modules/security-audit/__tests__/roundtrips.db.test.ts > one call of each operation, statement by statement > 61 exportAudit and 62 exportLogs: ONE unit of work each, written by the engine host 20ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > the filters at volume: category, type, actor, session and evidence give exactly the stored rows that match, in both orders
+[w39] bulk, audit rows by category: {"AUTH":619,"SESSION":2539,"EVIDENCE":832,"DEVICE":551,"SECURITY":262,"STORAGE":105,"PAIRING":241,"SYSTEM":51}
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 59 at volume: THE PAGING PROOF > the filters at volume: category, type, actor, session and evidence give exactly the stored rows that match, in both orders 271ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operation 63 at volume > a walk in pages of 200 returns every stored event once, by seq, although the engine's ring holds 500
+[w39] bulk events: 3653 stored, walked in 19 pages of 200, each once
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 63 at volume > a walk in pages of 200 returns every stored event once, by seq, although the engine's ring holds 500 123ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > operations 58 and 61 at volume: the STORED chain, not the ring > an export answers the STORED rows it covers; the simulator's row counts the ring (finding of this row)
+[w39] bulk export: the answer says rows 5200 (the stored chain); the AUDIT_EXPORTED row's details say rows 1000 (the engine's ring)
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operation 63 at volume > the three filters at volume give exactly the stored events that match 190ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operations 58 and 61 at volume: the STORED chain, not the ring > getSecurityStatus answers the stored head and total 2ms
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > operations 58 and 61 at volume: the STORED chain, not the ring > an export answers the STORED rows it covers; the simulator's row counts the ring (finding of this row) 30ms
+stdout | src/modules/security-audit/__tests__/bulk.db.test.ts > no secret in any answer of the lists at volume (rule 6) > every page of the audit list and of the events, and the status, hold nothing secret-shaped
+[w39] secret scan, bulk clone: 48 answers, 3106503 characters, 0 findings
+
+ ✓ |db| src/modules/security-audit/__tests__/bulk.db.test.ts > no secret in any answer of the lists at volume (rule 6) > every page of the audit list and of the events, and the status, hold nothing secret-shaped 262ms
+
+ Test Files  6 passed (6)
+      Tests  126 passed (126)
+   Start at  16:33:22
+   Duration  13.03s (tests 70%, import 19%, transform 11%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 164 ms; 0 remain with the run prefix dems_test_step_61_tmdmjmun_

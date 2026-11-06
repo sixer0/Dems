@@ -1,0 +1,47 @@
+== 3. the identical test-ID pins of the two mode-switch copies (F76-14, counted fresh) ==
+file                                           dialog   confirm   cancel  
+live-shell-indicator.test.tsx                  11       4         1       
+live-shell-notices.test.tsx                    1        1         0       
+live-shell-admin.test.tsx                      1        1         0       
+live-login-page.test.tsx                       7        4         1       
+
+  neither hook is imported by any test file (both are reached through the mounted surface):
+  record sources: only 'shell.modeSwitch' is pinned by a test:
+    apps/core-web/src/test/live-shell-indicator.test.tsx:358:    expect(webErrorSink.records().slice(records)).toEqual([expect.objectContaining({ level: 'error', source: 'shell.modeSwitch', message: 'the storage is gone' })])
+    apps/core-web/src/components/shell/mode-switch.tsx:59:        reportShellError('shell.modeSwitch', error)
+    apps/core-web/src/features/login/use-mode-switch.tsx:66:          source: 'login.modeSwitch',
+
+  consumers of each copy:
+    apps/core-web/src/components/shell/mode-indicator.tsx:5:import { useModeSwitch } from './mode-switch'
+    apps/core-web/src/components/shell/live-only-state.tsx:5:import { useModeSwitch } from './mode-switch'
+    apps/core-web/src/components/shell/live-notices.tsx:10:import { useModeSwitch } from './mode-switch'
+    apps/core-web/src/components/shell/index.ts:18:export { useModeSwitch, type ModeSwitch } from './mode-switch'
+    apps/core-web/src/features/devices/motion.ts:7:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/system/choreography.ts:12:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/system/quick-actions.tsx:10:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/dashboard/dashboard-motion.ts:16:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/session-monitor/choreography.ts:6:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/storage/kpi-cards.tsx:18:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/session-monitor/index.tsx:28:import { PageHeader, useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/storage/choreography.ts:12:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/network-time/choreography.ts:13:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/login/mode-selector.tsx:10:import type { LoginModeSwitch } from './use-mode-switch'
+    apps/core-web/src/features/login/mode-selector.tsx:13:  modeSwitch: LoginModeSwitch
+    apps/core-web/src/features/session-monitor/storage-panel.tsx:11:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/login/index.tsx:48:import { useLoginModeSwitch } from './use-mode-switch'
+    apps/core-web/src/features/login/index.tsx:61:  const modeSwitch = useLoginModeSwitch()
+    apps/core-web/src/features/login/use-mode-switch.tsx:5: * `useLoginModeSwitch()` gives the mode of this page load and the change. Step 1 of §3.3 is here:
+    apps/core-web/src/features/login/use-mode-switch.tsx:21:export interface LoginModeSwitch {
+    apps/core-web/src/features/login/use-mode-switch.tsx:34:export function useLoginModeSwitch(): LoginModeSwitch {
+    apps/core-web/src/features/login/auth-card.tsx:31:import type { LoginModeSwitch } from './use-mode-switch'
+    apps/core-web/src/features/login/auth-card.tsx:42:  modeSwitch: LoginModeSwitch
+    apps/core-web/src/features/api-reference/choreography.ts:12:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/security-audit/controls-panel.tsx:7:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/security-audit/choreography.ts:12:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/api-reference/renderer-panel.tsx:7:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/security-audit/audit-log-panel.tsx:42:import { useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/session-new/index.tsx:53:import { PageHeader, useRouteEnterDelay } from '@/components/shell'
+    apps/core-web/src/features/security-audit/chain-panel.tsx:9:import { useRouteEnterDelay } from '@/components/shell'
+
+  the login folder's file count today / after deleting use-mode-switch.tsx (the static test needs >= 16):
+    now=18 after=17

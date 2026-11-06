@@ -1,0 +1,12 @@
+#!/bin/bash
+# an.sh <run>: frame facts, timer lag vs the Core's start/stop (from the run's session row), empty frames (CF2-A tools).
+N=$1; R=/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/rf2; cd $R
+ST=$(grep -o '"startedAt":"[^"]*' runs/$N.out | head -1 | grep -o 'T[0-9:.]*' | tr -d T)
+SP=$(grep -o '"stoppedAt":"[^"]*' runs/$N.out | head -1 | grep -o 'T[0-9:.]*' | tr -d T)
+SE=$(grep -o '"sealedAt":"[^"]*' runs/$N.out | head -1 | grep -o 'T[0-9:.]*' | tr -d T)
+OFF=$(grep -o 'clock offset ms: -\?[0-9]*' runs/$N.out | tail -1 | grep -o -- '-\?[0-9]*$')
+(cd tools && python3 analyze_run.py ../phone/frames/$N ../phone/assets/$N.mp4 ${OFF:--440} > ../runs/${N}_analysis.json 2>&1)
+echo "$N core start $ST stop $SP sealed $SE offset ${OFF}"
+python3 -c "import json;a=json.load(open('runs/${N}_analysis.json'));print({k:a[k] for k in ['frames','first','last','monitorFrames','timerDecoded','timerUndecoded','timerFirst','timerLast','backwardSteps','forwardJumpsOver2s','bannerFrames','blankFrames','redFrames']}); print('handover', a['handover'])"
+python3 tools/lag.py phone/frames/${N}_rows.json $ST $SP | tee runs/${N}_lag.json
+python3 tools/blank2.py phone/frames/$N | tee runs/${N}_blank.json

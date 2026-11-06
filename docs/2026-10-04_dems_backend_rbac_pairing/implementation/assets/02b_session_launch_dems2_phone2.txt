@@ -1,0 +1,41 @@
+== W02b step 9 phone2 2026-10-04 10:46:04 WIB
+$ METRO_PORT=8085 DEVICE_SESSION_MAX_SECONDS=540 apps/mobile/scripts/device-session.sh phone2 "/bin/sh '<assets>/02b_launch_check.sh'"
+[device-session phone2 10:46:04] lock held; hard cap 540 s, until 10:55:04 (watchdog PID 75867)
+[device-session phone2 10:46:04] session serial: emulator-5558 (dems2_phone2)
+[device-session phone2 10:46:04] emulator-5558: screen awake, no keyguard
+[device-session phone2 10:46:04] Metro PID 75902 (own process group) on 127.0.0.1:8085 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8085.log)
+[device-session phone2 10:46:06] emulator-5558: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone2 10:46:06] Metro ready; device tcp:8081 -> host tcp:8085, tcp:4400 -> tcp:4400 on emulator-5558
+== dems2_phone2 emulator-5558 10:46:06; METRO_PORT=8085; user state: State: RUNNING_UNLOCKED
+versionCode=100 minSdk=24 targetSdk=36
+lastUpdateTime=2026-10-04 10:43:32
+signatures=PackageSignatures{92f3d5c version:2, signatures:[51ed3f60], past signatures:[]}
+firstInstallTime=2026-10-04 10:43:32
+base.apk on the device: d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec
+-- LAUNCH 10:46:07
+Status: ok
+LaunchState: COLD
+TotalTime: 6691
+-- bundle wait: 0s
+Android Bundled 1587ms node_modules/expo-router/entry.js (6084 modules)
+-- pidof after launch: [5133]
+mCurrentFocus=Window{20ef23e u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-rw-r--r--@ 1 gsp-budi  staff  1711342 Oct  4 10:46 /Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/13_dems2_phone2_launch.png
+-- logcat of the app process: FATAL / JS error lines
+10-04 10:46:08.130  5133  5133 E unknown:ReactNative: Unable to display loading message because react activity isn't active, message: Loading from localhost:8081…
+   (end of logcat filter)
+== dems2_phone2 end 10:46:28
+-- 13_launch_check.sh status: 0
+-rw-r--r--@ 1 gsp-budi  staff  1711342 Oct  4 10:46 /Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/02b_dems2_phone2_launch.png
+screencap sha256: d1b598bcddd605a8c0c36fd02b001290dcc255c3e7d4e6e2c65cd688d7318345
+-- texts on screen (read-only: uiautomator dump /dev/tty)
+   (0 distinct texts)
+   uiautomator said: ERROR: could not get idle state.
+isKeyguardShowing=false
+lastUpdateTime=2026-10-04 10:43:32
+firstInstallTime=2026-10-04 10:43:32
+[device-session phone2 10:46:40] Metro 75902 stopped
+[device-session phone2 10:46:40] session ended with status 0
+session exit=0
+reverse rules AFTER the session: [;]
+Metro after the session (listeners 8081-8089): []

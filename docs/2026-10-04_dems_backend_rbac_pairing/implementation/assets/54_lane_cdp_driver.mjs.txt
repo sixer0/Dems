@@ -1,0 +1,382 @@
+// W54 lane check: the shell of the web console in a real headless Chromium, over raw CDP (Node's
+// built-in WebSocket; no install). Built on W50's driver (implementation/assets/50_lane_cdp_driver.mjs.txt).
+// Usage: node --import tsx .cache/w54/lane/cdp-driver.mjs <phase> <devtoolsPort> <vitePort> <outJson> <assetsDir>
+// Phases: live | down | up | simulated. Each run attaches to the page the browser already has.
+//
+// What is never stored or printed: a request body, a cookie value, the seeded password, a
+// `Runtime.evaluate` expression, an operator's name. Operators are named by ID and role.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+// The seeded demo operators, read from the project's own seed source (never printed).
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [phase, devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+const investigator = OPERATORS.find((operator) => operator.role === 'INVESTIGATOR')
+if (!supervisor || !investigator || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source lacks an operator or the demo password constant')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map()
+let sockets = new Map()
+let consoleLines = []
+let loadFired = false
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Network.webSocketCreated':
+      sockets.set(p.requestId, { url: cleanUrl(p.url), status: null, closed: false })
+      break
+    case 'Network.webSocketHandshakeResponseReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.webSocketClosed': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.closed = true
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 420)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs)
+  return loadFired
+}
+
+const viewport = async (width, height = 900) => {
+  await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+  await sleep(900)
+}
+
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  writeFileSync(join(assetsDir, name), Buffer.from(data, 'base64'))
+  return name
+}
+
+const takeNetwork = () => {
+  const all = [...requests.values()]
+  const taken = {
+    api: all.filter((entry) => entry.url.includes('/api/v1/')).map((entry) => `${entry.method} ${entry.url.replace(ORIGIN, '')} ${entry.status}`),
+    origins: [...new Set(all.map((entry) => { try { return new URL(entry.url).origin } catch { return '(other)' } }))].sort(),
+    sockets: [...sockets.values()].map((entry) => `${entry.url} ${entry.status}${entry.closed ? ' closed' : ''}`),
+    console: consoleLines,
+  }
+  requests = new Map()
+  sockets = new Map()
+  consoleLines = []
+  return taken
+}
+
+/** Named elements of the shell only: never the page text, never an operator's name. */
+const shellFacts = (label) =>
+  evaluate(
+    `(() => {
+      const q = (selector) => document.querySelector(selector)
+      const shell = q('[data-testid="app-shell"]')
+      const mode = q('[data-testid="shell-mode"]')
+      const rect = mode?.getBoundingClientRect()
+      const bar = q('.dems-topbar')
+      const navs = [...document.querySelectorAll('nav[aria-label="Primary"]')].filter((nav) => !nav.hidden)
+      const nav = navs.at(-1) ?? null
+      const group = q('[data-testid="nav-admin-group"]')
+      return {
+        path: location.pathname + (location.search ? '?…' : ''),
+        viewport: innerWidth + 'x' + innerHeight,
+        tier: shell?.getAttribute('data-shell-tier') ?? null,
+        sidebar: shell?.getAttribute('data-sidebar') ?? null,
+        mode: mode
+          ? {
+              text: mode.textContent.trim(),
+              state: mode.getAttribute('data-state'),
+              ariaLabel: mode.getAttribute('aria-label'),
+              tag: mode.tagName,
+              box: [Math.round(rect.left), Math.round(rect.top), Math.round(rect.width), Math.round(rect.height)],
+              insideViewport: rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.right <= innerWidth,
+              display: getComputedStyle(mode).display,
+            }
+          : null,
+        topBarOverflows: bar ? bar.scrollWidth > bar.clientWidth + 1 : null,
+        pageOverflowsX: document.documentElement.scrollWidth > innerWidth + 1,
+        navLinks: nav ? [...nav.querySelectorAll('a[data-nav-id]')].map((a) => a.getAttribute('data-nav-id')) : [],
+        adminGroup: group ? { label: group.querySelector('.dems-nav-group-label')?.textContent?.trim() ?? null, links: [...group.querySelectorAll('a')].map((a) => a.getAttribute('href')) } : null,
+        pages: [...document.querySelectorAll('[data-testid^="page-"]')].map((el) => el.getAttribute('data-testid')),
+        stubs: ['ur-stub', 'pd-stub', 'ur-live-only', 'pd-live-only', 'ur-live-only-switch'].filter((testId) => q('[data-testid="' + testId + '"]')),
+        heading: q('h1')?.textContent?.trim().slice(0, 60) ?? null,
+        toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((toast) => ({
+          title: toast.querySelector('[data-slot="toast-title"]')?.textContent?.trim() ?? null,
+          description: toast.querySelector('[data-slot="toast-description"]')?.textContent?.trim().slice(0, 160) ?? null,
+          buttons: [...toast.querySelectorAll('button')].map((button) => button.textContent.trim()).filter(Boolean),
+        })),
+        healthVersion: q('[data-testid="health-version"]')?.textContent?.trim() ?? null,
+        coreModeKey: localStorage.getItem('dems.core.mode.v1'),
+        owedSignOutKeyPresent: localStorage.getItem('dems.live.owedSignOut.v1') !== null,
+      }
+    })()`,
+    label,
+  )
+
+/** A sign-in through the dev server by page script. The body is built here and never printed. */
+const signIn = (operator, label) =>
+  evaluate(
+    `(async () => {
+      const answer = await fetch('/api/v1/auth/sign-in', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: ${JSON.stringify(JSON.stringify({ username: operator.username, password: DEMO_OPERATOR_PASSWORD }))} })
+      const json = await answer.json()
+      return { status: answer.status, role: json.session?.operator?.role ?? null, operatorId: json.session?.operator?.id ?? null, errorCode: json.error?.code ?? null }
+    })()`,
+    label,
+  )
+
+const signOut = (label) =>
+  evaluate(
+    `(async () => {
+      const answer = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) })
+      return { status: answer.status }
+    })()`,
+    label,
+  )
+
+/** The SUPERVISOR's own session outside the browser: a second client of the Core, through the dev server. Its cookie is never printed. */
+async function supervisorClient() {
+  const headers = { 'content-type': 'application/json', origin: ORIGIN }
+  const answer = await fetch(`${ORIGIN}/api/v1/auth/sign-in`, { method: 'POST', headers, body: JSON.stringify({ username: supervisor.username, password: DEMO_OPERATOR_PASSWORD }) })
+  const cookie = (answer.headers.getSetCookie?.() ?? []).map((line) => line.split(';')[0]).join('; ')
+  if (answer.status !== 200 || cookie === '') throw new Error(`the second client could not sign in: status ${answer.status}`)
+  return {
+    assignRole: async (operatorId, role) => (await fetch(`${ORIGIN}/api/v1/admin/users/${operatorId}/role`, { method: 'POST', headers: { ...headers, cookie }, body: JSON.stringify({ role }) })).status,
+    signOut: async () => (await fetch(`${ORIGIN}/api/v1/auth/sign-out`, { method: 'POST', headers: { ...headers, cookie }, body: JSON.stringify({ reason: 'USER' }) })).status,
+  }
+}
+
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+const version = await send('Browser.getVersion')
+const result = { phase, browser: version.product, at: new Date().toISOString(), steps: {} }
+const step = async (name, run) => {
+  try {
+    result.steps[name] = await run()
+  } catch (error) {
+    result.steps[name] = { failed: String(error?.message ?? error).slice(0, 200) }
+  }
+}
+
+if (phase === 'live') {
+  await viewport(1440)
+  // 1. Live: the lane's dev server preselects it; nobody is signed in.
+  await step('liveLogin', async () => ({ loaded: await navigate(`${ORIGIN}/`), facts: await shellFacts('login'), network: takeNetwork() }))
+
+  // 2. The SUPERVISOR: the indicator LIVE and the ADMINISTRATION group, at three widths.
+  await step('supervisor1440', async () => {
+    const answer = await signIn(supervisor, 'sign-in supervisor')
+    await navigate(`${ORIGIN}/dashboard`, 5000)
+    return { signIn: answer, facts: await shellFacts('supervisor 1440'), screenshot: await screenshot('54_shell_live_supervisor_1440.png'), network: takeNetwork() }
+  })
+  await step('supervisor900', async () => {
+    await viewport(900)
+    const facts = await shellFacts('supervisor 900')
+    const shot = await screenshot('54_shell_live_900.png')
+    // The Drawer shows the same groups.
+    await evaluate(`document.querySelector('button[aria-controls="dems-nav-drawer"]')?.click()`, 'open drawer')
+    await sleep(900)
+    const drawer = await shellFacts('drawer 900')
+    const drawerShot = await screenshot('54_drawer_live_900.png')
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+    await sleep(600)
+    return { facts, screenshot: shot, drawer: { navLinks: drawer.navLinks, adminGroup: drawer.adminGroup }, drawerScreenshot: drawerShot }
+  })
+  await step('supervisor600', async () => {
+    await viewport(600)
+    return { facts: await shellFacts('supervisor 600'), screenshot: await screenshot('54_shell_live_600.png') }
+  })
+  await step('supervisor390', async () => {
+    await viewport(390, 844)
+    return { facts: await shellFacts('supervisor 390'), screenshot: await screenshot('54_shell_live_390.png') }
+  })
+  await viewport(1440)
+
+  // 3. The two administration routes, with the permission.
+  await step('adminUsers', async () => {
+    await navigate(`${ORIGIN}/admin/users`, 3000)
+    return { facts: await shellFacts('admin users'), screenshot: await screenshot('54_admin_users_live.png') }
+  })
+  await step('adminDevices', async () => {
+    await navigate(`${ORIGIN}/admin/devices`, 3000)
+    return { facts: await shellFacts('admin devices'), screenshot: await screenshot('54_admin_devices_live.png') }
+  })
+  await step('stackCheck', async () => {
+    await navigate(`${ORIGIN}/stack-check`, 3000)
+    return { healthVersion: (await shellFacts('stack check')).healthVersion }
+  })
+
+  // 4. Sign out; the INVESTIGATOR: no ADMINISTRATION group, and the route guard.
+  await step('supervisorSignOut', async () => {
+    const answer = await signOut('sign-out supervisor')
+    await sleep(3000)
+    return { signOut: answer, facts: await shellFacts('after sign-out'), network: takeNetwork() }
+  })
+  await step('investigator1440', async () => {
+    const answer = await signIn(investigator, 'sign-in investigator')
+    await navigate(`${ORIGIN}/dashboard`, 5000)
+    return { signIn: answer, facts: await shellFacts('investigator 1440'), screenshot: await screenshot('54_shell_live_investigator_1440.png') }
+  })
+  await step('investigatorGuard', async () => {
+    await navigate(`${ORIGIN}/admin/users`, 3000)
+    const users = await shellFacts('guard users')
+    await navigate(`${ORIGIN}/admin/devices`, 3000)
+    const devices = await shellFacts('guard devices')
+    return { adminUsersLandsOn: users.path, adminUsersPages: users.pages, adminDevicesLandsOn: devices.path, adminDevicesPages: devices.pages, network: takeNetwork() }
+  })
+
+  // 5. A role change while signed in (§6.3), by the SUPERVISOR from a second client. Restored in every path.
+  await step('roleChange', async () => {
+    const second = await supervisorClient()
+    const out = {}
+    try {
+      out.assignSupervisor = await second.assignRole(investigator.id, 'SUPERVISOR')
+      await sleep(2500)
+      out.gained = await shellFacts('role gained')
+      out.gainedScreenshot = await screenshot('54_role_gained_live.png')
+      // In-app navigation to the page the new role opens.
+      await evaluate(`document.querySelector('a[data-nav-id="users-roles"]')?.click()`, 'open users and roles')
+      await sleep(2500)
+      out.onAdminUsers = await shellFacts('on admin users')
+    } finally {
+      out.assignInvestigator = await second.assignRole(investigator.id, 'INVESTIGATOR')
+    }
+    await sleep(2500)
+    out.lost = await shellFacts('role lost')
+    out.lostScreenshot = await screenshot('54_role_lost_live.png')
+    out.secondClientSignOut = await second.signOut()
+    out.network = takeNetwork()
+    return out
+  })
+}
+
+if (phase === 'down') {
+  // The lane backend was stopped by the lane script: the link is lost while signed in.
+  await step('linkLost', async () => {
+    await sleep(4500)
+    return { facts: await shellFacts('link lost'), screenshot: await screenshot('54_link_lost_live.png'), network: takeNetwork() }
+  })
+}
+
+if (phase === 'up') {
+  // The lane backend is back.
+  await step('linkBack', async () => {
+    let facts = await shellFacts('link back 0')
+    let waited = 0
+    while (waited < 25_000 && facts.mode?.state !== 'LIVE' && !facts.path.startsWith('/login')) {
+      await sleep(500)
+      waited += 500
+      facts = await shellFacts('link back')
+    }
+    const shot = await screenshot('54_link_back_live.png')
+    await sleep(1500)
+    return { waitedMs: waited, facts, screenshot: shot, after: await shellFacts('link back after'), network: takeNetwork() }
+  })
+}
+
+if (phase === 'simulated') {
+  // The Live session ends first, so no session is left on the lane.
+  await step('liveSignOut', async () => ({ signOut: await signOut('sign-out before simulated').catch(() => ({ status: 'not sent' })) }))
+  await sleep(1500)
+  await evaluate(`localStorage.setItem('dems.core.mode.v1', 'SIMULATED')`, 'store SIMULATED')
+  // The simulator's own stored sign-in of this tab (the seeded SUPERVISOR), as a reload while signed in finds it.
+  await evaluate(`sessionStorage.setItem('dems.auth', JSON.stringify({ operatorId: ${JSON.stringify(supervisor.id)}, issuedAt: Date.now() }))`, 'store the simulator sign-in')
+  takeNetwork()
+  await viewport(1440)
+  await step('simulated1440', async () => {
+    await navigate(`${ORIGIN}/dashboard`, 5000)
+    return { facts: await shellFacts('simulated 1440'), screenshot: await screenshot('54_shell_simulated_1440.png'), network: takeNetwork() }
+  })
+  await step('simulated600', async () => {
+    await viewport(600)
+    const out = { facts: await shellFacts('simulated 600'), screenshot: await screenshot('54_shell_simulated_600.png') }
+    await viewport(1440)
+    return out
+  })
+  await step('simulatedAdminUsers', async () => {
+    await navigate(`${ORIGIN}/admin/users`, 3000)
+    return { facts: await shellFacts('simulated admin users'), screenshot: await screenshot('54_admin_users_simulated.png'), network: takeNetwork() }
+  })
+  // Leave the lane's origin as it was found.
+  await evaluate(`localStorage.removeItem('dems.core.mode.v1'); sessionStorage.clear()`, 'remove what this check stored')
+}
+
+// Last line of defence: the seeded password and any credential-shaped value must not be in what is written.
+let text = JSON.stringify(result, null, 2)
+const held = text.includes(DEMO_OPERATOR_PASSWORD)
+if (held) text = text.split(DEMO_OPERATOR_PASSWORD).join('***')
+text = text.replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+for (const operator of OPERATORS) for (const word of [operator.displayName, operator.name, operator.username]) if (word) text = text.split(word).join(`(${operator.id})`)
+writeFileSync(outJson, `${text}\n`)
+console.log(text)
+console.log(`cdp-driver ${phase}: the output held the seeded password before redaction: ${held}`)
+ws.close()

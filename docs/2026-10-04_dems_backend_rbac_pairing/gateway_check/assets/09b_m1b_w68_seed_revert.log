@@ -1,0 +1,6 @@
+## W68 live-session-live-link.test.tsx with the M1 seed reverted IN MEMORY (M0 first render): exit=1
+FAIL src/features/session-live/live-session-live-link.test.tsx (11.112 s)
+Tests:       2 failed, 8 passed, 10 total
+● Simulated mode is unchanged › a snapshot plays the flash, the flight and the pop together, at the press; nothing is ever busy; the stop closes at once
+● the Core link (the runtime's one rule; [CS:§3.5] mobile: the banner and the read-only actions) › link lost: the banner, read-only session actions, meters at NO SIGNAL; nothing is sent; link back: "Resynced", the actions return
+link-notice.ts before 94cac0f7a9b157cd after 94cac0f7a9b157cd

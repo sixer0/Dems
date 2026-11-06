@@ -1,0 +1,22 @@
+2026-10-04 21:27:57 WIB
+-- listeners on mock-core's port 4400 (not started and not used here):
+lsof exit 1
+320 SIMULATED: overflow 0, clock false, pill inside false | LIVE: overflow 0, clock false, pill inside false | LIVE · OFFLINE: overflow 0, clock false, pill inside false | LIVE · RECONNECTING: overflow 36, clock false, pill inside false
+360 SIMULATED: overflow 0, clock false, pill inside true | LIVE: overflow 0, clock false, pill inside true | LIVE · OFFLINE: overflow 0, clock false, pill inside true | LIVE · RECONNECTING: overflow 12, clock false, pill inside false
+390 SIMULATED: overflow 0, clock false, pill inside true | LIVE: overflow 0, clock false, pill inside true | LIVE · OFFLINE: overflow 0, clock false, pill inside true | LIVE · RECONNECTING: overflow 0, clock false, pill inside true
+414 SIMULATED: overflow 0, clock false, pill inside true | LIVE: overflow 0, clock false, pill inside true | LIVE · OFFLINE: overflow 0, clock false, pill inside true | LIVE · RECONNECTING: overflow 0, clock false, pill inside true
+431 SIMULATED: overflow 0, clock false, pill inside true | LIVE: overflow 0, clock false, pill inside true | LIVE · OFFLINE: overflow 0, clock false, pill inside true | LIVE · RECONNECTING: overflow 0, clock false, pill inside true
+432 SIMULATED: overflow 0, clock true, pill inside true | LIVE: overflow 0, clock false, pill inside true | LIVE · OFFLINE: overflow 0, clock false, pill inside true | LIVE · RECONNECTING: overflow 0, clock false, pill inside true
+440 SIMULATED: overflow 0, clock true, pill inside true | LIVE: overflow 0, clock false, pill inside true | LIVE · OFFLINE: overflow 0, clock false, pill inside true | LIVE · RECONNECTING: overflow 0, clock false, pill inside true
+480 SIMULATED: overflow 0, clock true, pill inside true | LIVE: overflow 0, clock false, pill inside true | LIVE · OFFLINE: overflow 0, clock false, pill inside true | LIVE · RECONNECTING: overflow 0, clock false, pill inside true
+495 SIMULATED: overflow 0, clock true, pill inside true | LIVE: overflow 0, clock false, pill inside true | LIVE · OFFLINE: overflow 0, clock false, pill inside true | LIVE · RECONNECTING: overflow 0, clock false, pill inside true
+496 SIMULATED: overflow 0, clock true, pill inside true | LIVE: overflow 0, clock true, pill inside true | LIVE · OFFLINE: overflow 0, clock true, pill inside true | LIVE · RECONNECTING: overflow 0, clock true, pill inside true
+520 SIMULATED: overflow 0, clock true, pill inside true | LIVE: overflow 0, clock true, pill inside true | LIVE · OFFLINE: overflow 0, clock true, pill inside true | LIVE · RECONNECTING: overflow 0, clock true, pill inside true
+600 SIMULATED: overflow 0, clock true, pill inside true | LIVE: overflow 0, clock true, pill inside true | LIVE · OFFLINE: overflow 0, clock true, pill inside true | LIVE · RECONNECTING: overflow 0, clock true, pill inside true
+767 SIMULATED: overflow 0, clock true, pill inside true | LIVE: overflow 0, clock true, pill inside true | LIVE · OFFLINE: overflow 0, clock true, pill inside true | LIVE · RECONNECTING: overflow 0, clock true, pill inside true
+measure-driver exit 0
+chrome stopped
+vite: npm exit status 143
+== listeners left on 4423, 5178, 9398 (expect none):
+lsof exit 1 (1 with no output: no listener)
+2026-10-04 21:28:20 WIB

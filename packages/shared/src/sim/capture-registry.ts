@@ -1,0 +1,363 @@
+/**
+ * A camera joins the capture-device registry (task 3 R-9, blueprint rows 132 / 142; contract C3
+ * §2.6 "Adoption: when a `capture_devices` row comes into being", "What adoption stores"; §6 slice
+ * 30; decisions D81, D83, D117).
+ *
+ * The INTERNAL action `registerCaptureDevice` of `SimActions` is built from this file. It is the
+ * one way a device is added to the replicated `captureDevices` slice:
+ *
+ *   - on the Core server, inside the unit of work of operation 96 (`adoptCaptureCandidate`), after
+ *     the access rule, the idle lock, the candidate checks and the re-verification of that
+ *     operation. No client can call it: it has no operation of its own (`sim-actions.ts`);
+ *   - in the in-app simulator, by the simulated operation 96 (`sim/api.ts`).
+ *
+ * It checks no permission and no session state: the operation that calls it has done both. It
+ * writes NO audit row and no event: the caller writes `CAPTURE_CANDIDATE_ADOPTED` (and the rows
+ * beside it) in the same unit, so that the device and its rows commit together or not at all.
+ *
+ * What it holds itself, so that no stored row can break a CHECK of `capture_devices`:
+ *
+ * | Rule | Refusal (`SimTransitionError`, code INVALID_INPUT) |
+ * |------|---------|
+ * | The device is a camera with an id of the form `CAM-NN` | another id |
+ * | The id is not in the registry (an id is never reused) | a duplicate |
+ * | `host` is a host or an address, never a URL and never `user:password@` (C-N8) | a `/` or an `@` in it |
+ * | `adapter` is a machine code | anything else |
+ * | `profiles`, when named, is a list of at most 16 profile codes, each once (task 4 row V7) | anything else |
+ *
+ * Adoption is not assignment: `captureConfig` is not changed. The new device carries `adapter` and
+ * the class the Core derives from it (`DEVELOPMENT` for `FAKE` and `LOCAL_DEVICE`).
+ */
+import { SessionState } from '../domain';
+import { captureDeviceProfilesOf } from './capture-profile';
+import { SimErrorCode, SimTransitionError } from './errors';
+import type { CaptureDeviceStatus, ReaddressCaptureDeviceInput, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput, RetireCaptureDeviceInput, SimState, StoreCaptureDeviceProfilesInput } from './types';
+
+/** The name the action carries in a refusal. */
+export const REGISTER_CAPTURE_DEVICE_ACTION = 'registerCaptureDevice';
+
+/** An adopted camera: `CAM-` and two or more digits. */
+export const ADOPTED_CAMERA_ID_PATTERN = /^CAM-\d{2,}$/;
+const ADAPTER_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
+/** The adapter kinds of a source that is not a production device (`dbc-4` §N.2). */
+const DEVELOPMENT_ADAPTERS: ReadonlySet<string> = new Set(['FAKE', 'LOCAL_DEVICE']);
+const TEXT_MAX = 120;
+
+const invalid = (detail: string): SimTransitionError => new SimTransitionError(null, REGISTER_CAPTURE_DEVICE_ACTION, detail, SimErrorCode.INVALID_INPUT);
+
+/** The next free camera id: the highest number of the registry plus 1, two digits at least. Never a reused one. */
+export function nextCaptureCameraId(devices: readonly { readonly id: string }[]): string {
+  const highest = devices.reduce((max, device) => {
+    const number = /^CAM-(\d+)$/.exec(device.id)?.[1];
+    return number === undefined ? max : Math.max(max, Number(number));
+  }, 0);
+  return `CAM-${String(highest + 1).padStart(2, '0')}`;
+}
+
+/** The registry entry of a device that is being registered. Throws as the table of this file says. */
+export function captureDeviceOf(state: SimState, input: RegisterCaptureDeviceInput): CaptureDeviceStatus {
+  if (!ADOPTED_CAMERA_ID_PATTERN.test(input.id)) throw invalid('a registered camera has an id of the form CAM-NN');
+  if (state.captureDevices.devices.some((device) => device.id === input.id)) throw invalid('the registry holds a device with this id');
+  if (input.host.length < 1 || input.host.length > TEXT_MAX || /[/@\s]/.test(input.host)) throw invalid('the host of a device is a host or an address');
+  if (!ADAPTER_CODE.test(input.adapter)) throw invalid('the adapter of a device is a code');
+  if (input.model !== null && (input.model.length < 1 || input.model.length > TEXT_MAX)) throw invalid('the model of a device is a text of 1 to 120 characters');
+  // Task 4 row V7 (C36, C117): the list the adoption stores travels with the entry. A value that is
+  // no list of codes within the bound is refused - never cut, never cleaned; the text names the rule only.
+  // A registration that names no list registers a camera with NONE stored: the entry states the
+  // EMPTY list, which is also what its row holds and what a restart reads back (the stored registry
+  // is the engine's registry).
+  const profiles = captureDeviceProfilesOf(input.profiles ?? []);
+  if (profiles === null) throw invalid('the profiles of a device are a list of at most 16 profile codes, each once');
+  return {
+    id: input.id,
+    kind: 'CAMERA',
+    model: input.model,
+    firmware: null,
+    host: input.host,
+    poePort: null,
+    online: true,
+    // A registered camera feeds no track until operation 78 or 79 assigns it.
+    streamState: null,
+    capabilities: ['VIDEO'],
+    adapter: input.adapter,
+    sourceClass: DEVELOPMENT_ADAPTERS.has(input.adapter) ? 'DEVELOPMENT' : 'PRODUCTION',
+    profiles,
+  };
+}
+
+/** `registerCaptureDevice`: the state with the device appended to slice 30. Nothing else changes. */
+export function registerCaptureDeviceTransition(state: SimState, input: RegisterCaptureDeviceInput): { state: SimState; result: CaptureDeviceStatus } {
+  const device = captureDeviceOf(state, input);
+  return { state: { ...state, captureDevices: { ...state.captureDevices, devices: [...state.captureDevices.devices, device] } }, result: device };
+}
+
+// ── A microphone joins the registry (task 4 row 185; design addendum 04 section 4.2 "Where it is
+// stored"; security addendum AD-07; ruling RG-4) ──────────────────────────────────────────────
+//
+// The INTERNAL action `registerCaptureMicrophone` of `SimActions` is built from the functions
+// below. It is the one way a `USB_AUDIO` microphone is added to the replicated `captureDevices`
+// slice, and the one way a registered one is enabled again:
+//
+//   - on the Core server, inside the unit of work of operation 99 (`registerCaptureAudioInput`),
+//     after that operation's access rule, idle lock and its own second card listing. No client can
+//     call it: it has no operation of its own (`sim-actions.ts`);
+//   - the in-app simulator does not run it: its operation 99 answers as before (`sim/api.ts`).
+//
+// As the camera's action, it checks no permission and no session state, writes NO audit row and
+// no event (the caller writes `CAPTURE_AUDIO_INPUT_CHANGED` in the same unit) and leaves
+// `captureConfig` alone: a registration decides no role (decision C25). RG-4 holds as for a
+// camera: a listed card is no descriptor and never enters the registry; only this action, run by
+// operation 99 after the Core's own listing, creates one.
+//
+// What it holds itself, so that no stored row can break a CHECK of `capture_devices`:
+//
+// | Rule | Refusal (`SimTransitionError`, code INVALID_INPUT) |
+// |------|---------|
+// | The class `MIC` and the adapter `USB_AUDIO` are literals of this file: no input names them | - |
+// | A new microphone takes the next free `MIC-NN`, minted here: the caller names no id | - |
+// | The model is the product name of a card listing: printable ASCII, 1 to 64 characters (AD-07 (1)) | anything else |
+// | Re-enabling names a microphone the registry holds, of adapter `USB_AUDIO` | another id, another class, another adapter (a built-in or a local microphone) |
+
+/** The name the microphone action carries in a refusal. */
+export const REGISTER_CAPTURE_MICROPHONE_ACTION = 'registerCaptureMicrophone';
+
+/** The adapter kind of every microphone this file registers. A literal: no input can name another. */
+export const REGISTERED_MICROPHONE_ADAPTER = 'USB_AUDIO';
+
+/** A registered microphone: `MIC-` and two or more digits. */
+export const REGISTERED_MICROPHONE_ID_PATTERN = /^MIC-\d{2,}$/;
+
+/**
+ * The character rule of a microphone's model: the closed rule of a product name of the card
+ * listing (`CAPTURE_AUDIO_CARD_TEXT_PATTERN` of the API contract, AD-07 (1)), stated here because
+ * this file imports nothing of the contract; `sim-capture-discovery.test.ts` holds the two equal.
+ */
+export const REGISTERED_MICROPHONE_MODEL_PATTERN = /^[ -~]{1,64}$/;
+
+const invalidMicrophone = (detail: string): SimTransitionError => new SimTransitionError(null, REGISTER_CAPTURE_MICROPHONE_ACTION, detail, SimErrorCode.INVALID_INPUT);
+
+/** The next free microphone id: the highest number of the registry plus 1, two digits at least. Never a reused one. */
+export function nextCaptureMicrophoneId(devices: readonly { readonly id: string }[], takenIds: readonly string[] = []): string {
+  const highest = [...devices.map((device) => device.id), ...takenIds].reduce((max, id) => {
+    const number = /^MIC-(\d+)$/.exec(id)?.[1];
+    return number === undefined ? max : Math.max(max, Number(number));
+  }, 0);
+  return `MIC-${String(highest + 1).padStart(2, '0')}`;
+}
+
+/**
+ * `registerCaptureMicrophone`. With `deviceId: null` the state with ONE device appended to slice
+ * 30, under the next free `MIC-NN`; with an id, the state in which that `USB_AUDIO` microphone is
+ * online again and carries the model of the new listing - no device is appended, and a microphone
+ * that already is so gives the SAME state object. Nothing else changes. Throws as the table says.
+ */
+export function registerCaptureMicrophoneTransition(state: SimState, input: RegisterCaptureMicrophoneInput): { state: SimState; result: CaptureDeviceStatus } {
+  if (typeof input.model !== 'string' || !REGISTERED_MICROPHONE_MODEL_PATTERN.test(input.model)) throw invalidMicrophone('the model of a microphone is a product name of 1 to 64 printable characters');
+  const devices = state.captureDevices.devices;
+  const takenIds = input.takenIds ?? [];
+  if (!Array.isArray(takenIds) || takenIds.some((id) => typeof id !== 'string')) throw invalidMicrophone('the taken ids of a registration are a list of registry ids');
+  if (input.deviceId === null) {
+    const device: CaptureDeviceStatus = {
+      id: nextCaptureMicrophoneId(devices, takenIds),
+      kind: 'MIC',
+      model: input.model,
+      firmware: null,
+      host: null,
+      poePort: null,
+      online: true,
+      // A microphone carries no stream state.
+      streamState: null,
+      // The one capability of a microphone, as the built-in pair states it (decision C43 (3);
+      // integration pass I-7). The registry stores no capability: the Core's row mapping reads this
+      // same value back for a `USB_AUDIO` microphone, as it does `VIDEO` for an adopted camera.
+      capabilities: ['AUDIO'],
+      adapter: REGISTERED_MICROPHONE_ADAPTER,
+      sourceClass: 'PRODUCTION',
+    };
+    return { state: { ...state, captureDevices: { ...state.captureDevices, devices: [...devices, device] } }, result: device };
+  }
+  if (typeof input.deviceId !== 'string' || !REGISTERED_MICROPHONE_ID_PATTERN.test(input.deviceId)) throw invalidMicrophone('a registered microphone has an id of the form MIC-NN');
+  const found = devices.find((device) => device.id === input.deviceId);
+  if (found === undefined || found.kind !== 'MIC' || found.adapter !== REGISTERED_MICROPHONE_ADAPTER) throw invalidMicrophone('the registry holds no USB audio microphone with this id');
+  if (found.online && found.model === input.model) return { state, result: found };
+  const enabled: CaptureDeviceStatus = { ...found, online: true, model: input.model };
+  return { state: { ...state, captureDevices: { ...state.captureDevices, devices: devices.map((device) => (device === found ? enabled : device)) } }, result: enabled };
+}
+
+// ── The address of a registered camera changes (task 4 row 195, WP-12; finding of row 97; decisions
+// U12 A7, C47 (29)) ─────────────────────────────────────────────────────────────────────────────
+//
+// The INTERNAL action `readdressCaptureDevice` of `SimActions` is built from the function below. It
+// is the one way the address of a registered camera changes in the replicated `captureDevices`
+// slice:
+//
+//   - on the Core server, inside the unit of work of operation 100 (`confirmCaptureDeviceAddress`),
+//     through the engine's door (blueprint row 196), after that operation's access rule, idle lock,
+//     candidate checks and the destination rule. No client can call it: it has no operation of its
+//     own (`sim-actions.ts`);
+//   - the in-app simulator does not run it: its operation 100 refuses every call (`sim/api.ts`).
+//
+// As its two siblings, it checks no permission and no session state, writes NO audit row and no
+// event (the caller writes `CAPTURE_DEVICE_ADDRESS_CHANGED` in the same unit) and leaves
+// `captureConfig` alone: a track that names the device keeps naming it. NEVER AUTOMATIC is the
+// caller's rule, not this file's: the action runs only where an operator's confirmation stands.
+//
+// The address is taken AS THE CALLER GIVES IT: whether the Core may dial it is the destination rule
+// of the operation, which this file cannot ask. What it holds itself:
+//
+// | Rule | Refusal (`SimTransitionError`, code INVALID_INPUT) |
+// |------|---------|
+// | The device is in the registry and is a camera | an unknown id; a microphone; any other class |
+// | The address has the form of a registered `host`: 1 to 120 characters, never a URL, never `user:password@` (C-N8) | a `/`, an `@` or a blank in it; an empty or longer text; no text |
+// | Nothing else of the device changes, and no other device changes | - |
+// | An address the device already holds gives the SAME state object | - |
+
+/** The name the re-address action carries in a refusal. */
+export const READDRESS_CAPTURE_DEVICE_ACTION = 'readdressCaptureDevice';
+
+const invalidReaddress = (detail: string): SimTransitionError => new SimTransitionError(null, READDRESS_CAPTURE_DEVICE_ACTION, detail, SimErrorCode.INVALID_INPUT);
+
+/**
+ * `readdressCaptureDevice`: the state in which the camera `deviceId` holds `address` as its `host`.
+ * Every other member of that device, every other device and every other slice is the same object as
+ * before; a camera that already holds the address gives the SAME state object. Throws as the table says.
+ */
+export function readdressCaptureDeviceTransition(state: SimState, input: ReaddressCaptureDeviceInput): { state: SimState; result: CaptureDeviceStatus } {
+  if (typeof input.deviceId !== 'string') throw invalidReaddress('the registry holds no camera with this id');
+  const devices = state.captureDevices.devices;
+  const found = devices.find((device) => device.id === input.deviceId);
+  if (found === undefined || found.kind !== 'CAMERA') throw invalidReaddress('the registry holds no camera with this id');
+  if (typeof input.address !== 'string' || input.address.length < 1 || input.address.length > TEXT_MAX || /[/@\s]/.test(input.address)) {
+    throw invalidReaddress('the host of a device is a host or an address');
+  }
+  if (found.host === input.address) return { state, result: found };
+  const moved: CaptureDeviceStatus = { ...found, host: input.address };
+  return { state: { ...state, captureDevices: { ...state.captureDevices, devices: devices.map((device) => (device === found ? moved : device)) } }, result: moved };
+}
+
+// ── The stored profile list of a registered camera changes (task 4 row V7; decision C117, the
+// ruling on the empty lists: the stored-credential connection test of a camera that holds NO stored
+// profile stores what the stream states - row PR) ────────────────────────────────────────────────
+//
+// The INTERNAL action `storeCaptureDeviceProfiles` of `SimActions` is built from the function below
+// (51 -> 52 actions). On the Core server it runs through the engine's door
+// (`storeCaptureDeviceProfilesIn`) inside the unit that writes the list to the camera's row, so the
+// slice and the row state the same list in one commit; no client can call it, and the in-app
+// simulator does not run it. As its siblings it checks no permission and no session state, writes no
+// audit row and no event, and leaves `captureConfig` alone.
+//
+// | Rule | Refusal (`SimTransitionError`, code INVALID_INPUT) |
+// |------|---------|
+// | The device is in the registry and is a camera | an unknown id; a microphone; any other class |
+// | `profiles` is a list of at most 16 profile codes, each once | anything else |
+// | Nothing else of the device changes, and no other device changes | - |
+// | A list the entry already states gives the SAME state object | - |
+
+/** The name the profile-list transition carries in a refusal. */
+export const STORE_CAPTURE_DEVICE_PROFILES_ACTION = 'storeCaptureDeviceProfiles';
+
+const invalidProfiles = (detail: string): SimTransitionError => new SimTransitionError(null, STORE_CAPTURE_DEVICE_PROFILES_ACTION, detail, SimErrorCode.INVALID_INPUT);
+
+/** The state in which the camera `deviceId` states `profiles` (codes, in the stored order). Throws as the table says. */
+export function storeCaptureDeviceProfilesTransition(state: SimState, input: StoreCaptureDeviceProfilesInput):{ state: SimState; result: CaptureDeviceStatus } {
+  const devices = state.captureDevices.devices;
+  const found = typeof input.deviceId === 'string' ? devices.find((device) => device.id === input.deviceId) : undefined;
+  if (found === undefined || found.kind !== 'CAMERA') throw invalidProfiles('the registry holds no camera with this id');
+  const profiles = captureDeviceProfilesOf(input.profiles);
+  if (profiles === null) throw invalidProfiles('the profiles of a device are a list of at most 16 profile codes, each once');
+  const held = found.profiles;
+  if (held !== undefined && held.length === profiles.length && held.every((profile, index) => profile.code === profiles[index]?.code)) return { state, result: found };
+  const stored: CaptureDeviceStatus = { ...found, profiles };
+  return { state: { ...state, captureDevices: { ...state.captureDevices, devices: devices.map((device) => (device === found ? stored : device)) } }, result: stored };
+}
+
+// ── A registered camera or microphone is RETIRED (task 4 row RD2; design 07 sections 4.2-4.4;
+// decision C147) ─────────────────────────────────────────────────────────────────────────────────
+//
+// The INTERNAL action `retireCaptureDevice` of `SimActions` is built from the function below (52 ->
+// 53 actions). It is the one way a device becomes retired in the replicated `captureDevices` slice:
+//
+//   - on the Core server, inside the unit of work of operation 111 (`retireCaptureDevice`, row RD3),
+//     through the engine's door, in the same unit that destroys the stored credential and writes
+//     `retired_at` / `retired_by` to the device's row. No client can call it;
+//   - in the in-app simulator, by the simulated operation 111 (`sim/api.ts`).
+//
+// As its siblings it checks no permission and writes NO audit row and no event (the caller writes
+// `CAPTURE_DEVICE_RETIRED`). UNLIKE them it holds the idle lock and the slot rule ITSELF: run inside
+// the engine's unit, no session start and no assignment can come between the check and the change
+// (design 07, security point 2). The device STAYS in the slice: it is never removed (the engine
+// refuses a device that leaves the registry) and nothing else of it changes - model and firmware
+// stay what a pending seal reads.
+//
+// | Rule | Refusal (`SimTransitionError`, code INVALID_INPUT, `reason`) |
+// |------|---------|
+// | No session is open (one that is not sealed) | ILLEGAL_STATE, reason `CAPTURE_CONFIG_LOCKED` |
+// | The device is in the registry | reason `NOT_FOUND` |
+// | It is not a built-in device of the demonstration model, nor of kind POE | reason `CAPTURE_DEVICE_BUILT_IN` |
+// | It is a camera or a microphone | reason `CAPTURE_DEVICE_BUILT_IN` (no other kind exists) |
+// | It is not retired already | reason `CAPTURE_DEVICE_RETIRED` |
+// | No slot of the selector names it | reason `CAPTURE_DEVICE_ASSIGNED` |
+// | `retiredAt` is an instant, `retiredBy` an operator id (`OPR-NNN`) | INVALID_INPUT, no reason |
+
+/** The name the retire action carries in a refusal. */
+export const RETIRE_CAPTURE_DEVICE_ACTION = 'retireCaptureDevice';
+
+/**
+ * The words of the refusals of the retire action: `SimTransitionError.reason`, which the Core
+ * answers as `details.reason`. The contract's words (`CaptureRetireRefusalReason` of
+ * `api/capture-retire.ts`); a test holds them equal (this file imports nothing of the contract).
+ */
+export const RETIRE_REFUSAL = {
+  LOCKED: 'CAPTURE_CONFIG_LOCKED',
+  NOT_FOUND: 'NOT_FOUND',
+  BUILT_IN: 'CAPTURE_DEVICE_BUILT_IN',
+  RETIRED: 'CAPTURE_DEVICE_RETIRED',
+  ASSIGNED: 'CAPTURE_DEVICE_ASSIGNED',
+} as const;
+
+/** The built-in devices of the demonstration model (`DEFAULT_CAPTURE_DEVICES`): never retired. Held equal to the contract's `CAPTURE_BUILT_IN_DEVICE_IDS` by a test. D60 (2026-11-04): seven - the seed carries four cameras. D61 (2026-11-04): nine - the seed carries four microphone channels too. */
+export const RETIRE_BUILT_IN_DEVICE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH']; // D61
+
+const OPERATOR_ID = /^OPR-\d{3}$/;
+
+/**
+ * True for a RETIRED device (operation 111): it is listed as Retired and is left out of every
+ * selector and assignment list. The one test of "retired" for the simulator, the Core and both clients.
+ */
+export function isCaptureDeviceRetired(device: Pick<CaptureDeviceStatus, 'retiredAt'>): boolean {
+  return device.retiredAt !== undefined;
+}
+
+/**
+ * The selector slot that names `deviceId`, or null: `VIDEO-01` / `VIDEO-02` for a camera line, the
+ * CHANNEL (`MIC-01`..`MIC-04`) for a microphone line - the slot names of `CAPTURE_SELECTOR_SLOTS`
+ * (D61 of 2026-11-04: the role word became the numbered channel).
+ */
+export function selectorSlotOfDevice(state: SimState, deviceId: string): string | null {
+  const camera = state.captureConfig.cameras.find((line) => line.deviceId === deviceId);
+  if (camera !== undefined) return camera.trackId;
+  const mic = state.captureConfig.mics.find((line) => line.deviceId === deviceId);
+  return mic === undefined ? null : mic.channel;
+}
+
+/**
+ * `retireCaptureDevice`: the state in which the device `deviceId` carries `retiredAt` and
+ * `retiredBy`. Every other member of it, every other device and every other slice is the same
+ * object as before. Throws as the table above says; a refusal changes nothing.
+ */
+export function retireCaptureDeviceTransition(state: SimState, input: RetireCaptureDeviceInput): { state: SimState; result: CaptureDeviceStatus } {
+  const refuse = (detail: string, reason: string | null, code: SimErrorCode = SimErrorCode.INVALID_INPUT): SimTransitionError =>
+    new SimTransitionError(null, RETIRE_CAPTURE_DEVICE_ACTION, detail, code, reason);
+  // The lock of the selector: a session that is not sealed (`isSessionActive` of `session-machine.ts`, not imported here to keep this file a leaf).
+  if (state.session !== null && state.session.state !== SessionState.SEALED) throw refuse('a device is retired only while no session is open', RETIRE_REFUSAL.LOCKED, SimErrorCode.ILLEGAL_STATE);
+  if (!Number.isSafeInteger(input.retiredAt) || input.retiredAt < 0) throw refuse('the instant of a retirement is a whole number of milliseconds', null);
+  if (typeof input.retiredBy !== 'string' || !OPERATOR_ID.test(input.retiredBy)) throw refuse('a retirement names its operator', null);
+  const devices = state.captureDevices.devices;
+  const found = typeof input.deviceId === 'string' ? devices.find((device) => device.id === input.deviceId) : undefined;
+  if (found === undefined) throw refuse('the registry holds no device with this id', RETIRE_REFUSAL.NOT_FOUND);
+  if (RETIRE_BUILT_IN_DEVICE_IDS.includes(found.id) || (found.kind !== 'CAMERA' && found.kind !== 'MIC')) throw refuse('a built-in device or a PoE switch is never retired', RETIRE_REFUSAL.BUILT_IN);
+  if (isCaptureDeviceRetired(found)) throw refuse('the device is retired already', RETIRE_REFUSAL.RETIRED);
+  if (selectorSlotOfDevice(state, found.id) !== null) throw refuse('a slot of the selector names the device', RETIRE_REFUSAL.ASSIGNED);
+  const retired: CaptureDeviceStatus = { ...found, retiredAt: input.retiredAt, retiredBy: input.retiredBy };
+  return { state: { ...state, captureDevices: { ...state.captureDevices, devices: devices.map((device) => (device === found ? retired : device)) } }, result: retired };
+}

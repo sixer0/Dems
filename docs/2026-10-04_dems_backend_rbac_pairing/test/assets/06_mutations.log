@@ -1,0 +1,206 @@
+=== BASELINE | no mutation: the file as it is, through the scratch configuration | 17:32:36
+exit 0
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+[test:db] teardown: dropped 3 database(s) in 89 ms; 0 remain with the run prefix dems_test_step_75_tmdpacos_
+=== M1 | a row is changed in the stopped database as the owner role, between the stop and the start (storage_policy.retention_days - 1) | 17:32:42
+exit 1
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 1 (the tablet was connected): every table is equal before the stop and after the start, except what the start itself writes; the epoch is the previous plus 1
+AssertionError: restart 1: the tables that differ after the start: expected [ 'audit_chain_head', …(6) ] to deeply equal [ 'audit_chain_head', …(5) ]
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > what the restarted server serves through the routes is what was stored: the policy, the tablet, the active code, the role, the sealed evidence, the history
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the SUPERVISOR session of before the stop works without a new sign-in; a session that was signed out stays ended, with its reason
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands of the restarted process: the sealed evidence verifies; the audit chain goes on from the row the start wrote; the code of before the stop pairs a second tablet
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restarts 2 and 3, one straight after the other: only the epoch moves, twice; every read operation answers what it answered before; the epoch is the second process's plus 2
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands after three restarts: the chain goes on from the last row before the second stop; the changed role decides; the tablets resolve; one is revoked
+Error: the journey did not get as far as process 4
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 4, after commands of a rehydrated process and with a session in CREATE: stable again; a session in CREATE is not faulted; a revoked tablet stays revoked
+Error: the journey did not get as far as process 4
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > no activity is invented for the time the server was down: no stored row is stamped inside a stop, and the engine goes on from the start instant
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the idle and the absolute limit still apply on the server clock to sessions that came through four restarts
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > at the end: the chain verifies over the rows of all five processes, the tables hold what the engine serves, and no process logged an error
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+AssertionError: RECORDING at the stop: the tables that differ after the start: expected [ 'active_session', 'alerts', …(8) ] to deeply equal [ 'active_session', 'alerts', …(7) ]
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-06: FINALIZING at the stop. FAULT at the last committed instant, the recording time and size as stopped; recoverSession, then a stop DURING the recovery: the next process completes it as INCOMPLETE, evidence RECORDED, never s
+AssertionError: FINALIZING at the stop: the tables that differ after the start: expected [ 'active_session', 'alerts', …(8) ] to deeply equal [ 'active_session', 'alerts', …(7) ]
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > spec §8.6: ARMED at the stop (no recording had started). FAULT, recoverSession, an INCOMPLETE entry and NO evidence item
+AssertionError: ARMED at the stop: the tables that differ after the start: expected [ 'active_session', 'alerts', …(8) ] to deeply equal [ 'active_session', 'alerts', …(7) ]
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04 on a Core with a long history (the bulk fixture): more audit rows than the engine holds in its ring > two restarts with a command between them: every table stable twice, every read answers the same, the view and the stored chain verify, the next row links
+AssertionError: long history, restart 1: the tables that differ after the start: expected [ 'core_state', 'storage_policy' ] to deeply equal [ 'core_state' ]
+ Test Files  1 failed (1)
+      Tests  14 failed | 2 passed (16)
+[test:db] teardown: dropped 3 database(s) in 90 ms; 0 remain with the run prefix dems_test_step_75_tmdpajbd_
+=== M2a | RECORDING at the stop: the recoverSession call is left out | 17:32:47
+exit 1
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+AssertionError: expected 'FAULT' to be 'RECOVERY' // Object.is equality
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 passed (16)
+[test:db] teardown: dropped 3 database(s) in 90 ms; 0 remain with the run prefix dems_test_step_75_tmdpaoyu_
+=== M2b | ARMED at the stop: the recoverSession call is left out, and so are the three assertions between it and the history entry, so that the INCOMPLETE assertion is the first to speak | 17:32:54
+exit 1
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > spec §8.6: ARMED at the stop (no recording had started). FAULT, recoverSession, an INCOMPLETE entry and NO evidence item
+AssertionError: expected { id: 'SES-20261001-0023', …(16) } to match object { id: 'SES-20261001-0024', …(6) }
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 passed (16)
+[test:db] teardown: dropped 3 database(s) in 94 ms; 0 remain with the run prefix dems_test_step_75_tmdpauft_
+=== M3 | the stored epoch is changed in the stopped database as the owner role (core_state.epoch + 5) | 17:33:00
+exit 1
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 1 (the tablet was connected): every table is equal before the stop and after the start, except what the start itself writes; the epoch is the previous plus 1
+AssertionError: restart 1: the epoch of the new process: expected 7 to be 2 // Object.is equality
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > what the restarted server serves through the routes is what was stored: the policy, the tablet, the active code, the role, the sealed evidence, the history
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the SUPERVISOR session of before the stop works without a new sign-in; a session that was signed out stays ended, with its reason
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands of the restarted process: the sealed evidence verifies; the audit chain goes on from the row the start wrote; the code of before the stop pairs a second tablet
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restarts 2 and 3, one straight after the other: only the epoch moves, twice; every read operation answers what it answered before; the epoch is the second process's plus 2
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands after three restarts: the chain goes on from the last row before the second stop; the changed role decides; the tablets resolve; one is revoked
+Error: the journey did not get as far as process 4
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 4, after commands of a rehydrated process and with a session in CREATE: stable again; a session in CREATE is not faulted; a revoked tablet stays revoked
+Error: the journey did not get as far as process 4
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > no activity is invented for the time the server was down: no stored row is stamped inside a stop, and the engine goes on from the start instant
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the idle and the absolute limit still apply on the server clock to sessions that came through four restarts
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > at the end: the chain verifies over the rows of all five processes, the tables hold what the engine serves, and no process logged an error
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+AssertionError: RECORDING at the stop: the epoch of the new process: expected 7 to be 2 // Object.is equality
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-06: FINALIZING at the stop. FAULT at the last committed instant, the recording time and size as stopped; recoverSession, then a stop DURING the recovery: the next process completes it as INCOMPLETE, evidence RECORDED, never s
+AssertionError: FINALIZING at the stop: the epoch of the new process: expected 7 to be 2 // Object.is equality
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > spec §8.6: ARMED at the stop (no recording had started). FAULT, recoverSession, an INCOMPLETE entry and NO evidence item
+AssertionError: ARMED at the stop: the epoch of the new process: expected 7 to be 2 // Object.is equality
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04 on a Core with a long history (the bulk fixture): more audit rows than the engine holds in its ring > two restarts with a command between them: every table stable twice, every read answers the same, the view and the stored chain verify, the next row links
+AssertionError: long history, restart 1: the epoch of the new process: expected 73 to be 68 // Object.is equality
+ Test Files  1 failed (1)
+      Tests  14 failed | 2 passed (16)
+[test:db] teardown: dropped 3 database(s) in 143 ms; 0 remain with the run prefix dems_test_step_75_tmdpb0u7_
+=== M4 | RECORDING at the stop: the recording is stopped and sealed before the server stops, so nothing is in flight | 17:33:05
+exit 1
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+AssertionError: RECORDING at the stop: the tables that differ after the start: expected [ 'audit_chain_head', …(5) ] to deeply equal [ 'active_session', 'alerts', …(7) ]
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 passed (16)
+[test:db] teardown: dropped 3 database(s) in 91 ms; 0 remain with the run prefix dems_test_step_75_tmdpb6pb_
+=== M5 | SR-17: the cookie presented after the restart is the one of the session that was signed out before the stop | 17:33:12
+exit 1
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the SUPERVISOR session of before the stop works without a new sign-in; a session that was signed out stays ended, with its reason
+AssertionError: getAuthSession: expected 401 to be 200 // Object.is equality
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 passed (16)
+[test:db] teardown: dropped 3 database(s) in 108 ms; 0 remain with the run prefix dems_test_step_75_tmdpbcb0_
+=== M6 | the server is down for 16 minutes instead of 90 seconds: past the idle limit of every session | 17:33:19
+exit 1
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > what the restarted server serves through the routes is what was stored: the policy, the tablet, the active code, the role, the sealed evidence, the history
+AssertionError: getAuthSession: expected 401 to be 200 // Object.is equality
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the SUPERVISOR session of before the stop works without a new sign-in; a session that was signed out stays ended, with its reason
+AssertionError: getAuthSession: expected 401 to be 200 // Object.is equality
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands of the restarted process: the sealed evidence verifies; the audit chain goes on from the row the start wrote; the code of before the stop pairs a second tablet
+AssertionError: expected undefined to deeply equal { id: 'EV-20261001-0014', …(27) }
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restarts 2 and 3, one straight after the other: only the epoch moves, twice; every read operation answers what it answered before; the epoch is the second process's plus 2
+AssertionError: getAuthSession: expected 401 to be 200 // Object.is equality
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands after three restarts: the chain goes on from the last row before the second stop; the changed role decides; the tablets resolve; one is revoked
+Error: the journey did not get as far as process 4
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 4, after commands of a rehydrated process and with a session in CREATE: stable again; a session in CREATE is not faulted; a revoked tablet stays revoked
+Error: the journey did not get as far as process 4
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > no activity is invented for the time the server was down: no stored row is stamped inside a stop, and the engine goes on from the start instant
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the idle and the absolute limit still apply on the server clock to sessions that came through four restarts
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > at the end: the chain verifies over the rows of all five processes, the tables hold what the engine serves, and no process logged an error
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+AssertionError: getCurrentSession: expected 401 to be 200 // Object.is equality
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-06: FINALIZING at the stop. FAULT at the last committed instant, the recording time and size as stopped; recoverSession, then a stop DURING the recovery: the next process completes it as INCOMPLETE, evidence RECORDED, never s
+AssertionError: getCurrentSession: expected 401 to be 200 // Object.is equality
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > spec §8.6: ARMED at the stop (no recording had started). FAULT, recoverSession, an INCOMPLETE entry and NO evidence item
+AssertionError: getCurrentSession: expected 401 to be 200 // Object.is equality
+ FAIL  |db| test/acceptance/restart.test.ts > the comparison is not blind, and the server serves what PostgreSQL holds > a row changed in the stopped database, as the owner role: its table is reported as moved, and the started server serves the changed row
+AssertionError: expected undefined to deeply equal { retentionPolicy: 'DAYS_90', …(2) }
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04 on a Core with a long history (the bulk fixture): more audit rows than the engine holds in its ring > two restarts with a command between them: every table stable twice, every read answers the same, the view and the stored chain verify, the next row links
+AssertionError: getAuthSession: expected 401 to be 200 // Object.is equality
+ Test Files  1 failed (1)
+      Tests  14 failed | 2 passed (16)
+[test:db] teardown: dropped 3 database(s) in 103 ms; 0 remain with the run prefix dems_test_step_75_tmdpbj6g_
+=== M7 | the last-seen instant of every session is changed in the stopped database as the owner role (auth_sessions.last_seen_at + 1) | 17:33:25
+exit 1
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 1 (the tablet was connected): every table is equal before the stop and after the start, except what the start itself writes; the epoch is the previous plus 1
+AssertionError: restart 1: the tables that differ after the start: expected [ 'audit_chain_head', …(6) ] to deeply equal [ 'audit_chain_head', …(5) ]
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > what the restarted server serves through the routes is what was stored: the policy, the tablet, the active code, the role, the sealed evidence, the history
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the SUPERVISOR session of before the stop works without a new sign-in; a session that was signed out stays ended, with its reason
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands of the restarted process: the sealed evidence verifies; the audit chain goes on from the row the start wrote; the code of before the stop pairs a second tablet
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restarts 2 and 3, one straight after the other: only the epoch moves, twice; every read operation answers what it answered before; the epoch is the second process's plus 2
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands after three restarts: the chain goes on from the last row before the second stop; the changed role decides; the tablets resolve; one is revoked
+Error: the journey did not get as far as process 4
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 4, after commands of a rehydrated process and with a session in CREATE: stable again; a session in CREATE is not faulted; a revoked tablet stays revoked
+Error: the journey did not get as far as process 4
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > no activity is invented for the time the server was down: no stored row is stamped inside a stop, and the engine goes on from the start instant
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the idle and the absolute limit still apply on the server clock to sessions that came through four restarts
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > at the end: the chain verifies over the rows of all five processes, the tables hold what the engine serves, and no process logged an error
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+AssertionError: RECORDING at the stop: the tables that differ after the start: expected [ 'active_session', 'alerts', …(8) ] to deeply equal [ 'active_session', 'alerts', …(7) ]
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-06: FINALIZING at the stop. FAULT at the last committed instant, the recording time and size as stopped; recoverSession, then a stop DURING the recovery: the next process completes it as INCOMPLETE, evidence RECORDED, never s
+AssertionError: FINALIZING at the stop: the tables that differ after the start: expected [ 'active_session', 'alerts', …(8) ] to deeply equal [ 'active_session', 'alerts', …(7) ]
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > spec §8.6: ARMED at the stop (no recording had started). FAULT, recoverSession, an INCOMPLETE entry and NO evidence item
+AssertionError: ARMED at the stop: the tables that differ after the start: expected [ 'active_session', 'alerts', …(8) ] to deeply equal [ 'active_session', 'alerts', …(7) ]
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04 on a Core with a long history (the bulk fixture): more audit rows than the engine holds in its ring > two restarts with a command between them: every table stable twice, every read answers the same, the view and the stored chain verify, the next row links
+AssertionError: long history, restart 1: the tables that differ after the start: expected [ 'auth_sessions', 'core_state' ] to deeply equal [ 'core_state' ]
+ Test Files  1 failed (1)
+      Tests  14 failed | 2 passed (16)
+[test:db] teardown: dropped 3 database(s) in 107 ms; 0 remain with the run prefix dems_test_step_75_tmdpbpcu_
+=== M8 | FINALIZING at the stop: the tablet reconnects during the recovery, so the link is CONNECTED at the second stop (the start then writes a row) | 17:33:31
+exit 1
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-06: FINALIZING at the stop. FAULT at the last committed instant, the recording time and size as stopped; recoverSession, then a stop DURING the recovery: the next process completes it as INCOMPLETE, evidence RECORDED, never s
+AssertionError: RECOVERY at the stop: the tables that differ after the start: expected [ 'audit_chain_head', …(5) ] to deeply equal [ 'core_state' ]
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 passed (16)
+[test:db] teardown: dropped 3 database(s) in 106 ms; 0 remain with the run prefix dems_test_step_75_tmdpbw3d_
+=== M9 | the journey: the SUPERVISOR changes the policy again after the answers of the read operations were taken (a write between the reads and the first stop) | 17:33:39
+exit 1
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > what the restarted server serves through the routes is what was stored: the policy, the tablet, the active code, the role, the sealed evidence, the history
+AssertionError: getAuthSession: expected { …(9) } to deeply equal { …(9) }
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the SUPERVISOR session of before the stop works without a new sign-in; a session that was signed out stays ended, with its reason
+AssertionError: expected [ 1790823600000, 1790823636350, …(2) ] to deeply equal [ 1790823600000, 1790823635000, …(2) ]
+ Test Files  1 failed (1)
+      Tests  2 failed | 14 passed (16)
+[test:db] teardown: dropped 3 database(s) in 90 ms; 0 remain with the run prefix dems_test_step_75_tmdpc3cf_
+=== M10 | the journey: the role of OPR-003 is changed back in the stopped database as the owner role, between the first stop and the first start | 17:33:46
+exit 1
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 1 (the tablet was connected): every table is equal before the stop and after the start, except what the start itself writes; the epoch is the previous plus 1
+AssertionError: restart 1: the tables that differ after the start: expected [ 'audit_chain_head', …(6) ] to deeply equal [ 'audit_chain_head', …(5) ]
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > what the restarted server serves through the routes is what was stored: the policy, the tablet, the active code, the role, the sealed evidence, the history
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the SUPERVISOR session of before the stop works without a new sign-in; a session that was signed out stays ended, with its reason
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands of the restarted process: the sealed evidence verifies; the audit chain goes on from the row the start wrote; the code of before the stop pairs a second tablet
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restarts 2 and 3, one straight after the other: only the epoch moves, twice; every read operation answers what it answered before; the epoch is the second process's plus 2
+Error: the journey did not get as far as process 2
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands after three restarts: the chain goes on from the last row before the second stop; the changed role decides; the tablets resolve; one is revoked
+Error: the journey did not get as far as process 4
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 4, after commands of a rehydrated process and with a session in CREATE: stable again; a session in CREATE is not faulted; a revoked tablet stays revoked
+Error: the journey did not get as far as process 4
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > no activity is invented for the time the server was down: no stored row is stamped inside a stop, and the engine goes on from the start instant
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the idle and the absolute limit still apply on the server clock to sessions that came through four restarts
+Error: the journey did not get as far as process 5
+ FAIL  |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > at the end: the chain verifies over the rows of all five processes, the tables hold what the engine serves, and no process logged an error
+Error: the journey did not get as far as process 5
+ Test Files  1 failed (1)
+      Tests  10 failed | 6 passed (16)
+[test:db] teardown: dropped 3 database(s) in 133 ms; 0 remain with the run prefix dems_test_step_75_tmdpcaff_

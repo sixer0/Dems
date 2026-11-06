@@ -1,0 +1,122 @@
+{
+  "at": "10:08:12.057 (epoch 1791256092.057)",
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "coreMode": "LIVE",
+  "dashboard": true,
+  "sidebarLink": true,
+  "pageShown": true,
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "table",
+    "rows": [
+      {
+        "id": "DEV-0001",
+        "state": "Paired",
+        "online": "",
+        "operator": "AKP Budi Santoso",
+        "lastSeen": "Just now",
+        "revokeShown": true
+      }
+    ],
+    "summary": {
+      "paired": "1",
+      "online": "1",
+      "text": "1 paired · 1 online1 paired · 1 online"
+    },
+    "toasts": []
+  },
+  "screenshot": {
+    "file": "05_web_resignin_paired_devices.png",
+    "at": "10:08:12.054 (epoch 1791256092.054)"
+  },
+  "network": {
+    "api": [
+      {
+        "sent": "10:08:01.967 (epoch 1791256081.967)",
+        "method": "GET",
+        "path": "/api/v1/auth/session",
+        "status": 401,
+        "done": "10:08:01.984 (epoch 1791256081.984)"
+      },
+      {
+        "sent": "10:08:01.971 (epoch 1791256081.971)",
+        "method": "GET",
+        "path": "/api/v1/auth/status",
+        "status": 200,
+        "done": "10:08:01.974 (epoch 1791256081.974)"
+      },
+      {
+        "sent": "10:08:02.127 (epoch 1791256082.127)",
+        "method": "GET",
+        "path": "/api/v1/health",
+        "status": 200,
+        "done": "10:08:02.170 (epoch 1791256082.170)"
+      },
+      {
+        "sent": "10:08:05.666 (epoch 1791256085.666)",
+        "method": "POST",
+        "path": "/api/v1/auth/sign-in",
+        "status": 200,
+        "done": "10:08:05.723 (epoch 1791256085.723)"
+      },
+      {
+        "sent": "10:08:09.380 (epoch 1791256089.380)",
+        "method": "GET",
+        "path": "/api/v1/pairing/code",
+        "status": 200,
+        "done": "10:08:09.391 (epoch 1791256089.391)"
+      },
+      {
+        "sent": "10:08:09.380 (epoch 1791256089.380)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "10:08:09.397 (epoch 1791256089.397)"
+      }
+    ],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [
+      {
+        "url": "ws://127.0.0.1:5173/?…",
+        "status": 101,
+        "frames": 1,
+        "types": [
+          "connected"
+        ]
+      },
+      {
+        "url": "ws://127.0.0.1:5173/ws",
+        "status": 101,
+        "frames": 6,
+        "types": [
+          "heartbeat",
+          "hello"
+        ]
+      },
+      {
+        "url": "ws://127.0.0.1:5173/ws",
+        "status": 101,
+        "frames": 135,
+        "types": [
+          "delta",
+          "heartbeat",
+          "hello",
+          "meters",
+          "snapshot"
+        ]
+      }
+    ],
+    "console": []
+  }
+}

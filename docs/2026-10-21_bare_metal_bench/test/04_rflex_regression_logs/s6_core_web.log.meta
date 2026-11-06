@@ -1,0 +1,4 @@
+PRE 18:12:55 uptime: 18:12  up  7:14, 1 user, load averages: 5.47 6.25 7.07
+START 18:12:55 CMD: /usr/bin/lockf -k -t 3600 /Users/gsp-budi/Documents/DEMS/.data/locks/heavy-host.lock npm run test -w @dems/core-web -- --maxWorkers=2
+END 18:17:41 rc=1 duration=286s
+POST uptime: 18:17  up  7:19, 1 user, load averages: 7.37 6.70 7.00

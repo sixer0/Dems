@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""W66 mutation check of the row's production changes (M0's method, gateway_check/assets/09a_m0_*).
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file)
+and runs the test files below. A mutation is DETECTED when jest exits non-zero. Nothing in the tree is
+written (rule M15): the hashes of the mutated files are compared before and after the whole run.
+The static test reads the tree, so an in-memory mutant cannot exercise it; it is not in the list.
+
+  python3 mutate.py [id ...]      (no id: all; 'control' runs the unmutated tests once)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+TESTS = [
+    'src/features/more/use-core-link-chip.test.tsx', 'src/features/dashboard/home-live.test.tsx',
+    'src/features/more/more-live.test.tsx', 'src/features/dashboard/dashboard-screen.test.tsx',
+    'src/features/more/more-screen.test.tsx',
+]
+MM = 'src/features/more/more-model.ts'
+CH = 'src/features/more/use-core-link-chip.ts'
+HH = 'src/features/dashboard/home-header.tsx'
+ML = 'src/features/more/more-links.tsx'
+RS = 'src/features/dashboard/recent-sessions.tsx'
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+LIVE_LINE = "  if (link.source === 'LIVE') return liveOffline ? 'offline' : 'live';"
+OTHER_LINE = "  return link.state === 'ONLINE' ? 'simulated' : 'offline';"
+M = [
+  ('R1', MM, "MD-8 undone: the mock-core heartbeat reads 'Live' again (the rule of acaff20)", [e(OTHER_LINE, "  return link.state === 'ONLINE' ? (link.source === 'SIMULATED' ? 'simulated' : 'live') : 'offline';")]),
+  ('R2', MM, "LIVE reads the two-valued link state, not the M0 rule (a reconnect attempt flickers the chip)", [e(LIVE_LINE, "  if (link.source === 'LIVE') return link.state === 'ONLINE' ? 'live' : 'offline';")]),
+  ('R3', MM, "LIVE never reads 'Offline'", [e(LIVE_LINE, "  if (link.source === 'LIVE') return 'live';")]),
+  ('R4', MM, "SIMULATED/HEARTBEAT never read 'Offline' (mock-core gone still says Simulated)", [e(OTHER_LINE, "  return 'simulated';")]),
+  ('R5', MM, 'the tones of Simulated and Live swapped', [e("return word === 'simulated' ? 'info' : 'success';", "return word === 'simulated' ? 'success' : 'info';")]),
+  ('C1', CH, 'no hysteresis: a transient hides the chip\'s Offline (flicker)', [e("setOffline(offlineNoticeAfter(offline, view));", "setOffline(offlineNoticeAfter(false, view));")]),
+  ('C2', CH, 'the render-time adjustment dropped: the chip keeps its first answer', [e("setOffline(offlineNoticeAfter(offline, view));", "void offline;")]),
+  ('C3', CH, "HEARTBEAT counted as LIVE (placement and the note)", [e("live: link.source === 'LIVE',", "live: link.source !== 'SIMULATED',")]),
+  ('C4', CH, 'the icon never shows the warning mark', [e("icon: word === 'offline' ? 'TriangleAlert' : 'Wifi',", "icon: 'Wifi',")]),
+  ('C5', CH, 'the M0 state starts as shown (Offline flashes at a LIVE start)', [e("useState(() => offlineNoticeAfter(false, view))", "useState(() => offlineNoticeAfter(true, view))")]),
+  ('H1', HH, 'MD-9 dropped: in LIVE the chip is on the expanded header only', [e("{layoutClass === 'expanded' || live ? <CoreLinkChip /> : null}", "{layoutClass === 'expanded' ? <CoreLinkChip /> : null}")]),
+  ('H2', HH, 'MD-9 overdone: the chip in every class in Simulated mode too (a Simulated layout change)', [e("{layoutClass === 'expanded' || live ? <CoreLinkChip /> : null}", "{true ? <CoreLinkChip /> : null}")]),
+  ('H3', HH, 'the refusal presenter skipped: a denial or an outage of operation 70 is only logged', [e("        if (presentCoreError(error)) return;\n", "")]),
+  ('H4', HH, 'the acknowledge request is never sent', [e("settle(() => actions.acknowledgeAlert(id), {", "settle(() => undefined, {")]),
+  ('H5', HH, "the Home chip names a fixed source in its label", [e("source: t(`mobile.coreLink.source.${chip.source}`),", "source: t('mobile.coreLink.source.SIMULATED'),")]),
+  ('L1', ML, "the LIVE footer keeps the note about simulated data", [e("t(chip.live ? 'features.more.footer.liveNote' : 'features.more.footer.demoNote')", "t('features.more.footer.demoNote')")]),
+  ('L2', ML, "the Simulated footer gets the LIVE note", [e("t(chip.live ? 'features.more.footer.liveNote' : 'features.more.footer.demoNote')", "t('features.more.footer.liveNote')")]),
+  ('L3', ML, 'the More chip takes a fixed tone', [e("tone={chip.tone}", "tone=\"success\"")]),
+  ('P1', RS, 'CONTRACT-GAP-W66-1 adapter dropped: LIVE rows join the bundled poster again', [e("row.posterSuffix && !live ?", "row.posterSuffix ?")]),
+  ('P2', RS, 'Simulated rows lose their bundled poster too', [e("row.posterSuffix && !live ?", "false ?")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *TESTS],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = set(sys.argv[1:])
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# W66 mutation check, %s; %d test files per run; the tree is not edited' % (time.strftime('%Y-%m-%d %H:%M:%S'), len(TESTS)), flush=True)
+    if not wanted or 'control' in wanted:
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'))
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation): exit=%d %s (%.0f s)' % (run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print('## the control run is not green: stop', flush=True)
+            return 2
+    todo = [m for m in M if not wanted or m[0] in wanted]
+    detected, survived, broken = [], [], []
+    for (mid, file, what, edits) in todo:
+        text = open(APP + '/' + file).read()
+        ok = True
+        for edit in edits:
+            if text.count(edit['from']) != 1:
+                ok = False
+                break
+            text = text.replace(edit['from'], edit['to'], 1)
+        if not ok:
+            broken.append(mid)
+            print('%s  NOT APPLIED: a text does not occur exactly once in %s   (%s)' % (mid, file, what), flush=True)
+            continue
+        json.dump({'id': mid, 'file': file, 'edits': edits}, open(SPEC, 'w'))
+        started = time.time()
+        run = jest(dict(os.environ, W66_MUT_SPEC=SPEC, CI='1'))
+        tail, failed, first = summary(run.stdout)
+        verdict = 'detected' if run.returncode != 0 else 'NOT DETECTED'
+        (detected if run.returncode != 0 else survived).append(mid)
+        print('%s  %-12s %3.0fs  %s  | %s  | %s' % (mid, verdict, time.time() - started, what, tail, ', '.join(failed)), flush=True)
+        for name in first: print('      e.g. %s' % name, flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## %d detected, %d not detected, %d not applied, of %d' % (len(detected), len(survived), len(broken), len(todo)), flush=True)
+    if survived: print('## not detected: ' + ' '.join(survived), flush=True)
+    if broken: print('## not applied: ' + ' '.join(broken), flush=True)
+    print('## the mutated files in the tree, before and after: ' + ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files: print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+    return 0 if not survived and not broken and before == after else 1
+
+if __name__ == '__main__':
+    sys.exit(main())

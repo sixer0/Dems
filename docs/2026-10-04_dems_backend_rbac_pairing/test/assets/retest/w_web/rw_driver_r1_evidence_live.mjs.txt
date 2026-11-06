@@ -1,0 +1,140 @@
+// R-W Part 1 (LIVE): E2E-W1-3 (integrity card opens on the Core's stored verdict; Verify moves the line),
+// E2E-W1-4 Live half (Metadata: Core record first + notice + package under its own heading),
+// E2E-W1-7 (custody date and time not split inside tokens at 1440x900). Item EV-20261006-0012, SUPERVISOR.
+// Commands sent: sign-in, reads, ONE Verify of EV-20261006-0012, sign-out (user menu).
+import { launch, openPage, signIn, signOutMenu, makeRun, writeEvents, sleep } from './rt_lib.mjs'
+
+const ITEM = 'EV-20261006-0012'
+const R = makeRun('r1_evidence_live')
+process.on('unhandledRejection', (e) => R.log(`unhandled: ${e?.message ?? e}`))
+const browser = await launch(R.log)
+let page
+const coreRecord = () => page.fetchJson(`/api/v1/evidence/${ITEM}`, `(b) => { const e = b?.evidence; const c = e?.custody ?? []; const v = c.filter((x) => x.action === 'VERIFIED' || x.action === 'VERIFY_FAILED'); return { status: e?.status, sessionId: e?.sessionId, caseNumber: e?.caseNumber, verification: e?.verification ? { status: e.verification.status, at: e.verification.at ? new Date(e.verification.at).toISOString() : null } : null, lastVerifyCustody: v.length ? { action: v[v.length - 1].action, actorId: v[v.length - 1].actorId, at: new Date(v[v.length - 1].at).toISOString() } : null, custodyCount: c.length, media: b?.media ? { source: b.media.source, packageSuffix: b.media.packageSuffix } : null } }`)
+const readCard = () => page.eval(`(() => {
+  const card = document.querySelector('[data-testid="evidence-verify-card"]')
+  if (!card) return null
+  const t = (sel) => card.querySelector(sel)?.innerText?.replace(/\\s+/g, ' ').trim() ?? null
+  return {
+    verdict: card.querySelector('[data-testid="evidence-verdict"]')?.getAttribute('data-verdict') ?? null,
+    verdictText: t('[data-testid="evidence-verdict"]'),
+    source: card.getAttribute('data-verdict-source'),
+    label: t('[data-testid="evidence-verify-label"]'),
+    last: t('[data-testid="evidence-verify-last"]'),
+    button: t('[data-testid="evidence-verify"]'),
+    storedHint: t('[data-testid="evidence-verify-stored-hint"]'),
+  }
+})()`, 'card')
+const openIntegrity = async () => {
+  await page.goto(`/evidence/${ITEM}?tab=integrity`, 1500)
+  await page.waitFor('evidence-verify-card', true, 20000)
+  await sleep(2500)
+}
+const cardShot = async (name) => {
+  await page.eval(`document.querySelector('[data-testid="evidence-verify-card"]').scrollIntoView({ block: 'start', behavior: 'instant' })`)
+  await sleep(500)
+  return page.shot(name, await page.elementClip('evidence-verify-card', 10, 880))
+}
+try {
+  page = await openPage(browser.cdp, R.log)
+  await page.viewport(1440, 900)
+  page.setLabel('Login')
+  await page.goto('/login', 2000)
+  R.record('signedIn', { signedIn: await signIn(page, 'andi.pratama', R.log) })
+
+  // ── E2E-W1-3 ──
+  page.setLabel('Evidence detail')
+  R.record('coreBefore', await coreRecord())
+  await openIntegrity()
+  R.record('cardOnOpen', { card: await readCard(), facts: await page.facts() })
+  await cardShot('p1_w1_3_integrity_on_open.png')
+  await page.shot('p1_w1_3_integrity_on_open_full.png')
+
+  await page.send('Page.reload', { ignoreCache: true })
+  await sleep(500)
+  await page.waitForFn('document.readyState === "complete"', 20000)
+  await page.waitFor('evidence-verify-card', true, 20000)
+  await sleep(2500)
+  R.record('cardAfterReload', { card: await readCard(), core: await coreRecord() })
+  await cardShot('p1_w1_3_integrity_after_reload.png')
+
+  const lastBefore = (await readCard())?.last
+  const press = await page.click('evidence-verify')
+  const moved = await page.waitForFn(`(() => { const c = document.querySelector('[data-testid="evidence-verify-card"]'); const v = c?.querySelector('[data-testid="evidence-verdict"]')?.getAttribute('data-verdict'); const l = c?.querySelector('[data-testid="evidence-verify-last"]')?.innerText ?? ''; return (v === 'PASS' || v === 'FAIL' || v === 'ERROR') && l.replace(/\\s+/g, ' ').trim() !== ${JSON.stringify(lastBefore ?? '')} })()`, 30000)
+  await sleep(1500)
+  R.record('cardAfterVerify', { press, lineMoved: moved, lastBefore, card: await readCard(), core: await coreRecord(), toasts: (await page.facts()).toasts })
+  await cardShot('p1_w1_3_integrity_after_verify.png')
+  R.record('auditVerified', await page.auditTail(2, '&type=EVIDENCE_VERIFIED'))
+
+  await page.send('Page.reload', { ignoreCache: true })
+  await sleep(500)
+  await page.waitForFn('document.readyState === "complete"', 20000)
+  await page.waitFor('evidence-verify-card', true, 20000)
+  await sleep(2500)
+  R.record('cardAfterVerifyReload', { card: await readCard(), core: await coreRecord() })
+  await cardShot('p1_w1_3_integrity_after_verify_reload.png')
+
+  // ── E2E-W1-7: custody time cells at 1440x900 ──
+  await page.eval(`document.querySelector('[data-testid="evidence-custody"]').scrollIntoView({ block: 'center', behavior: 'instant' })`)
+  await sleep(800)
+  R.record('custodyCells', await page.eval(`(() => {
+    const rows = [...document.querySelectorAll('[data-testid="evidence-custody"] tbody tr, [data-testid="evidence-custody"] [role="row"]')]
+    return rows.map((row) => {
+      const cell = row.querySelector('[data-testid="evidence-custody-time"]') ?? row.querySelector('td, [role="rowheader"], [role="gridcell"]')
+      if (!cell) return null
+      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT)
+      const perLine = new Map()
+      let node
+      while ((node = walker.nextNode())) {
+        for (let i = 0; i < node.textContent.length; i += 1) {
+          const r = document.createRange(); r.setStart(node, i); r.setEnd(node, i + 1)
+          const rect = r.getBoundingClientRect()
+          if (rect.width === 0) continue
+          const top = Math.round(rect.top)
+          perLine.set(top, (perLine.get(top) ?? '') + node.textContent[i])
+        }
+      }
+      const lines = [...perLine.entries()].sort((a, b) => a[0] - b[0]).map(([, t]) => t.trim()).filter(Boolean)
+      const cellsText = [...row.querySelectorAll('td, [role="gridcell"]')].map((c) => c.innerText.replace(/\\s+/g, ' ').trim().slice(0, 80))
+      const tokenOk = lines.every((l) => /^\\d{1,2} [A-Z][a-z]{2} \\d{4}$/.test(l) || /^\\d{2}:\\d{2}:\\d{2}$/.test(l) || /^\\d{1,2} [A-Z][a-z]{2} \\d{4} \\d{2}:\\d{2}:\\d{2}$/.test(l))
+      return { lines, tokenOk, row: cellsText }
+    }).filter(Boolean)
+  })()`, 'custody'))
+  await page.shot('p1_w1_7_custody_1440x900.png', await page.elementClip('evidence-custody', 8, 880))
+
+  // ── E2E-W1-4 (Live): Metadata tab ──
+  await page.click('evidence-tab-metadata')
+  await page.waitFor('evidence-metadata', true, 15000)
+  await sleep(2500)
+  R.record('metadataLive', await page.eval(`(() => {
+    const m = document.querySelector('[data-testid="evidence-metadata"]')
+    const sections = [...m.querySelectorAll('section')].map((s) => ({ ariaLabel: s.getAttribute('aria-label'), testid: s.getAttribute('data-testid'), top: Math.round(s.getBoundingClientRect().top), left: Math.round(s.getBoundingClientRect().left) }))
+    const firstJson = m.querySelector('[data-testid="evidence-json"]')?.innerText ?? ''
+    return {
+      dataPackage: m.getAttribute('data-package'),
+      packageId: m.getAttribute('data-package-id'),
+      notice: m.querySelector('[data-testid="evidence-foreign-package"]')?.innerText?.replace(/\\s+/g, ' ').trim() ?? null,
+      headings: [...m.querySelectorAll('h3')].map((h) => h.innerText.replace(/\\s+/g, ' ').trim()),
+      sections,
+      firstJsonIds: [...new Set(firstJson.match(/EV-\\d{8}-\\d{4}|SES-\\d{8}-\\d{4}|LP\\/\\d{4}\\/\\d{4}-\\d{4}/g) ?? [])],
+      firstJsonHasRecordCore: /"record"\\s*:\\s*"CORE"/.test(firstJson),
+      manifestFields: !!m.querySelector('[data-testid="evidence-manifest-fields"]'),
+      docs: [...m.querySelectorAll('[data-testid^="evidence-doc-"]')].map((d) => (d.getAttribute('aria-label') ?? d.innerText).replace(/\\s+/g, ' ').trim().slice(0, 90)),
+      header: document.querySelector('[data-testid="evidence-detail-header"]')?.innerText?.replace(/\\s+/g, ' ').trim().slice(0, 300),
+      packageChip: document.querySelector('[data-testid="evidence-package-chip"]')?.getAttribute('data-package'),
+    }
+  })()`, 'metadata'))
+  await page.shot('p1_w1_4_live_metadata_tab.png')
+  await page.eval(`document.querySelector('[data-testid="evidence-foreign-documents"], [data-testid="evidence-metadata"]').scrollIntoView({ block: 'start', behavior: 'instant' })`)
+  await sleep(500)
+  await page.shot('p1_w1_4_live_metadata_package_heading.png')
+
+  page.setLabel('Sign out')
+  R.record('signOut', await signOutMenu(page, R.log))
+} catch (error) {
+  R.log(`FAILED: ${error.message}`)
+  R.obs.error = error.message
+} finally {
+  if (page) R.record('consoleNetwork', writeEvents(R.run, page.events))
+  await browser.close()
+  R.flush()
+}

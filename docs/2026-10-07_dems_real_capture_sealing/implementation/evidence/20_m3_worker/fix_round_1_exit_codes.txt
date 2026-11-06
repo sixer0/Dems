@@ -1,0 +1,55 @@
+anchor_test: all checks hold
+anchor_test: the old slew rule fails it, as required (negative control)
+sink_kill_test: 200 kills in 0.8 s: final name absent 19, present with init + whole first fragment 181 (of those refused untouched by the next worker 181), children that finished before the kill 160, .part files left 12, violations 0
+proto_r1 rc=0
+wi1_zero_r1 rc=0
+wi1_pm80_r1 rc=0
+wi1_drift_r1 rc=0
+wi1_camstop_r1 rc=0
+wi1_fatal_rmdir_r1 rc=0
+optc_planted_r1 rc=0
+optc_exists_r1 rc=0
+bind_udp_r1 rc=0
+sup_run_r1 rc=0
+kc1_r1 rc=0
+kc3_r1 rc=0
+mic_slow_r1 rc=0
+mic_gap_r1 rc=0
+nocam_none_r1 rc=0
+nocam_one_r1 rc=0
+sup_nocam_r1 rc=0
+f2_norefusal_r1 rc=0
+proto_r2 rc=0
+wi1_zero_r2 rc=0
+wi1_pm80_r2 rc=0
+wi1_drift_r2 rc=0
+wi1_camstop_r2 rc=0
+wi1_fatal_rmdir_r2 rc=0
+optc_planted_r2 rc=0
+optc_exists_r2 rc=0
+bind_udp_r2 rc=0
+sup_run_r2 rc=0
+kc1_r2 rc=0
+kc3_r2 rc=0
+mic_slow_r2 rc=0
+mic_gap_r2 rc=0
+nocam_none_r2 rc=0
+nocam_one_r2 rc=0
+sup_nocam_r2 rc=0
+f2_norefusal_r2 rc=0
+--- negative controls (each must FAIL; rc 0 = failed as required)
+neg_h4_reencoded rc=0
+neg_av_forbidden_option rc=0
+neg_bind_skeleton rc=0
+neg_fatal_clean_control rc=0
+neg_sup_forbidden_option rc=0
+neg_mic_no_compensation rc=0
+neg_kc3_no_restart_allowed rc=0
+--- P4 evaluation
+p4_delay_pm80 rc=0
+p4_shape_pinned rc=0
+p4_shape_delay rc=0
+p4_stall_pinned rc=0
+p4_stall_delay rc=0
+--- leftovers
+(end)

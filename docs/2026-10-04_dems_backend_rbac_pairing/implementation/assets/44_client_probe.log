@@ -1,0 +1,17 @@
+# Step 66 (W44), second fix round (decision D90): the subpath @dems/shared/live/source under each client's compiler options
+2026-10-04 15:51:37 WIB
+## web (tsconfig extends the app's own; include: the probe only)
+$ npx tsc -p .cache/w44/probe-web/tsconfig.json --noEmit
+exit=0
+## mobile (tsconfig extends the app's own; include: the probe only)
+$ npx tsc -p .cache/w44/probe-mobile/tsconfig.json --noEmit
+exit=0
+## web: negative control (two wrong lines appended to the probe, then removed): a reason outside the four, and a record with a token
+.cache/w44/probe-web/probe.ts(68,75): error TS2322: Type '"ELSE"' is not assignable to type 'SignOutReason | "IDLE_EXPIRED" | "ABSOLUTE_EXPIRED"'.
+.cache/w44/probe-web/probe.ts(69,98): error TS2353: Object literal may only specify known properties, and 'sessionToken' does not exist in type 'LiveOwedSignOut'.
+exit=2
+## mobile: negative control (two wrong lines appended to the probe, then removed): a reason outside the four, and a record with a token
+.cache/w44/probe-mobile/probe.ts(51,75): error TS2322: Type '"ELSE"' is not assignable to type 'SignOutReason | "IDLE_EXPIRED" | "ABSOLUTE_EXPIRED"'.
+.cache/w44/probe-mobile/probe.ts(52,98): error TS2353: Object literal may only specify known properties, and 'sessionToken' does not exist in type 'LiveOwedSignOut'.
+exit=2
+probe copies equal

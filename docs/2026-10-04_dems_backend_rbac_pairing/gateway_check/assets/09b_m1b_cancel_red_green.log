@@ -1,0 +1,100 @@
+## F5: the probe of the reported defect (00:38:55, a scratch test moved out of the tree at 00:39)
+    PROBE delta-first
+      stay disabled=false
+      after Keep: dialog=false path=/session/new
+      after answer: dialog=false path=/home session=null cancels=1 step=-
+    PROBE answer-first
+      stay disabled=false
+      after Keep: dialog=false path=/session/new
+      after answer: dialog=false path=/home session=null cancels=1 step=-
+  ✓ probe delta-first (581 ms)
+  ✓ probe answer-first (290 ms)
+Tests:       2 passed, 2 total
+
+## F5: the reproduction RED before the fix (00:42:00)
+    ✓ an answer 1 s late: two presses send one cancel; no spinner at 300 ms; the Spinner inside the leave button at 500 ms; it leaves once the Core cancelled (457 ms)
+    ✓ an answer after 50 ms: no spinner is ever rendered; it leaves (195 ms)
+    ✓ a refused cancel (outage): the spinner goes with the answer, the dialog stays, and the next press sends again (235 ms)
+    ✕ a confirmed cancel (delta-first): "Keep session" is disabled and does not close the dialog while the cancel is out; the wizard leaves on the Core's answer (211 ms)
+    ✕ a confirmed cancel (answer-first): "Keep session" is disabled and does not close the dialog while the cancel is out; the wizard leaves on the Core's answer (226 ms)
+    ✕ a refused cancel (403, 1 s late): "Keep session" is disabled while it is out, enabled again after the refusal, and then keeps the session (167 ms)
+    ✓ the two Live texts say nothing about a simulation, and are not the Simulated ones (1 ms)
+    ✓ LIVE: the case-number button's label and the step 2 hint say what is true; no text of steps 1 and 2 claims a simulation (113 ms)
+    ✓ SIMULATED: the words of before ("Scan case number (simulated)", "Speak to test (simulated)") (112 ms)
+Tests:       3 failed, 6 passed, 9 total
+  ● the cancel confirm holds while the cancel is out (S3-1, B-6, LB-6; the follow-up's F5) › a confirmed cancel (delta-first): "Keep session" is disabled and does not close the dialog while the cancel is out; the wizard leaves on the Core's answer
+    expect(received).not.toBeNull()
+    Received: null
+  ● the cancel confirm holds while the cancel is out (S3-1, B-6, LB-6; the follow-up's F5) › a confirmed cancel (answer-first): "Keep session" is disabled and does not close the dialog while the cancel is out; the wizard leaves on the Core's answer
+    expect(received).not.toBeNull()
+    Received: null
+  ● the cancel confirm holds while the cancel is out (S3-1, B-6, LB-6; the follow-up's F5) › a refused cancel (403, 1 s late): "Keep session" is disabled while it is out, enabled again after the refusal, and then keeps the session
+    expect(received).not.toBeNull()
+    Received: null
+
+## F5: GREEN after the fix (00:42:39), Start Session + navigation
+PASS src/features/session-new/live-session-new-followups.test.tsx
+PASS src/features/session-new/live-session-new-sites.test.tsx
+PASS src/navigation/__tests__/routes.test.tsx
+PASS src/navigation/__tests__/guard.test.tsx
+PASS src/features/session-new/session-new-screen.test.tsx
+PASS src/features/session-new/live-session-new-replica.test.tsx
+PASS src/navigation/__tests__/chrome.test.tsx
+PASS src/features/session-new/live-session-new-handoff.test.tsx
+PASS src/navigation/__tests__/pairing-gate.test.tsx
+PASS src/features/session-new/precheck.test.tsx
+PASS src/navigation/__tests__/back-guard-busy.test.tsx
+PASS src/navigation/__tests__/pairing-gate-live.test.tsx
+PASS src/navigation/__tests__/navigation-units.test.ts
+PASS src/navigation/__tests__/back-guard.test.tsx
+PASS src/features/session-new/session-new-model.test.ts
+Tests:       230 passed, 230 total
+
+## the probe file
+// TEMPORARY PROBE (row M1 follow-up, F5): what happens today when "Keep session" is pressed while a cancel is in flight.
+import './testing/session-new-test-setup';
+import '@/navigation/testing/router-harness';
+import { afterEach, beforeEach, expect, it } from '@jest/globals';
+import { act, fireEvent, screen } from '@testing-library/react-native';
+import { router } from 'expo-router';
+import { PRECHECK_TOTAL_MAX_MS } from '@dems/shared/sim';
+import { renderLiveSessionNew, resetLiveSessionNewBed, type LiveSessionNewBed } from './testing/live-session-new-bed';
+
+let bed: LiveSessionNewBed | null = null;
+beforeEach(async () => { await resetLiveSessionNewBed(); });
+afterEach(() => { bed?.stop(); bed = null; });
+
+async function fillStep1(): Promise<void> {
+  const s = () => act(async () => {});
+  fireEvent.press(screen.getByTestId('session-new-scan')); await s();
+  fireEvent.press(screen.getByTestId('session-new-subject-TERSANGKA')); await s();
+  fireEvent.changeText(screen.getByTestId('session-new-subject-name'), 'Ahmad Fauzi'); await s();
+}
+
+for (const order of ['delta-first', 'answer-first'] as const) {
+  it(`probe ${order}`, async () => {
+    const b = await renderLiveSessionNew();
+    bed = b;
+    await b.openFlow();
+    await fillStep1();
+    fireEvent.press(screen.getByTestId('session-new-next'));
+    await b.flush();
+    await b.elapse(200);
+    await b.runCore(PRECHECK_TOTAL_MAX_MS);
+    act(() => router.back());
+    expect(screen.getByText('Cancel this session?')).toBeTruthy();
+    b.order = order;
+    b.answerDelayMs = 1_000;
+    fireEvent.press(screen.getByTestId('back-guard-leave'));
+    await b.flush();
+    const stay = screen.getByTestId('back-guard-stay');
+    const log: string[] = [`stay disabled=${String(stay.props.accessibilityState?.disabled)}`];
+    fireEvent.press(stay);
+    await b.flush();
+    log.push(`after Keep: dialog=${screen.queryByText('Cancel this session?') !== null} path=${b.app.getPathname()}`);
+    await b.elapse(1_200);
+    if (order === 'answer-first') { b.sendHeldDeltas(); await b.flush(); await b.elapse(200); }
+    log.push(`after answer: dialog=${screen.queryByText('Cancel this session?') !== null} path=${b.app.getPathname()} session=${String(b.state().session?.state ?? null)} cancels=${b.requests('cancelSession').length} step=${['1','2','3'].find((n) => screen.queryByTestId(`session-new-step-${n}`) !== null) ?? '-'}`);
+    console.log(`PROBE ${order}\n  ${log.join('\n  ')}`);
+  });
+}

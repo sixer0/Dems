@@ -1,0 +1,16 @@
+// Difference of two db_probe snapshots: rows per table (count delta) and write counters (ins/upd/del deltas).
+import { readFileSync } from 'node:fs'
+const [a, b] = process.argv.slice(2).map((f) => JSON.parse(readFileSync(f, 'utf8')))
+const secs = (b.at - a.at) / 1000
+console.log(`window ${a.atIso} -> ${b.atIso} (${secs.toFixed(1)} s); database ${a.database}`)
+console.log('table'.padEnd(24) + 'count_before count_after d_count  d_ins  d_upd  d_del')
+let ti = 0, tu = 0, td = 0
+for (const t of Object.keys(b.rows)) {
+  const x = a.rows[t], y = b.rows[t]
+  const dc = y.count - x.count, di = y.ins - x.ins, du = y.upd - x.upd, dd = y.del - x.del
+  ti += di; tu += du; td += dd
+  if (dc || di || du || dd) console.log(t.padEnd(24) + String(x.count).padStart(12) + String(y.count).padStart(12) + String(dc).padStart(8) + String(di).padStart(7) + String(du).padStart(7) + String(dd).padStart(7))
+}
+const meter = Object.keys(b.rows).filter((t) => /meter|frame|level|vu/i.test(t))
+console.log(`tables whose name could hold meter frames (/meter|frame|level|vu/i): ${meter.length ? meter.join(', ') : 'none of the ' + Object.keys(b.rows).length}`)
+console.log(`total d_ins ${ti}, d_upd ${tu}, d_del ${td}; row writes per second ${((ti + tu + td) / secs).toFixed(2)}; database xact_commit delta ${b.database_stats.xact_commit - a.database_stats.xact_commit}`)

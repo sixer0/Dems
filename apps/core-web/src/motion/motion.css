@@ -1,0 +1,27 @@
+/*
+ * CSS side of the motion policy (03_motion_spec §8, §9.4, R10, §12).
+ * MotionPolicyProvider sets on <html>:
+ *   data-motion="full|reduced"      (OS setting OR in-app override OR ?motion=off)
+ *   data-motion-speed="normal|slow" (?motion=slow proof mode)
+ *   --motion-time-scale: 1 | 10     (multiply CSS durations by it in proof mode)
+ * Elements that loop with CSS keyframes carry data-ambient="running|paused" from useAmbientLoop.
+ */
+:root {
+  --motion-time-scale: 1;
+}
+
+/* Paused loops hold their current frame and resume in phase (R10). */
+[data-ambient="paused"],
+[data-ambient="paused"] *,
+[data-ambient="paused"]::before,
+[data-ambient="paused"]::after {
+  animation-play-state: paused !important;
+}
+
+/* The in-app override must stop CSS loops too, not only the OS media query (§8: static final frame). */
+:root[data-motion="reduced"] [data-ambient],
+:root[data-motion="reduced"] [data-ambient] *,
+:root[data-motion="reduced"] [data-ambient]::before,
+:root[data-motion="reduced"] [data-ambient]::after {
+  animation: none !important;
+}

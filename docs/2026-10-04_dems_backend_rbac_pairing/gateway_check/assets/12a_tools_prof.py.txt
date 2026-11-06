@@ -1,0 +1,38 @@
+"""prof.py <cpuprofile> [fromSec] [toSec]: busy timeline (per 100 ms) and top self/total functions of a Hermes CPU profile."""
+import json, sys, collections
+p = json.load(open(sys.argv[1]))
+nodes = {n['id']: n for n in p['nodes']}
+parent = {}
+for n in p['nodes']:
+    for c in n.get('children', []):
+        parent[c] = n['id']
+samples = p['samples']; deltas = p['timeDeltas']
+t = p['startTime']; times = []
+for d in deltas:
+    t += d; times.append(t)
+t0 = p['startTime']
+lo = float(sys.argv[2]) if len(sys.argv) > 2 else 0; hi = float(sys.argv[3]) if len(sys.argv) > 3 else 1e9
+def name(i):
+    cf = nodes[i]['callFrame']; return f"{cf.get('functionName') or '(anon)'} {cf.get('url','').split('/')[-1].split('?')[0]}:{cf.get('lineNumber')}"
+busy = collections.Counter(); self_t = collections.Counter(); total_t = collections.Counter()
+for i, (s, tm) in enumerate(zip(samples, times)):
+    rel = (tm - t0) / 1e6
+    if rel < lo or rel > hi: continue
+    dt = (times[i + 1] - tm) / 1e3 if i + 1 < len(times) else 0
+    fn = nodes[s]['callFrame'].get('functionName', '')
+    if fn in ('(idle)', '(program)', '(root)', '(garbage collector)') and fn != '(garbage collector)':
+        continue
+    busy[int(rel * 10)] += dt
+    self_t[name(s)] += dt
+    seen = set(); cur = s
+    while cur in nodes:
+        nm = name(cur)
+        if nm not in seen: total_t[nm] += dt; seen.add(nm)
+        cur = parent.get(cur)
+        if cur is None: break
+print('busy ms per 100 ms bucket (s from profile start):')
+print(' '.join(f"{k/10:.1f}:{v:.0f}" for k, v in sorted(busy.items())))
+print('top self:')
+for k, v in self_t.most_common(15): print(f'  {v:7.1f} ms  {k}')
+print('top total (inclusive):')
+for k, v in total_t.most_common(40): print(f'  {v:7.1f} ms  {k}')

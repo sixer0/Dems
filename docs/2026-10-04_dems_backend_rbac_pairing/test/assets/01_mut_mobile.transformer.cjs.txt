@@ -1,0 +1,34 @@
+// W87 scratch: a jest transformer that changes ONE source file IN MEMORY (W87_MUT, kind "transform")
+// and hands the result to the app's own transformer (babel-jest with jest-expo's options). The method
+// of the copy round (gateway_check/assets/08c_copy_mutating_transformer.cjs.txt). No tree file changes.
+const path = require('node:path');
+const fs = require('node:fs');
+const crypto = require('node:crypto');
+const ROOT = '/Users/gsp-budi/Documents/DEMS';
+const APP = path.join(ROOT, 'apps/mobile');
+const babelJest = require(path.join(ROOT, 'node_modules/babel-jest'));
+const { resolveBabelOptions } = require(path.join(ROOT, 'node_modules/jest-expo/src/resolveBabelOptions'));
+const inner = (babelJest.default ?? babelJest).createTransformer(resolveBabelOptions(APP));
+const id = process.env.W87_MUT ?? '';
+const table = JSON.parse(fs.readFileSync(path.join(__dirname, 'mutations.json'), 'utf8'));
+const m = id === '' ? null : table.find((entry) => entry.id === id && entry.kind === 'transform');
+if (id !== '' && !m) throw new Error(`W87: no transform mutation ${id}`);
+const target = m ? path.join(APP, m.file) : null;
+const specHash = m ? crypto.createHash('sha256').update(JSON.stringify(m)).digest('hex') : 'none';
+function mutate(source, filename) {
+  if (!m || filename !== target) return source;
+  const count = source.split(m.from).length - 1;
+  if (count !== 1) throw new Error(`W87 mutation ${m.id}: the text occurs ${count} times in ${m.file}`);
+  fs.writeFileSync(path.join(__dirname, 'applied', m.id), 'applied\n');
+  return source.replace(m.from, () => m.to);
+}
+module.exports = {
+  canInstrument: false,
+  process(source, filename, options) {
+    return inner.process(mutate(source, filename), filename, options);
+  },
+  getCacheKey(source, filename, options) {
+    const key = inner.getCacheKey(source, filename, options);
+    return filename === target ? crypto.createHash('sha256').update(key).update(specHash).digest('hex') : key;
+  },
+};

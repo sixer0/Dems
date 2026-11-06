@@ -1,0 +1,100 @@
+Sun Oct  4 15:32:23 WIB 2026
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 --reporter=verbose src/modules/pairing
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ✓ |unit| src/modules/pairing/__tests__/secrets.test.ts > the numbers are the specification's (spec §6.1) > six digits, 300 s, closed at five failed redeems; three failures in 300 s lock for 60 s; last seen at most once a minute 2ms
+ ✓ |unit| src/modules/pairing/__tests__/secrets.test.ts > the pairing code (PR-P1, SR-26) > is drawn uniformly below 10^6 and written with six digits, leading zeros kept 0ms
+ ✓ |unit| src/modules/pairing/__tests__/secrets.test.ts > the pairing code (PR-P1, SR-26) > from the platform source: 20,000 codes all have the form, are not all alike, and every first digit comes up about one time in ten 22ms
+ ✓ |unit| src/modules/pairing/__tests__/secrets.test.ts > the pairing code (PR-P1, SR-26) > is stored as SHA-256 of the code ID, one colon and the six digits: 32 bytes, different for equal digits under another ID 1ms
+ ✓ |unit| src/modules/pairing/__tests__/secrets.test.ts > the pairing code (PR-P1, SR-26) > is compared through its hash: the right digits under the right ID match, and nothing else does 0ms
+ ✓ |unit| src/modules/pairing/__tests__/secrets.test.ts > the pairing code (PR-P1, SR-26) > PR-P7: the QR payload is the fixed prefix and the code; not a URL 0ms
+ ✓ |unit| src/modules/pairing/__tests__/secrets.test.ts > the device credential (PR-P8, SR-31) > is 32 random bytes as base64url behind the prefix dvc_: 47 characters of the contract's form 1ms
+ ✓ |unit| src/modules/pairing/__tests__/secrets.test.ts > the device credential (PR-P8, SR-31) > from the platform source: every credential has the form and no two are alike 5ms
+ ✓ |unit| src/modules/pairing/__tests__/secrets.test.ts > the device credential (PR-P8, SR-31) > is stored as SHA-256 of the whole value, prefix included 1ms
+ ✓ |unit| src/modules/pairing/__tests__/secrets.test.ts > the device credential (PR-P8, SR-31) > only the exact form is a device credential 0ms
+ ✓ |unit| src/modules/pairing/__tests__/secrets.test.ts > the identifiers (PR-P9; database contract §4.7, §4.8) > DEV-NNNN with at least four digits, PCD-NNNNNN with at least six; neither is ever cut 1ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > the scan itself > reads the production sources of the folder 2ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 4ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 1 (M3): who may call is stage 6, only > no file reads a permission, a role, the kind of the principal or a retired device 2ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 1 (M3): who may call is stage 6, only > no file writes or answers a denial of the guard 0ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 1 (M3): who may call is stage 6, only > no route carries a hook, every route is built from its registry entry, and nothing replaces a stage or a seam 2ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 1 (M3): who may call is stage 6, only > who ACTS is read from what stage 4 resolved, in three places of the routes and one of the redeem, and from nothing a caller sends 2ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 2 (M4): server-native only > no simulator action, no hosted command, no engine state: the engine is read for the two headers of API-7 only 1ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 2 (M4): server-native only > every state change is a unit of the pipeline, with a label of its own 0ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 2 (M4): server-native only > a publication leaves only after the commit of its unit: every `app.publish` of the folder is inside an `afterCommit` task 1ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 3 (M8): one clock, no timer of its own > no file reads the system time or starts a timer; the sweep runs on the identity module's sweeper 1ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 3 (M8): one clock, no timer of its own > no file reads the environment or listens 0ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 4: one random source, one hash, one comparison > only secrets.ts names the crypto module, and nothing uses a weak random source 0ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 4: one random source, one hash, one comparison > the code is drawn with randomInt, the credential with randomBytes, and the code is compared with timingSafeEqual 0ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 4: one random source, one hash, one comparison > SR-61: no signing secret and no pepper 0ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 5 (M8, decision D69): no cookie > no file sets, clears or reads a cookie 0ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 6 (M14, SR-48): logging > every log call logs an error as `err`, with identifiers beside it and nothing else 1ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 6 (M14, SR-48): logging > no error message is read, no error is spread into a log object, and no log text is built from a value 1ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 6 (M14, SR-48): logging > no console call, no raw URL, no header 1ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 7: the statements > are constant texts: every exported statement of the store is listed here 0ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 7: the statements > name every table with its schema, hold no value (only bind parameters and the fixed state names), and are single statements 2ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 7: the statements > every transition is one compare-and-set: the UPDATE states the expected state and returns what it changed (AT-3) 1ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 7: the statements > the consuming statement takes the attempt and the redeeming statement gives it back (AT-C2, AT-C3) 0ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 7: the statements > the code hash is written by the insert and handed out by the consuming statement alone; no credential hash is ever selected or returned 2ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 7: the statements > no statement is written outside the store, and no `SELECT *` 1ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 8 (M5): one audit path > nothing here inserts into the audit table or the events table itself: the rows go through the unit's writers, in one place 1ms
+ ✓ |unit| src/modules/pairing/__tests__/static.test.ts > rule 8 (M5): one audit path > no builder of a row takes a secret: none has a parameter for a code, a credential or a hash 0ms
+ ✓ |unit| src/modules/pairing/__tests__/redeem-lock.test.ts > the redeem lock: 3 failed redeems within 300 s lock redeeming for 60 s (PR-P4) > starts open with three attempts 2ms
+ ✓ |unit| src/modules/pairing/__tests__/redeem-lock.test.ts > the redeem lock: 3 failed redeems within 300 s lock redeeming for 60 s (PR-P4) > counts failures down: 2, 1, and the third is the locking one with the end of the lock 2ms
+ ✓ |unit| src/modules/pairing/__tests__/redeem-lock.test.ts > the redeem lock: 3 failed redeems within 300 s lock redeeming for 60 s (PR-P4) > ENG-24: of 20 attempts at one instant exactly three are taken; the other 17 are refused and nothing of theirs is compared 1ms
+ ✓ |unit| src/modules/pairing/__tests__/redeem-lock.test.ts > the redeem lock: 3 failed redeems within 300 s lock redeeming for 60 s (PR-P4) > during the lock every attempt is refused with the same end; one millisecond before the end still, at the end not any more 0ms
+ ✓ |unit| src/modules/pairing/__tests__/redeem-lock.test.ts > the redeem lock: 3 failed redeems within 300 s lock redeeming for 60 s (PR-P4) > a lock that has ended starts a fresh count, as the simulator does 1ms
+ ✓ |unit| src/modules/pairing/__tests__/redeem-lock.test.ts > the redeem lock: 3 failed redeems within 300 s lock redeeming for 60 s (PR-P4) > a success clears the count and lifts the lock that the third take had set 1ms
+ ✓ |unit| src/modules/pairing/__tests__/redeem-lock.test.ts > the redeem lock: 3 failed redeems within 300 s lock redeeming for 60 s (PR-P4) > the window is 300 s from the first taken attempt: two failures do not last longer than that 0ms
+ ✓ |unit| src/modules/pairing/__tests__/redeem-lock.test.ts > the redeem lock: 3 failed redeems within 300 s lock redeeming for 60 s (PR-P4) > a failure reported after its window is over still counts, where the lock stands now 0ms
+ ✓ |unit| src/modules/pairing/__tests__/redeem-lock.test.ts > the redeem lock: 3 failed redeems within 300 s lock redeeming for 60 s (PR-P4) > reset forgets the count and the lock; two locks do not share a count 1ms
+ ✓ |unit| src/modules/pairing/__tests__/redeem-lock.test.ts > the presence counter (spec §6.5 `online`) > a device is online while at least one of its sockets is open 1ms
+ ✓ |unit| src/modules/pairing/__tests__/redeem-lock.test.ts > the presence counter (spec §6.5 `online`) > forget drops every socket of one device; reset drops every device 0ms
+stdout | src/modules/pairing/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > registers operations 15 to 23 with the method, the path and the operation ID of the registry, and nothing else under /api/v1/pairing
+[w32] MODG routes of src/modules/pairing:
+  POST /api/v1/pairing/code issuePairingCode
+  GET /api/v1/pairing/code getPairingCodeStatus
+  POST /api/v1/pairing/code/cancel cancelPairingCode
+  POST /api/v1/pairing/redeem redeemPairingCode
+  GET /api/v1/pairing/devices listPairedDevices
+  POST /api/v1/pairing/devices/{id}/revoke revokeDevice
+  GET /api/v1/pairing/device getDeviceRegistration
+  POST /api/v1/pairing/device/unpair unpairDevice
+  POST /api/v1/pairing/device/credential rotateDeviceCredential
+[w32] MODG registry, operations 15 to 23:
+  POST /api/v1/pairing/code issuePairingCode
+  GET /api/v1/pairing/code getPairingCodeStatus
+  POST /api/v1/pairing/code/cancel cancelPairingCode
+  POST /api/v1/pairing/redeem redeemPairingCode
+  GET /api/v1/pairing/devices listPairedDevices
+  POST /api/v1/pairing/devices/{id}/revoke revokeDevice
+  GET /api/v1/pairing/device getDeviceRegistration
+  POST /api/v1/pairing/device/unpair unpairDevice
+  POST /api/v1/pairing/device/credential rotateDeviceCredential
+
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > registers operations 15 to 23 with the method, the path and the operation ID of the registry, and nothing else under /api/v1/pairing 79ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > the area is the module's whole: nine operations, numbered 15 to 23 in the registry 0ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > the rule the guard applies to each route is the registry's: PAIRING_MANAGE for the portal, PUBLIC for the redeem, DEVICE for a device's own operations 7ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > no route carries a check of its own: no hook beside the stage hook; only the revoke attaches its validation, to answer INVALID_REASON 6ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > who may call is stage 6: one refused call per operation, before the body is read and without the database > nobody without a principal: 401 on eight operations; the redeem is PUBLIC and reaches its handler 29ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > who may call is stage 6: one refused call per operation, before the body is read and without the database > a paired device without an operator: 401 on the five portal operations; it reaches its own three 10ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > who may call is stage 6: one refused call per operation, before the body is read and without the database > an operator on the web console: 403 DEVICE_NOT_PAIRED on the three device operations, whatever the role, and no query 17ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > who may call is stage 6: one refused call per operation, before the body is read and without the database > only SUPERVISOR holds PAIRING_MANAGE in the shared matrix 0ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the reads, with a pool that answers > 16 getPairingCodeStatus: the active code without the code; attemptsRemaining is 5 minus the failed redeems; null when none is active 7ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the reads, with a pool that answers > 19 listPairedDevices: the rows in the contract shape; online only for a PAIRED device with an open socket 9ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the reads, with a pool that answers > 21 getDeviceRegistration: the device of the principal, through its credential or through an operator's session on it 6ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the reads, with a pool that answers > a stored value outside the contract never leaves the server: the response schema refuses the answer (500) 8ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the reads, with a pool that answers > a read that fails answers 503 NOT_READY; the error is logged as { err } with its code, and nothing of its message or its parameters reaches the log or the answer 17ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the device resolver without a database > a value that has not the form of its kind is answered without a query; a value that has it is looked up by a hash, never by itself 20ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the device resolver without a database > fails closed: a credential that is still the pending one after its promotion ran resolves to nothing 7ms
+
+ Test Files  4 passed (4)
+      Tests  63 passed (63)
+   Start at  15:32:24
+   Duration  2.57s (transform 55%, import 38%, tests 7%)
+
+Sun Oct  4 15:32:26 WIB 2026

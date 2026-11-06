@@ -1,0 +1,54 @@
+import os, re, json
+R='/Users/gsp-budi/Documents/DEMS'
+D=R+'/docs/2026-10-04_dems_backend_rbac_pairing/masterplan'
+def rows(path, prefix):
+    out={}
+    for line in open(path,encoding='utf8'):
+        m=re.match(r'^\| ('+prefix+r'-\d+) \| (.*)$', line.rstrip('\n'))
+        if m and m.group(1) not in out:
+            cells=[c.strip() for c in m.group(2).rstrip('|').split(' | ')]
+            out[m.group(1)]=cells
+    return out
+B=rows(D+'/01_specs.md','AC-B'); C=rows(D+'/04_client_integration_spec.md','AC-C')
+files=[]
+for root in ['apps/core-server/src','apps/core-server/test','apps/core-web/src','apps/mobile/src','apps/mobile/e2e','packages/shared/test','packages/shared/src','apps/mock-core','scripts']:
+    for dp,dn,fn in os.walk(f'{R}/{root}'):
+        if 'node_modules' in dp: continue
+        for f in fn:
+            if re.search(r'\.test\.(tsx?|mjs|js)$',f): files.append(os.path.join(dp,f))
+files=sorted(set(files))
+texts={p:open(p,encoding='utf8').read() for p in files}
+def expand(text, prefix):
+    ids=set()
+    for m in re.finditer(prefix+r'-(\d+)(?:\s*(?:\.\.|to|–|-)\s*(?:'+prefix+r'-)?(\d+))?',text):
+        a=int(m.group(1)); b=m.group(2)
+        # a bare "-NN" range only when written with .. or "to"
+        if b and (('..' in m.group(0)) or (' to ' in m.group(0)) or '–' in m.group(0)) and int(b)>a and int(b)-a<=30:
+            ids.update(range(a,int(b)+1))
+        else: ids.add(a)
+    return ids
+idx={}
+for p,t in texts.items():
+    for prefix in ['AC-B','AC-C']:
+        for n in expand(t,prefix):
+            idx.setdefault(f'{prefix}-{n:02d}',[]).append(p)
+def proj(p):
+    rel=os.path.relpath(p,R)
+    if rel.startswith('apps/core-server/'):
+        return 'server-db' if re.search(r'\.db\.test\.ts$|/test/acceptance/',rel) else 'server-unit'
+    if rel.startswith('apps/core-web/'): return 'web'
+    if rel.startswith('apps/mobile/'): return 'mobile'
+    if rel.startswith('packages/shared/'): return 'shared'
+    if rel.startswith('scripts/'): return 'pg-scripts'
+    return 'other'
+out=[]
+for table,prefix in [(B,'AC-B'),(C,'AC-C')]:
+    for k in sorted(table, key=lambda x:int(x.split('-')[2])):
+        cells=table[k]
+        hits=sorted(set(idx.get(k,[])))
+        out.append({'id':k,'criterion':cells[0],'testedBy':cells[1] if len(cells)>1 else '','row':cells[2] if prefix=='AC-C' and len(cells)>2 else '', 'files':[os.path.relpath(p,R) for p in hits],'projects':sorted(set(proj(p) for p in hits))})
+json.dump(out,open(R+'/.cache/w87/acmap.json','w'),indent=1)
+named=[o for o in out if o['files']]
+print('ACs',len(out),'named by at least one test file',len(named))
+for o in out:
+    if not o['files']: print('UNNAMED',o['id'],'|',o['testedBy'][:140],'|',o['row'])

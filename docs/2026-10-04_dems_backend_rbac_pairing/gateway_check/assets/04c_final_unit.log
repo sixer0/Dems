@@ -1,0 +1,45 @@
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ❯ |unit| test/helpers/db/__tests__/static.test.ts (19 tests | 1 failed) 15ms
+   ❯ D26: one place builds a connection, and it takes host and port from the connection file (5)
+     × a client or a pool is built in session.ts only 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| test/helpers/db/__tests__/static.test.ts > D26: one place builds a connection, and it takes host and port from the connection file > a client or a pool is built in session.ts only
+AssertionError: expected [ 'session.ts:55', …(2) ] to have a length of 2 but got 3
+
+- Expected
++ Received
+
+- 2
++ 3
+
+ ❯ test/helpers/db/__tests__/static.test.ts:146:97
+    144|     );
+    145|     // The one place a pool's connect wait can be stated; it defaults …
+    146|     expect(occurrences([{ path: 'session.ts', text: session }], /\bcon…
+       |                                                                                                 ^
+    147|     expect(session).toMatch(/export function driverOptions\([^)]*\): D…
+    148|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 152 passed (153)
+      Tests  1 failed | 3911 passed (3912)
+   Start at  10:53:44
+   Duration  30.12s (import 60%, tests 35%, transform 4%, worker 1%)
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c vitest run --project unit --maxWorkers=2

@@ -1,0 +1,47 @@
+# Row 20: pre-change host baseline
+
+Date: 2026-10-22 21:29:12 WIB, host .73, controller over SSH (D30). Commands: masterplan/02_plan.md row 20 verbatim (hssh = ssh dems), Block P before, Block E after.
+
+- Block P: wifi_fault_lines=0, watchdog_actions_15min=0, watchdog_timer=active, flag=absent (row 123 sets it next), ntp=yes, root_used_pct=8.
+- backup_check_exit=0; etc_newer_than_marker=0; folder `/home/gsp-dems/dems-host-baseline-20261022` gsp-dems:gsp-dems 700 (members root-owned, umask 077; never copied off-host).
+- Block E: docker_du_equal, backup_ok.
+
+## Members (sha256, relative name; from SHA256SUMS.baseline)
+```
+e056a35db086947e2f5969d747f0a7517bff00c7ffff1f9e7b47b72bfac9d948  apport_enabled.txt
+066c2c5cb54b84acb6193480d2d8f320530a38017d50a52ba5e109c1f7357909  apt_manual.txt
+23310fa17cd095fabcef74be29c709fad14ee9f34179390ab4415e272642e2b7  backup_check.txt
+90d2b26d5f15a99122fac0e4984755cc7a00cd4013cb023bff11daa0ab14d686  backup_members.txt
+3d02614a3d8633b44f9695289f87da1199e7c328e25fe5d3ee0e411726530b60  backup_mode.txt
+37db5077a466fd0ee2704f0ffac92c8b6d07c93e483c610de0469776a24d54dd  docker_install_folder.sha256
+6df9ad66fd0eb1e9dad7b2473f4fa8b13351681ab837464ea9fbbab2f5b0f505  docker_kept_du.txt
+509742d8cd47eaab916b5fda59dfe23f47c5d12d683455f5d77b2ef93f97de82  dpkg.txt
+810304fb0df6dbc8a651a8928ddd0bb2b521fa0ca6f32a328aa103be61977f91  etc/default/apport
+07db07bb07e5ac1388707b7c59dabfbce8ad06d5001236248fbf3f93b79c2ed7  etc/default/ufw
+bc73d03d2cedfaa899bf8fbcf1512a65fea16dcd34daa3af174488e33dd351d0  etc/group
+46e4a44bfd301ad9de5928bfe7d21c68b2e1aaaa1b37d02652fae150a699e3f4  etc/gshadow
+2cbf73dd69776e2cac31bf376468a6dcb6ec4d80163fc26e9ede94dcc4b1796c  etc_lists.txt
+21687b5bd82df8c699d298241d0efe994a3bbd1631cf21fe96e046db1608b86f  etc/passwd
+3070705e42ffde986f2e1a389882c53c8b4fe7f29a713d4ba96179126ce9ae77  etc/shadow
+ee5f2e14d2ae6c33ffac9614dfc6035f33a1faae94542751738f26b2859e3e13  etc/ufw/after6.rules
+1354ecc09be8b68eeb5d1d7b5f00af90bcbc6f53535b591546a6b4652ff5d807  etc/ufw/after.init
+c1be61c17e850ea16dc5a02be22e0ec79b631904c2383353da360bce2dfc6b64  etc/ufw/after.rules
+83aabb512ce30fe9bc02061127284b8d39dc9f65983c3c3b34aec466fe2456e8  etc/ufw/applications.d/cups
+f363c320cecc0474122f81e1563ea28f9e7ebc5913ac049de4d6e01f8e9917d0  etc/ufw/applications.d/openssh-server
+e31099b46c2ae40afa92e90dbe5d575c438327e1a4374355872f5eb37db3307b  etc/ufw/before6.rules
+a1936d13aadea73df4a8d91dfed3c0433467ab9da1c4f344a308c36e6a0559cf  etc/ufw/before.init
+d63bc8bb2df0d20909267b7b40cb5cc187baba6e0baf95bbf71ac14f92df8e6c  etc/ufw/before.rules
+df05de02ea325b3c6d0d22c06c3dc7ebaf3a4e06e41fb98a0671b430b7da5b7f  etc/ufw/sysctl.conf
+1c75b26d27f47cb59a4383a0b07b479d4b3493d34c4eed165b1e1860fe5ccf39  etc/ufw/ufw.conf
+91c652ae6531ee0789c9d0f96ea6f17e15f2787a977e7e63debbb39809093ed6  etc/ufw/user6.rules
+872064e6ab9c6e495ef0b96772637904918268bb39151476059cc3124ee08492  etc/ufw/user.rules
+d5b37249f018b1022968a12285aae2668a4b658c2f2002b481cce1fc5c27465e  ip_addr.txt
+cf6a50f1effb9d7013e3e7362612045f12bf00be826f8bea7666b4444a51f3bd  ip_route.txt
+f244a0932d44de1f83159d5304632811f91be48c8fc1221fac8841138eb57919  kept_files.sha256
+949e69ce4560f263aead9a0ac02528f9ac29f51bc21a8b341b65e63cda433592  listeners.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  marker
+0bc5f365f3ac35a4e53de013cca859ceb32ea5cb752232152d0efcc0fdae71ad  nm_connections.txt
+4e0d04995ebcb17036be35b69d7b93a51a0f5e5adae640c836b234deff8479d1  sysctl.txt
+41de42ed5201da9f8bdd8c755c3d6d4afacca3021bbfaaeadf4aeaccf2dd0e33  ufw_status.txt
+4f1d5b67fde553b0e0e906b6983c0e0137b1eda8b2347580dfb51d904f630a4b  units_enabled.txt
+```

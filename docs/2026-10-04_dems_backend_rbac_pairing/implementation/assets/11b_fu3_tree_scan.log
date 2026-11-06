@@ -1,0 +1,26 @@
+# W11b follow-up 3: the database test files of apps/core-server (*.db.test.ts, test/acceptance/*.test.ts), read as text at 20:27:43.
+files: 119 (of them in the helper's own folder: 12)
+  set limits of their own with vi.setConfig: 45
+    equal to the helper's caps (120 s, 180 s): 31
+    HIGHER than a cap: 0
+    LOWER than a cap: 14  (they keep their own limits: the file's statement runs after the helper's)
+      src/modules/admin/__tests__/bulk.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/admin/__tests__/failures.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/admin/__tests__/last-admin.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/admin/__tests__/sequence.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/admin/__tests__/status.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/admin/__tests__/users.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/identity/biometric/__tests__/concurrency.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/identity/biometric/__tests__/engine.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/identity/biometric/__tests__/enrolment.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/identity/biometric/__tests__/failure.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/identity/biometric/__tests__/revocation.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/identity/biometric/__tests__/secrets.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/identity/biometric/__tests__/sequence.db.test.ts: 60000 ms per test, 120000 ms per hook
+      src/modules/identity/biometric/__tests__/sign-in.db.test.ts: 60000 ms per test, 120000 ms per hook
+  set no limit of their own: 74  (they get the helper's caps where they import the helper)
+    outside the helper's folder: 74
+
+# Do the files WITHOUT a limit of their own reach the helper's API module (test/helpers/db/index.ts) through their run-time imports? (static scan of relative imports, type-only imports left out)
+files of other rows without a limit of their own: 74; reach the helper: 74; do not: 0
+files of the database-free project (outside the helper's folder) that reach the helper's API module: 0

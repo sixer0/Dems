@@ -1,0 +1,27 @@
+## 08:16:40 to 08:19:57 run.sh (all mutations of the first set, jest without cache)
+BASE-WEB exit=0 not-applied | Tests 8 passed (8)
+BASE-MOBILE exit=0 not-applied |Tests: 18 passed, 18 total
+W-S1 exit=1 applied | Tests 1 failed | 5 passed (6)
+W-S2 exit=1 applied | Tests 2 failed | 4 passed (6)
+W-S3 exit=1 applied | Tests 2 failed | 4 passed (6)
+W-T1 exit=1 applied | Tests 2 failed (2)
+W-T2 exit=1 applied | Tests 2 failed (2)
+M-S1 exit=1 applied |Tests: 2 failed, 4 passed, 6 total
+M-S2 exit=1 applied |Tests: 1 failed, 5 passed, 6 total
+M-S3 exit=1 applied |Tests: 1 failed, 5 passed, 6 total
+M-C1 exit=1 applied |Tests: 1 failed, 1 total
+M-C2 exit=1 applied |Tests: 1 failed, 1 total
+M-L1 exit=1 applied |Tests: 1 failed, 1 total
+M-B1 exit=1 applied |Tests: 2 failed, 2 passed, 4 total
+M-B2 exit=1 applied |Tests: 1 failed, 3 passed, 4 total
+M-P1 exit=1 applied |Tests: 1 failed, 5 passed, 6 total
+M-P2 exit=1 applied |Tests: 3 failed, 3 passed, 6 total
+## 08:2x run.sh M-B3 M-B4 (the S1-3 tests)
+BASE-WEB exit=0 not-applied | Tests 8 passed (8)
+BASE-MOBILE exit=0 not-applied |Tests: 22 passed, 22 total
+M-B3 exit=1 applied |Tests: 1 failed, 7 passed, 8 total
+M-B4 exit=1 applied |Tests: 3 failed, 5 passed, 8 total
+## 06:00 M-L1 without the jest cache, after the S4-7 test was strengthened (the first pass at 05:58 printed: M-L1 exit=0 applied |Tests: 1 passed, 1 total)
+    Expected number of calls: 0
+    Received number of calls: 5
+Tests:       1 failed, 1 total

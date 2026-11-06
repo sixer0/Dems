@@ -1,0 +1,71 @@
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ❯ |unit| test/static/audit-protection.test.ts (9 tests | 2 failed) 42ms
+   ❯ T-AO-4: the audit protection is never removed (7)
+     × the session setting that skips triggers appears only in the database tests that expect its refusal 9ms
+     × a database is dropped only by the reset routine, the test helper and the test support of the reset routine 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > the session setting that skips triggers appears only in the database tests that expect its refusal
+AssertionError: expected [ Array(2) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   ".cache/w11b3-db-whole.json:1",
++   ".cache/w11b3-db-whole.json:1",
++ ]
+
+ ❯ test/static/audit-protection.test.ts:82:85
+     80|
+     81|   it('the session setting that skips triggers appears only in the data…
+     82|     expect(occurrences(server, TRIGGER_SKIP_SETTING, outside(TRIGGER_S…
+       |                                                                                     ^
+     83|   });
+     84|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > a database is dropped only by the reset routine, the test helper and the test support of the reset routine
+AssertionError: expected [ Array(2) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   ".cache/w11b3-db-whole.json:1",
++   ".cache/w11b3-db-whole.json:1",
++ ]
+
+ ❯ test/static/audit-protection.test.ts:90:82
+     88|
+     89|   it('a database is dropped only by the reset routine, the test helper…
+     90|     expect(occurrences(server, DATABASE_DROPPED, outside(DATABASE_DROP…
+       |                                                                                  ^
+     91|   });
+     92| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 152 passed (153)
+      Tests  2 failed | 3910 passed (3912)
+   Start at  16:29:10
+   Duration  38.37s (import 62%, tests 34%, transform 3%, worker 1%)
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c vitest run --project unit --maxWorkers=2

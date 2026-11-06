@@ -1,0 +1,19 @@
+2026-10-04 21:16:00 WIB
+-- listeners on mock-core's port 4400 (not started and not used here):
+lsof exit 1
+1280 lg | before 94 | as built 216 SIMULATED 89px | widest 280 | widest, no date 122 | SIMULATED, no date 58 | footer over toggle -22 over last item -62
+1366 lg | before 17 | as built 139 SIMULATED 89px | widest 202 | widest, no date 44 | SIMULATED, no date -19 | footer over toggle 10 over last item -30
+1400 lg | before -17 | as built 105 SIMULATED 89px | widest 168 | widest, no date 10 | SIMULATED, no date -53 | footer over toggle -122 over last item -162
+1440 lg | before -57 | as built 65 SIMULATED 89px | widest 128 | widest, no date -30 | SIMULATED, no date -93 | footer over toggle -122 over last item -162
+1536 lg | before -153 | as built -31 SIMULATED 89px | widest 32 | widest, no date -126 | SIMULATED, no date -189 | footer over toggle -86 over last item -126
+1599 lg | before -216 | as built -94 SIMULATED 89px | widest -31 | widest, no date -189 | SIMULATED, no date -252 | footer over toggle -122 over last item -162
+1600 xl | before -155 | as built -34 SIMULATED 89px | widest 30 | widest, no date -128 | SIMULATED, no date -191 | footer over toggle -24 over last item -64
+1680 xl | before -235 | as built -114 SIMULATED 89px | widest -50 | widest, no date -208 | SIMULATED, no date -271 | footer over toggle -174 over last item -214
+1760 xl | before -315 | as built -194 SIMULATED 89px | widest -130 | widest, no date -288 | SIMULATED, no date -351 | footer over toggle -24 over last item -64
+1920 xl | before -475 | as built -354 SIMULATED 89px | widest -290 | widest, no date -448 | SIMULATED, no date -511 | footer over toggle -204 over last item -244
+measure-driver exit 0
+chrome stopped
+vite: npm exit status 143
+== listeners left on 4423, 5178, 9398 (expect none):
+lsof exit 1 (1 with no output: no listener)
+2026-10-04 21:16:27 WIB

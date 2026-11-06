@@ -1,0 +1,1 @@
+10-06 12:43:15.688 W/ReactNativeJS( 8856): [Reanimated] Reduced motion setting is overwritten with mode 'always'.

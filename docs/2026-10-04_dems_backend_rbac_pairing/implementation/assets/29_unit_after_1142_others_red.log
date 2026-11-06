@@ -1,0 +1,204 @@
+2026-10-04 11:42:20 WIB
+$ npm run test -w @dems/core-server -- --maxWorkers=2
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ ❯ |unit| src/core/__tests__/core-plugin.test.ts (14 tests | 2 failed) 127ms
+   ❯ the boot steps the core unit registers (decision D40) (6)
+     × run in the order of the contract after B-1, B-8 between B-7 and B-9 7ms
+     × B-8 is reported and never blocks: a stored row with a wrong digest is one error line, and B-9 still runs 3ms
+ ❯ |unit| src/plugins/readiness/__tests__/readiness.test.ts (30 tests | 1 failed) 129ms
+   ❯ the seams (P25) (9)
+     × the stubs that are not implemented say which row fills them 4ms
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| src/core/__tests__/core-plugin.test.ts > the boot steps the core unit registers (decision D40) > run in the order of the contract after B-1, B-8 between B-7 and B-9
+AssertionError: expected BootError: boot step engine.rehydrate fai… { stepId: '…' } to be null
+
+- Expected:
+null
+
++ Received:
+BootError {
+  "message": "boot step engine.rehydrate failed",
+  "cause": StoreError {
+    "message": "READ_FAILED: operators: the server answered NOT_READY.",
+    "code": "READ_FAILED",
+    "table": "operators",
+    "sqlState": "NOT_READY",
+    "constraint": undefined,
+    "name": "StoreError",
+  },
+  "stepId": "engine.rehydrate",
+  "name": "BootError",
+}
+
+ ❯ src/core/__tests__/core-plugin.test.ts:249:19
+    247|   it('run in the order of the contract after B-1, B-8 between B-7 and …
+    248|     const { error, passed, log } = await booted(goodDatabase());
+    249|     expect(error).toBeNull();
+       |                   ^
+    250|     expect(passed).toEqual(['B-1', 'B-2', 'B-3', 'B-4', 'B-5', 'B-6', …
+    251|     expect(log.lines().find((line) => line['msg'] === 'the stored audi…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  |unit| src/core/__tests__/core-plugin.test.ts > the boot steps the core unit registers (decision D40) > B-8 is reported and never blocks: a stored row with a wrong digest is one error line, and B-9 still runs
+AssertionError: expected BootError: boot step engine.rehydrate fai… { stepId: '…' } to be null
+
+- Expected:
+null
+
++ Received:
+BootError {
+  "message": "boot step engine.rehydrate failed",
+  "cause": StoreError {
+    "message": "READ_FAILED: operators: the server answered NOT_READY.",
+    "code": "READ_FAILED",
+    "table": "operators",
+    "sqlState": "NOT_READY",
+    "constraint": undefined,
+    "name": "StoreError",
+  },
+  "stepId": "engine.rehydrate",
+  "name": "BootError",
+}
+
+ ❯ src/core/__tests__/core-plugin.test.ts:260:19
+    258|     const altered: AuditRow = { ...second.row, message: MARK };
+    259|     const { error, passed, log } = await booted(goodDatabase([first.ro…
+    260|     expect(error).toBeNull();
+       |                   ^
+    261|     expect(passed).toEqual(['B-1', 'B-2', 'B-3', 'B-4', 'B-5', 'B-6', …
+    262|     expect(log.lines().find((line) => line['code'] === 'STORED_CHAIN_N…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  |unit| src/plugins/readiness/__tests__/readiness.test.ts > the seams (P25) > the stubs that are not implemented say which row fills them
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ src/plugins/readiness/__tests__/readiness.test.ts:252:36
+    250|     const app = await readyApp();
+    251|     const unit = { label: 'test' };
+    252|     expect(() => app.engine.epoch).toThrow('plan row W26');
+       |                                    ^
+    253|     expect(() => app.engine.revision).toThrow('plan row W26');
+    254|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  2 failed | 49 passed (51)
+      Tests  3 failed | 1538 passed (1541)
+   Start at  11:42:20
+   Duration  13.37s (import 50%, tests 43%, transform 6%, worker 1%)
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c vitest run --project unit --maxWorkers=2
+exit=1

@@ -1,0 +1,20 @@
+10:51:13.723 mark r03 at 10:51:13.723
+10:51:13.789 declared screen home
+10:51:13.855 tap 302,1239
+10:51:14.004 slept 2500 ms
+10:51:16.528 declared screen live
+10:51:16.550 tap 539,2266
+10:51:16.623 slept 1800 ms
+10:51:18.447 tap 539,1279
+10:51:18.516 slept 900 ms
+10:51:19.444 text typed (Retest end); inputType 0x24001
+10:51:19.715 slept 1000 ms
+10:51:20.751 screencap 99g_retest_end_dialog.png 10:51:20.751..10:51:20.921
+10:51:20.953 tap 811,1622
+10:51:21.021 stop 202 at device 10-06 10:51:20.769 (POST /api/v1/session/{id}/stop 202)
+10:51:21.081 slept 12000 ms
+10:51:33.228 declared screen summary
+10:51:33.402 screencap 99h_retest_summary.png 10:51:33.402..10:51:34.226
+10:51:34.355 serverlog since r03 (2):
+    10:51:14.481 POST /api/v1/auth/touch 200 operator:OPR-001
+    10:51:21.038 POST /api/v1/session/:id/stop 202 operator:OPR-001

@@ -1,0 +1,68 @@
+"""revoke_report.py: every phone2 revoke (rv<TAG>) and hand-off (ho<TAG>) recording -> timing and frame facts (JSON lines)."""
+import glob, json, os, re, subprocess, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+S = '/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cf'
+Q = '/Users/gsp-budi/Documents/DEMS/.cache/cf_m1/q_phone2'
+T = os.path.dirname(os.path.abspath(__file__))
+
+def batch_for(mark):
+    for f in sorted(glob.glob(f'{Q}/*.cmd')):
+        if f'mark {mark}\n' in open(f).read():
+            o = f[:-4] + '.out'
+            return open(o).read() if os.path.exists(o) else ''
+    return ''
+
+def secs(hms):
+    h, m, s = hms.split(':'); return int(h) * 3600 + int(m) * 60 + float(s)
+
+def screens(name, offset):
+    d = f'{S}/phone2_frames/{name}'
+    if not os.path.isdir(d): return None
+    subprocess.run(['python3', f'{T}/screens.py', d, f'{S}/phone2_assets/{name}.mp4', str(offset)], capture_output=True)
+    return json.load(open(f'{S}/phone2_frames/{name}_screens.json'))
+
+def main(tags):
+    for tag in tags:
+        out = batch_for(f'rv{tag}')
+        if not out and tag.startswith('F0'):
+            out = batch_for('hoF0') or ''
+        off = re.search(r'clock offset ms: (-?\d+)', out)
+        off = int(off.group(1)) if off else -600
+        ans = re.search(r'(\d\d:\d\d:\d\d\.\d+) POST /api/v1/pairing/devices/:id/revoke 200', out)
+        signed = 'signin 200' in out
+        row = {'tag': tag, 'signedIn': signed, 'offsetMs': off, 'serverRevoke200': ans.group(1) if ans else None}
+        rows = screens(f'rv{tag}', off)
+        if rows and ans:
+            t0 = secs(ans.group(1))
+            post = [r for r in rows if r['host'] and secs(r['host']) >= t0 and r['frame'] != 'f_001.png']
+            first_change = next((r for r in post if r['cls'] not in ('login',) and not (r['cls'] == 'pair' and r['title'] < 200 and False)), None)
+            # before = the screen shown at the revoke (login, or summary/home classified as 'pair'-like by the title test)
+            before = [r for r in rows if r['host'] and secs(r['host']) < t0 and r['frame'] != 'f_001.png']
+            before_cls = before[-1]['cls'] if before else None
+            changed = next((r for r in post if (r['mean'], r['sd']) != ((before[-1]['mean'], before[-1]['sd']) if before else (None, None)) and abs(r['mean'] - before[-1]['mean']) > 2), None) if before else None
+            pair = next((r for r in post if r['cls'] == 'pair' and r['title'] >= 200 and (not changed or secs(r['host']) >= secs(changed['host']))), None)
+            dark = [r for r in post if r['sd'] < 10 and (not pair or secs(r['host']) <= secs(pair['host']))]
+            row.update({
+                'firstChange': changed['host'] if changed else None,
+                'firstChangeMs': round((secs(changed['host']) - t0) * 1000) if changed else None,
+                'pairFrame': pair['host'] if pair else None,
+                'toPairMs': round((secs(pair['host']) - t0) * 1000) if pair else None,
+                'darkFramesBeforePair': [(r['frame'], r['host'], r['mean'], r['sd']) for r in dark],
+                'unreachableFrames': sum(1 for r in post if r['cls'] == 'login-unreachable'),
+            })
+        js = f'{S}/phone2_assets/rv{tag}_js.txt'
+        if os.path.exists(js):
+            m = re.search(r'(\d\d:\d\d:\d\d\.\d+)\s+\d+\s+\d+ I ReactNativeJS:\s+source: .auth.sessionEnd', open(js).read())
+            row['sessionEndDevice'] = m.group(1) if m else None
+        ho = screens(f'ho{tag}', off)
+        if ho:
+            row['handoff'] = {
+                'frames': len(ho),
+                'unreachableFrames': sum(1 for r in ho if r['cls'] == 'login-unreachable'),
+                'darkFrames': [(r['frame'], r['host'], r['mean'], r['sd']) for r in ho if r['sd'] < 10 and r['frame'] != 'f_001.png'],
+                'firstLogin': next((r['host'] for r in ho if r['cls'] == 'login'), None),
+            }
+        print(json.dumps(row))
+
+if __name__ == '__main__':
+    main(sys.argv[1:])

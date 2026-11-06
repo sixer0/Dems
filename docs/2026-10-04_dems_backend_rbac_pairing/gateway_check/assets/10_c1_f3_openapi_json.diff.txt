@@ -1,0 +1,29 @@
+--- .cache/rollback/C1/packages/shared/openapi/openapi.json.pre	2026-10-06 04:08:42
++++ packages/shared/openapi/openapi.json	2026-10-06 08:56:03
+@@ -93,6 +93,26 @@
+                   "$ref": "#/components/schemas/HealthResponse"
+                 },
+                 "examples": {
++                  "coreServer": {
++                    "summary": "The Core server is up, database and engine ready",
++                    "value": {
++                      "status": "ok",
++                      "service": "dems-core-server",
++                      "version": "0.2.0",
++                      "apiVersion": "v1",
++                      "serverTime": "2026-10-01T03:00:00.000Z",
++                      "uptimeMs": 5400000,
++                      "ws": {
++                        "path": "/ws",
++                        "heartbeatIntervalMs": 1000,
++                        "clients": 2
++                      },
++                      "ready": {
++                        "database": true,
++                        "engine": true
++                      }
++                    }
++                  },
+                   "live": {
+                     "summary": "mock-core is up",
+                     "value": {

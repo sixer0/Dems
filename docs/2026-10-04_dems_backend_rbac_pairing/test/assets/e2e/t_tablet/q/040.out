@@ -1,0 +1,6 @@
+slept 3000 ms
+screencap 16b_network_time_clock_check.png (341884 bytes) at 10:11:37.357
+mark audit at 10:11:37.357
+tap 227,840 at 10:11:37.794
+slept 5000 ms
+screencap 17_audit.png (428601 bytes) at 10:11:43.520

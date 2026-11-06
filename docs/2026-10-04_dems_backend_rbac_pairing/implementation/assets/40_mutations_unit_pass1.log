@@ -1,0 +1,88 @@
+Sun Oct  4 16:20:31 WIB 2026
+M01 | 64: the device slice is altered in the answer | unit: Tests 4 failed | 174 passed (178) | db: -
+M02 | 64: the services are left out | unit: Tests 5 failed | 173 passed (178) | db: -
+M03 | 64: the update always reads IDLE | unit: Tests 2 failed | 176 passed (178) | db: -
+M04 | 64: the diagnostics run is never shown | unit: Tests 1 failed | 177 passed (178) | db: -
+M05 | 64: the time format always reads 24 | unit: Tests 2 failed | 176 passed (178) | db: -
+M06 | 68: the time format of a body never reaches the action | unit: Tests 12 failed | 166 passed (178) | db: -
+M07 | 68: a body without notifySound switches it off | unit: Tests 6 failed | 172 passed (178) | db: -
+M08 | 68: a member is taken by truth, not by presence (false is dropped) | unit: Tests 4 failed | 174 passed (178) | db: -
+M09 | 68: notifyWarnings is inverted | unit: Tests 7 failed | 171 passed (178) | db: -
+M10 | 68: the changed names are not sorted | unit: Tests 3 failed | 175 passed (178) | db: -
+M11 | 68: every setting is named as changed | unit: Tests 12 failed | 166 passed (178) | db: -
+M12 | 68: the unchanged settings are named | unit: Tests 14 failed | 164 passed (178) | db: -
+M13 | 68: the line has no operator ID | unit: Tests 6 failed | 172 passed (178) | db: -
+M14 | 68: the line names the session, not the operator | unit: Tests 6 failed | 172 passed (178) | db: -
+M15 | 68: the line also holds the role | unit: Tests 7 failed | 171 passed (178) | db: -
+M16 | 68: another message text | unit: Tests 1 failed | 177 passed (178) | db: -
+M17 | 68: another unit label | unit: Tests 2 failed | 176 passed (178) | db: -
+M18 | 65 runs another hosted action | unit: Tests 8 failed | 170 passed (178) | db: -
+M19 | 66 runs another hosted action | unit: Tests 9 failed | 169 passed (178) | db: -
+M20 | 67 runs another hosted action | unit: Tests 9 failed | 169 passed (178) | db: -
+M21 | 68 runs setPresentationMode with the whole patch | unit: Tests 12 failed | 166 passed (178) | db: -
+M22 | 64: the answer is put together from two reads of the engine | unit: Tests 1 failed | 177 passed (178) | db: -
+M23 | 65 answers 200, not 202 | unit: Tests 4 failed | 174 passed (178) | db: -
+M24 | 65: no epoch and revision headers | unit: Tests 3 failed | 175 passed (178) | db: -
+M25 | 65: a fixed run ID | unit: Tests 1 failed | 177 passed (178) | db: -
+M26 | 66: the two headers swapped | unit: Tests 1 failed | 177 passed (178) | db: -
+M27 | 66: a fixed number of services | unit: Tests 1 failed | 177 passed (178) | db: -
+M28 | 67: the hosted action is not run | unit: Tests 8 failed | 170 passed (178) | db: -
+M29 | 67 answers 204, not 202 | unit: Tests 4 failed | 174 passed (178) | db: -
+M30 | 67: no epoch and revision headers | unit: Tests 1 failed | 177 passed (178) | db: -
+M31 | 67 answers a body | unit: Tests 2 failed | 176 passed (178) | db: -
+M32 | 68: a copy of the principal is handed on | unit: Tests 1 failed | 177 passed (178) | db: -
+M33 | 68: a role check in the handler (an INVESTIGATOR changes nothing) | unit: Tests 7 failed | 171 passed (178) | db: -
+M34 | 68: the validated body itself is the patch (equal for every body the schema lets through) | unit: Tests 178 passed (178) | db: -
+M35 | 68: the settings are read after the action, not before | unit: Tests 6 failed | 172 passed (178) | db: -
+M36 | 68: the names come from the body, not from what changed | unit: Tests 6 failed | 172 passed (178) | db: -
+M37 | 68: nothing is ever seen as changed | unit: Tests 8 failed | 170 passed (178) | db: -
+M38 | 68: the hosted action is not run | unit: Tests 15 failed | 163 passed (178) | db: -
+M39 | 68: a line also for a call that changed nothing | unit: Tests 5 failed | 173 passed (178) | db: -
+M40 | 68: no line when exactly one setting changed | unit: Tests 5 failed | 173 passed (178) | db: -
+M41 | 68: no line at all | unit: Tests 6 failed | 172 passed (178) | db: -
+M42 | 68: the line also holds the values of the patch | unit: Tests 5 failed | 173 passed (178) | db: -
+M43 | 68: the line also holds the settings slice | unit: Tests 6 failed | 172 passed (178) | db: -
+M44 | 68: the line is written at level warn | unit: Tests 1 failed | 177 passed (178) | db: -
+M45 | 68: the line is written without the request ID | unit: Tests 1 failed | 177 passed (178) | db: -
+M46 | 68: two lines per change | unit: Tests 10 failed | 168 passed (178) | db: -
+M47 | 68: the line is written after the read of the committed slice (lost when the engine stops in between) | unit: Tests 1 failed | 177 passed (178) | db: -
+M48 | 68: the answer is the slice with the patch over it (equal after a commit) | unit: Tests 178 passed (178) | db: -
+M49 | 68: the answer always says presentation mode is off | unit: Tests 178 passed (178) | db: -
+M50 | 68: no epoch and revision headers | unit: Tests 7 failed | 171 passed (178) | db: -
+M51 | 68: no body schema (a wrong type reaches the action) | unit: Tests 7 failed | 171 passed (178) | db: -
+M52 | 64: no response schema | unit: Tests 1 failed | 177 passed (178) | db: -
+M53 | 66 is registered under the entry of 67 (a route twice, one missing) | unit: Tests 103 failed | 75 passed (178) | db: -
+M54 | 69: resolved alerts are left out | unit: Tests 4 failed | 174 passed (178) | db: -
+M55 | 69: acknowledged alerts are left out | unit: Tests 3 failed | 175 passed (178) | db: -
+M56 | 69: newest first | unit: Tests 5 failed | 173 passed (178) | db: -
+M57 | 69: only the newest 50 | unit: Tests 1 failed | 177 passed (178) | db: -
+M58 | 69: every alert reads as not acknowledged | unit: Tests 4 failed | 174 passed (178) | db: -
+M59 | 70: the {id} is not held to the registry's pattern | unit: Tests 8 failed | 170 passed (178) | db: -
+M60 | 70 answers 200, not 204 | unit: Tests 10 failed | 168 passed (178) | db: -
+M61 | 70: no epoch and revision headers | unit: Tests 5 failed | 173 passed (178) | db: -
+M62 | 70: the two headers swapped | unit: Tests 5 failed | 173 passed (178) | db: -
+M63 | 70: a line also for a call that changed nothing | unit: Tests 2 failed | 176 passed (178) | db: -
+M64 | 70: a line only for a call that changed nothing | unit: Tests 6 failed | 172 passed (178) | db: -
+M65 | 70: no line at all | unit: Tests 5 failed | 173 passed (178) | db: -
+M66 | 70: the line also holds the whole alert | unit: Tests 6 failed | 172 passed (178) | db: -
+M67 | 70: the line is written at level debug (not written at the server's level) | unit: Tests 5 failed | 173 passed (178) | db: -
+M68 | 70: the line is written without the request ID | unit: Tests 1 failed | 177 passed (178) | db: -
+M69 | 70: two lines per acknowledgement | unit: Tests 6 failed | 172 passed (178) | db: -
+M70 | 70: the hosted action is not run | unit: Tests 12 failed | 166 passed (178) | db: -
+M71 | 70: the oldest alert is acknowledged, whatever the path says | unit: Tests 7 failed | 171 passed (178) | db: -
+M72 | 70: the alerts are read after the action, not before | unit: Tests 5 failed | 173 passed (178) | db: -
+M73 | 70: an unknown alert is an error, not a 204 | unit: Tests 1 failed | 177 passed (178) | db: -
+M74 | 70: a copy of the principal is handed on | unit: Tests 1 failed | 177 passed (178) | db: -
+M75 | 70: a role check in the handler (a TECHNICIAN acknowledges nothing) | unit: Tests 5 failed | 173 passed (178) | db: -
+M76 | 70 runs another hosted action | unit: Tests 12 failed | 166 passed (178) | db: -
+M77 | 69: no response schema | unit: Tests 1 failed | 177 passed (178) | db: -
+M78 | 70: a repeated acknowledgement counts as one | unit: Tests 3 failed | 175 passed (178) | db: -
+M79 | 70: an unknown alert counts as acknowledged | unit: Tests 5 failed | 173 passed (178) | db: -
+M80 | 70: any acknowledged alert counts, whatever its ID | unit: Tests 4 failed | 174 passed (178) | db: -
+M81 | 70: the alert's presence counts, not its acknowledgement | unit: Tests 10 failed | 168 passed (178) | db: -
+M82 | 70: the line has no operator ID | unit: Tests 6 failed | 172 passed (178) | db: -
+M83 | 70: the line names the session, not the operator | unit: Tests 6 failed | 172 passed (178) | db: -
+M84 | 70: the line has no alert ID | unit: Tests 7 failed | 171 passed (178) | db: -
+M85 | 70: another message text | unit: Tests 1 failed | 177 passed (178) | db: -
+M86 | 70: another unit label | unit: Tests 2 failed | 176 passed (178) | db: -
+Sun Oct  4 16:24:20 WIB 2026

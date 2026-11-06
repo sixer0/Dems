@@ -1,0 +1,69 @@
+## 2026-10-06 01:49:48 WIB batch ['A01', 'A02', 'A03', 'A06', 'A04', 'A05']
+baseline (no mutation) exit 0 Test Files  1 passed (1) | Tests  16 passed (16) (8 s) over 1 files
+A01 detected    B-10 wrapper: the presenter is skipped (a 403 becomes the generic toast) | Test Files  1 failed (1) | Tests  7 failed | 9 passed (16) | × AC-C-48: the `notPermitted` 403 shows the denied toast naming the Technician role; no success toast; the control returns to idle 8202ms (64 s)
+A02 detected    B-10 wrapper: `onDone` is not called in `ok` (no continuation after the answer) | Test Files  1 failed (1) | Tests  7 failed | 9 passed (16) | × success: one POST to operation 66; the toast prints the Core's count after the answer, without "(simulated)" 8947ms (63 s)
+A03 detected    B-10 wrapper: the pending control is ignored (no press guard, no busy mark) | Test Files  1 failed (1) | Tests  1 failed | 15 passed (16) | × two quick presses send one request; no spinner at 300 ms; the in-button spinner at the reveal; nothing is added outside the pressed control 8076ms (12 s)
+A06 detected    B-10 wrapper: the transition branch is gone (409 SESSION_ACTIVE reads generic) | Test Files  1 failed (1) | Tests  2 failed | 14 passed (16) | × 409 SESSION_ACTIVE (rebuilt as `SimTransitionError`) keeps the friendly warning and writes one record with code and status only 8123ms (23 s)
+A04 detected    A11: the Live toast keeps "(simulated)" | Test Files  1 failed (1) | Tests  1 failed | 15 passed (16) | × success: one POST to operation 66; the toast prints the Core's count after the answer, without "(simulated)" 549ms (6 s)
+A05 detected    A10: the modal opens at the press, not on the 202 | Test Files  1 failed (1) | Tests  2 failed | 14 passed (16) | × AC-C-48: a 403 NOT_PERMITTED shows the denied toast naming the first role with DIAGNOSTICS_RUN; the modal does not open 156ms (6 s)
+## 2026-10-06 01:52:50 WIB 6 mutations: 6 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   222c3f8663bbad9a  apps/core-web/src/features/system/diagnostics.tsx
+   46b81082bc204048  apps/core-web/src/features/system/index.tsx
+   3b775af327451200  apps/core-web/src/features/system/use-sim-command.ts
+## 2026-10-06 01:53:13 WIB batch ['X01', 'X02', 'X03', 'X06', 'X08', 'X05', 'X07', 'X09']
+baseline (no mutation) exit 0 Test Files  1 passed (1) | Tests  10 passed (10) (3 s) over 1 files
+X01 detected    A8 (CPC1-22): Live mode exports at once without a reason | Test Files  1 failed (1) | Tests  10 failed (10) | × Export logs opens the dialog and sends nothing; a reason under 5 characters is refused on the field and nothing is sent 8489ms (76 s)
+X02 detected    AC-C-60: the audit walk reads one page only | Test Files  1 failed (1) | Tests  3 failed | 7 passed (10) | × one POST with the reason; the file holds ALL 450 stored audit rows and ALL 450 events, read page by page, though the ring holds 100; the toast names the export ID 15329ms (23 s)
+X03 detected    AC-C-60: the events walk reads one page only | Test Files  1 failed (1) | Tests  2 failed | 8 passed (10) | × one POST with the reason; the file holds ALL 450 stored audit rows and ALL 450 events, read page by page, though the ring holds 100; the toast names the export ID 338ms (15 s)
+X06 detected    a failed events page yields a partial file instead of a failure | Test Files  1 failed (1) | Tests  1 failed | 9 passed (10) | × a page of operation 63 that gets no answer: no partial file; the presenter, then the sentence that the export was recorded; one record 8256ms (14 s)
+X08 SURVIVED    the walk does not check the chain (a gap or a moved chain passes) | Test Files  1 passed (1) | Tests  10 passed (10) |  (8 s)
+X05 detected    F59: the Core's 422 is not shown on the field | Test Files  1 failed (1) | Tests  1 failed | 9 passed (10) | × the Core's 422 INVALID_REASON is shown on the field; the dialog keeps the reason; nothing is read and no file is made 8353ms (17 s)
+X07 SURVIVED    LB-1: the export control is released before the file is built | Test Files  1 passed (1) | Tests  10 passed (10) |  (6 s)
+X09 detected    the client-side bound is gone (a short reason is sent) | Test Files  1 failed (1) | Tests  1 failed | 9 passed (10) | × Export logs opens the dialog and sends nothing; a reason under 5 characters is refused on the field and nothing is sent 1078ms (6 s)
+## 2026-10-06 01:56:01 WIB 8 mutations: 6 detected, 2 survived ['X08', 'X07'], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   222c3f8663bbad9a  apps/core-web/src/features/system/diagnostics.tsx
+   9b95836619322e92  apps/core-web/src/features/system/export-logs-dialog.tsx
+   886609f2706f5a1f  apps/core-web/src/features/system/live-log-export.ts
+## 2026-10-06 01:57:07 WIB batch ['X08', 'X07']
+X08 detected    the walk does not check the chain (a gap or a moved chain passes) | Test Files  1 failed (1) | Tests  1 failed | 11 passed (12) | × a page that skips a row (a gap in the chain): no file; the page's sentence that the export was recorded; the record names CHAIN_MOVED 8173ms (13 s)
+X07 detected    LB-1: the export control is released before the file is built | Test Files  1 failed (1) | Tests  1 failed | 11 passed (12) | × the control stays busy while the pages are read: a second press sends no second export 247ms (9 s)
+## 2026-10-06 01:57:28 WIB 2 mutations: 2 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   9b95836619322e92  apps/core-web/src/features/system/export-logs-dialog.tsx
+   886609f2706f5a1f  apps/core-web/src/features/system/live-log-export.ts
+## 2026-10-06 01:57:44 WIB batch ['D01', 'D04', 'G01', 'G02', 'G03', 'C02', 'C03', 'C04', 'C01', 'D02']
+baseline (no mutation) exit 0 Test Files  1 passed (1) | Tests  20 passed (20) (11 s) over 1 files
+D01 detected    D-4: the later steps are sent at once, not after the step before was answered | Test Files  1 failed (1) | Tests  3 failed | 17 passed (20) | × clearing MIC 2 clip: operation 74, and the latch reset (operation 52) only after the clear was answered; one toast at the end 262ms (10 s)
+D04 detected    D-4: the chain stops after the first step (the latch reset is never sent) | Test Files  1 failed (1) | Tests  2 failed | 18 passed (20) | × clearing MIC 2 clip: operation 74, and the latch reset (operation 52) only after the clear was answered; one toast at the end 8502ms (21 s)
+G01 detected    AC-C-52: the gate ignores the demo flag | Test Files  1 failed (1) | Tests  1 failed | 19 passed (20) | × the same SUPERVISOR on a Core WITHOUT the demo flag: no panel at all 199ms (10 s)
+G02 detected    AC-C-52: the gate ignores DEMO_CONTROL | Test Files  1 failed (1) | Tests  2 failed | 18 passed (20) | × an INVESTIGATOR and a TECHNICIAN (no DEMO_CONTROL) on a Core WITH the flag: no panel 225ms (19 s)
+G03 detected    AC-C-52: Simulated mode loses the panel | Test Files  1 failed (1) | Tests  1 failed | 19 passed (20) | × an INVESTIGATOR sees the panel as today; a reset asks nothing and lands in the press 159ms (8 s)
+C02 detected    C-7: the fault kind is not compared | Test Files  1 failed (1) | Tests  1 failed | 19 passed (20) | × names the row of THIS command although the newest rows of the ring are another console's and another fault's 206ms (9 s)
+C03 SURVIVED    C-7: another operator's row counts (equivalent today: fault rows carry no actor) | Test Files  1 passed (1) | Tests  20 passed (20) |  (11 s)
+C04 SURVIVED    C-7: rows from before the press count | Test Files  1 passed (1) | Tests  20 passed (20) |  (10 s)
+C01 detected    C-7: Live mode reads the newest row of the ring | Test Files  1 failed (1) | Tests  2 failed | 18 passed (20) | × names the row of THIS command although the newest rows of the ring are another console's and another fault's 186ms (8 s)
+D02 detected    D-4: a Live reset is sent without asking | Test Files  1 failed (1) | Tests  5 failed | 15 passed (20) | × Reset asks first; Cancel sends nothing 8236ms (49 s)
+## 2026-10-06 02:00:30 WIB 10 mutations: 8 detected, 2 survived ['C03', 'C04'], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   299a3a050f8db468  apps/core-web/src/features/system/demo-panel.tsx
+   39e93f50a2535799  apps/core-web/src/features/system/live.ts
+   3b775af327451200  apps/core-web/src/features/system/use-sim-command.ts
+## 2026-10-06 02:01:14 WIB batch ['C03', 'C04', 'P01', 'P02', 'P03']
+baseline (no mutation) exit 0 Test Files  2 passed (2) | Tests  37 passed (37) (10 s) over 2 files
+C03 detected    C-7: another operator's row counts (equivalent today: fault rows carry no actor) | Test Files  1 failed (1) | Tests  1 failed | 21 passed (22) | × a row of the same type and kind written by ANOTHER operator is not this command's 3ms (11 s)
+C04 detected    C-7: rows from before the press count | Test Files  1 failed (1) | Tests  2 failed | 20 passed (22) | × a row of the same type and kind written by ANOTHER operator is not this command's 4ms (9 s)
+P01 detected    Live: the stored preferences are pushed to the Core on mount | Test Files  1 failed (1) | Tests  9 failed | 6 passed (15) | × Live: opening the page under StrictMode with a stored choice sends NO preference: the Core's slice is the record 335ms (6 s)
+P02 SURVIVED    the seed starts in the set-up (not returned through deferEffectStart) | Test Files  1 passed (1) | Tests  15 passed (15) |  (7 s)
+P03 detected    Live presentation mode writes the tab flag itself | Test Files  1 failed (1) | Tests  1 failed | 14 passed (15) | × Live presentation mode goes to the Core only; the tab flag follows the server's value when its delta arrives 261ms (7 s)
+## 2026-10-06 02:02:04 WIB 5 mutations: 4 detected, 1 survived ['P02'], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   39e93f50a2535799  apps/core-web/src/features/system/live.ts
+   335cbf871ebbe528  apps/core-web/src/features/system/sim-adapter.ts
+## 2026-10-06 02:18:17 WIB batch ['X10']
+baseline (no mutation) exit 0 Test Files  1 passed (1) | Tests  13 passed (13) (3 s) over 1 files
+X10 detected    D176: the walk keeps asking the Core after a sign-out | Test Files  1 failed (1) | Tests  1 failed | 12 passed (13) | × the session ends while the walk waits for a page: no further page of 59 or 63 is asked for, no file, nothing said 157ms (3 s)
+## 2026-10-06 02:18:23 WIB 1 mutations: 1 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   0ed538f045a8d2d5  apps/core-web/src/features/system/export-logs-dialog.tsx

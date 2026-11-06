@@ -1,0 +1,64 @@
+# W74 mutation check, 2026-10-05 23:45:54; 5 test files per run; the tree is not edited
+control (no mutation): exit=0 Tests:       38 passed, 38 total (31 s)
+A1  detected       9s  the success toast before the answer (the old "call, toast, close" order)  | Tests:       3 failed, 35 passed, 38 total  | live-evidence-archive.test.tsx
+      e.g. S3-1 from the list: success only after the Core's 2xx (AC-C-63) › the dialog stays busy while the request is out, shows the spinner late (LB-1), then toasts and closes after the answer
+      e.g. S3-1 from the list: success only after the Core's 2xx (AC-C-63) › refusal: archiveEvidence 403 (example notPermitted) → the denied toast that names the role; no success toast; the dialog closes
+A2  detected       9s  a refusal skips the presenter (no denied toast that names the role)  | Tests:       2 failed, 36 passed, 38 total  | live-evidence-archive.test.tsx
+      e.g. S3-1 from the list: success only after the Core's 2xx (AC-C-63) › refusal: archiveEvidence 403 (example notPermitted) → the denied toast that names the role; no success toast; the dialog closes
+      e.g. S3-1 from the list: success only after the Core's 2xx (AC-C-63) › outage: no answer → the presenter's "Core server unreachable" toast, no success toast, nothing archived
+A3  detected       9s  the dialog closes at the press, before the answer  | Tests:       1 failed, 37 passed, 38 total  | live-evidence-archive.test.tsx
+      e.g. S3-1 from the list: success only after the Core's 2xx (AC-C-63) › the dialog stays busy while the request is out, shows the spinner late (LB-1), then toasts and closes after the answer
+A4  detected      10s  the spinner shows at once (no LB-1 delay)  | Tests:       1 failed, 37 passed, 38 total  | live-evidence-archive.test.tsx
+      e.g. S3-1 from the list: success only after the Core's 2xx (AC-C-63) › the dialog stays busy while the request is out, shows the spinner late (LB-1), then toasts and closes after the answer
+E1  detected       9s  a denied role does not call the Core in Live mode (no audited denial)  | Tests:       3 failed, 35 passed, 38 total  | live-evidence-export.test.tsx, live-evidence-strict.test.tsx
+      e.g. StrictMode: one request per effect-started call › the export wizard's probe for a denied role is sent once
+      e.g. S5-1 and S1-5: Authorize — the hint decides the display; a denied role still calls the Core › INVESTIGATOR: after EXPORT_AUTH_MS one call with an empty reason; the Core's 403 (forbidden) → the denied Alert, audited by the Core
+E2  detected      10s  the denial counts as recorded without an answer  | Tests:       1 failed, 37 passed, 38 total  | live-evidence-export.test.tsx
+      e.g. S5-1 and S1-5: Authorize — the hint decides the display; a denied role still calls the Core › INVESTIGATOR, outage: the presenter's toast, and the denied Alert says the Core did not record the attempt
+E3  detected       9s  the build result shows at the answer (no EXPORT_BUILD_MS minimum, LB-2)  | Tests:       1 failed, 37 passed, 38 total  | live-evidence-export.test.tsx
+      e.g. S1-6: the export — the request starts with the build step; the result at the later of the answer and EXPORT_BUILD_MS (LB-2) › success: one request at the press; "Building" until EXPORT_BUILD_MS though the Core answered; then Done with the Core's export ID
+## 7 detected, 0 not detected, 0 not applied, of 7
+## the mutated files in the tree, before and after: identical
+   3582764f62607027  src/features/evidence/archive-dialog.tsx
+   ab394fa869ee2a52  src/features/evidence/evidence-detail.tsx
+   b8adbdf2ae303800  src/features/evidence/evidence-model.ts
+   09fb84931225ebf7  src/features/evidence/export-sheet.tsx
+   ff9ff58e6d98385a  src/features/evidence/live-integrity-tab.tsx
+   14e43662d738c07a  src/features/evidence/use-core-verify.ts
+# finished 23:47:31
+# W74 mutation check, 2026-10-05 23:47:37; 5 test files per run; the tree is not edited
+E4  detected      10s  an outage at Build skips the presenter (no LB-6 return to Reason)  | Tests:       1 failed, 37 passed, 38 total  | live-evidence-export.test.tsx
+      e.g. S1-6: the export — the request starts with the build step; the result at the later of the answer and EXPORT_BUILD_MS (LB-2) › outage (LB-6): the presenter's toast after the build step; back to Reason with what was typed; Export can be pressed again
+E5  detected      13s  Live "Verify source" passes without the Core's verdict  | Tests:       1 failed, 37 passed, 38 total  | live-evidence-export.test.tsx
+      e.g. Verify source on the Core's verdict (§14 point 7) › outage: the presenter's toast, no verdict, "Verify again" asks once more
+E6  detected      13s  INVALID_REASON does not return to Reason  | Tests:       1 failed, 37 passed, 38 total  | live-evidence-export.test.tsx
+      e.g. S1-6: the export — the request starts with the build step; the result at the later of the answer and EXPORT_BUILD_MS (LB-2) › the Core's 422 INVALID_REASON (F59: the Core is the judge) → back to Reason, the reason kept, the inline error shown
+E7  detected      13s  the Authorize wait is skipped in Live mode  | Tests:       3 failed, 35 passed, 38 total  | live-evidence-export.test.tsx
+      e.g. S5-1 and S1-5: Authorize — the hint decides the display; a denied role still calls the Core › INVESTIGATOR: after EXPORT_AUTH_MS one call with an empty reason; the Core's 403 (forbidden) → the denied Alert, audited by the Core
+      e.g. S5-1 and S1-5: Authorize — the hint decides the display; a denied role still calls the Core › INVESTIGATOR, outage: the presenter's toast, and the denied Alert says the Core did not record the attempt
+V1  detected      13s  no minimum "asking" time (LB-2)  | Tests:       2 failed, 36 passed, 38 total  | live-evidence-export.test.tsx, live-evidence-verify.test.tsx
+      e.g. AC-C-61: operation 41, no demo operation; the verdict shown is the Core's › PASS (EV 0001): one verifyEvidence and nothing else; "Asking the Core" for at least VERIFY_ASK_MS; the Core's hashes, chip, toast and custody entry
+      e.g. Verify source on the Core's verdict (§14 point 7) › operation 41 is asked once; PASS lets the export go on
+V2  detected      14s  a rejection skips the presenter  | Tests:       2 failed, 36 passed, 38 total  | live-evidence-export.test.tsx, live-evidence-verify.test.tsx
+      e.g. No verdict: the presenter first, then the tab's own message (LB-5, LB-6) › outage: the "Core server unreachable" toast; the button returns to Verify; nothing is shown as a verdict
+      e.g. Verify source on the Core's verdict (§14 point 7) › outage: the presenter's toast, no verdict, "Verify again" asks once more
+L1  detected      15s  the kebab "Verify" starts in the effect itself (twice under StrictMode, F69-1)  | Tests:       1 failed, 37 passed, 38 total  | live-evidence-strict.test.tsx
+      e.g. StrictMode: one request per effect-started call › the list kebab "Verify" sends operation 41 once; the detail reads operation 40 once
+L2  detected      16s  the chip shows the bundled package's verdict before the Core's  | Tests:       1 failed, 37 passed, 38 total  | live-evidence-verify.test.tsx
+      e.g. AC-C-61: operation 41, no demo operation; the verdict shown is the Core's › the Core and the bundled package differ (a tamper the Core recorded on VIDEO-01): the Core's FAIL is shown, and the info Alert says so
+L3  detected      16s  the "differs" Alert never shows  | Tests:       1 failed, 37 passed, 38 total  | live-evidence-verify.test.tsx
+      e.g. AC-C-61: operation 41, no demo operation; the verdict shown is the Core's › the Core and the bundled package differ (a tamper the Core recorded on VIDEO-01): the Core's FAIL is shown, and the info Alert says so
+M1  detected      10s  the stored hash shown is the sealed one, not the one the Core computed  | Tests:       1 failed, 37 passed, 38 total  | live-evidence-verify.test.tsx
+      e.g. AC-C-61: operation 41, no demo operation; the verdict shown is the Core's › FAIL (EV 0005, AUDIO-02): the Core's verdict names the track; the bundled package agrees
+D1  detected      10s  Live mode joins the bundled package by the evidence number (no MS-2 gate)  | Tests:       2 failed, 36 passed, 38 total  | live-evidence-verify.test.tsx
+      e.g. AC-C-61: operation 41, no demo operation; the verdict shown is the Core's › a session recorded in Live mode (media NONE): no bundled check and no bundled media, the Core's verdict all the same
+      e.g. AC-C-61: operation 41, no demo operation; the verdict shown is the Core's › operation 40 gets no answer: the Media tab says the reference is unavailable; the Core's verdict still works
+## 11 detected, 0 not detected, 0 not applied, of 11
+## the mutated files in the tree, before and after: identical
+   3582764f62607027  src/features/evidence/archive-dialog.tsx
+   ab394fa869ee2a52  src/features/evidence/evidence-detail.tsx
+   b8adbdf2ae303800  src/features/evidence/evidence-model.ts
+   09fb84931225ebf7  src/features/evidence/export-sheet.tsx
+   ff9ff58e6d98385a  src/features/evidence/live-integrity-tab.tsx
+   14e43662d738c07a  src/features/evidence/use-core-verify.ts
+# finished 23:49:57

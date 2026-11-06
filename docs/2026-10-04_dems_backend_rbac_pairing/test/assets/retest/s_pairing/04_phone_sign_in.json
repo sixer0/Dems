@@ -1,0 +1,78 @@
+{
+  "operator": {
+    "username": "budi.santoso",
+    "id": "OPR-001",
+    "role": "INVESTIGATOR"
+  },
+  "deviceT0": "10-06 13:06:24.000",
+  "clock": {
+    "offsetMs": -545,
+    "bracketMs": 25
+  },
+  "prefill": {
+    "file": "04_phone_login_prefilled.png",
+    "bytes": 1263741,
+    "at": "13:06:28.359 (epoch 1791266788.359)"
+  },
+  "submitAt": "13:06:28.400 (epoch 1791266788.400)",
+  "signIn": {
+    "deviceEpoch": 1791266788.041,
+    "method": "POST",
+    "path": "/api/v1/auth/sign-in",
+    "status": "200",
+    "deviceTime": "13:06:28.041 (epoch 1791266788.041)"
+  },
+  "after": {
+    "keyguard": "false",
+    "focus": "mCurrentFocus=Window{325dcc2 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}",
+    "appFocused": true
+  },
+  "afterShot": {
+    "file": "04_phone_signed_in.png",
+    "bytes": 206081,
+    "at": "13:06:35.042 (epoch 1791266795.042)"
+  },
+  "appRequests": [
+    "13:06:28.041 (epoch 1791266788.041) POST /api/v1/auth/sign-in 200"
+  ],
+  "serverLines": [
+    {
+      "at": "13:06:28.543 (epoch 1791266788.543)",
+      "atMs": 1791266788543,
+      "method": "POST",
+      "route": "/api/v1/auth/sign-in",
+      "status": 200,
+      "principal": "device:DEV-0003",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "13:06:28.605 (epoch 1791266788.605)",
+      "atMs": 1791266788605,
+      "method": null,
+      "route": null,
+      "status": null,
+      "principal": "device:DEV-0003",
+      "msg": "socket closed",
+      "code": 1000,
+      "closedBy": "peer",
+      "kind": null
+    },
+    {
+      "at": "13:06:28.618 (epoch 1791266788.618)",
+      "atMs": 1791266788618,
+      "method": null,
+      "route": null,
+      "status": null,
+      "principal": "operator:OPR-001",
+      "msg": "socket opened",
+      "code": null,
+      "closedBy": null,
+      "kind": "OPERATOR"
+    }
+  ],
+  "credentialLinesDeviceJs": 0,
+  "passwordInDeviceJs": 0
+}

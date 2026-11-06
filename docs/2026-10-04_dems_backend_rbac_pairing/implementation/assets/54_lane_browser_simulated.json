@@ -1,0 +1,173 @@
+{
+  "phase": "simulated",
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "at": "2026-10-04T14:26:26.357Z",
+  "steps": {
+    "liveSignOut": {
+      "signOut": {
+        "status": 401
+      }
+    },
+    "simulated1440": {
+      "facts": {
+        "path": "/dashboard",
+        "viewport": "1440x900",
+        "tier": "lg",
+        "sidebar": "full",
+        "mode": {
+          "text": "SIMULATED",
+          "state": "SIMULATED",
+          "ariaLabel": "Data mode: SIMULATED",
+          "tag": "BUTTON",
+          "box": [
+            774,
+            22,
+            89,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "api-reference"
+        ],
+        "adminGroup": null,
+        "pages": [
+          "page-dashboard"
+        ],
+        "stubs": [],
+        "heading": "Dashboard",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": "SIMULATED",
+        "owedSignOutKeyPresent": false
+      },
+      "screenshot": "54_shell_simulated_1440.png",
+      "network": {
+        "api": [],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          "ws://127.0.0.1:5178/?… 101",
+          "ws://127.0.0.1:4400/ws null closed",
+          "ws://127.0.0.1:4400/ws null closed",
+          "ws://127.0.0.1:4400/ws null closed",
+          "ws://127.0.0.1:4400/ws null closed",
+          "ws://127.0.0.1:4400/ws null closed"
+        ],
+        "console": []
+      }
+    },
+    "simulated600": {
+      "facts": {
+        "path": "/dashboard",
+        "viewport": "600x900",
+        "tier": "xs",
+        "sidebar": "tabs",
+        "mode": {
+          "text": "SIMULATED",
+          "state": "SIMULATED",
+          "ariaLabel": "Data mode: SIMULATED",
+          "tag": "BUTTON",
+          "box": [
+            323,
+            18,
+            89,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [],
+        "adminGroup": null,
+        "pages": [
+          "page-dashboard"
+        ],
+        "stubs": [],
+        "heading": "Dashboard",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": "SIMULATED",
+        "owedSignOutKeyPresent": false
+      },
+      "screenshot": "54_shell_simulated_600.png"
+    },
+    "simulatedAdminUsers": {
+      "facts": {
+        "path": "/admin/users",
+        "viewport": "1440x900",
+        "tier": "lg",
+        "sidebar": "full",
+        "mode": {
+          "text": "SIMULATED",
+          "state": "SIMULATED",
+          "ariaLabel": "Data mode: SIMULATED",
+          "tag": "BUTTON",
+          "box": [
+            774,
+            22,
+            89,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "api-reference"
+        ],
+        "adminGroup": null,
+        "pages": [
+          "page-users-roles",
+          "page-header"
+        ],
+        "stubs": [
+          "ur-live-only",
+          "ur-live-only-switch"
+        ],
+        "heading": "Users & RolesUsers & Roles",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": "SIMULATED",
+        "owedSignOutKeyPresent": false
+      },
+      "screenshot": "54_admin_users_simulated.png",
+      "network": {
+        "api": [],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          "ws://127.0.0.1:5178/?… 101",
+          "ws://127.0.0.1:4400/ws null closed",
+          "ws://127.0.0.1:4400/ws null closed",
+          "ws://127.0.0.1:4400/ws null closed",
+          "ws://127.0.0.1:4400/ws null closed"
+        ],
+        "console": []
+      }
+    }
+  }
+}

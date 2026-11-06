@@ -1,0 +1,42 @@
+control (no change): tsc exit 0, tests exit 0
+M01 the operator of the slice is not strict: DETECTED by tests: test/api-realtime.test.ts, test/api-state-slices.test.ts
+M02 the snapshot state is not strict: DETECTED by tests: test/api-realtime.test.ts, test/api-state-slices.test.ts
+M03 a slice is missing from the replicated set: DETECTED by type check (6 errors); tests: test/api-examples.test.ts [ test/api-examples.test.ts ], test/api-openapi-scope.test.ts [ test/api-openapi-scope.test.ts ], test/api-realtime.test.ts [ test/api-realtime.test.ts ], test/api-state-slices.test.ts, test/openapi.test.ts [ test/openapi.test.ts ]
+M04 a time is any number: DETECTED by tests: test/api-state-slices.test.ts
+M05 an event row is not strict: DETECTED by tests: test/api-state-slices.test.ts
+M06 free text of a slice refuses ill-formed text: DETECTED by tests: test/api-state-slices.test.ts
+M07 a hash is any string: DETECTED by tests: test/api-state-slices.test.ts
+M08 a member with the wrong type: DETECTED by type check (13 errors); tests: test/api-realtime.test.ts, test/api-state-slices.test.ts
+M09 an optional member made required: DETECTED by type check (13 errors)
+M10 an optional member forgotten: DETECTED by type check (1 errors); tests: test/api-realtime.test.ts, test/api-state-slices.test.ts
+M11 an audio level without bounds: DETECTED by tests: test/api-state-slices.test.ts
+M12 an open map takes nested values: DETECTED by type check (19 errors); tests: test/api-state-slices.test.ts
+M13 pairing classified as replicated: DETECTED by tests: test/api-state-slices.test.ts
+M14 the session input is not strict: DETECTED by tests: test/api-state-slices.test.ts
+M15 an audit row may name any actor: DETECTED by tests: test/api-state-slices.test.ts
+M39 an optional member the simulator does not have: DETECTED by type check (1 errors)
+M40 a nested optional member forgotten: DETECTED by type check (1 errors); tests: test/api-state-slices.test.ts
+M16 TOKEN_REUSE is not a reason: DETECTED by type check (2 errors); tests: test/api-realtime.test.ts
+M17 session.ended is not strict: DETECTED by tests: test/api-realtime.test.ts
+M18 device.revoked is not strict: DETECTED by tests: test/api-realtime.test.ts
+M19 hello without the topic rule: DETECTED by tests: test/api-realtime.test.ts
+M20 hello without the reason rule: DETECTED by tests: test/api-realtime.test.ts
+M21 a connection ID may hold an underscore: DETECTED by tests: test/api-realtime.test.ts
+M22 the heartbeat time as epoch milliseconds: DETECTED by type check (4 errors); tests: test/api-openapi-scope.test.ts, test/api-realtime.test.ts, test/heartbeat-client.test.ts, test/openapi.test.ts, test/schemas.test.ts
+M23 admin.changed is not in the union: DETECTED by type check (2 errors); tests: test/api-realtime.test.ts
+M24 a client may subscribe to any topic: DETECTED by tests: test/api-realtime.test.ts
+M25 an append without rows: DETECTED by tests: test/api-realtime.test.ts
+M26 device.revoked not sent to a DEVICE: DETECTED by tests: test/api-realtime.test.ts
+M27 a snapshot may reach an ANONYMOUS connection: DETECTED by tests: test/api-realtime.test.ts
+M28 a wrong close code: DETECTED by tests: test/api-realtime.test.ts
+M29 the wrong permission for the users list: DETECTED by tests: test/api-realtime.test.ts
+M30 session.updated carries the whole operator: DETECTED by tests: test/api-realtime.test.ts
+M31 a delta may be empty: DETECTED by tests: test/api-realtime.test.ts
+M32 the audit append without its head: DETECTED by type check (2 errors); tests: test/api-realtime.test.ts
+M33 a client message with a version member: DETECTED by tests: test/api-realtime.test.ts
+M34 the Core server text in the offline document: DETECTED by tests: test/api-openapi-scope.test.ts, test/api-realtime.test.ts, test/openapi.test.ts
+M35 an example with a bearer-shaped connection ID: DETECTED by tests: test/api-realtime.test.ts
+M36 an example whose permissions are not the role's: DETECTED by tests: test/api-realtime.test.ts
+M37 resync allowed every second: DETECTED by tests: test/api-realtime.test.ts
+M38 an anonymous connection may be given the state topic: DETECTED by tests: test/api-realtime.test.ts
+40 of 40 detected

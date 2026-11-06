@@ -1,0 +1,27 @@
+10:49:07.528 tap 540,1444
+10:49:07.800 slept 1500 ms
+10:49:09.339 screencap 99b_retest_home.png 10:49:09.339..10:49:09.510
+10:49:09.538 tap 302,1239
+10:49:09.630 slept 3000 ms
+10:49:12.686 declared screen session-new
+10:49:12.753 tap 913,748
+10:49:12.832 slept 900 ms
+10:49:13.783 tap 229,994
+10:49:13.857 slept 700 ms
+10:49:14.607 tap 540,1309
+10:49:14.713 slept 900 ms
+10:49:15.659 text typed (Retest Back Guard); inputType 0x2001
+10:49:15.990 slept 800 ms
+10:49:16.839 key 111
+10:49:16.918 slept 800 ms
+10:49:17.749 tap 540,2257
+10:49:17.877 create 201 at device 10-06 10:49:17.669 (POST /api/v1/session 201)
+10:49:18.534 precheck 202 at device 10-06 10:49:17.748 (POST /api/v1/session/{id}/precheck 202)
+10:49:18.661 slept 6000 ms
+10:49:24.746 tap 540,2257
+10:49:25.017 slept 2500 ms
+10:49:27.565 tap 540,2257
+10:49:27.640 start 200 at device 10-06 10:49:30.589 (POST /api/v1/session/{id}/start 200)
+10:49:30.965 slept 4000 ms
+10:49:35.097 declared screen live
+10:49:35.195 screencap 99c_retest_monitor.png 10:49:35.195..10:49:36.371

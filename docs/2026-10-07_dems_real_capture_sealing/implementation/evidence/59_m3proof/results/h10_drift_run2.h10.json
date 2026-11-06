@@ -1,0 +1,192 @@
+{
+ "check": "H-10",
+ "run": "h10_drift_run2",
+ "case": "drift",
+ "regression_bound_ms": 2.0,
+ "product_bound_ms": 40.0,
+ "files": {
+  "cam1.mp4": {
+   "inject_ms": 0,
+   "inject_drift_ppm": 200.0,
+   "video_frames": 1600,
+   "flash_frame_indexes": [
+    50,
+    250,
+    450,
+    650,
+    850,
+    1050,
+    1250,
+    1450
+   ],
+   "beeps_in_audio": 16,
+   "events": [
+    {
+     "frame": 100,
+     "flash_s": 1.448789,
+     "beep_s": 1.449208,
+     "offset_ms": 0.4194,
+     "truth_ms": 0.4,
+     "error_ms": 0.0194
+    },
+    {
+     "frame": 300,
+     "flash_s": 5.448789,
+     "beep_s": 5.45,
+     "offset_ms": 1.2111,
+     "truth_ms": 1.2,
+     "error_ms": 0.0111
+    },
+    {
+     "frame": 500,
+     "flash_s": 9.448789,
+     "beep_s": 9.450792,
+     "offset_ms": 2.0028,
+     "truth_ms": 2.0,
+     "error_ms": 0.0028
+    },
+    {
+     "frame": 700,
+     "flash_s": 13.448789,
+     "beep_s": 13.451604,
+     "offset_ms": 2.8153,
+     "truth_ms": 2.8,
+     "error_ms": 0.0153
+    },
+    {
+     "frame": 900,
+     "flash_s": 17.448789,
+     "beep_s": 17.452396,
+     "offset_ms": 3.6069,
+     "truth_ms": 3.6,
+     "error_ms": 0.0069
+    },
+    {
+     "frame": 1100,
+     "flash_s": 21.448789,
+     "beep_s": 21.453208,
+     "offset_ms": 4.4194,
+     "truth_ms": 4.4,
+     "error_ms": 0.0194
+    },
+    {
+     "frame": 1300,
+     "flash_s": 25.448789,
+     "beep_s": 25.454,
+     "offset_ms": 5.2111,
+     "truth_ms": 5.2,
+     "error_ms": 0.0111
+    },
+    {
+     "frame": 1500,
+     "flash_s": 29.448789,
+     "beep_s": 29.454792,
+     "offset_ms": 6.0028,
+     "truth_ms": 6.0,
+     "error_ms": 0.0028
+    }
+   ],
+   "mean_offset_ms": 3.2111,
+   "measured_drift_ppm": 199.78,
+   "drift_over_run_ms": 5.5834,
+   "max_abs_error_vs_truth_ms": 0.0194,
+   "sign_correct": true,
+   "regression_bound": "PASS",
+   "max_abs_offset_ms": 6.0028,
+   "product_bound": "WITHIN",
+   "uncorrected_offset_exceeds_regression_bound": true
+  },
+  "cam2.mp4": {
+   "inject_ms": 0,
+   "inject_drift_ppm": -200.0,
+   "video_frames": 1600,
+   "flash_frame_indexes": [
+    150,
+    350,
+    550,
+    750,
+    950,
+    1150,
+    1350,
+    1550
+   ],
+   "beeps_in_audio": 16,
+   "events": [
+    {
+     "frame": 200,
+     "flash_s": 3.448789,
+     "beep_s": 3.448,
+     "offset_ms": -0.7889,
+     "truth_ms": -0.8,
+     "error_ms": 0.0111
+    },
+    {
+     "frame": 400,
+     "flash_s": 7.448789,
+     "beep_s": 7.447208,
+     "offset_ms": -1.5806,
+     "truth_ms": -1.6,
+     "error_ms": 0.0194
+    },
+    {
+     "frame": 600,
+     "flash_s": 11.448789,
+     "beep_s": 11.446396,
+     "offset_ms": -2.3931,
+     "truth_ms": -2.4,
+     "error_ms": 0.0069
+    },
+    {
+     "frame": 800,
+     "flash_s": 15.448789,
+     "beep_s": 15.445604,
+     "offset_ms": -3.1847,
+     "truth_ms": -3.2,
+     "error_ms": 0.0153
+    },
+    {
+     "frame": 1000,
+     "flash_s": 19.448789,
+     "beep_s": 19.444792,
+     "offset_ms": -3.9972,
+     "truth_ms": -4.0,
+     "error_ms": 0.0028
+    },
+    {
+     "frame": 1200,
+     "flash_s": 23.448789,
+     "beep_s": 23.444,
+     "offset_ms": -4.7889,
+     "truth_ms": -4.8,
+     "error_ms": 0.0111
+    },
+    {
+     "frame": 1400,
+     "flash_s": 27.448789,
+     "beep_s": 27.443208,
+     "offset_ms": -5.5806,
+     "truth_ms": -5.6,
+     "error_ms": 0.0194
+    },
+    {
+     "frame": 1600,
+     "flash_s": 31.448789,
+     "beep_s": 31.442396,
+     "offset_ms": -6.3931,
+     "truth_ms": -6.4,
+     "error_ms": 0.0069
+    }
+   ],
+   "mean_offset_ms": -3.5884,
+   "measured_drift_ppm": -200.09,
+   "drift_over_run_ms": -5.6042,
+   "max_abs_error_vs_truth_ms": 0.0194,
+   "sign_correct": true,
+   "regression_bound": "PASS",
+   "max_abs_offset_ms": 6.3931,
+   "product_bound": "WITHIN",
+   "uncorrected_offset_exceeds_regression_bound": true
+  }
+ },
+ "verdict": "PASS"
+}

@@ -1,0 +1,336 @@
+### whole-project db run 1, in parallel with the ten runs of reset-failures.db.test.ts
+2026-10-04 12:55:18 WIB
+$ DEMS_TEST_STEP=51b npm run test:db -w @dems/core-server -- --maxWorkers=2
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_51b_tmdcg6mq_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_51b_tmdcg6mq_tpl_schema: built in 79 ms (create 29 ms, hook 49 ms)
+[test:db] template dems_test_step_51b_tmdcg6mq_tpl_seed: built in 122 ms (create 43 ms, hook 78 ms)
+[test:db] bulk fixture: dems_test_step_51b_tmdcg6mq_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash d2d9f9e596ed73d2...; digest 953c92ea4c9e1393...; build 147 ms, write 1131 ms, total 1281 ms
+
+ Test Files  45 passed (45)
+      Tests  629 passed (629)
+   Start at  12:55:18
+   Duration  44.46s (tests 91%, import 8%, transform 1%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 115 ms; 0 remain with the run prefix dems_test_step_51b_tmdcg6mq_
+exit=0
+### whole-project db run 2, in parallel with the ten runs of reset-failures.db.test.ts
+2026-10-04 12:56:02 WIB
+$ DEMS_TEST_STEP=51b npm run test:db -w @dems/core-server -- --maxWorkers=2
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_51b_tmdchfiw_
+[test:db] stale sweep: dropped 0; kept 5 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_51b_tmdchfiw_tpl_schema: built in 80 ms (create 29 ms, hook 49 ms)
+[test:db] template dems_test_step_51b_tmdchfiw_tpl_seed: built in 127 ms (create 47 ms, hook 80 ms)
+[test:db] bulk fixture: dems_test_step_51b_tmdchfiw_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash d2d9f9e596ed73d2...; digest 953c92ea4c9e1393...; build 148 ms, write 1132 ms, total 1284 ms
+
+ Test Files  45 passed (45)
+      Tests  629 passed (629)
+   Start at  12:56:03
+   Duration  42.53s (tests 90%, import 9%, transform 1%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 227 ms; 0 remain with the run prefix dems_test_step_51b_tmdchfiw_
+exit=0
+### whole-project db run 3, in parallel with the ten runs of reset-failures.db.test.ts
+2026-10-04 12:56:45 WIB
+$ DEMS_TEST_STEP=51b npm run test:db -w @dems/core-server -- --maxWorkers=2
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_51b_tmdcimbv_
+[test:db] stale sweep: dropped 0; kept 6 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_51b_tmdcimbv_tpl_schema: built in 115 ms (create 27 ms, hook 50 ms)
+[test:db] template dems_test_step_51b_tmdcimbv_tpl_seed: built in 130 ms (create 45 ms, hook 85 ms)
+[test:db] bulk fixture: dems_test_step_51b_tmdcimbv_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash d2d9f9e596ed73d2...; digest 953c92ea4c9e1393...; build 157 ms, write 1145 ms, total 1307 ms
+
+ Test Files  45 passed (45)
+      Tests  629 passed (629)
+   Start at  12:56:46
+   Duration  44.31s (tests 90%, import 9%, transform 1%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 174 ms; 0 remain with the run prefix dems_test_step_51b_tmdcimbv_
+exit=0
+### whole-project db run 4, in parallel with the ten runs of reset-failures.db.test.ts
+2026-10-04 12:57:30 WIB
+$ DEMS_TEST_STEP=51b npm run test:db -w @dems/core-server -- --maxWorkers=2
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_51b_tmdcjuta_
+[test:db] stale sweep: dropped 0; kept 4 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_51b_tmdcjuta_tpl_schema: built in 81 ms (create 30 ms, hook 50 ms)
+[test:db] template dems_test_step_51b_tmdcjuta_tpl_seed: built in 122 ms (create 42 ms, hook 79 ms)
+[test:db] bulk fixture: dems_test_step_51b_tmdcjuta_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash d2d9f9e596ed73d2...; digest 953c92ea4c9e1393...; build 154 ms, write 1134 ms, total 1295 ms
+
+ Test Files  45 passed (45)
+      Tests  629 passed (629)
+   Start at  12:57:30
+   Duration  43.71s (tests 90%, import 9%, transform 1%)
+
+[test:db] forced drops that needed a retry: 1 (1 refusal(s) with SQLSTATE 42501 while a backend that the owner role may not end, such as an autovacuum worker, was on the database; each drop then went through)
+[test:db] teardown: dropped 8 database(s) in 187 ms; 0 remain with the run prefix dems_test_step_51b_tmdcjuta_
+exit=0
+### whole-project db run 5, in parallel with the ten runs of reset-failures.db.test.ts
+2026-10-04 12:58:14 WIB
+$ DEMS_TEST_STEP=51b npm run test:db -w @dems/core-server -- --maxWorkers=2
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_51b_tmdcl2f8_
+[test:db] stale sweep: dropped 0; kept 4 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_51b_tmdcl2f8_tpl_schema: built in 80 ms (create 28 ms, hook 50 ms)
+[test:db] template dems_test_step_51b_tmdcl2f8_tpl_seed: built in 130 ms (create 48 ms, hook 81 ms)
+[test:db] bulk fixture: dems_test_step_51b_tmdcl2f8_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash d2d9f9e596ed73d2...; digest 953c92ea4c9e1393...; build 162 ms, write 1141 ms, total 1306 ms
+
+ Test Files  45 passed (45)
+      Tests  629 passed (629)
+   Start at  12:58:14
+   Duration  44.26s (tests 90%, import 9%, transform 1%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 138 ms; 0 remain with the run prefix dems_test_step_51b_tmdcl2f8_
+exit=0
+### whole-project db run 6, in parallel with the ten runs of reset-failures.db.test.ts
+2026-10-04 12:58:59 WIB
+$ DEMS_TEST_STEP=51b npm run test:db -w @dems/core-server -- --maxWorkers=2
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_51b_tmdcmbn8_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_51b_tmdcmbn8_tpl_schema: built in 84 ms (create 29 ms, hook 53 ms)
+[test:db] template dems_test_step_51b_tmdcmbn8_tpl_seed: built in 138 ms (create 47 ms, hook 90 ms)
+[test:db] bulk fixture: dems_test_step_51b_tmdcmbn8_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash d2d9f9e596ed73d2...; digest 953c92ea4c9e1393...; build 166 ms, write 1192 ms, total 1366 ms
+
+ Test Files  45 passed (45)
+      Tests  629 passed (629)
+   Start at  12:58:59
+   Duration  42.86s (tests 90%, import 9%, transform 1%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 118 ms; 0 remain with the run prefix dems_test_step_51b_tmdcmbn8_
+exit=0

@@ -1,0 +1,230 @@
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2 --reporter=verbose src/modules/admin
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_55_tmdiy7i1_
+[test:db] stale sweep: dropped 0; kept 11 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_55_tmdiy7i1_tpl_schema: built in 211 ms (create 60 ms, hook 147 ms)
+[test:db] template dems_test_step_55_tmdiy7i1_tpl_seed: built in 362 ms (create 128 ms, hook 145 ms)
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 11 listUsers: a read > two statements on the pool, no transaction: the session of stage 4 and the one list statement
+[w33] listUsers: 200, 2 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+        pool  admin LIST_USERS
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 12 assignUserRole: one unit, then the mirror > a change: lock every operator row, read the roles of the rule, compare-and-set, the permissions, the row, the answer; COMMIT; the publications; the mirror
+[w33] assignUserRole, a change: 200, 16 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  admin LOCK_OPERATORS
+        unit  admin READ_ROLES_HOLDING
+        unit  admin ASSIGN_ROLE
+        unit  admin READ_ROLE_PERMISSIONS
+        unit  INSERT audit_log ROLE_CHANGED
+        unit  admin READ_USER
+        unit  COMMIT
+        publish state (native)
+        publish session.updated
+        publish admin.changed
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  engine SELECT operators (the mirror, ENG-3)
+        unit  COMMIT
+        publish state (operators)
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 12 assignUserRole: one unit, then the mirror > 409 LAST_ADMIN: the lock, the roles of the rule, and ROLLBACK: no write was sent, nothing is published, no mirror
+[w33] assignUserRole, 409 LAST_ADMIN: 409, 7 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  admin LOCK_OPERATORS
+        unit  admin READ_ROLES_HOLDING
+        unit  ROLLBACK
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 12 assignUserRole: one unit, then the mirror > 404: the lock, and ROLLBACK
+[w33] assignUserRole, 404: 404, 6 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  admin LOCK_OPERATORS
+        unit  ROLLBACK
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 12 assignUserRole: one unit, then the mirror > the role the operator already has: the lock and the read of the answer; no write, no row, no publication, no mirror
+[w33] assignUserRole, unchanged: 200, 7 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  admin LOCK_OPERATORS
+        unit  admin READ_USER
+        unit  COMMIT
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 12 assignUserRole: one unit, then the mirror > 422 and 403: no unit of this module at all
+[w33] assignUserRole, 422: 422, 1 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 12 assignUserRole: one unit, then the mirror > 422 and 403: no unit of this module at all
+[w33] assignUserRole, 403: 403, 6 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  INSERT audit_log ACCESS_DENIED
+        unit  COMMIT
+        publish state (native)
+ ✓ |db| src/modules/admin/__tests__/sequence.db.test.ts > operation 11 listUsers: a read > two statements on the pool, no transaction: the session of stage 4 and the one list statement 19ms
+ ✓ |db| src/modules/admin/__tests__/sequence.db.test.ts > operation 12 assignUserRole: one unit, then the mirror > a change: lock every operator row, read the roles of the rule, compare-and-set, the permissions, the row, the answer; COMMIT; the publications; the mirror 12ms
+ ✓ |db| src/modules/admin/__tests__/sequence.db.test.ts > operation 12 assignUserRole: one unit, then the mirror > 409 LAST_ADMIN: the lock, the roles of the rule, and ROLLBACK: no write was sent, nothing is published, no mirror 10ms
+ ✓ |db| src/modules/admin/__tests__/sequence.db.test.ts > operation 12 assignUserRole: one unit, then the mirror > 404: the lock, and ROLLBACK 6ms
+ ✓ |db| src/modules/admin/__tests__/sequence.db.test.ts > operation 12 assignUserRole: one unit, then the mirror > the role the operator already has: the lock and the read of the answer; no write, no row, no publication, no mirror 6ms
+ ✓ |db| src/modules/admin/__tests__/sequence.db.test.ts > operation 12 assignUserRole: one unit, then the mirror > 422 and 403: no unit of this module at all 46ms
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 14 disableUser: one unit, then the mirror > a change: lock, the roles of the rule, compare-and-set, the sessions ended through the registry, the tokens revoked, the row, the answer; COMMIT; the publications; the mirror
+[w33] disableUser, a change: 200, 17 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  admin LOCK_OPERATORS
+        unit  admin READ_ROLES_HOLDING
+        unit  admin DISABLE_OPERATOR
+        unit  identity END_SESSIONS_OF_OPERATOR
+        unit  admin REVOKE_BIOMETRIC_TOKENS
+        unit  INSERT audit_log USER_DISABLED
+        unit  admin READ_USER
+        unit  COMMIT
+        publish state (native)
+        publish session.ended
+        publish admin.changed
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  engine SELECT operators (the mirror, ENG-3)
+        unit  COMMIT
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 14 disableUser: one unit, then the mirror > 409 LAST_ADMIN: the lock, the roles of the rule, and ROLLBACK: no session was ended
+[w33] disableUser, 409 LAST_ADMIN: 409, 7 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  admin LOCK_OPERATORS
+        unit  admin READ_ROLES_HOLDING
+        unit  ROLLBACK
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 14 disableUser: one unit, then the mirror > already disabled: the lock and the read of the answer
+[w33] disableUser, unchanged: 200, 7 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  admin LOCK_OPERATORS
+        unit  admin READ_USER
+        unit  COMMIT
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 13 enableUser: one unit, then the mirror > a change: lock the one row, compare-and-set, the row, the answer; COMMIT; the publication; the mirror
+[w33] enableUser, a change: 200, 14 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  admin LOCK_OPERATOR
+        unit  admin ENABLE_OPERATOR
+        unit  INSERT audit_log USER_ENABLED
+        unit  admin READ_USER
+        unit  COMMIT
+        publish state (native)
+        publish admin.changed
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  engine SELECT operators (the mirror, ENG-3)
+        unit  COMMIT
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 13 enableUser: one unit, then the mirror > already enabled: the lock and the read of the answer; 404: the lock, and ROLLBACK
+[w33] enableUser, unchanged: 200, 7 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  admin LOCK_OPERATOR
+        unit  admin READ_USER
+        unit  COMMIT
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > operation 13 enableUser: one unit, then the mirror > already enabled: the lock and the read of the answer; 404: the lock, and ROLLBACK
+[w33] enableUser, 404: 404, 6 statements
+        pool  identity FIND_SESSION_BY_TRANSPORT.COOKIE
+        unit  BEGIN ISOLATION LEVEL READ COMMITTED
+        unit  chain lock
+        unit  statement timeout
+        unit  admin LOCK_OPERATOR
+        unit  ROLLBACK
+ ✓ |db| src/modules/admin/__tests__/sequence.db.test.ts > operation 14 disableUser: one unit, then the mirror > a change: lock, the roles of the rule, compare-and-set, the sessions ended through the registry, the tokens revoked, the row, the answer; COMMIT; the publications; the mirror 10ms
+ ✓ |db| src/modules/admin/__tests__/sequence.db.test.ts > operation 14 disableUser: one unit, then the mirror > 409 LAST_ADMIN: the lock, the roles of the rule, and ROLLBACK: no session was ended 7ms
+ ✓ |db| src/modules/admin/__tests__/sequence.db.test.ts > operation 14 disableUser: one unit, then the mirror > already disabled: the lock and the read of the answer 6ms
+ ✓ |db| src/modules/admin/__tests__/sequence.db.test.ts > operation 13 enableUser: one unit, then the mirror > a change: lock the one row, compare-and-set, the row, the answer; COMMIT; the publication; the mirror 9ms
+ ✓ |db| src/modules/admin/__tests__/sequence.db.test.ts > operation 13 enableUser: one unit, then the mirror > already enabled: the lock and the read of the answer; 404: the lock, and ROLLBACK 8ms
+stdout | src/modules/admin/__tests__/last-admin.db.test.ts > A: AC-B-79 free-running, one instance: two concurrent changes, one of each holder > two demotions, each holder demoting itself, 25 rounds: every round one 200 and one 409 LAST_ADMIN, one enabled holder left, one ROLE_CHANGED row
+[w33] AC-B-79 free-running, two demotions: 25 rounds, 25 x (one 200, one 409 LAST_ADMIN); the first request won 21, the second 4; two successes: 0
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > A: AC-B-79 free-running, one instance: two concurrent changes, one of each holder > two demotions, each holder demoting itself, 25 rounds: every round one 200 and one 409 LAST_ADMIN, one enabled holder left, one ROLE_CHANGED row 678ms
+stdout | src/modules/admin/__tests__/sequence.db.test.ts > M13: what one command costs on this host > prints the round trips and the time of each operation over 20 calls
+[w33] cost of listUsers: 2 round trips; median 1.5 ms, maximum 2.5 ms over 20 calls
+[w33] cost of assignUserRole (a change): 16 round trips; median 6.2 ms, maximum 18.4 ms over 20 calls
+[w33] a unit opens with 3 statements (BEGIN and the core's own)
+[w33] cost of disableUser (a change, no open session): 17 round trips; median 7.0 ms, maximum 18.3 ms over 20 calls
+[w33] cost of enableUser (a change): 14 round trips; median 5.4 ms, maximum 20.4 ms over 20 calls
+ ✓ |db| src/modules/admin/__tests__/sequence.db.test.ts > M13: what one command costs on this host > prints the round trips and the time of each operation over 20 calls 462ms
+stdout | src/modules/admin/__tests__/last-admin.db.test.ts > A: AC-B-79 free-running, one instance: two concurrent changes, one of each holder > one demotion and one disable, each holder taking itself away, 15 rounds: every round one 200 and one 409 LAST_ADMIN
+[w33] AC-B-79 free-running, one demotion and one disable: 15 rounds, 15 x (one 200, one 409 LAST_ADMIN); the demotion won 8, the disable 7; two successes: 0
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > A: AC-B-79 free-running, one instance: two concurrent changes, one of each holder > one demotion and one disable, each holder taking itself away, 15 rounds: every round one 200 and one 409 LAST_ADMIN 557ms
+stdout | src/modules/admin/__tests__/last-admin.db.test.ts > B: both requests past the guard, their units queued, then run one after the other > two demotions, each holder demoting THE OTHER, 10 rounds: the unit that runs second is refused on what the first committed
+[w33] gated, two cross demotions: 10 rounds, 10 x (one 200, one 409 LAST_ADMIN); two successes: 0
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > B: both requests past the guard, their units queued, then run one after the other > two demotions, each holder demoting THE OTHER, 10 rounds: the unit that runs second is refused on what the first committed 367ms
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > B: both requests past the guard, their units queued, then run one after the other > each holder DISABLES the other: one 200 and one 409; the request of the holder who was disabled first changes nothing 248ms
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > B: both requests past the guard, their units queued, then run one after the other > a demotion and a disable of the SAME holder, by the two holders: both succeed while the other holder stays, in either order 60ms
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > C: a second writer on the same database (what a second process would be) > the second writer holds an uncommitted change of one holder WITH the lock of the audit chain head (AT-2): the unit waits at its first statement; the server's demotion of the other waits, then answers 409 on the committed rows 72ms
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > C: a second writer on the same database (what a second process would be) > the second writer holds an uncommitted change of one holder WITHOUT the chain lock: the unit waits at the lock point of the rule, LOCK_OPERATORS; the server's demotion of the other waits, then answers 409 on the committed rows 20ms
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > C: a second writer on the same database (what a second process would be) > the second writer holds an uncommitted change of one holder WITHOUT the chain lock, a disable held: the same lock point; the server's demotion of the other waits, then answers 409 on the committed rows 17ms
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > C: a second writer on the same database (what a second process would be) > two units at the lock point: while a second writer HOLDS the lock point and has changed nothing yet, the server's unit waits AT it: the roles are not read and nothing is written before the lock is its own 23ms
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > C: a second writer on the same database (what a second process would be) > the same for a disable by the server: it waits, then 409, and ends no session 17ms
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > C: a second writer on the same database (what a second process would be) > a second writer that ROLLS BACK takes nobody away: the server's demotion waits, then answers 200 19ms
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > C: a second writer on the same database (what a second process would be) > two enables of ONE operator: while a second writer holds an uncommitted enable of it, the server's enable waits at its row lock, then finds the operator enabled: 200, nothing written 17ms
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > C: a second writer on the same database (what a second process would be) > an enable takes no lock on the other rows: it is not held up by a second writer that holds another operator's row 11ms
+stdout | src/modules/admin/__tests__/last-admin.db.test.ts > D: two instances on ONE database, each with its own pipeline > two demotions, one through each instance, 15 rounds: every round one 200 and one 409 LAST_ADMIN; only the database orders the two units
+[w33] two instances on one database, two demotions: 15 rounds, 15 x (one 200, one 409 LAST_ADMIN); the main instance won 8, the lane 7; two successes: 0
+ ✓ |db| src/modules/admin/__tests__/last-admin.db.test.ts > D: two instances on ONE database, each with its own pipeline > two demotions, one through each instance, 15 rounds: every round one 200 and one 409 LAST_ADMIN; only the database orders the two units 359ms
+ ✓ |db| src/modules/admin/__tests__/status.db.test.ts > AC-B-20, SR-12: disabling a user ends the sessions in the same unit; the next request answers 401, the next sign-in the generic 401, and USER_DISABLED is written > a user with a web session, a device session and biometric tokens is disabled: one unit, one row, the publications after the commit 239ms
+ ✓ |db| src/modules/admin/__tests__/status.db.test.ts > AC-B-20, SR-12: disabling a user ends the sessions in the same unit; the next request answers 401, the next sign-in the generic 401, and USER_DISABLED is written > a user without a session is disabled: 200, sessionsEnded 0, and no session.ended publication 13ms
+ ✓ |db| src/modules/admin/__tests__/status.db.test.ts > AC-B-20, SR-12: disabling a user ends the sessions in the same unit; the next request answers 401, the next sign-in the generic 401, and USER_DISABLED is written > already disabled: 200 with the operator, and NOTHING else: no row, no publication, no changed time 17ms
+ ✓ |db| src/modules/admin/__tests__/status.db.test.ts > AC-B-20, SR-12: disabling a user ends the sessions in the same unit; the next request answers 401, the next sign-in the generic 401, and USER_DISABLED is written > 404, 422, 400, 401 and 403: each valid against the contract, and nothing changed 73ms
+ ✓ |db| src/modules/admin/__tests__/status.db.test.ts > AC-B-21, RB-8: disabling the last enabled SUPERVISOR answers 409 LAST_ADMIN and changes nothing > the only SUPERVISOR cannot disable itself: 409, valid against the contract; no session is ended, no token revoked, no row, no publication 20ms
+ ✓ |db| src/modules/admin/__tests__/status.db.test.ts > AC-B-21, RB-8: disabling the last enabled SUPERVISOR answers 409 LAST_ADMIN and changes nothing > a second SUPERVISOR that is disabled does not count: still 409; an INVESTIGATOR or a TECHNICIAN can always be disabled 13ms
+ ✓ |db| src/modules/admin/__tests__/status.db.test.ts > AC-B-21, RB-8: disabling the last enabled SUPERVISOR answers 409 LAST_ADMIN and changes nothing > with a second ENABLED SUPERVISOR the first may be disabled by the second, who is then the last 109ms
+ ✓ |db| src/modules/admin/__tests__/status.db.test.ts > an operator disabling the OWN account: allowed unless it is the last administrator > a SUPERVISOR beside another one disables itself: 200 with the operator; its own sessions are ended by its own request, and the row names it as actor and as target 88ms
+ ✓ |db| src/modules/admin/__tests__/status.db.test.ts > operation 13 enableUser > 200: a disabled operator is enabled; USER_ENABLED is written; the operator can sign in again, and the sessions that were ended stay ended 174ms
+ ✓ |db| src/modules/admin/__tests__/status.db.test.ts > operation 13 enableUser > already enabled: 200 with the operator, and NOTHING else 13ms
+ ✓ |db| src/modules/admin/__tests__/status.db.test.ts > operation 13 enableUser > 404, 422, 400, 401 and 403: each valid against the contract, and nothing changed 57ms
+ ✓ |db| src/modules/admin/__tests__/status.db.test.ts > no password handling: operations 11 to 14 define none > a role change, a disable and an enable leave every credential row as it was 53ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > operation 11 listUsers > the SUPERVISOR lists every operator in ID order: 200, valid against the contract, equal to what is stored; a read writes nothing 31ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > operation 11 listUsers > counts the sessions that are open: a signed-out session leaves the count, an ended one never comes back 62ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > operation 11 listUsers > a session on a paired device lists too, when its operator holds the permission 7ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > operation 11 listUsers > refusals are the guard's: nobody without a session (401, no row); a role without USER_ADMIN (403 NOT_PERMITTED with ONE ACCESS_DENIED row) 20ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > operation 12 assignUserRole > 200: the role is changed in one unit; ROLE_CHANGED names actor, target, old and new role; the sessions stay; the publications leave after the commit in order; the headers carry the revision that holds the effect 34ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > operation 12 assignUserRole > a reason that is empty after trimming is no reason: the row has no such key; no reason at all is the same 20ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > operation 12 assignUserRole > the role the operator already has: 200 with the operator, and NOTHING else: no row, no publication, no changed time; the headers carry the current revision 14ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > operation 12 assignUserRole > 404: no operator has this ID; valid against the contract; nothing changed 13ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > operation 12 assignUserRole > 422 and 400 through the real stages: a bad body, a malformed ID and a credential-shaped reason are refused before any unit; nothing changed 17ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > operation 12 assignUserRole > refusals are the guard's and come before the body is read: 401 without a session; 403 NOT_PERMITTED with ONE ACCESS_DENIED row for a role without USER_ADMIN, also for a body that would fail validation 16ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > operation 12 assignUserRole > the actor of the row is the session: a SUPERVISOR on a paired device writes its operator and its device, whatever the body says 12ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > operation 12 assignUserRole > a disabled operator's role can be changed: the rule counts enabled holders only 7ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > AC-B-21, RB-8: demoting the last enabled SUPERVISOR answers 409 LAST_ADMIN and changes nothing > the only SUPERVISOR cannot be demoted, to either role, by itself: 409, valid against the contract, and nothing at all is different afterwards 15ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > AC-B-21, RB-8: demoting the last enabled SUPERVISOR answers 409 LAST_ADMIN and changes nothing > a second SUPERVISOR that is disabled does not count: still 409 11ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > AC-B-21, RB-8: demoting the last enabled SUPERVISOR answers 409 LAST_ADMIN and changes nothing > with a second ENABLED SUPERVISOR the demotion is allowed, and the one who is left then is the last 14ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > AC-B-21, RB-8: demoting the last enabled SUPERVISOR answers 409 LAST_ADMIN and changes nothing > the rule reads the STORED matrix inside the unit: with USER_ADMIN granted to TECHNICIAN as well, the SUPERVISOR may be demoted while an enabled TECHNICIAN exists 17ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > an operator changing the OWN role: allowed unless it is the last administrator > a SUPERVISOR beside another one demotes itself: 200; the same session keeps running with the new role and has lost user administration 18ms
+ ✓ |db| src/modules/admin/__tests__/users.db.test.ts > AC-B-18, RB-3, SR-13: a role change applies to the NEXT request of the same session, both ways, with no new sign-in > the same web session and the same device session get 403 before, 2xx after, and 403 again after the change back; nothing is called on the guard 45ms
+ ✓ |db| src/modules/admin/__tests__/failures.db.test.ts > a role change whose UPDATE the database refuses > answers 500 INTERNAL_ERROR with no detail; the unit rolled back; nothing of the refused row, of the statement or of the reason is written anywhere; the next unit runs 57ms
+ ✓ |db| src/modules/admin/__tests__/failures.db.test.ts > a disable whose LAST statement before the row the database refuses > ONE unit: the flag that was set and the sessions that were ended are taken back with it; the token hash the server quoted is written nowhere 75ms
+[test:db] bulk fixture: dems_test_step_55_tmdiy7i1_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash d2d9f9e596ed73d2...; digest 953c92ea4c9e1393...; build 327 ms, write 1784 ms, total 2114 ms
+stdout | src/modules/admin/__tests__/bulk.db.test.ts > operation 11 listUsers on 12 operators > answers all twelve in operator ID order, valid against the contract, each equal to its stored row and its open sessions
+[w33] bulk: 12 operators listed; enabled 9, disabled 3; SUPERVISOR 4 (enabled 3); open sessions 37; audit rows 5002
+ ✓ |db| src/modules/admin/__tests__/bulk.db.test.ts > operation 11 listUsers on 12 operators > answers all twelve in operator ID order, valid against the contract, each equal to its stored row and its open sessions 13ms
+ ✓ |db| src/modules/admin/__tests__/bulk.db.test.ts > the last-administrator rule over twelve rows > three enabled SUPERVISORs and one disabled: two may go, by a demotion and by a disable; the third is the last, whatever the disabled one's role 36ms
+ Test Files  6 passed (6)
+      Tests  60 passed (60)
+   Start at  15:15:43
+   Duration  15.26s (tests 65%, import 23%, transform 12%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 1741 ms; 0 remain with the run prefix dems_test_step_55_tmdiy7i1_

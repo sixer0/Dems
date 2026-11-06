@@ -1,0 +1,10 @@
+// W87 scratch: the app's own jest configuration with the transformer above, plus the fs patch as a setup file.
+const base = require('/Users/gsp-budi/Documents/DEMS/apps/mobile/jest.config.js');
+module.exports = {
+  ...base,
+  rootDir: '/Users/gsp-budi/Documents/DEMS/apps/mobile',
+  cacheDirectory: '/Users/gsp-budi/Documents/DEMS/.cache/w87/mut/jest-cache',
+  setupFiles: ['/Users/gsp-budi/Documents/DEMS/.cache/w87/mut/fs-inject.cjs', ...(base.setupFiles ?? [])],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  transform: { '\\.[jt]sx?$': '/Users/gsp-budi/Documents/DEMS/.cache/w87/mut/mobile.transformer.cjs' },
+};

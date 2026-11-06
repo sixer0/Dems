@@ -1,0 +1,12 @@
+10:00:54.463 mark a15 at 10:00:54.463
+10:00:54.511 tap 540,886
+10:00:54.700 slept 2500 ms
+10:00:57.243 declared screen settings-preferences
+10:00:57.293 screencap 17_settings_preferences.png 10:00:57.293..10:00:58.057
+10:00:58.317 ids(15): screen-settings-section@540,1102 ; settings-section-header@540,216 ; settings-section-header-back@95,216 "Back" ; settings-section-preferences@540,1247 ; settings-preferences@540,1247 ; settings-preferences-motion@540,574 ; settings-reduce-motion@933,514 "Reduce motion, off" ; settings-haptics@933,752 "Haptics, on" ; settings-preferences-demo@540,1067 ; settings-presentation-mode@933,1126 "Presentation mode, off" ; settings-preferences-core@540,1605 ; settings-core-link-SIMULATED@224,1562 "Simulated" ; settings-core-link-HEARTBEAT@609,1562 "mock-core heartbeat" ; settings-core-link-LIVE@936,1562 "Live" ; settings-preferences-display@540,2090
+10:01:00.687 swipe 540,1900,540,800 600 ms
+10:01:01.439 slept 1200 ms
+10:01:02.676 screencap 17b_settings_preferences_scrolled.png 10:01:02.676..10:01:03.377
+10:01:03.567 ids(17): screen-settings-section@540,1102 ; settings-section-header@540,216 ; settings-section-header-back@95,216 "Back" ; settings-section-preferences@540,1247 ; settings-preferences@540,1215 ; settings-preferences-demo@540,178 ; settings-preferences-core@540,528 ; settings-core-link-SIMULATED@224,395 "Simulated" ; settings-core-link-HEARTBEAT@609,395 "mock-core heartbeat" ; settings-core-link-LIVE@936,395 "Live" ; settings-preferences-display@540,1262 ; settings-meter-size-card@215,1097 "Standard" ; settings-meter-size-compact@470,1097 "Compact" ; settings-language-en@197,1502 "English" ; settings-language-id@596,1502 "Bahasa Indonesia — later" ; settings-preferences-debug@540,1949 ; settings-performance-overlay@933,2008 "Performance overlay, off"
+10:01:05.802 serverlog since a15 (0):
+    

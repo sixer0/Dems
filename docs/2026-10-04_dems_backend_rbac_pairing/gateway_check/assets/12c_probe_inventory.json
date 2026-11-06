@@ -1,0 +1,171 @@
+{
+  "phase": "probe",
+  "wanted": "EV-20261006-0014",
+  "inventory": {
+    "keys": [
+      "items",
+      "nextCursor"
+    ],
+    "count": 14,
+    "out": [
+      {
+        "id": "EV-20261006-0014",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": [
+          {
+            "action": "RECORDING_STOPPED",
+            "detail": "R-W re-test: interview ended by the supervisor from the web console"
+          }
+        ]
+      },
+      {
+        "id": "EV-20261006-0013",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261006-0012",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261006-0011",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261006-0010",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261006-0009",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261006-0008",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261006-0007",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261005-0006",
+        "status": "RECORDED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": [
+          {
+            "action": "SESSION_INCOMPLETE",
+            "detail": "Power fail; recovered"
+          }
+        ]
+      },
+      {
+        "id": "EV-20261005-0005",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261005-0004",
+        "status": "EXPORTED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": [
+          {
+            "action": "EXPORTED",
+            "detail": "Case file transfer (simulated)"
+          }
+        ]
+      },
+      {
+        "id": "EV-20261005-0003",
+        "status": "UNDER_REVIEW",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261004-0002",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261004-0001",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      }
+    ]
+  },
+  "target": "EV-20261006-0014",
+  "exceptions": [],
+  "blocked": []
+}

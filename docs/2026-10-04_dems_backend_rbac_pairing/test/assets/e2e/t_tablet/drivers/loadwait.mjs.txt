@@ -1,0 +1,7 @@
+// Wait until the 1-minute load average is below the limit (default 14); print what was waited.
+import os from 'node:os'
+const limit = Number(process.argv[2] ?? 14), maxS = Number(process.argv[3] ?? 540)
+const t = Date.now()
+let l = os.loadavg()
+while (l[0] > limit && (Date.now() - t) / 1000 < maxS) { await new Promise((r) => setTimeout(r, 10000)); l = os.loadavg() }
+console.log(`${new Date().toTimeString().slice(0, 8)} waited ${Math.round((Date.now() - t) / 1000)} s; load ${l.map((x) => x.toFixed(2)).join(' ')} (limit ${limit})`)

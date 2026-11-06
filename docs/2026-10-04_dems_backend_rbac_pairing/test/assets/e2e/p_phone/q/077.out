@@ -1,0 +1,22 @@
+10:38:55.636 tap 756,2283
+10:38:55.812 slept 2500 ms
+10:38:58.372 declared screen devices
+10:38:58.419 tapid device-row-CAM-01: not found (or no dump)
+10:39:08.180 slept 2500 ms
+10:39:10.758 declared screen device-detail
+10:39:10.813 swipe 540,1900,540,800 600 ms
+10:39:11.641 slept 1500 ms
+10:39:13.206 screencap 85_sc4_phone_device_detail_technician.png 10:39:13.206..10:39:13.602
+10:39:13.649 ids(0): 
+10:39:16.286 screenshot 85w_sc4_w2_technician_dashboard.png 10:39:16.286..10:39:16.528
+10:39:16.583 js => [["OPR-001","TECHNICIAN"],["OPR-002","SUPERVISOR"],["OPR-003","TECHNICIAN"]]
+10:39:16.642 press ur-actions-OPR-001 ok at 10:39:16.663
+10:39:16.762 wait ur-change-role-OPR-001 present: 1 ms (at 10:39:16.763)
+10:39:16.812 slept 300 ms
+10:39:17.163 press ur-change-role-OPR-001 ok at 10:39:17.266
+10:39:17.338 wait ur-role-dialog present: 0 ms (at 10:39:17.338)
+10:39:17.400 slept 600 ms
+10:39:18.054 js => true
+10:39:18.120 slept 400 ms
+10:39:18.581 js => "Change roleAKP Budi Santoso (budi.santoso)RoleInvestigatorSupervisorTechnician · Current roleWhat changesGainsStart sessionsAdd notes and markersLosesManage devicesMaintenance and updatesThe operator stays signed in. The change applies at once on the web console and on paired devices.Reason (optiona"
+10:39:18.646 screenshot 86_sc4_w1_role_dialog_back_to_investigator.png 10:39:18.646..10:39:18.865

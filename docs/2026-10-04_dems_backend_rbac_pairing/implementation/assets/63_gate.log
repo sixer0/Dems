@@ -1,0 +1,52 @@
+## core-web suite, first run 22:32:26 WIB (exit 1: W64's file)
+ FAIL  src/test/live-session-new-create.test.tsx > A3 createSession (awaited, CL-26) > success: the create is sent once with the form, then the pre-check; step 2 shows the Core's session
+ FAIL  src/test/live-session-new-create.test.tsx > D-2 cancel, then createSession (a changed form on a setup session) > success: create 409, cancel, create, pre-check, in that order; step 2 shows the new session
+ FAIL  src/test/live-session-new-create.test.tsx > D-2 cancel, then createSession (a changed form on a setup session) > refusal: the cancel is refused (403): the denied toast, no second create, step 1 with the form kept
+ FAIL  src/test/live-session-new-create.test.tsx > D-2 cancel, then createSession (a changed form on a setup session) > outage: the cancel is not answered: the offline toast, no second create
+ Test Files  1 failed | 58 passed (59)
+      Tests  4 failed | 810 passed (814)
+   Duration  80.91s (tests 73%, import 12%, environment 9%, setup 3%, transform 2%)
+
+## core-web suite, final run 22:39:46 WIB
+ Test Files  62 passed (62)
+      Tests  849 passed (849)
+   Duration  87.40s (tests 68%, import 16%, environment 11%, setup 4%, transform 2%)
+
+## shared suite 22:34:00 WIB
+ Test Files  68 passed (68)
+      Tests  1814 passed (1814)
+   Duration  11.99s (tests 60%, import 30%, transform 9%, worker 1%)
+
+## 2026-10-05 22:34:30 WIB CLG (a): the folder's existing test files against acaff20
+$ git diff --stat acaff20 -- apps/core-web/src/features/dashboard/__tests__
+ .../src/features/dashboard/__tests__/dashboard.test.tsx     | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+$ git diff --stat acaff20 -- apps/core-web/src/features/dashboard/__tests__/dashboard-model.test.tsx | wc -l
+       0
+$ git hash-object apps/core-web/src/features/dashboard/__tests__/dashboard.test.tsx   (W01b state, D31: 1ab07579e928b9b545003899ec3265d4b8b6c762)
+1ab07579e928b9b545003899ec3265d4b8b6c762
+$ git diff --stat b90a3c6 -- apps/core-web/src/features/dashboard/__tests__ | wc -l
+       0
+
+## CLG (c): production files of the folder (no __tests__)
+$ grep -rn --include=*.ts --include=*.tsx -e useSimActions -e "\.actions" apps/core-web/src/features/dashboard --exclude-dir=__tests__ | grep -v "common\.actions\." ; echo exit
+grep exit=1 (1 = nothing found)
+$ grep -rn "useCoreActions()\|settle(() => actions.deviceCommand" apps/core-web/src/features/dashboard/devices-panel.tsx
+99: * LB-7, LB-10): the command goes through `useCoreActions()` and `settle`, so it reads the same in
+113:  const actions = useCoreActions()
+132:      settle(() => actions.deviceCommand(deviceId, command), {
+
+## Write paths: everything this row changed or created
+$ git status --short -- apps/core-web/src/features/dashboard packages/shared/src/i18n/en/dashboard.ts apps/core-web/src/test/live-dashboard-*
+ M apps/core-web/src/features/dashboard/active-session-panel.tsx
+ M apps/core-web/src/features/dashboard/devices-panel.tsx
+ M apps/core-web/src/features/dashboard/panel-boundary.tsx
+ M apps/core-web/src/features/dashboard/sim-adapter.ts
+ M packages/shared/src/i18n/en/dashboard.ts
+?? apps/core-web/src/features/dashboard/report.ts
+?? apps/core-web/src/test/live-dashboard-devices.test.tsx
+?? apps/core-web/src/test/live-dashboard-page.test.tsx
+$ git diff acaff20 -- packages/shared/src/i18n/en/dashboard.ts | grep -c "^-[^-]"   (additive: 0)
+0
+$ git status --short -- apps/core-web/src/runtime apps/core-web/src/lib apps/core-web/src/components/shell apps/core-web/src/routes apps/core-web/vite.config.ts apps/core-web/src/test/routes.test.tsx apps/core-web/src/test/sim-fetch.test.ts apps/core-web/src/features/storage/__tests__/storage-page.test.tsx
+(no output: none of rule 9's paths is changed in the tree)

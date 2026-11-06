@@ -1,0 +1,15 @@
+# montage: python3 m.py out.png w file1 file2 ... (files relative to the retest assets dir unless absolute)
+import sys, os
+from PIL import Image, ImageDraw
+A='/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/test/assets/retest/p_phone/'
+out=sys.argv[1]; w=int(sys.argv[2]); files=sys.argv[3:]
+ims=[]
+for f in files:
+  p=f if f.startswith('/') else A+f+('' if f.endswith('.png') else '.png')
+  im=Image.open(p).convert('RGB'); h=int(im.height*w/im.width); im=im.resize((w,h))
+  d=ImageDraw.Draw(im); d.rectangle((0,0,w,18),fill=(0,0,0)); d.text((3,3),os.path.basename(p)[:60],fill=(255,255,0))
+  ims.append(im)
+cols=min(4,len(ims)); rows=(len(ims)+cols-1)//cols; H=max(i.height for i in ims)
+sheet=Image.new('RGB',(cols*w+(cols-1)*6,rows*H+(rows-1)*6),(80,80,80))
+for i,im in enumerate(ims): sheet.paste(im,((i%cols)*(w+6),(i//cols)*(H+6)))
+sheet.save(out)

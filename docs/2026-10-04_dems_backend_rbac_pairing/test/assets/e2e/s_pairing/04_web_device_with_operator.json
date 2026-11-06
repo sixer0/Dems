@@ -1,0 +1,140 @@
+{
+  "at": "09:55:56.417 (epoch 1791255356.417)",
+  "waited": null,
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "table",
+    "rows": [
+      {
+        "id": "DEV-0001",
+        "state": "Paired",
+        "online": "",
+        "operator": "—",
+        "lastSeen": "6 min ago",
+        "revokeShown": true
+      }
+    ],
+    "summary": {
+      "paired": "1",
+      "online": "1",
+      "text": "1 paired · 1 online1 paired · 1 online"
+    },
+    "toasts": []
+  },
+  "screenshot": {
+    "file": "04_web_device_with_operator.png",
+    "at": "09:55:56.399 (epoch 1791255356.399)"
+  },
+  "audit": {
+    "AUTH_SUCCESS": {
+      "status": 200,
+      "total": 103,
+      "rows": [
+        {
+          "seq": 103,
+          "id": "AUD-000103",
+          "at": "2026-10-06T02:55:14.685Z",
+          "atMs": 1791255314685,
+          "type": "AUTH_SUCCESS",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed in (AKP Budi Santoso) via password",
+          "details": {
+            "method": "PASSWORD"
+          }
+        },
+        {
+          "seq": 102,
+          "id": "AUD-000102",
+          "at": "2026-10-06T02:55:09.765Z",
+          "atMs": 1791255309765,
+          "type": "AUTH_SUCCESS",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": "DEV-0001",
+          "sessionId": null,
+          "message": "Operator signed in (AKP Budi Santoso) via password",
+          "details": {
+            "method": "PASSWORD"
+          }
+        },
+        {
+          "seq": 96,
+          "id": "AUD-000096",
+          "at": "2026-10-06T02:50:24.713Z",
+          "atMs": 1791255024713,
+          "type": "AUTH_SUCCESS",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed in (AKP Budi Santoso) via password",
+          "details": {
+            "method": "PASSWORD"
+          }
+        }
+      ]
+    },
+    "PAIRING_SUCCESS": {
+      "status": 200,
+      "total": 103,
+      "rows": [
+        {
+          "seq": 94,
+          "id": "AUD-000094",
+          "at": "2026-10-06T02:49:08.369Z",
+          "atMs": 1791254948369,
+          "type": "PAIRING_SUCCESS",
+          "category": "PAIRING",
+          "severity": "INFO",
+          "actorId": null,
+          "deviceId": "DEV-0001",
+          "sessionId": null,
+          "message": "Device DEV-0001 paired with DEMS-IR-01",
+          "details": {
+            "codeId": "PCD-000001",
+            "coreDeviceId": "DEMS-IR-01",
+            "certificateFingerprint": "76:0B:E9:29:6D:40:F7:D8:93:20:FD:C6:5F:76:7A:4B"
+          }
+        }
+      ]
+    }
+  },
+  "network": {
+    "api": [
+      {
+        "sent": "09:55:56.400 (epoch 1791255356.400)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "09:55:56.408 (epoch 1791255356.408)"
+      },
+      {
+        "sent": "09:55:56.410 (epoch 1791255356.410)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "09:55:56.417 (epoch 1791255356.417)"
+      }
+    ],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [],
+    "console": []
+  }
+}

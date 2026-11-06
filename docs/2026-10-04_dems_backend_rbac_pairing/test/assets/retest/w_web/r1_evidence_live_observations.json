@@ -1,0 +1,395 @@
+{
+ "signedIn": {
+  "signedIn": true
+ },
+ "coreBefore": {
+  "status": 200,
+  "body": {
+   "status": "SEALED",
+   "sessionId": "SES-20261006-0022",
+   "caseNumber": "LP/2026/1005-0004",
+   "verification": {
+    "status": "PASS",
+    "at": "2026-10-06T05:03:06.900Z"
+   },
+   "lastVerifyCustody": {
+    "action": "VERIFIED",
+    "actorId": "OPR-002",
+    "at": "2026-10-06T05:03:06.900Z"
+   },
+   "custodyCount": 5,
+   "media": {
+    "source": "DEMO_PACKAGE",
+    "packageSuffix": "0012"
+   }
+  }
+ },
+ "cardOnOpen": {
+  "card": {
+   "verdict": "PASS",
+   "verdictText": "PASS",
+   "source": "record",
+   "label": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody.",
+   "last": "Last verification PASS · 6 Oct 2026 12:03:06 UTC+07:00 · AKP Andi Pratama",
+   "button": "Verify again",
+   "storedHint": "Verify again to see each check."
+  },
+  "facts": {
+   "href": "/evidence/EV-20261006-0012?tab=integrity",
+   "title": "DEMS Edge Client · Core Console",
+   "page": [
+    "page-evidence-detail",
+    "page-header"
+   ],
+   "mode": "LIVE",
+   "h1": "EVIDENCE DETAILS\nEVIDENCE DETAILS",
+   "toasts": [],
+   "dialogs": [],
+   "alerts": [],
+   "scrollWidth": 1440,
+   "clientWidth": 1440
+  }
+ },
+ "cardAfterReload": {
+  "card": {
+   "verdict": "PASS",
+   "verdictText": "PASS",
+   "source": "record",
+   "label": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody.",
+   "last": "Last verification PASS · 6 Oct 2026 12:03:06 UTC+07:00 · AKP Andi Pratama",
+   "button": "Verify again",
+   "storedHint": "Verify again to see each check."
+  },
+  "core": {
+   "status": 200,
+   "body": {
+    "status": "SEALED",
+    "sessionId": "SES-20261006-0022",
+    "caseNumber": "LP/2026/1005-0004",
+    "verification": {
+     "status": "PASS",
+     "at": "2026-10-06T05:03:06.900Z"
+    },
+    "lastVerifyCustody": {
+     "action": "VERIFIED",
+     "actorId": "OPR-002",
+     "at": "2026-10-06T05:03:06.900Z"
+    },
+    "custodyCount": 5,
+    "media": {
+     "source": "DEMO_PACKAGE",
+     "packageSuffix": "0012"
+    }
+   }
+  }
+ },
+ "cardAfterVerify": {
+  "press": {
+   "found": true,
+   "disabled": false,
+   "hit": true
+  },
+  "lineMoved": true,
+  "lastBefore": "Last verification PASS · 6 Oct 2026 12:03:06 UTC+07:00 · AKP Andi Pratama",
+  "card": {
+   "verdict": "PASS",
+   "verdictText": "PASS",
+   "source": "run",
+   "label": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody.",
+   "last": "Last verification PASS · 6 Oct 2026 12:30:11 UTC+07:00 · AKP Andi Pratama",
+   "button": "Verify again",
+   "storedHint": null
+  },
+  "core": {
+   "status": 200,
+   "body": {
+    "status": "SEALED",
+    "sessionId": "SES-20261006-0022",
+    "caseNumber": "LP/2026/1005-0004",
+    "verification": {
+     "status": "PASS",
+     "at": "2026-10-06T05:30:11.861Z"
+    },
+    "lastVerifyCustody": {
+     "action": "VERIFIED",
+     "actorId": "OPR-002",
+     "at": "2026-10-06T05:30:11.861Z"
+    },
+    "custodyCount": 6,
+    "media": {
+     "source": "DEMO_PACKAGE",
+     "packageSuffix": "0012"
+    }
+   }
+  },
+  "toasts": [
+   "Integrity verified: EV-20261006-0012 PASS"
+  ]
+ },
+ "auditVerified": {
+  "status": 200,
+  "body": {
+   "total": 129,
+   "rows": [
+    {
+     "seq": 129,
+     "at": "2026-10-06T05:30:11.861Z",
+     "type": "EVIDENCE_VERIFIED",
+     "severity": "INFO",
+     "actorId": "OPR-002",
+     "sessionId": null,
+     "evidenceId": "EV-20261006-0012",
+     "deviceId": null,
+     "message": "Evidence EV-20261006-0012 verified: every hash matches"
+    },
+    {
+     "seq": 120,
+     "at": "2026-10-06T05:03:06.900Z",
+     "type": "EVIDENCE_VERIFIED",
+     "severity": "INFO",
+     "actorId": "OPR-002",
+     "sessionId": null,
+     "evidenceId": "EV-20261006-0012",
+     "deviceId": null,
+     "message": "Evidence EV-20261006-0012 verified: every hash matches"
+    }
+   ]
+  }
+ },
+ "cardAfterVerifyReload": {
+  "card": {
+   "verdict": "PASS",
+   "verdictText": "PASS",
+   "source": "record",
+   "label": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody.",
+   "last": "Last verification PASS · 6 Oct 2026 12:30:11 UTC+07:00 · AKP Andi Pratama",
+   "button": "Verify again",
+   "storedHint": "Verify again to see each check."
+  },
+  "core": {
+   "status": 200,
+   "body": {
+    "status": "SEALED",
+    "sessionId": "SES-20261006-0022",
+    "caseNumber": "LP/2026/1005-0004",
+    "verification": {
+     "status": "PASS",
+     "at": "2026-10-06T05:30:11.861Z"
+    },
+    "lastVerifyCustody": {
+     "action": "VERIFIED",
+     "actorId": "OPR-002",
+     "at": "2026-10-06T05:30:11.861Z"
+    },
+    "custodyCount": 6,
+    "media": {
+     "source": "DEMO_PACKAGE",
+     "packageSuffix": "0012"
+    }
+   }
+  }
+ },
+ "custodyCells": [
+  {
+   "lines": [
+    "6 Oct 2026",
+    "12:30:11"
+   ],
+   "tokenOk": true,
+   "row": [
+    "6 Oct 2026 12:30:11",
+    "VERIFIED",
+    "AKP Andi Pratama",
+    "—"
+   ]
+  },
+  {
+   "lines": [
+    "6 Oct 2026",
+    "12:03:06"
+   ],
+   "tokenOk": true,
+   "row": [
+    "6 Oct 2026 12:03:06",
+    "VERIFIED",
+    "AKP Andi Pratama",
+    "—"
+   ]
+  },
+  {
+   "lines": [
+    "6 Oct 2026",
+    "11:57:47"
+   ],
+   "tokenOk": true,
+   "row": [
+    "6 Oct 2026 11:57:47",
+    "VERIFIED",
+    "AKP Andi Pratama",
+    "—"
+   ]
+  },
+  {
+   "lines": [
+    "6 Oct 2026",
+    "11:27:23"
+   ],
+   "tokenOk": true,
+   "row": [
+    "6 Oct 2026 11:27:23",
+    "VERIFIED",
+    "AKP Andi Pratama",
+    "—"
+   ]
+  },
+  {
+   "lines": [
+    "6 Oct 2026",
+    "09:34:13"
+   ],
+   "tokenOk": true,
+   "row": [
+    "6 Oct 2026 09:34:13",
+    "SEALED",
+    "System",
+    "—"
+   ]
+  },
+  {
+   "lines": [
+    "6 Oct 2026",
+    "09:14:49"
+   ],
+   "tokenOk": true,
+   "row": [
+    "6 Oct 2026 09:14:49",
+    "RECORDING_STARTED",
+    "AKP Andi Pratama",
+    "—"
+   ]
+  }
+ ],
+ "metadataLive": {
+  "dataPackage": "foreign",
+  "packageId": "EV-20261001-0012",
+  "notice": "The bundled DEMO package is another record This item plays the demo media of the bundled package EV-20261001-0012 (session SES-20261001-0022, recorded 1 Oct 2026). Its documents describe that package, not this item. This item's metadata is the Core record.",
+  "headings": [
+   "RECORD OF THIS ITEM CORE RECORD",
+   "BUNDLED DEMO PACKAGE · EV-20261001-0012 DEMO"
+  ],
+  "sections": [
+   {
+    "ariaLabel": "Record of this item",
+    "testid": null,
+    "top": 547,
+    "left": 252
+   },
+   {
+    "ariaLabel": "Bundled DEMO package · EV-20261001-0012",
+    "testid": "evidence-foreign-documents",
+    "top": 547,
+    "left": 837
+   }
+  ],
+  "firstJsonIds": [
+   "EV-20261001-0012",
+   "EV-20261006-0012",
+   "SES-20261006-0022",
+   "LP/2026/1005-0004"
+  ],
+  "firstJsonHasRecordCore": true,
+  "manifestFields": false,
+  "docs": [
+   "manifest.json",
+   "metadata.json",
+   "signature.sig",
+   "audit extract"
+  ],
+  "header": "Sealed DEMO package EV-20261006-0012 6 Oct 2026 09:14:49 – 09:34:04 UTC+07:00 Case Number LP/2026/1005-0004 Subject Indah Permata Saksi Investigator AKP Andi Pratama Location Interview Room 1 Duration 00:19:15 File Size 2.6 GB Status Sealed Session SES-20261006-0022 Play Export More",
+  "packageChip": "demo"
+ },
+ "signOut": {
+  "menu": [
+   {
+    "text": "Profile AKP Andi Pratama",
+    "disabled": true
+   },
+   {
+    "text": "Role: Supervisor",
+    "disabled": true
+   },
+   {
+    "text": "Lock console",
+    "disabled": false
+   },
+   {
+    "text": "Sign out",
+    "disabled": false
+   }
+  ],
+  "clicked": true,
+  "login": true,
+  "state": "signed-out",
+  "alert": "You have been signed out."
+ },
+ "consoleNetwork": {
+  "Login": {
+   "requests": 442,
+   "origins": {
+    "http://127.0.0.1:5178": 441,
+    "blob:": 1
+   },
+   "ws": [
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws",
+    "ws://127.0.0.1:5178/ws"
+   ],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [
+    "error network: Failed to load resource: the server responded with a status of 401 (Unauthorized) (/api/v1/auth/session)"
+   ],
+   "responses4xx": [
+    "401 GET /api/v1/auth/session"
+   ],
+   "blocked": []
+  },
+  "Evidence detail": {
+   "requests": 1449,
+   "origins": {
+    "http://127.0.0.1:5178": 1449
+   },
+   "ws": [
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws",
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws",
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws"
+   ],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Sign out": {
+   "requests": 31,
+   "origins": {
+    "http://127.0.0.1:5178": 30,
+    "blob:": 1
+   },
+   "ws": [
+    "ws://127.0.0.1:5178/ws"
+   ],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  }
+ }
+}

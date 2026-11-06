@@ -1,0 +1,4 @@
+09:55:22.532 swipe 540,1900,540,900 600 ms
+09:55:23.497 slept 1500 ms
+09:55:25.282 screencap 09c_evidence_detail_track_hashes.png 09:55:25.282..09:55:26.226
+09:55:26.560 ids(9): evidence-track-VIDEO-01@540,1087 ; evidence-track-VIDEO-01-stored@619,1160 "—" ; evidence-track-VIDEO-02@540,1355 ; evidence-track-VIDEO-02-stored@619,1428 "—" ; evidence-track-AUDIO-01@540,1624 ; evidence-track-AUDIO-01-stored@619,1697 "—" ; evidence-track-AUDIO-02@540,1892 ; evidence-track-AUDIO-02-stored@619,1965 "—" ; evidence-manifest-hash@540,2072 "f45dc4dd32e79dcb12738c90c483e1c828c4c7a66278d24dcbb1dc584f84dbc9"

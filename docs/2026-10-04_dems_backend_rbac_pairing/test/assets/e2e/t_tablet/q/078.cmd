@@ -1,0 +1,27 @@
+mark B6 tablet stop probe start
+sleep 1500
+shot B17_stop_probe_01
+shot B17_stop_probe_02
+shot B17_stop_probe_03
+shot B17_stop_probe_04
+shot B17_stop_probe_05
+shot B17_stop_probe_06
+shot B17_stop_probe_07
+shot B17_stop_probe_08
+shot B17_stop_probe_09
+shot B17_stop_probe_10
+shot B17_stop_probe_11
+shot B17_stop_probe_12
+shot B17_stop_probe_13
+shot B17_stop_probe_14
+shot B17_stop_probe_15
+shot B17_stop_probe_16
+shot B17_stop_probe_17
+shot B17_stop_probe_18
+shot B17_stop_probe_19
+shot B17_stop_probe_20
+shot B17_stop_probe_21
+shot B17_stop_probe_22
+shot B17_stop_probe_23
+shot B17_stop_probe_24
+noshot

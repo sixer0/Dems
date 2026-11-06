@@ -1,0 +1,147 @@
+// Fix pass F-M7 (review row 88, R88-09 (2); decision D178) ON POSTGRESQL: the guard's ONE statement
+// names a session that recorded from a production-class source and is neither sealed nor
+// terminally closed - and only such a session. The unit file `real-evidence-m7.test.ts` holds the
+// rule; this file holds that the SQL says the same on the real tables, as the routine asks it.
+//
+// A throw-away database of this file (never `dems_demo`, never a lane). No reset is run here.
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { useFurtherDatabase, useTestDatabase } from '../../../../test/helpers/db';
+import { assertNoRealSealedEvidence, findRealSealedEvidence, REAL_SEALED_EVIDENCE_STATEMENT, UNSEALED_FAKE_SOURCE, removeUnsealedFakeRecordings, type RealSealedEvidenceRow } from '../real-evidence';
+
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
+
+const db = useTestDatabase({ template: 'seed', slug: 'm7rst' });
+/** This file's database under a second name: a describe that keeps a further clone of its own calls that one `db`. */
+const home = db;
+const storeRoot = join(mkdtempSync(join(tmpdir(), 'dems-fm7-guard-')), 'never-made');
+afterAll(() => rmSync(join(storeRoot, '..'), { recursive: true, force: true }));
+
+const PRODUCTION = 'SES-20261010-9001';
+const DEVELOPMENT = 'SES-20261010-9002';
+const MIXED = 'SES-20261010-9003';
+let cameras: string[] = [];
+let microphones: string[] = [];
+
+// D61 (2026-11-04): a session's start record is EIGHT rows - four video tracks and four numbered
+// microphone channels (`SOURCE_ROWS_PER_SESSION`); the roles died with migration 0040.
+async function sources(sessionId: string, kinds: readonly string[]): Promise<void> {
+  const slots = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'];
+  const devices = [cameras[0], cameras[1], cameras[2], cameras[3], microphones[0], microphones[1], microphones[2], microphones[3]];
+  for (const [index, kind] of kinds.entries()) {
+    await db.ownerPool().query('INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at) VALUES ($1, $2, $3, $4, 1791600000000)', [sessionId, slots[index], devices[index], kind]);
+  }
+}
+const facts = () => findRealSealedEvidence(db.ownerPool(), { database: db.name, storeRoot });
+
+beforeAll(async () => {
+  const owner = db.ownerPool();
+  cameras = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'CAM-%' ORDER BY id LIMIT 4")).rows.map((row) => row.id); // D60: four built-in cameras
+  microphones = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'MIC-%' ORDER BY id LIMIT 4")).rows.map((row) => row.id); // D61: four built-in channels
+  expect([cameras.length, microphones.length]).toEqual([4, 4]);
+});
+
+describe('R88-09 (2) on the real tables', () => {
+  it('CONTROL: the seeded database, with no store, names no unsealed session', async () => {
+    expect(await facts()).toMatchObject({ unsealedSessions: [], storeUnreadable: null, quarantinedSessions: [] });
+  });
+
+  it('a session with eight production source rows, no sealed item and no history entry BLOCKS and is named; the guard throws', async () => {
+    const before = (await facts()).blocked;
+    await sources(PRODUCTION, ['ONVIF_RTSP', 'ONVIF_RTSP', 'ONVIF_RTSP', 'ONVIF_RTSP', 'USB_AUDIO', 'USB_AUDIO', 'USB_AUDIO', 'USB_AUDIO']); // D60/D61: eight
+    const now = await facts();
+    expect(now).toMatchObject({ blocked: true, unsealedSessions: [PRODUCTION] });
+    expect(now.dbSessions).toContain(PRODUCTION);
+    await expect(assertNoRealSealedEvidence(db.ownerPool(), { database: db.name, storeRoot })).rejects.toMatchObject({ code: 'RESET_BLOCKED_REAL_EVIDENCE', step: 'R-0' });
+    // The same question as the runtime role (the server's pre-flight of operation 75): it may ask it, and reads the same.
+    expect((await findRealSealedEvidence(db.appPool(), { database: db.name, storeRoot })).unsealedSessions).toEqual([PRODUCTION]);
+    expect(typeof before).toBe('boolean');
+  });
+
+  it('CONTROL: eight DEVELOPMENT source rows without an item are not named (R88-10 is their rule); ONE production row among them is (fail closed)', async () => {
+    await sources(DEVELOPMENT, ['FAKE', 'LOCAL_DEVICE', 'FAKE', 'LOCAL_DEVICE', 'FAKE', 'LOCAL_DEVICE', 'FAKE', 'LOCAL_DEVICE']); // D60/D61: eight
+    await sources(MIXED, ['FAKE', 'ONVIF_RTSP', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE']); // D60/D61: eight
+    expect((await facts()).unsealedSessions).toEqual([PRODUCTION, MIXED]);
+  });
+
+  it('CONTROL: a session that is terminally closed (a history entry) is no longer named', async () => {
+    await db.ownerPool().query(
+      `INSERT INTO public.session_history (id, outcome, case_number, subject_name, subject_type, investigator_id, room, profile_id, created_at, started_at, ended_at, duration_ms, size_bytes)
+       SELECT $1, 'INCOMPLETE', 'LP/2026/1010-9001', 'Test Saksi', 'SAKSI', (SELECT id FROM public.operators ORDER BY id LIMIT 1), 'Interview Room 1', 'STANDARD_1080P25', 1791600000000, 1791600001000, 1791600005000, 4000, 0`,
+      [PRODUCTION],
+    );
+    expect((await facts()).unsealedSessions).toEqual([MIXED]);
+  });
+});
+
+// ═══ Moved here from `wave-i-a1-unsealed-fake.db.test.ts` (test-suite consolidation, D233): the cases as they were, under one describe. ═══
+// Fix wave I, driver A1 (re-gate 75 finding G75b-01; ruling D216) ON POSTGRESQL: the third branch of
+// the guard's ONE statement - sessions of exactly eight source rows (D61, 2026-11-04: SOURCE_ROWS_PER_SESSION=8), all generated (FAKE), without a
+// sealed item - says on the real tables what the unit file `package-removal.test.ts` rules,
+// and the two branches before it answer as they did.
+//
+// A throw-away database of this file (never `dems_demo`, never a lane). No reset is run here.
+describe('G75b-01, D216: the guard\'s statement and the unsealed recordings of generated sources', () => {
+  const db = useFurtherDatabase(home, { template: 'seed', slug: 'wia1rst' });
+  const storeRoot = mkdtempSync(join(tmpdir(), 'dems-wia1-guard-'));
+  afterAll(() => rmSync(storeRoot, { recursive: true, force: true }));
+
+  const GENERATED = 'SES-20261010-9101';
+  const LOCAL = 'SES-20261010-9102';
+  const PRODUCTION = 'SES-20261010-9103';
+  const THREE = 'SES-20261010-9104';
+  let cameras: string[] = [];
+  let microphones: string[] = [];
+
+  async function sources(sessionId: string, kinds: readonly string[]): Promise<void> {
+    const slots = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']; // D60/D61 (2026-11-04): the eight slots
+    const devices = [cameras[0], cameras[1], cameras[2], cameras[3], microphones[0], microphones[1], microphones[2], microphones[3]];
+    for (const [index, kind] of kinds.entries()) {
+      await db.ownerPool().query('INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at) VALUES ($1, $2, $3, $4, 1791600000000)', [sessionId, slots[index], devices[index], kind]);
+    }
+  }
+  const folder = (sessionId: string): void => {
+    mkdirSync(join(storeRoot, `SESSION-${sessionId}`), { recursive: true });
+    writeFileSync(join(storeRoot, `SESSION-${sessionId}`, 'VIDEO-01.mp4'), 'generated test picture');
+  };
+  const fakeRows = async (): Promise<string[]> => (await db.ownerPool().query<RealSealedEvidenceRow>(REAL_SEALED_EVIDENCE_STATEMENT)).rows.filter((row) => row.integrity_source === UNSEALED_FAKE_SOURCE).map((row) => row.session_id);
+
+  beforeAll(async () => {
+    const owner = db.ownerPool();
+    cameras = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'CAM-%' ORDER BY id LIMIT 4")).rows.map((row) => row.id); // D60: four built-in cameras
+    microphones = (await owner.query<{ id: string }>("SELECT id FROM public.capture_devices WHERE id LIKE 'MIC-%' ORDER BY id LIMIT 4")).rows.map((row) => row.id); // D61: four built-in channels
+    expect([cameras.length, microphones.length]).toEqual([4, 4]);
+  });
+
+  describe('rules (12) + (13) on the real tables', () => {
+    it('CONTROL: the seeded database names no such session, and the statement runs for the runtime role too', async () => {
+      expect(await fakeRows()).toEqual([]);
+      await expect(db.appPool().query(REAL_SEALED_EVIDENCE_STATEMENT)).resolves.toBeDefined();
+    });
+
+    it('eight FAKE source rows without a sealed item ARE named; LOCAL_DEVICE among them, a production kind among them, and three rows are NOT (negative controls)', async () => {
+      await sources(GENERATED, ['FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE']); // D61: exactly eight generated rows (SOURCE_ROWS_PER_SESSION)
+      await sources(LOCAL, ['FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'LOCAL_DEVICE']);
+      await sources(PRODUCTION, ['FAKE', 'ONVIF_RTSP', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE']);
+      await sources(THREE, ['FAKE', 'FAKE', 'FAKE']);
+      expect(await fakeRows()).toEqual([GENERATED]);
+    });
+
+    it('the store as a failed seal leaves it: every one of the four folders BLOCKS without the word; with the word ONLY the generated one is cleared and removed, the three others still block', async () => {
+      for (const sessionId of [GENERATED, LOCAL, PRODUCTION, THREE]) folder(sessionId);
+      const without = await findRealSealedEvidence(db.ownerPool(), { database: db.name, storeRoot });
+      expect(without).toMatchObject({ blocked: true, unsealedFakeOffered: 1, unsealedFakeFolders: [] });
+      expect(without.unprovablePackages).toEqual([GENERATED, LOCAL, PRODUCTION, THREE].map((sessionId) => `SESSION-${sessionId}`));
+      const withWord = await findRealSealedEvidence(db.ownerPool(), { database: db.name, storeRoot, discardUnsealedFake: true });
+      expect(withWord).toMatchObject({ blocked: true, unsealedFakeFolders: [`SESSION-${GENERATED}`] });
+      expect(withWord.unprovablePackages).toEqual([LOCAL, PRODUCTION, THREE].map((sessionId) => `SESSION-${sessionId}`));
+      // The production recording that is not sealed is still named by rule (10).
+      expect(withWord.unsealedSessions).toEqual([PRODUCTION]);
+      // Blocked: nothing is removed.
+      expect(removeUnsealedFakeRecordings(withWord)).toEqual({ removed: [], kept: [] });
+      for (const sessionId of [LOCAL, PRODUCTION, THREE]) rmSync(join(storeRoot, `SESSION-${sessionId}`), { recursive: true });
+    });
+  });
+});

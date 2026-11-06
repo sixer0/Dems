@@ -1,0 +1,134 @@
+// R-W Part 1: E2E-W1-4 SIMULATED half (FX-W2 ruling: in SIMULATED mode the bundled package is the item's own
+// metadata, no 'another record' notice). Switch to SIMULATED with the Login Data mode selector, sign in to the
+// in-browser simulator, open item 0012's Metadata tab, then switch back to LIVE through the shell's mode indicator.
+// Nothing is sent to the Core except the Live Login page's own reads before the switch.
+import { launch, openPage, signIn, makeRun, writeEvents, sleep } from './rt_lib.mjs'
+
+const R = makeRun('r1_simulated_mockcore')
+process.on('unhandledRejection', (e) => R.log(`unhandled: ${e?.message ?? e}`))
+const browser = await launch(R.log)
+let page
+const stored = () => page.eval(`localStorage.getItem('dems.core.mode.v1')`, 'stored')
+const selectorState = () => page.eval(`(() => { const s = document.querySelector('[data-testid="login-mode-selector"]'); if (!s) return null; return { dataMode: s.getAttribute('data-mode'), radios: [...s.querySelectorAll('[role="radio"], input[type="radio"]')].map((r) => (r.getAttribute('aria-label') ?? r.closest('label')?.innerText ?? r.value ?? '').replace(/\\s+/g, ' ').trim() + '=' + (r.getAttribute('aria-checked') ?? String(r.checked))) } })()`, 'selector')
+try {
+  page = await openPage(browser.cdp, R.log)
+  await page.viewport(1440, 900)
+  page.setLabel('Login (Live)')
+  await page.goto('/login', 2500)
+  await page.waitFor('login-mode-selector', true, 15000)
+  R.record('loginLive', { selector: await selectorState(), stored: await stored(), coreMode: await page.attr('page-login', 'data-core-mode') })
+  await page.shot('p1_w1_4_simok_01_login_live_selector.png')
+
+  // Login Data mode selector -> SIMULATED -> confirm
+  await page.click('login-mode-SIMULATED')
+  await page.waitFor('mode-switch-dialog', true, 8000)
+  await sleep(500)
+  R.record('switchDialogToSim', await page.text('mode-switch-dialog', 400))
+  await page.shot('p1_w1_4_simok_02_switch_to_simulated_dialog.png')
+  await page.click('mode-switch-confirm')
+  await sleep(1500)
+  await page.waitForFn('document.readyState === "complete"', 20000)
+  page.setLabel('Login (Simulated)')
+  await page.waitFor('page-login', true, 20000)
+  await sleep(2500)
+  R.record('loginSimulated', { selector: await selectorState(), stored: await stored(), coreMode: await page.attr('page-login', 'data-core-mode'), facts: await page.facts() })
+  await page.shot('p1_w1_4_simok_03_login_simulated.png')
+
+  const submitDisabled = await page.eval(`(() => { const b = document.querySelector('[data-testid="login-submit"]'); return b ? (b.disabled || b.hasAttribute('disabled') || b.getAttribute('aria-disabled') === 'true') : null })()`, 'submit')
+  R.record('simulatedSignInGate', { submitDisabled, alert: await page.text('login-alert', 300), strip: await page.eval(`(document.querySelector('[data-testid="page-login"]')?.innerText ?? '').replace(/\\s+/g, ' ').match(/(CORE LINK[^·]*|MODE[^·]*)/g)`, 'strip') })
+  let simSignedIn = false
+  if (!submitDisabled) simSignedIn = await signIn(page, 'andi.pratama', R.log)
+  R.record('signedInSim', { ok: simSignedIn, attempted: !submitDisabled })
+  if (!simSignedIn) {
+    // BLOCKED: Simulated sign-in needs the mock-core heartbeat (README: 'Simulated mode on the same page still needs mock-core for Sign In').
+    page.setLabel('Switch back to Live (Login selector)')
+    await page.click('login-mode-LIVE')
+    await page.waitFor('mode-switch-dialog', true, 8000)
+    await sleep(500)
+    R.record('switchDialogToLive', { via: 'login-mode-LIVE', text: await page.text('mode-switch-dialog', 400) })
+    await page.shot('p1_w1_4_simok_05_switch_to_live_dialog.png')
+    await page.click('mode-switch-confirm')
+    await sleep(1500)
+    await page.waitForFn('document.readyState === "complete"', 20000)
+    page.setLabel('Login (Live again)')
+    await page.waitFor('page-login', true, 20000)
+    await sleep(3000)
+    R.record('loginLiveAgain', { selector: await selectorState(), stored: await stored(), coreMode: await page.attr('page-login', 'data-core-mode'), facts: await page.facts(), strip: await page.eval(`(document.querySelector('[data-testid="page-login"]')?.innerText ?? '').replace(/\\s+/g, ' ').match(/(CORE LINK \\S+|MODE \\S+|DATABASE \\S+|ENGINE \\S+)/g)`, 'strip2') })
+    await page.shot('p1_w1_4_simok_06_login_live_again.png')
+    throw new Error('STOP-BLOCKED: Simulated sign-in disabled (mock-core heartbeat offline); switched back to Live')
+  }
+  page.setLabel('Evidence (Simulated)')
+  R.record('dashboardSimFacts', await page.facts())
+  await page.shot('p1_w1_4_simok_04a_simulated_dashboard.png')
+  // In-app navigation (no reload): sidebar Evidence.
+  const navEv = await page.clickByText('aside a, nav a', 'Evidence', { exact: true })
+  await page.waitFor('page-evidence', true, 15000)
+  await sleep(2000)
+  R.record('simEvidenceList', { sidebar: navEv.found, facts: await page.facts(), summary: await page.eval(`(document.querySelector('[data-testid="page-evidence"]')?.innerText ?? '').replace(/\\s+/g, ' ').match(/\\d+–\\d+ of \\d+/)?.[0] ?? null`, 'sum') })
+  await page.shot('p1_w1_4_simok_04b_simulated_evidence_list.png')
+  const ids = await page.eval(`[...new Set((document.querySelector('main')?.innerText ?? '').match(/EV-\\d{8}-\\d{4}/g) ?? [])]`, 'ids')
+  R.record('simListIds', ids)
+  let item = ids.find((id) => id.endsWith('-0012'))
+  if (!item) {
+    // Item 0012 may be on page 2 of the list.
+    const nextPage = await page.clickByText('[data-testid="page-evidence"] button', 'Next')
+    R.record('simNextPage', nextPage)
+    await sleep(2000)
+    const ids2 = await page.eval(`[...new Set((document.querySelector('main')?.innerText ?? '').match(/EV-\\d{8}-\\d{4}/g) ?? [])]`, 'ids2')
+    R.record('simListIdsPage2', ids2)
+    item = ids2.find((id) => id.endsWith('-0012'))
+  }
+  R.record('simItem0012', item ?? null)
+  if (item) {
+    // Open the item from its row (in-app); fall back to the URL only if the row press does not open it.
+    let rowOpen = await page.clickByText('[data-testid="page-evidence"] td, [data-testid="page-evidence"] [role="gridcell"], [data-testid="page-evidence"] a', item)
+    let opened = rowOpen.found && (await page.waitFor('page-evidence-detail', true, 8000))
+    if (!opened) { await page.goto(`/evidence/${item}`, 2000); opened = await page.waitFor('page-evidence-detail', true, 15000); rowOpen = { ...rowOpen, viaUrl: true } }
+    R.record('simOpenItem', { item, rowOpen, opened, href: (await page.facts()).href })
+    await sleep(1500)
+    await page.click('evidence-tab-metadata')
+    await page.waitFor('evidence-metadata', true, 15000)
+    await sleep(2500)
+    R.record('metadataSimulated', await page.eval(`(() => {
+      const m = document.querySelector('[data-testid="evidence-metadata"]')
+      return {
+        dataPackage: m.getAttribute('data-package'),
+        notice: m.querySelector('[data-testid="evidence-foreign-package"]')?.innerText ?? null,
+        noticeTextAnywhere: (document.body.innerText ?? '').includes('is another record'),
+        headings: [...m.querySelectorAll('h3')].map((h) => h.innerText.replace(/\\s+/g, ' ').trim()),
+        manifestFields: [...m.querySelectorAll('[data-testid="evidence-manifest-fields"] [data-field]')].map((f) => f.innerText.replace(/\\s+/g, ' ').trim().slice(0, 90)),
+        packageTree: !!m.querySelector('[data-testid="evidence-package-tree"]'),
+        header: document.querySelector('[data-testid="evidence-detail-header"]')?.innerText?.replace(/\\s+/g, ' ').trim().slice(0, 300),
+        packageChip: document.querySelector('[data-testid="evidence-package-chip"]')?.getAttribute('data-package'),
+        mode: document.querySelector('[data-testid="shell-mode"]')?.innerText?.replace(/\\s+/g, ' ').trim(),
+      }
+    })()`, 'metaSim'))
+    await page.shot('p1_w1_4_simok_04_simulated_metadata_tab.png')
+    await page.eval(`document.querySelector('[data-testid="evidence-package-tree"], [data-testid="evidence-manifest-fields"]')?.scrollIntoView({ block: 'center', behavior: 'instant' })`)
+    await sleep(500)
+    await page.shot('p1_w1_4_simok_04c_simulated_metadata_package_tree.png')
+  }
+
+  // Back to LIVE through the shell's mode indicator dialog
+  page.setLabel('Switch back to Live')
+  const ind = await page.click('shell-mode')
+  await page.waitFor('mode-switch-dialog', true, 8000)
+  await sleep(500)
+  R.record('switchDialogToLive', { indicatorClick: ind, text: await page.text('mode-switch-dialog', 400) })
+  await page.shot('p1_w1_4_simok_05_switch_to_live_dialog.png')
+  await page.click('mode-switch-confirm')
+  await sleep(1500)
+  await page.waitForFn('document.readyState === "complete"', 20000)
+  page.setLabel('Login (Live again)')
+  await page.waitFor('page-login', true, 20000)
+  await sleep(2500)
+  R.record('loginLiveAgain', { selector: await selectorState(), stored: await stored(), coreMode: await page.attr('page-login', 'data-core-mode'), facts: await page.facts() })
+  await page.shot('p1_w1_4_simok_06_login_live_again.png')
+} catch (error) {
+  R.log(`FAILED: ${error.message}`)
+  R.obs.error = error.message
+} finally {
+  if (page) R.record('consoleNetwork', writeEvents(R.run, page.events))
+  await browser.close()
+  R.flush()
+}

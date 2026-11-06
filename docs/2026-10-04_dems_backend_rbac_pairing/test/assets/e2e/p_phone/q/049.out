@@ -1,0 +1,5 @@
+10:18:58.738 tap 539,1279
+10:18:58.968 slept 900 ms
+10:18:59.906 text typed (E2E-P phone stop); inputType 0x24001
+10:19:00.631 slept 1000 ms
+10:19:01.666 screencap 46b_end_session_reason_typed.png 10:19:01.666..10:19:01.962

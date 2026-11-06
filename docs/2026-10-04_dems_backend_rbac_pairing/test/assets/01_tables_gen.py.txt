@@ -1,0 +1,88 @@
+import json, re, os
+R='/Users/gsp-budi/Documents/DEMS'
+D=R+'/docs/2026-10-04_dems_backend_rbac_pairing'
+P=R+'/.cache/w87/parts'
+S=json.load(open(R+'/.cache/w87/opmap/summary.json'))
+def short(f):
+    f=f.replace('src/modules/','modules/').replace('/__tests__/','/').replace('test/acceptance/','acceptance/').replace('src/','').replace('test/','test/')
+    return f
+def cell(entries, need):
+    if not need: return 'n/a'
+    if not entries: return '**GAP**'
+    ents=sorted(entries, key=lambda e:(e['project']!='db', -len(e['tests']), e['file']))
+    total=sum(len(e['tests']) for e in ents)
+    shown=', '.join(f"`{short(e['file'])}` ({len(e['tests'])})" for e in ents[:2])
+    more=f" +{len(ents)-2} files" if len(ents)>2 else ''
+    return f"{shown}{more}; {total} tests in {len(ents)} files"
+lines=['| # | Operation | Access | Body | Success (2xx) | Denial (403 `NOT_PERMITTED` / `FORBIDDEN`) | Validation (body: 400 `INVALID_JSON`, 413, 422) |','|--:|---|---|:-:|---|---|---|']
+tot={'s':0,'d':0,'dn':0,'v':0,'vn':0}
+for r in S['rows']:
+    tot['s']+=bool(r['success']); 
+    if r['permission']: tot['dn']+=1; tot['d']+=bool(r['denial'])
+    if r['body']: tot['vn']+=1; tot['v']+=bool(r['validation'])
+    lines.append(f"| {r['no']} | `{r['operationId']}` | {r['access']} | {'yes' if r['body'] else '—'} | {cell(r['success'],True)} | {cell(r['denial'],r['permission'])} | {cell(r['validation'],r['body'])} |")
+open(P+'/op_table.md','w').write('\n'.join(lines)+'\n')
+open(P+'/op_totals.json','w').write(json.dumps(tot))
+print('op totals',tot)
+# detail asset
+out=['# Operation-to-test map, in full (asset of test/01_test_report.md, plan row W87)','',
+'Generated at the W87 run from `.cache/w87/opmap/summary.json`: the answers that every Fastify instance of the `unit` (154 files / 3,916 tests) and `db` (122 / 1,740) projects sent during a run through the scratch probe (`01_opmap_probe.setup.ts.txt`), matched to the 75 operations with `matchCoreApiOperation`. 18,235 answers recorded, 12,447 matched to an operation (the rest are scratch routes, unknown paths and socket upgrades of the tests). A test is listed under a column when it received at least one answer of that class for that operation: success = 2xx; denial = 403 with `NOT_PERMITTED` or `FORBIDDEN`; validation = 400 `INVALID_JSON`, 413, or 422 `INVALID_INPUT` / `INVALID_REASON` on a request whose path parameter is valid (so the body was judged). Up to three test names per file are shown.','']
+for r in S['rows']:
+    out.append(f"## {r['no']}. `{r['operationId']}` — {r['method']} `{r['path']}` — {r['access']}{' — body' if r['body'] else ''}")
+    out.append('')
+    out.append('Statuses received (status code: answers): '+', '.join(f"{k}: {v}" for k,v in r['statuses'].items()))
+    out.append('')
+    for key,label,need in [('success','Success',True),('denial','Denial',r['permission']),('validation','Validation',r['body'])]:
+        if not need: out.append(f"- **{label}**: not required"); continue
+        ents=sorted(r[key], key=lambda e:(e['project']!='db', -len(e['tests']), e['file']))
+        out.append(f"- **{label}**: {len(ents)} files, {sum(len(e['tests']) for e in ents)} tests")
+        for e in ents:
+            names='; '.join(t.replace('|','/')[:150] for t in e['tests'][:3])
+            out.append(f"  - `{e['file']}` ({e['project']}, {len(e['tests'])}): {names}{' …' if len(e['tests'])>3 else ''}")
+    out.append('')
+open(D+'/test/assets/01_operation_test_map.md','w').write('\n'.join(out)+'\n')
+# sites
+spec=open(D+'/masterplan/04_client_integration_spec.md',encoding='utf8').read().split('\n')
+sitecol={}
+for line in spec[710:840]:
+    m=re.match(r'^\| (A\d+|[BCD]-\d+|S\d-\d+|E|F|—|Clock) \| (.*?) \| (.*) \|$', line)
+    if m and m.group(1) not in sitecol: sitecol[m.group(1)]=(m.group(2), m.group(3))
+S2=json.load(open(R+'/.cache/w87/sites2.json'))
+NEW={'live-gap-s1-2-biometric.test.tsx','live-gap-sites.test.tsx','live-gap-s4-7-tablet-link.test.tsx','live-gap-read-only-dialog.test.tsx'}
+def strip(t,n=95):
+    t=re.sub(r'\s+',' ',t).replace('|','/')
+    return t if len(t)<=n else t[:n-1]+'…'
+rows=['| Site | Where (client spec §8) | Live tests that name the ID (file: occurrences; T = in a test or describe title) | Status |','|---|---|---|---|']
+count={'web':0,'mobile':0,'new':0}
+for app in ['web','mobile']:
+    for sid,hits in S2[app].items():
+        live=[h for h in hits if h['live'] and not h['static']]
+        other=[h for h in hits if not (h['live'] and not h['static'])]
+        new=any(os.path.basename(h['file']) in NEW for h in live)
+        count[app]+=1; count['new']+=new
+        cellt='; '.join(f"`{h['file']}`: {h['count']}{' T' if h['titled'] else ''}" for h in live)
+        if other: cellt+=' (also named in: '+', '.join(f"`{h['file']}`" for h in other)+')'
+        status='covered' + (' — **added by W87**' if new else '')
+        if not live: status='**GAP**'
+        rows.append(f"| {sid} | {strip(sitecol.get(sid,('',''))[0],80)} | {cellt} | {status} |")
+open(P+'/site_table.md','w').write('\n'.join(rows)+'\n')
+print('sites',count)
+# AC
+A=json.load(open(R+'/.cache/w87/acmap.json'))
+def shortp(f):
+    return f.replace('apps/core-server/','server/').replace('apps/core-web/src/','web/').replace('apps/mobile/src/','mobile/').replace('packages/shared/','shared/').replace('/__tests__/','/').replace('src/modules/','modules/')
+rows=['| AC | Criterion (shortened) | Test files that name it (count; projects; first two) | When no test names it: how the specification verifies it, and the row | Status |','|---|---|---|---|---|']
+named=0
+for o in A:
+    if o['files']:
+        named+=1
+        fl=sorted(o['files'], key=lambda f:(0 if 'acceptance' in f or '.db.test' in f else 1, f))
+        cellt=f"{len(fl)}; {', '.join(o['projects'])}; "+', '.join(f"`{shortp(f)}`" for f in fl[:2])
+        how='—'; status='named by a test'
+    else:
+        cellt='—'
+        how=strip(o['testedBy'],120)+(f" (row {o['row']})" if o['row'] else '')
+        status='verified outside the test suites'
+    rows.append(f"| {o['id']} | {strip(o['criterion'],90)} | {cellt} | {how} | {status} |")
+open(P+'/ac_table.md','w').write('\n'.join(rows)+'\n')
+print('ACs',len(A),'named',named)

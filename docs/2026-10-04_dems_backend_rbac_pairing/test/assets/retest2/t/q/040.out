@@ -1,0 +1,8 @@
+mark E run 3 Next (create + precheck) at 17:16:05.384
+tap 1178,1455 at 17:16:05.484
+create 201 (10-06 16:50:59.935 POST /api/v1/session 201)
+precheck 202 (10-06 16:51:00.366 POST /api/v1/session/{id}/precheck 202)
+slept 5000 ms
+tap 1178,1455 at 17:16:10.751
+slept 5000 ms
+screencap E3_02_wizard_step3_ready.png (778082 bytes) at 17:16:16.049

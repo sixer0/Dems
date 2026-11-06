@@ -1,0 +1,22 @@
+13:10:34.306 mark g02 at 13:10:34.306
+13:10:34.352 declared screen login
+13:10:34.393 tap 539,1184
+13:10:34.642 slept 900 ms
+13:10:35.574 username typed (budi.santoso, INVESTIGATOR); inputType 0x80001
+13:10:35.844 slept 500 ms
+13:10:36.390 tap 539,1342
+13:10:36.488 slept 800 ms
+13:10:37.313 password typed (not shown); inputType 0x80081
+13:10:37.644 slept 300 ms
+13:10:37.969 key 66
+13:10:38.092 signin 200 at device 10-06 13:10:37.814 (POST /api/v1/auth/sign-in 200)
+13:10:38.698 slept 3500 ms
+13:10:42.238 declared screen summary
+13:10:42.286 screencap 70_after_resignin_route.png 13:10:42.286..13:10:42.705
+13:10:42.848 slept 3000 ms
+13:10:45.897 screencap 70b_after_resignin_route_t2.png 13:10:45.897..13:10:46.238
+13:10:46.323 warnlog since 10-06 13:10:33.000 (0): 
+13:10:46.405 serverlog since g02 (3):
+    13:10:38.100 POST /api/v1/auth/sign-in 200
+    13:10:38.161 [socket closed]
+    13:10:38.175 [socket opened]

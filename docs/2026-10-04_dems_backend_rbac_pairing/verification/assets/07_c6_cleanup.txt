@@ -1,0 +1,40 @@
+# 2026-10-07 10:40:44 WIB cleanup
+$ adb -s emulator-5558 reverse --remove tcp:4400
+exit=0
+host-16 tcp:8081 tcp:8081
+host-16 tcp:4420 tcp:4420
+
+mock-core tree from root 17512: 17512 17530 17553 17554 
+  PID  PPID COMMAND
+17512     1 npm run dev:mock   
+17530 17512 npm run dev     
+17553 17530 node /Users/gsp-budi/Documents/DEMS/node_modules/.bin/tsx watch src/index.ts
+17554 17553 /usr/local/bin/node --require /Users/gsp-budi/Documents/DEMS/node_modules/tsx/dist/preflight.cjs --import file:///Users/gsp-budi
+alive after stop: 
+lsof 4400:
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    17554 gsp-budi   16u  IPv4 0x720d7486ff700204      0t0  TCP 127.0.0.1:4400 (LISTEN)
+pgrep mock-core: 17512 npm run dev:mock CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES=false CLAUDE_CODE_ENABLE_ASK_USER_QUESTION_TOOL=true CLAUDE_TMPDIR=/tmp/claude-501
+# 2026-10-07 10:40:56 WIB retry (zsh had not split the pid list): tree from root 17512: 17512 17530 17553 17554 
+kill -TERM exit=0
+alive after stop: 
+lsof 4400 LISTEN (empty = none):
+ps for those pids:
+  PID COMMAND
+# 2026-10-07 10:41:07 WIB phone2 back to LIVE on Login
+Status: ok
+LaunchState: COLD
+TotalTime: 3334
+Physical size: 1080x2424
+mCurrentFocus=Window{ae23955 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity
+isKeyguardShowing=false
+State: RUNNING_UNLOCKED
+prefs: {"coreLinkSource":"LIVE"}
+sim auth: 
+reverse: host-16 tcp:8081 tcp:8081;host-16 tcp:4420 tcp:4420;;
+window 2026-10-07 10:41:07.458 WIB .. 2026-10-07 10:41:21.855 WIB; log lines total 541
+  2026-10-07 10:41:10.600 WIB | socket opened |  | device:DEV-0005 DEVICE
+  2026-10-07 10:41:10.609 WIB | request completed | GET /api/v1/auth/session 401 | device:DEV-0005
+  2026-10-07 10:41:10.611 WIB | request completed | GET /api/v1/auth/status 200 | device:DEV-0005
+  2026-10-07 10:41:10.625 WIB | request completed | GET /api/v1/pairing/device 200 | device:DEV-0005
+request lines: 3; socket lines: 1; other lines: 0

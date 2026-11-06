@@ -1,0 +1,36 @@
+// FX-W: the rendered width of every ring state word at the display size (Orbitron 700, 32 px), measured
+// on the lane-3 Login page (no sign-in; nothing is sent to the Core but the page's own reads).
+import { launch, openPage, sleep } from './cdp.mjs'
+
+const log = (line) => console.log(`${new Date().toISOString()} ${line}`)
+process.on('unhandledRejection', (error) => log(`unhandled: ${error?.message ?? error}`))
+const browser = await launch(log)
+try {
+  const page = await openPage(browser.cdp, log)
+  await page.viewport(1440, 900)
+  await page.goto('/login')
+  await page.waitFor(() => document.fonts.status === 'loaded' && !!document.querySelector('[data-testid="page-login"]'), 20000)
+  await sleep(1500)
+  const widths = await page.eval(async () => {
+    await document.fonts.load('700 32px "Orbitron Variable"')
+    const words = ['READY', 'ATTENTION', 'CRITICAL', 'UNKNOWN', 'RECORDING']
+    const host = document.createElement('div')
+    host.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden'
+    document.body.appendChild(host)
+    const out = {}
+    for (const word of words) {
+      const span = document.createElement('span')
+      span.className = 'font-display text-display font-bold uppercase leading-none'
+      span.style.whiteSpace = 'nowrap'
+      span.style.display = 'inline-block'
+      span.textContent = word
+      host.appendChild(span)
+      out[word] = { width: Math.round(span.getBoundingClientRect().width * 10) / 10, font: getComputedStyle(span).fontFamily.split(',')[0], size: getComputedStyle(span).fontSize, spacing: getComputedStyle(span).letterSpacing }
+    }
+    host.remove()
+    return out
+  })
+  log(`state word widths at the display size: ${JSON.stringify(widths)}`)
+} finally {
+  await browser.close()
+}

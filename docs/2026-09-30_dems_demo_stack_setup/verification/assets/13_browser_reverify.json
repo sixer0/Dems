@@ -1,0 +1,697 @@
+{
+  "step": "96b",
+  "origin": "http://127.0.0.1:4421",
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "startedWib": "11:56:49",
+  "checks": [
+    {
+      "id": "4a-1",
+      "name": "Login page renders",
+      "ok": true,
+      "detail": "path=/login"
+    },
+    {
+      "id": "4a-2",
+      "name": "Login shows \"SECURE BY DESIGN.\" and \"TRUSTED BY LAW.\"",
+      "ok": true,
+      "detail": "rendered text has line1=true line2=true; tagline element=\"SECURE BY DESIGN. TRUSTED BY LAW.\""
+    },
+    {
+      "id": "4a-3",
+      "name": "Old tagline \"TRUSTED RECORDING\" absent on Login (innerText, textContent, aria/title/alt, document.title)",
+      "ok": true,
+      "detail": "present=false"
+    },
+    {
+      "id": "4b-1",
+      "name": "Sign in as andi.pratama (Supervisor) reaches the Dashboard",
+      "ok": true,
+      "detail": "fieldsFocused=true submitEnabled=true path=/dashboard"
+    },
+    {
+      "id": "4b-2",
+      "name": "Dashboard renders",
+      "ok": true,
+      "detail": "h1=\"Dashboard\" innerTextChars=2198 operatorNameShown=true supervisorShown=false"
+    },
+    {
+      "id": "4b-3",
+      "name": "Dashboard hero shows the new tagline; old tagline absent",
+      "ok": true,
+      "detail": "hero=\"SECURE BY DESIGN. TRUSTED BY LAW. Secure interview recording, evidence handling \" oldPresent=false"
+    },
+    {
+      "id": "4b-4",
+      "name": "Core link Online (Login label + live heartbeat socket on the launcher origin)",
+      "ok": true,
+      "detail": "loginLabel=\"CORE LINK Online\" sockets=[\"ws://127.0.0.1:4421/ws\"] framesReceived=11"
+    },
+    {
+      "id": "4c-1",
+      "name": "EV-20260929-0001 Verify finishes with PASS (8 of 8)",
+      "ok": true,
+      "detail": "before=NOT_RUN sawRunning=true after=PASS (\"PASS\") pass=8/8 timeToVerdictMs=1345 allSettledMs=1345 csp=0 dataUrlFetches=0 reachedBy=\"deep link /evidence/<id>?tab=integrity\""
+    },
+    {
+      "id": "4c-2",
+      "name": "EV-20260930-0005 Verify finishes with FAIL on AUDIO-02 only",
+      "ok": true,
+      "detail": "before=NOT_RUN sawRunning=true after=FAIL (\"FAIL\") failed=[track:AUDIO-02] passed=7/8 unfinished=[] timeToVerdictMs=1337 allSettledMs=1337 csp=0 dataUrlFetches=0 reachedBy=\"deep link /evidence/<id>?tab=integrity\""
+    },
+    {
+      "id": "4d-route",
+      "name": "route /dashboard renders",
+      "ok": true,
+      "detail": "path=/dashboard h1=\"Dashboard\" chars=2210 csp=0 auditCsp=0 exceptions=0"
+    },
+    {
+      "id": "4d-route",
+      "name": "route /session renders",
+      "ok": true,
+      "detail": "path=/session h1=\"SESSION MONITOR SESSION MONITOR\" chars=2438 csp=0 auditCsp=0 exceptions=0"
+    },
+    {
+      "id": "4d-route",
+      "name": "route /session/new renders",
+      "ok": true,
+      "detail": "path=/session/new h1=\"START NEW SESSION START NEW SESSION\" chars=1388 csp=0 auditCsp=0 exceptions=0"
+    },
+    {
+      "id": "4d-route",
+      "name": "route /evidence renders",
+      "ok": true,
+      "detail": "path=/evidence h1=\"EVIDENCE EVIDENCE\" chars=2674 csp=0 auditCsp=0 exceptions=0"
+    },
+    {
+      "id": "4d-route",
+      "name": "route /devices renders",
+      "ok": true,
+      "detail": "path=/devices h1=\"DEVICES & INPUTS DEVICES & INPUTS\" chars=2542 csp=0 auditCsp=0 exceptions=0"
+    },
+    {
+      "id": "4d-route",
+      "name": "route /storage renders",
+      "ok": true,
+      "detail": "path=/storage h1=\"STORAGE STORAGE\" chars=3229 csp=0 auditCsp=0 exceptions=0"
+    },
+    {
+      "id": "4d-route",
+      "name": "route /network-time renders",
+      "ok": true,
+      "detail": "path=/network-time h1=\"NETWORK & TIME NETWORK & TIME\" chars=2656 csp=0 auditCsp=0 exceptions=0"
+    },
+    {
+      "id": "4d-route",
+      "name": "route /security-audit renders",
+      "ok": true,
+      "detail": "path=/security-audit h1=\"SECURITY & AUDIT SECURITY & AUDIT\" chars=5627 csp=0 auditCsp=0 exceptions=0"
+    },
+    {
+      "id": "4d-route",
+      "name": "route /system renders",
+      "ok": true,
+      "detail": "path=/system h1=\"SYSTEM & MAINTENANCE SYSTEM & MAINTENANCE\" chars=5018 csp=0 auditCsp=0 exceptions=0"
+    },
+    {
+      "id": "4d-route",
+      "name": "route /stack-check renders",
+      "ok": true,
+      "detail": "path=/stack-check h1=\"STACK CHECK STACK CHECK\" chars=900 csp=0 auditCsp=0 exceptions=0 heartbeatChip=\"Live\""
+    },
+    {
+      "id": "4d-route",
+      "name": "route /developer/api renders",
+      "ok": true,
+      "detail": "path=/developer/api h1=\"API REFERENCE API REFERENCE\" chars=4359 csp=0 auditCsp=0 exceptions=0"
+    },
+    {
+      "id": "4d-1",
+      "name": "All 11 routes visited once",
+      "ok": true,
+      "detail": "visited=11"
+    },
+    {
+      "id": "4d-2",
+      "name": "securitypolicyviolation events = 0 (whole run)",
+      "ok": true,
+      "detail": "pageEvents=0 auditsDomainCspIssues=0"
+    },
+    {
+      "id": "4d-3",
+      "name": "Requests to any host other than the launcher origin = 0",
+      "ok": true,
+      "detail": "requests=1914 hosts={\"http://127.0.0.1:4421\":1893,\"ws://127.0.0.1:4421\":17} external=0 data:=3 blob:=1 otherSchemes=0"
+    }
+  ],
+  "login": {
+    "path": "/login",
+    "taglineElement": "SECURE BY DESIGN. TRUSTED BY LAW.",
+    "has1": true,
+    "has2": true,
+    "oldTaglinePresent": false,
+    "coreLink": "CORE LINK Online",
+    "title": "DEMS Edge Client · Core Console"
+  },
+  "shots": {
+    "login": "/Users/gsp-budi/Documents/DEMS/docs/2026-09-30_dems_demo_stack_setup/verification/assets/13_login.png"
+  },
+  "dashboard": {
+    "path": "/dashboard",
+    "h1": "Dashboard",
+    "hero": "SECURE BY DESIGN. TRUSTED BY LAW. Secure interview recording, evidence handling and integrity monitoring, built for professional standards.",
+    "oldTaglinePresent": false,
+    "operatorShown": true,
+    "supervisorShown": false,
+    "innerTextChars": 2198
+  },
+  "verifyEv0001": {
+    "evidenceId": "EV-20260929-0001",
+    "listedInEvidencePage": false,
+    "reachedBy": "deep link /evidence/<id>?tab=integrity",
+    "ready": true,
+    "url": "/evidence/EV-20260929-0001?tab=integrity",
+    "before": {
+      "verdict": "NOT_RUN",
+      "verdictText": "NOT VERIFIED",
+      "rows": [
+        {
+          "id": "track:VIDEO-01",
+          "phase": "pending",
+          "source": null,
+          "text": "VIDEO-01 · Camera 1 SHA-256 Pending"
+        },
+        {
+          "id": "track:VIDEO-02",
+          "phase": "pending",
+          "source": null,
+          "text": "VIDEO-02 · Camera 2 SHA-256 Pending"
+        },
+        {
+          "id": "track:AUDIO-01",
+          "phase": "pending",
+          "source": null,
+          "text": "AUDIO-01 · MIC 1 - Interviewer SHA-256 Pending"
+        },
+        {
+          "id": "track:AUDIO-02",
+          "phase": "pending",
+          "source": null,
+          "text": "AUDIO-02 · MIC 2 - Subject SHA-256 Pending"
+        },
+        {
+          "id": "manifest",
+          "phase": "pending",
+          "source": null,
+          "text": "Manifest digest Pending"
+        },
+        {
+          "id": "signature",
+          "phase": "pending",
+          "source": null,
+          "text": "Ed25519 signature Pending"
+        },
+        {
+          "id": "certificate",
+          "phase": "pending",
+          "source": null,
+          "text": "Device certificate (DEMO) Pending"
+        },
+        {
+          "id": "auditChain",
+          "phase": "pending",
+          "source": null,
+          "text": "Audit chain extract Pending"
+        }
+      ],
+      "button": "Verify",
+      "card": "NOT VERIFIED Re-verified in this browser from the DEMO package Hashes are recomputed with SHA-256; the Ed25519 signature and the DEMO certificate are checked with WebCrypto. Verify 0 of 8 checks VIDEO-01 · Camera 1 SHA-256 Pending VIDEO-02 · Camera 2 SHA-256 Pending AUDIO-01 · MIC 1 - Interviewer SHA-256 Pending AUDIO-02 · MIC 2 - Subject SHA-256 Pending Manifest digest Pending Ed25519 signature Pending Device certificate (DEMO) Pending Audit chain extract Pending",
+      "label": "Hashes are recomputed with SHA-256; the Ed25519 signature and the DEMO certificate are checked with WebCrypto."
+    },
+    "clicked": true,
+    "clickWib": "11:57:04",
+    "finished": true,
+    "timing": {
+      "sawRunning": true,
+      "value": "PASS",
+      "msToVerdict": 1345,
+      "msToAllSettled": 1345,
+      "samples": [
+        {
+          "ms": 1,
+          "v": "NOT_RUN",
+          "settled": 0,
+          "total": 8
+        },
+        {
+          "ms": 23,
+          "v": "RUNNING",
+          "settled": 0,
+          "total": 8
+        },
+        {
+          "ms": 209,
+          "v": "RUNNING",
+          "settled": 1,
+          "total": 8
+        },
+        {
+          "ms": 373,
+          "v": "RUNNING",
+          "settled": 2,
+          "total": 8
+        },
+        {
+          "ms": 532,
+          "v": "RUNNING",
+          "settled": 3,
+          "total": 8
+        },
+        {
+          "ms": 693,
+          "v": "RUNNING",
+          "settled": 4,
+          "total": 8
+        },
+        {
+          "ms": 854,
+          "v": "RUNNING",
+          "settled": 5,
+          "total": 8
+        },
+        {
+          "ms": 1014,
+          "v": "RUNNING",
+          "settled": 6,
+          "total": 8
+        },
+        {
+          "ms": 1174,
+          "v": "RUNNING",
+          "settled": 7,
+          "total": 8
+        },
+        {
+          "ms": 1345,
+          "v": "PASS",
+          "settled": 8,
+          "total": 8
+        }
+      ]
+    },
+    "after": {
+      "verdict": "PASS",
+      "verdictText": "PASS",
+      "rows": [
+        {
+          "id": "track:VIDEO-01",
+          "phase": "pass",
+          "source": "computed",
+          "text": "VIDEO-01 · Camera 1 SHA-256 PASS FOUND 4fd641768c…e80d57ad45"
+        },
+        {
+          "id": "track:VIDEO-02",
+          "phase": "pass",
+          "source": "computed",
+          "text": "VIDEO-02 · Camera 2 SHA-256 PASS FOUND 5eb356957e…806e914871"
+        },
+        {
+          "id": "track:AUDIO-01",
+          "phase": "pass",
+          "source": "computed",
+          "text": "AUDIO-01 · MIC 1 - Interviewer SHA-256 PASS FOUND 08b09d7cb0…d436eb76f8"
+        },
+        {
+          "id": "track:AUDIO-02",
+          "phase": "pass",
+          "source": "computed",
+          "text": "AUDIO-02 · MIC 2 - Subject SHA-256 PASS FOUND 95c3acf73a…a46d74b0a0"
+        },
+        {
+          "id": "manifest",
+          "phase": "pass",
+          "source": "computed",
+          "text": "Manifest digest PASS FOUND 92a639b2c0…bbece16189"
+        },
+        {
+          "id": "signature",
+          "phase": "pass",
+          "source": "computed",
+          "text": "Ed25519 signature PASS FOUND VALID"
+        },
+        {
+          "id": "certificate",
+          "phase": "pass",
+          "source": "computed",
+          "text": "Device certificate (DEMO) PASS FOUND 760be9296d…d698a5779a"
+        },
+        {
+          "id": "auditChain",
+          "phase": "pass",
+          "source": "computed",
+          "text": "Audit chain extract PASS FOUND 39c738d958…0b8ff629a2"
+        }
+      ],
+      "button": "Verify again",
+      "card": "PASS Re-verified in this browser from the DEMO package DEMO - recomputed Verify again 8 of 8 checks VIDEO-01 · Camera 1 SHA-256 PASS FOUND 4fd641768c…e80d57ad45 VIDEO-02 · Camera 2 SHA-256 PASS FOUND 5eb356957e…806e914871 AUDIO-01 · MIC 1 - Interviewer SHA-256 PASS FOUND 08b09d7cb0…d436eb76f8 AUDIO-02 · MIC 2 - Subject SHA-256 PASS FOUND 95c3acf73a…a46d74b0a0 Manifest digest PASS FOUND 92a639b2c0…bbece16189 Ed25519 signature PASS FOUND VALID Device certificate (DEMO) PASS FOUND 760be9296d…d698a5779a Audit chain extract PASS FOUND 39c738d958…0b8ff629a2",
+      "label": "DEMO - recomputed"
+    },
+    "shot": "/Users/gsp-budi/Documents/DEMS/docs/2026-09-30_dems_demo_stack_setup/verification/assets/13_verify_ev0001_pass.png",
+    "requestsDuringVerify": 6,
+    "dataUrlRequestsDuringVerify": 0,
+    "cspDuringVerify": 0
+  },
+  "verifyEv0005": {
+    "evidenceId": "EV-20260930-0005",
+    "listedInEvidencePage": true,
+    "reachedBy": "deep link /evidence/<id>?tab=integrity",
+    "ready": true,
+    "url": "/evidence/EV-20260930-0005?tab=integrity",
+    "before": {
+      "verdict": "NOT_RUN",
+      "verdictText": "NOT VERIFIED",
+      "rows": [
+        {
+          "id": "track:VIDEO-01",
+          "phase": "pending",
+          "source": null,
+          "text": "VIDEO-01 · Camera 1 SHA-256 Pending"
+        },
+        {
+          "id": "track:VIDEO-02",
+          "phase": "pending",
+          "source": null,
+          "text": "VIDEO-02 · Camera 2 SHA-256 Pending"
+        },
+        {
+          "id": "track:AUDIO-01",
+          "phase": "pending",
+          "source": null,
+          "text": "AUDIO-01 · MIC 1 - Interviewer SHA-256 Pending"
+        },
+        {
+          "id": "track:AUDIO-02",
+          "phase": "pending",
+          "source": null,
+          "text": "AUDIO-02 · MIC 2 - Subject SHA-256 Pending"
+        },
+        {
+          "id": "manifest",
+          "phase": "pending",
+          "source": null,
+          "text": "Manifest digest Pending"
+        },
+        {
+          "id": "signature",
+          "phase": "pending",
+          "source": null,
+          "text": "Ed25519 signature Pending"
+        },
+        {
+          "id": "certificate",
+          "phase": "pending",
+          "source": null,
+          "text": "Device certificate (DEMO) Pending"
+        },
+        {
+          "id": "auditChain",
+          "phase": "pending",
+          "source": null,
+          "text": "Audit chain extract Pending"
+        }
+      ],
+      "button": "Verify",
+      "card": "NOT VERIFIED Re-verified in this browser from the DEMO package Hashes are recomputed with SHA-256; the Ed25519 signature and the DEMO certificate are checked with WebCrypto. Verify 0 of 8 checks VIDEO-01 · Camera 1 SHA-256 Pending VIDEO-02 · Camera 2 SHA-256 Pending AUDIO-01 · MIC 1 - Interviewer SHA-256 Pending AUDIO-02 · MIC 2 - Subject SHA-256 Pending Manifest digest Pending Ed25519 signature Pending Device certificate (DEMO) Pending Audit chain extract Pending",
+      "label": "Hashes are recomputed with SHA-256; the Ed25519 signature and the DEMO certificate are checked with WebCrypto."
+    },
+    "clicked": true,
+    "clickWib": "11:57:13",
+    "finished": true,
+    "timing": {
+      "sawRunning": true,
+      "value": "FAIL",
+      "msToVerdict": 1337,
+      "msToAllSettled": 1337,
+      "samples": [
+        {
+          "ms": 0,
+          "v": "NOT_RUN",
+          "settled": 0,
+          "total": 8
+        },
+        {
+          "ms": 18,
+          "v": "RUNNING",
+          "settled": 0,
+          "total": 8
+        },
+        {
+          "ms": 202,
+          "v": "RUNNING",
+          "settled": 1,
+          "total": 8
+        },
+        {
+          "ms": 363,
+          "v": "RUNNING",
+          "settled": 2,
+          "total": 8
+        },
+        {
+          "ms": 524,
+          "v": "RUNNING",
+          "settled": 3,
+          "total": 8
+        },
+        {
+          "ms": 686,
+          "v": "RUNNING",
+          "settled": 4,
+          "total": 8
+        },
+        {
+          "ms": 847,
+          "v": "RUNNING",
+          "settled": 5,
+          "total": 8
+        },
+        {
+          "ms": 1008,
+          "v": "RUNNING",
+          "settled": 6,
+          "total": 8
+        },
+        {
+          "ms": 1169,
+          "v": "RUNNING",
+          "settled": 7,
+          "total": 8
+        },
+        {
+          "ms": 1337,
+          "v": "FAIL",
+          "settled": 8,
+          "total": 8
+        }
+      ]
+    },
+    "after": {
+      "verdict": "FAIL",
+      "verdictText": "FAIL",
+      "rows": [
+        {
+          "id": "track:VIDEO-01",
+          "phase": "pass",
+          "source": "computed",
+          "text": "VIDEO-01 · Camera 1 SHA-256 PASS FOUND 3c36139fc5…19794da903"
+        },
+        {
+          "id": "track:VIDEO-02",
+          "phase": "pass",
+          "source": "computed",
+          "text": "VIDEO-02 · Camera 2 SHA-256 PASS FOUND 91da7d0ea9…230a8d9a70"
+        },
+        {
+          "id": "track:AUDIO-01",
+          "phase": "pass",
+          "source": "computed",
+          "text": "AUDIO-01 · MIC 1 - Interviewer SHA-256 PASS FOUND d7e83d202d…5a4fff5f2e"
+        },
+        {
+          "id": "track:AUDIO-02",
+          "phase": "fail",
+          "source": "computed",
+          "text": "AUDIO-02 · MIC 2 - Subject SHA-256 FAIL FOUND 6fdd78d18e…a49e5e91c8 SEALED bb3af24347…4394cd0d0c"
+        },
+        {
+          "id": "manifest",
+          "phase": "pass",
+          "source": "computed",
+          "text": "Manifest digest PASS FOUND 6f93e7935f…bd200e8b69"
+        },
+        {
+          "id": "signature",
+          "phase": "pass",
+          "source": "computed",
+          "text": "Ed25519 signature PASS FOUND VALID"
+        },
+        {
+          "id": "certificate",
+          "phase": "pass",
+          "source": "computed",
+          "text": "Device certificate (DEMO) PASS FOUND 760be9296d…d698a5779a"
+        },
+        {
+          "id": "auditChain",
+          "phase": "pass",
+          "source": "computed",
+          "text": "Audit chain extract PASS FOUND d13dd67217…2bb7357d60"
+        }
+      ],
+      "button": "Verify again",
+      "card": "FAIL Re-verified in this browser from the DEMO package DEMO - recomputed Verify again 8 of 8 checks VIDEO-01 · Camera 1 SHA-256 PASS FOUND 3c36139fc5…19794da903 VIDEO-02 · Camera 2 SHA-256 PASS FOUND 91da7d0ea9…230a8d9a70 AUDIO-01 · MIC 1 - Interviewer SHA-256 PASS FOUND d7e83d202d…5a4fff5f2e AUDIO-02 · MIC 2 - Subject SHA-256 FAIL FOUND 6fdd78d18e…a49e5e91c8 SEALED bb3af24347…4394cd0d0c Manifest digest PASS FOUND 6f93e7935f…bd200e8b69 Ed25519 signature PASS FOUND VALID Device certificate (DEMO) PASS FOUND 760be9296d…d698a5779a Audit chain extract PASS FOUND d13dd67217…2bb7357d60",
+      "label": "DEMO - recomputed"
+    },
+    "shot": "/Users/gsp-budi/Documents/DEMS/docs/2026-09-30_dems_demo_stack_setup/verification/assets/13_verify_ev0005_fail.png",
+    "requestsDuringVerify": 6,
+    "dataUrlRequestsDuringVerify": 0,
+    "cspDuringVerify": 0
+  },
+  "routes": [
+    {
+      "requested": "/dashboard",
+      "path": "/dashboard",
+      "h1": "Dashboard",
+      "innerTextChars": 2210,
+      "csp": 0,
+      "auditCsp": 0,
+      "exceptions": 0
+    },
+    {
+      "requested": "/session",
+      "path": "/session",
+      "h1": "SESSION MONITOR SESSION MONITOR",
+      "innerTextChars": 2438,
+      "csp": 0,
+      "auditCsp": 0,
+      "exceptions": 0
+    },
+    {
+      "requested": "/session/new",
+      "path": "/session/new",
+      "h1": "START NEW SESSION START NEW SESSION",
+      "innerTextChars": 1388,
+      "csp": 0,
+      "auditCsp": 0,
+      "exceptions": 0
+    },
+    {
+      "requested": "/evidence",
+      "path": "/evidence",
+      "h1": "EVIDENCE EVIDENCE",
+      "innerTextChars": 2674,
+      "csp": 0,
+      "auditCsp": 0,
+      "exceptions": 0
+    },
+    {
+      "requested": "/devices",
+      "path": "/devices",
+      "h1": "DEVICES & INPUTS DEVICES & INPUTS",
+      "innerTextChars": 2542,
+      "csp": 0,
+      "auditCsp": 0,
+      "exceptions": 0
+    },
+    {
+      "requested": "/storage",
+      "path": "/storage",
+      "h1": "STORAGE STORAGE",
+      "innerTextChars": 3229,
+      "csp": 0,
+      "auditCsp": 0,
+      "exceptions": 0
+    },
+    {
+      "requested": "/network-time",
+      "path": "/network-time",
+      "h1": "NETWORK & TIME NETWORK & TIME",
+      "innerTextChars": 2656,
+      "csp": 0,
+      "auditCsp": 0,
+      "exceptions": 0
+    },
+    {
+      "requested": "/security-audit",
+      "path": "/security-audit",
+      "h1": "SECURITY & AUDIT SECURITY & AUDIT",
+      "innerTextChars": 5627,
+      "csp": 0,
+      "auditCsp": 0,
+      "exceptions": 0
+    },
+    {
+      "requested": "/system",
+      "path": "/system",
+      "h1": "SYSTEM & MAINTENANCE SYSTEM & MAINTENANCE",
+      "innerTextChars": 5018,
+      "csp": 0,
+      "auditCsp": 0,
+      "exceptions": 0
+    },
+    {
+      "requested": "/stack-check",
+      "path": "/stack-check",
+      "h1": "STACK CHECK STACK CHECK",
+      "innerTextChars": 900,
+      "csp": 0,
+      "auditCsp": 0,
+      "exceptions": 0,
+      "heartbeatChip": "Live"
+    },
+    {
+      "requested": "/developer/api",
+      "path": "/developer/api",
+      "h1": "API REFERENCE API REFERENCE",
+      "innerTextChars": 4359,
+      "csp": 0,
+      "auditCsp": 0,
+      "exceptions": 0
+    }
+  ],
+  "network": {
+    "requests": 1914,
+    "hostCounts": {
+      "http://127.0.0.1:4421": 1893,
+      "ws://127.0.0.1:4421": 17
+    },
+    "dataUrls": 3,
+    "blobUrls": 1,
+    "otherSchemes": 0,
+    "externalHosts": [],
+    "externalCount": 0,
+    "externalSamples": [],
+    "statusCounts": {
+      "200": 1889,
+      "206": 8
+    },
+    "loadingFailed": [],
+    "webSockets": [
+      "ws://127.0.0.1:4421/ws"
+    ],
+    "wsFramesReceived": 92
+  },
+  "csp": {
+    "pageEvents": 0,
+    "auditIssues": 0,
+    "events": [],
+    "issues": []
+  },
+  "console": {
+    "problems": [],
+    "problemCount": 0,
+    "exceptions": [],
+    "exceptionCount": 0
+  },
+  "finishedWib": "11:57:57",
+  "summary": "23/23 pass"
+}

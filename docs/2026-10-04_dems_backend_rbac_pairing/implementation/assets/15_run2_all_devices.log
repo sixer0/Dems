@@ -1,0 +1,306 @@
+== 11:31:35 target phone, run w15x113135, probe secure-store, Metro 8082
+[device-session phone 11:31:35] lock held; hard cap 600 s, until 11:41:35 (watchdog PID 21380)
+[device-session phone 11:31:35] session serial: emulator-5554 (dems2_phone)
+[device-session phone 11:31:35] emulator-5554: screen awake, no keyguard
+[device-session phone 11:31:35] Metro PID 21416 (own process group) on 127.0.0.1:8082 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8082.log)
+[device-session phone 11:31:39] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 11:31:39] Metro ready; device tcp:8081 -> host tcp:8082, tcp:4400 -> tcp:4400 on emulator-5554
+-- serial emulator-5554 (dems2_phone), app com.dems.demo.tablet, Metro port 8082, probe secure-store, run w15x113135
+-- adb reverse --list (start of commands):
+host-16 tcp:8081 tcp:8082
+host-16 tcp:4400 tcp:4400
+
+-- lock state (start of the session; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: NONE
+   fingerprints enrolled: "count":0
+-- every observation of this session is: without enrolment
+-- app data (before the launch): files of shared_prefs and databases; AsyncStorage keys with the length of each value; names of the secure-store entries
+   databases:
+   total 192
+   -rw-rw---- 1 u0_a215 u0_a215 147456 2026-10-04 11:29 RKStorage
+   -rw-rw---- 1 u0_a215 u0_a215      0 2026-10-04 11:29 RKStorage-journal
+   -rw-rw---- 1 u0_a215 u0_a215  32768 2026-10-04 10:46 exoplayer_internal.db
+   -rw-rw---- 1 u0_a215 u0_a215      0 2026-10-04 10:46 exoplayer_internal.db-journal
+   
+   shared_prefs:
+   total 40
+   -rw-rw---- 1 u0_a215 u0_a215 144 2026-10-04 10:46 ExpoVideoCache.xml
+   -rw-rw---- 1 u0_a215 u0_a215  65 2026-10-04 11:29 SecureStore.xml
+   -rw-rw---- 1 u0_a215 u0_a215 127 2026-10-04 10:46 WebViewChromiumPrefs.xml
+   -rw-rw-rw- 1 u0_a215 u0_a215 129 2026-10-04 11:31 com.dems.demo.tablet_preferences.xml
+   -rw-rw---- 1 u0_a215 u0_a215  65 2026-10-04 10:46 expo.modules.kotlin.PersistentDataManager.xml
+   key: dems.mobile.log.v1|2871
+   key: dems.sim.v1|119899
+   secure-store entries (entry names of shared_prefs/SecureStore.xml, read on the device; none listed = none stored):
+-- installed build:
+    versionCode=100 minSdk=24 targetSdk=36
+    versionName=0.1.0
+    lastUpdateTime=2026-10-04 10:43:16
+-- device time at launch: 10-04 11:31:39.000
+Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+Status: ok
+LaunchState: COLD
+Activity: com.dems.demo.tablet/.MainActivity
+TotalTime: 6084
+WaitTime: 6086
+Complete
+11:31:45 mCurrentFocus=Window{c28cf43 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- waited 3 polls for the DONE line; windows other than the app or the launcher seen: 0
+-- screencap at the end of the probe: screen_dems2_phone.png; focus now: mCurrentFocus=Window{c28cf43 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- adb logcat -d -s ReactNativeJS:V | grep 'DEMS-PROBE-W15 run=w15x113135':
+10-04 11:31:45.218  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] START secure-store
+10-04 11:31:46.151  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] S0 environment PASS {"isDevice":false,"platformApiLevel":36,"osVersion":36,"model":"sdk_gphone64_arm64","deviceType":1,"debugBuild":true,"canUseBiometricAuthentication":false,"unprotectedBiometricItemAllowed":true,"localAuthentication":{"hasHardware":true,"isEnrolled":false,"enrolledLevel":0},"item":"dems.live.probe.v1","waitMs":8000}
+10-04 11:31:46.237  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] S1 probe item absent before the run PASS {"outcome":"ok","ms":83,"leftoverDeleted":false}
+10-04 11:31:46.321  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] U1 unprotected write PASS {"outcome":"ok","ms":84}
+10-04 11:31:46.335  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] U2 unprotected read gives the written value PASS {"outcome":"ok","ms":13,"read":"equal","length":34}
+10-04 11:31:46.368  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] U3 unprotected delete PASS {"outcome":"ok","ms":33}
+10-04 11:31:46.390  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] U4 read after the delete gives nothing PASS {"outcome":"ok","ms":22,"read":"absent"}
+10-04 11:31:46.439  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] P1 protected write PASS {"outcome":"threw","ms":47,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:31:46.484  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] P2 protected read PASS {"outcome":"ok","ms":45,"read":"absent"}
+10-04 11:31:46.520  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] P3 rotation: delete of the old value PASS {"outcome":"ok","ms":35}
+10-04 11:31:46.553  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] P4 rotation: protected write of a new value PASS {"outcome":"threw","ms":32,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:31:46.563  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] P5 rotation in place: protected write over the stored value PASS {"outcome":"threw","ms":9,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:31:46.564  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] P6 protected read after the rotation PASS {"outcome":"ok","ms":0,"read":"absent"}
+10-04 11:31:46.566  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] Z1 delete of the probe item PASS {"outcome":"ok","ms":2}
+10-04 11:31:46.568  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] Z2 probe item absent after the run PASS {"outcome":"ok","ms":1,"read":"absent","protectedStepPending":false}
+10-04 11:31:46.568  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] DONE secure-store pass=14 fail=0
+-- screencap 7 s later: screen_settled_dems2_phone.png; focus now: mCurrentFocus=Window{c28cf43 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- app data (after the probe): files of shared_prefs and databases; AsyncStorage keys with the length of each value; names of the secure-store entries
+   databases:
+   total 192
+   -rw-rw---- 1 u0_a215 u0_a215 147456 2026-10-04 11:31 RKStorage
+   -rw-rw---- 1 u0_a215 u0_a215      0 2026-10-04 11:31 RKStorage-journal
+   -rw-rw---- 1 u0_a215 u0_a215  32768 2026-10-04 10:46 exoplayer_internal.db
+   -rw-rw---- 1 u0_a215 u0_a215      0 2026-10-04 10:46 exoplayer_internal.db-journal
+   
+   shared_prefs:
+   total 40
+   -rw-rw---- 1 u0_a215 u0_a215 144 2026-10-04 10:46 ExpoVideoCache.xml
+   -rw-rw---- 1 u0_a215 u0_a215  65 2026-10-04 11:31 SecureStore.xml
+   -rw-rw---- 1 u0_a215 u0_a215 127 2026-10-04 10:46 WebViewChromiumPrefs.xml
+   -rw-rw-rw- 1 u0_a215 u0_a215 129 2026-10-04 11:31 com.dems.demo.tablet_preferences.xml
+   -rw-rw---- 1 u0_a215 u0_a215  65 2026-10-04 10:46 expo.modules.kotlin.PersistentDataManager.xml
+   key: dems.mobile.log.v1|3056
+   key: dems.sim.v1|119907
+   secure-store entries (entry names of shared_prefs/SecureStore.xml, read on the device; none listed = none stored):
+-- the Core link source the app has stored (absent = the default, Simulated):
+-- Metro log (bundle and error lines):
+Android Bundled 1510ms node_modules/expo-router/entry.js (6090 modules)
+-- lock state (end of the commands; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: NONE
+   fingerprints enrolled: "count":0
+-- adb reverse --list (end of commands; device-session.sh removes its own rules after this):
+host-16 tcp:8081 tcp:8082
+host-16 tcp:4400 tcp:4400
+
+[device-session phone 11:31:57] Metro 21416 stopped
+[device-session phone 11:31:57] session ended with status 0
+== 11:31:57 target phone: device session exit=0 (77: the device shows a secure lock; 69: device unavailable or a foreign emulator on its port)
+== 11:31:57 target tablet, run w15x113157, probe secure-store, Metro 8083
+[device-session tablet 11:31:57] lock held; hard cap 600 s, until 11:41:57 (watchdog PID 21818)
+[device-session tablet 11:31:57] session serial: emulator-5556 (dems2_tablet)
+[device-session tablet 11:31:58] emulator-5556: screen awake, no keyguard
+[device-session tablet 11:31:58] Metro PID 21854 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session tablet 11:32:00] emulator-5556: bundler location set to localhost:8081 (H-MB-09)
+[device-session tablet 11:32:00] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5556
+-- serial emulator-5556 (dems2_tablet), app com.dems.demo.tablet, Metro port 8083, probe secure-store, run w15x113157
+-- adb reverse --list (start of commands):
+host-16 tcp:8081 tcp:8083
+host-16 tcp:4400 tcp:4400
+
+-- lock state (start of the session; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: NONE
+   fingerprints enrolled: "count":0
+-- every observation of this session is: without enrolment
+-- app data (before the launch): files of shared_prefs and databases; AsyncStorage keys with the length of each value; names of the secure-store entries
+   databases:
+   total 184
+   -rw-rw---- 1 u0_a213 u0_a213 139264 2026-10-04 11:29 RKStorage
+   -rw-rw---- 1 u0_a213 u0_a213      0 2026-10-04 11:29 RKStorage-journal
+   -rw-rw---- 1 u0_a213 u0_a213  32768 2026-10-04 10:45 exoplayer_internal.db
+   -rw-rw---- 1 u0_a213 u0_a213      0 2026-10-04 10:45 exoplayer_internal.db-journal
+   
+   shared_prefs:
+   total 40
+   -rw-rw---- 1 u0_a213 u0_a213 144 2026-10-04 10:45 ExpoVideoCache.xml
+   -rw-rw---- 1 u0_a213 u0_a213  65 2026-10-04 11:29 SecureStore.xml
+   -rw-rw---- 1 u0_a213 u0_a213 127 2026-10-04 10:45 WebViewChromiumPrefs.xml
+   -rw-rw-rw- 1 u0_a213 u0_a213 129 2026-10-04 11:32 com.dems.demo.tablet_preferences.xml
+   -rw-rw---- 1 u0_a213 u0_a213  65 2026-10-04 10:45 expo.modules.kotlin.PersistentDataManager.xml
+   key: dems.mobile.log.v1|372
+   key: dems.sim.v1|119869
+   secure-store entries (entry names of shared_prefs/SecureStore.xml, read on the device; none listed = none stored):
+-- installed build:
+    versionCode=100 minSdk=24 targetSdk=36
+    versionName=0.1.0
+    lastUpdateTime=2026-10-04 10:43:24
+-- device time at launch: 10-04 11:32:00.000
+Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+Status: ok
+LaunchState: COLD
+Activity: com.dems.demo.tablet/.MainActivity
+TotalTime: 5986
+WaitTime: 5989
+Complete
+11:32:06 mCurrentFocus=Window{7f78f1f u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- waited 3 polls for the DONE line; windows other than the app or the launcher seen: 0
+-- screencap at the end of the probe: screen_dems2_tablet.png; focus now: mCurrentFocus=Window{7f78f1f u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- adb logcat -d -s ReactNativeJS:V | grep 'DEMS-PROBE-W15 run=w15x113157':
+10-04 11:32:06.606  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] START secure-store
+10-04 11:32:07.564  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] S0 environment PASS {"isDevice":false,"platformApiLevel":36,"osVersion":36,"model":"sdk_gphone64_arm64","deviceType":2,"debugBuild":true,"canUseBiometricAuthentication":false,"unprotectedBiometricItemAllowed":true,"localAuthentication":{"hasHardware":true,"isEnrolled":false,"enrolledLevel":0},"item":"dems.live.probe.v1","waitMs":8000}
+10-04 11:32:07.574  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] S1 probe item absent before the run PASS {"outcome":"ok","ms":8,"leftoverDeleted":false}
+10-04 11:32:07.654  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] U1 unprotected write PASS {"outcome":"ok","ms":79}
+10-04 11:32:07.676  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] U2 unprotected read gives the written value PASS {"outcome":"ok","ms":21,"read":"equal","length":34}
+10-04 11:32:07.695  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] U3 unprotected delete PASS {"outcome":"ok","ms":19}
+10-04 11:32:07.787  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] U4 read after the delete gives nothing PASS {"outcome":"ok","ms":92,"read":"absent"}
+10-04 11:32:07.824  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] P1 protected write PASS {"outcome":"threw","ms":36,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:32:07.836  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] P2 protected read PASS {"outcome":"ok","ms":11,"read":"absent"}
+10-04 11:32:07.842  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] P3 rotation: delete of the old value PASS {"outcome":"ok","ms":6}
+10-04 11:32:07.876  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] P4 rotation: protected write of a new value PASS {"outcome":"threw","ms":34,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:32:07.924  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] P5 rotation in place: protected write over the stored value PASS {"outcome":"threw","ms":47,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:32:07.926  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] P6 protected read after the rotation PASS {"outcome":"ok","ms":1,"read":"absent"}
+10-04 11:32:07.967  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] Z1 delete of the probe item PASS {"outcome":"ok","ms":41}
+10-04 11:32:07.978  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] Z2 probe item absent after the run PASS {"outcome":"ok","ms":9,"read":"absent","protectedStepPending":false}
+10-04 11:32:07.978  6166  6197 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113157] DONE secure-store pass=14 fail=0
+-- screencap 7 s later: screen_settled_dems2_tablet.png; focus now: mCurrentFocus=Window{7f78f1f u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- app data (after the probe): files of shared_prefs and databases; AsyncStorage keys with the length of each value; names of the secure-store entries
+   databases:
+   total 184
+   -rw-rw---- 1 u0_a213 u0_a213 139264 2026-10-04 11:32 RKStorage
+   -rw-rw---- 1 u0_a213 u0_a213      0 2026-10-04 11:32 RKStorage-journal
+   -rw-rw---- 1 u0_a213 u0_a213  32768 2026-10-04 10:45 exoplayer_internal.db
+   -rw-rw---- 1 u0_a213 u0_a213      0 2026-10-04 10:45 exoplayer_internal.db-journal
+   
+   shared_prefs:
+   total 40
+   -rw-rw---- 1 u0_a213 u0_a213 144 2026-10-04 10:45 ExpoVideoCache.xml
+   -rw-rw---- 1 u0_a213 u0_a213  65 2026-10-04 11:32 SecureStore.xml
+   -rw-rw---- 1 u0_a213 u0_a213 127 2026-10-04 10:45 WebViewChromiumPrefs.xml
+   -rw-rw-rw- 1 u0_a213 u0_a213 129 2026-10-04 11:32 com.dems.demo.tablet_preferences.xml
+   -rw-rw---- 1 u0_a213 u0_a213  65 2026-10-04 10:45 expo.modules.kotlin.PersistentDataManager.xml
+   key: dems.mobile.log.v1|557
+   key: dems.sim.v1|119881
+   secure-store entries (entry names of shared_prefs/SecureStore.xml, read on the device; none listed = none stored):
+-- the Core link source the app has stored (absent = the default, Simulated):
+-- Metro log (bundle and error lines):
+Android Bundled 1483ms node_modules/expo-router/entry.js (6090 modules)
+-- lock state (end of the commands; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: NONE
+   fingerprints enrolled: "count":0
+-- adb reverse --list (end of commands; device-session.sh removes its own rules after this):
+host-16 tcp:8081 tcp:8083
+host-16 tcp:4400 tcp:4400
+
+[device-session tablet 11:32:20] Metro 21854 stopped
+[device-session tablet 11:32:20] session ended with status 0
+== 11:32:21 target tablet: device session exit=0 (77: the device shows a secure lock; 69: device unavailable or a foreign emulator on its port)
+== 11:32:21 target phone2, run w15x113221, probe secure-store, Metro 8084
+[device-session phone2 11:32:21] lock held; hard cap 600 s, until 11:42:21 (watchdog PID 22226)
+[device-session phone2 11:32:21] session serial: emulator-5558 (dems2_phone2)
+[device-session phone2 11:32:21] emulator-5558: screen awake, no keyguard
+[device-session phone2 11:32:21] Metro PID 22262 (own process group) on 127.0.0.1:8084 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8084.log)
+[device-session phone2 11:32:23] emulator-5558: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone2 11:32:23] Metro ready; device tcp:8081 -> host tcp:8084, tcp:4400 -> tcp:4400 on emulator-5558
+-- serial emulator-5558 (dems2_phone2), app com.dems.demo.tablet, Metro port 8084, probe secure-store, run w15x113221
+-- adb reverse --list (start of commands):
+host-16 tcp:8081 tcp:8084
+host-16 tcp:4400 tcp:4400
+
+-- lock state (start of the session; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: NONE
+   fingerprints enrolled: "count":0
+-- every observation of this session is: without enrolment
+-- app data (before the launch): files of shared_prefs and databases; AsyncStorage keys with the length of each value; names of the secure-store entries
+   databases:
+   total 184
+   -rw-rw---- 1 u0_a215 u0_a215 139264 2026-10-04 11:29 RKStorage
+   -rw-rw---- 1 u0_a215 u0_a215      0 2026-10-04 11:29 RKStorage-journal
+   -rw-rw---- 1 u0_a215 u0_a215  32768 2026-10-04 10:46 exoplayer_internal.db
+   -rw-rw---- 1 u0_a215 u0_a215      0 2026-10-04 10:46 exoplayer_internal.db-journal
+   
+   shared_prefs:
+   total 40
+   -rw-rw---- 1 u0_a215 u0_a215 144 2026-10-04 10:46 ExpoVideoCache.xml
+   -rw-rw---- 1 u0_a215 u0_a215  65 2026-10-04 11:29 SecureStore.xml
+   -rw-rw---- 1 u0_a215 u0_a215 127 2026-10-04 10:46 WebViewChromiumPrefs.xml
+   -rw-rw-rw- 1 u0_a215 u0_a215 129 2026-10-04 11:32 com.dems.demo.tablet_preferences.xml
+   -rw-rw---- 1 u0_a215 u0_a215  65 2026-10-04 10:46 expo.modules.kotlin.PersistentDataManager.xml
+   key: dems.mobile.log.v1|372
+   key: dems.sim.v1|119858
+   secure-store entries (entry names of shared_prefs/SecureStore.xml, read on the device; none listed = none stored):
+-- installed build:
+    versionCode=100 minSdk=24 targetSdk=36
+    versionName=0.1.0
+    lastUpdateTime=2026-10-04 10:43:32
+-- device time at launch: 10-04 11:32:23.000
+Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+Status: ok
+LaunchState: COLD
+Activity: com.dems.demo.tablet/.MainActivity
+TotalTime: 6233
+WaitTime: 6236
+Complete
+11:32:30 mCurrentFocus=Window{93bea04 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- waited 3 polls for the DONE line; windows other than the app or the launcher seen: 0
+-- screencap at the end of the probe: screen_dems2_phone2.png; focus now: mCurrentFocus=Window{93bea04 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- adb logcat -d -s ReactNativeJS:V | grep 'DEMS-PROBE-W15 run=w15x113221':
+10-04 11:32:29.712  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] START secure-store
+10-04 11:32:30.912  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] S0 environment PASS {"isDevice":false,"platformApiLevel":36,"osVersion":36,"model":"sdk_gphone64_arm64","deviceType":1,"debugBuild":true,"canUseBiometricAuthentication":false,"unprotectedBiometricItemAllowed":true,"localAuthentication":{"hasHardware":true,"isEnrolled":false,"enrolledLevel":0},"item":"dems.live.probe.v1","waitMs":8000}
+10-04 11:32:31.066  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] S1 probe item absent before the run PASS {"outcome":"ok","ms":151,"leftoverDeleted":false}
+10-04 11:32:31.190  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] U1 unprotected write PASS {"outcome":"ok","ms":123}
+10-04 11:32:31.296  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] U2 unprotected read gives the written value PASS {"outcome":"ok","ms":106,"read":"equal","length":34}
+10-04 11:32:31.356  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] U3 unprotected delete PASS {"outcome":"ok","ms":59}
+10-04 11:32:31.360  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] U4 read after the delete gives nothing PASS {"outcome":"ok","ms":3,"read":"absent"}
+10-04 11:32:31.394  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] P1 protected write PASS {"outcome":"threw","ms":33,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:32:31.490  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] P2 protected read PASS {"outcome":"ok","ms":94,"read":"absent"}
+10-04 11:32:31.512  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] P3 rotation: delete of the old value PASS {"outcome":"ok","ms":22}
+10-04 11:32:31.521  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] P4 rotation: protected write of a new value PASS {"outcome":"threw","ms":8,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:32:31.525  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] P5 rotation in place: protected write over the stored value PASS {"outcome":"threw","ms":3,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:32:31.526  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] P6 protected read after the rotation PASS {"outcome":"ok","ms":0,"read":"absent"}
+10-04 11:32:31.527  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] Z1 delete of the probe item PASS {"outcome":"ok","ms":1}
+10-04 11:32:31.528  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] Z2 probe item absent after the run PASS {"outcome":"ok","ms":1,"read":"absent","protectedStepPending":false}
+10-04 11:32:31.528  6161  6193 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113221] DONE secure-store pass=14 fail=0
+-- screencap 7 s later: screen_settled_dems2_phone2.png; focus now: mCurrentFocus=Window{93bea04 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- app data (after the probe): files of shared_prefs and databases; AsyncStorage keys with the length of each value; names of the secure-store entries
+   databases:
+   total 184
+   -rw-rw---- 1 u0_a215 u0_a215 139264 2026-10-04 11:32 RKStorage
+   -rw-rw---- 1 u0_a215 u0_a215      0 2026-10-04 11:32 RKStorage-journal
+   -rw-rw---- 1 u0_a215 u0_a215  32768 2026-10-04 10:46 exoplayer_internal.db
+   -rw-rw---- 1 u0_a215 u0_a215      0 2026-10-04 10:46 exoplayer_internal.db-journal
+   
+   shared_prefs:
+   total 40
+   -rw-rw---- 1 u0_a215 u0_a215 144 2026-10-04 10:46 ExpoVideoCache.xml
+   -rw-rw---- 1 u0_a215 u0_a215  65 2026-10-04 11:32 SecureStore.xml
+   -rw-rw---- 1 u0_a215 u0_a215 127 2026-10-04 10:46 WebViewChromiumPrefs.xml
+   -rw-rw-rw- 1 u0_a215 u0_a215 129 2026-10-04 11:32 com.dems.demo.tablet_preferences.xml
+   -rw-rw---- 1 u0_a215 u0_a215  65 2026-10-04 10:46 expo.modules.kotlin.PersistentDataManager.xml
+   key: dems.mobile.log.v1|557
+   key: dems.sim.v1|119864
+   secure-store entries (entry names of shared_prefs/SecureStore.xml, read on the device; none listed = none stored):
+-- the Core link source the app has stored (absent = the default, Simulated):
+-- Metro log (bundle and error lines):
+Android Bundled 1617ms node_modules/expo-router/entry.js (6090 modules)
+-- lock state (end of the commands; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: NONE
+   fingerprints enrolled: "count":0
+-- adb reverse --list (end of commands; device-session.sh removes its own rules after this):
+host-16 tcp:8081 tcp:8084
+host-16 tcp:4400 tcp:4400
+
+[device-session phone2 11:32:42] Metro 22262 stopped
+[device-session phone2 11:32:42] session ended with status 0
+== 11:32:43 target phone2: device session exit=0 (77: the device shows a secure lock; 69: device unavailable or a foreign emulator on its port)

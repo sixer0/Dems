@@ -1,0 +1,79 @@
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2 --reporter=verbose src/modules/devices
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_58_tmdi3jaw_
+[test:db] stale sweep: dropped 0; kept 7 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_58_tmdi3jaw_tpl_schema: built in 278 ms (create 78 ms, hook 195 ms)
+[test:db] template dems_test_step_58_tmdi3jaw_tpl_seed: built in 338 ms (create 97 ms, hook 218 ms)
+stdout | src/modules/devices/__tests__/effects.db.test.ts > testDeviceSignal: the two seconds of the tone are the simulator's > the meter of AUDIO-01 holds -18 dBFS for 2 s and falls back to the noise floor at 20 dB/s, frame for frame as the reference simulator; AUDIO-02 never moves
+[w36] test tone on MIC-01, dBFS of AUDIO-01 at +ms 50, 1000, 1950, 2000, 2500, 3000, 3750, 4500: server -18.18, -17.85, -17.96, -18.96, -28.96, -38.96, -52.66, -52.22; reference simulator -17.8, -17.75, -17.88, -18.88, -28.88, -38.88, -51.49, -50.98; frames above -19 dBFS: 40 and 40; GET /audio/status during the tone: -52 (BE-GAP-W36-1)
+
+ ✓ |db| src/modules/devices/__tests__/effects.db.test.ts > testDeviceSignal: the two seconds of the tone are the simulator's > the meter of AUDIO-01 holds -18 dBFS for 2 s and falls back to the noise floor at 20 dB/s, frame for frame as the reference simulator; AUDIO-02 never moves 74ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > the booted server > is ready with a running engine on the manual timer, listens on no port, and holds the idle seed 3ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 44 to 47: the reads > INVESTIGATOR reads all four: 200, the committed state in the contract's shape, at the server clock 21ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 44 to 47: the reads > SUPERVISOR reads all four: 200, the committed state in the contract's shape, at the server clock 9ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 44 to 47: the reads > TECHNICIAN reads all four: 200, the committed state in the contract's shape, at the server clock 6ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 44 to 47: the reads > what a read answers is what the tables hold: the seven slices of the inventory equal the stored ones 63ms
+stdout | src/modules/devices/__tests__/effects.db.test.ts > the audit rows of a sequence of device commands equal the simulator's for the same sequence > nine commands of three operators with ticks in between: each stored row is the row the shared transition builds on the committed state, hash for hash; the trail equals the reference simulator's, row for row
+[w36] 9 device commands over 7.35 s of ticks: 9 stored audit rows = the shared transition's (seq, id, at, type, actor, device, message, details, prevHash, hash) = the reference simulator's 9 rows (at, type, category, severity, actor, device, message, details); chain ok over 96 rows
+
+ ✓ |db| src/modules/devices/__tests__/effects.db.test.ts > the audit rows of a sequence of device commands equal the simulator's for the same sequence > nine commands of three operators with ticks in between: each stored row is the row the shared transition builds on the committed state, hash for hash; the trail equals the reference simulator's, row for row 194ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 44 to 47: the reads > a read opens no unit of work, writes no row and publishes nothing 10ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 44 to 47: the reads > nobody without a session reads: 401 NOT_SIGNED_IN on all four, and no row 6ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 44 to 47: the documented 403 of a read is the stages' > a read with the session cookie and an Origin that is no web console origin: 403 ORIGIN_NOT_ALLOWED on all four, and no row 12ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 49 and 50: testDeviceSignal and identifyDevice (DIAGNOSTICS_RUN) > INVESTIGATOR identifies a camera, a microphone, another device and every platform device: 204, one DEVICE_COMMAND row each, by the caller, at the server clock 73ms
+stdout | src/modules/devices/__tests__/effects.db.test.ts > resetMicClip: the latch over time is the simulator's > a reset clears the latch; while the microphone still clips the next burst sets it again; once the fault is cleared a reset holds
+[w36] resetMicClip over 5.5 s: latch true, reset false, next burst true, fault cleared true, reset false and stays; audit types since: FAULT_RAISED, FAULT_CLEARED (the simulator's)
+
+ ✓ |db| src/modules/devices/__tests__/effects.db.test.ts > resetMicClip: the latch over time is the simulator's > a reset clears the latch; while the microphone still clips the next burst sets it again; once the fault is cleared a reset holds 117ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 49 and 50: testDeviceSignal and identifyDevice (DIAGNOSTICS_RUN) > SUPERVISOR identifies a camera, a microphone, another device and every platform device: 204, one DEVICE_COMMAND row each, by the caller, at the server clock 61ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 49 and 50: testDeviceSignal and identifyDevice (DIAGNOSTICS_RUN) > TECHNICIAN identifies a camera, a microphone, another device and every platform device: 204, one DEVICE_COMMAND row each, by the caller, at the server clock 39ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 49 and 50: testDeviceSignal and identifyDevice (DIAGNOSTICS_RUN) > INVESTIGATOR sends a test signal to each device that takes one: 204 and one DEVICE_COMMAND row with command TEST_SIGNAL 59ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 49 and 50: testDeviceSignal and identifyDevice (DIAGNOSTICS_RUN) > SUPERVISOR sends a test signal to each device that takes one: 204 and one DEVICE_COMMAND row with command TEST_SIGNAL 54ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 49 and 50: testDeviceSignal and identifyDevice (DIAGNOSTICS_RUN) > TECHNICIAN sends a test signal to each device that takes one: 204 and one DEVICE_COMMAND row with command TEST_SIGNAL 47ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 49 and 50: testDeviceSignal and identifyDevice (DIAGNOSTICS_RUN) > a platform device takes no test signal: 409 COMMAND_UNSUPPORTED with the simulator's code, and nothing is written 16ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 49 and 50: testDeviceSignal and identifyDevice (DIAGNOSTICS_RUN) > a device the Core does not have: 404 NOT_FOUND for both operations, also for the ID of a paired mobile device 40ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 49 and 50: testDeviceSignal and identifyDevice (DIAGNOSTICS_RUN) > a malformed device ID is the schema stage's 422 INVALID_INPUT, through the real stages 30ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 49 and 50: testDeviceSignal and identifyDevice (DIAGNOSTICS_RUN) > who may call: every seeded role holds DIAGNOSTICS_RUN; a role that loses the grant is refused with 403 and ONE ACCESS_DENIED row, at once, and allowed again when it is back 24ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operation 48: restartDevice (DEVICE_MANAGE) > the TECHNICIAN restarts every camera, microphone and other device: 204, one DEVICE_COMMAND row with command RESTART; the devices are as before 87ms
+stdout | src/modules/devices/__tests__/devices.db.test.ts > operation 48: restartDevice (DEVICE_MANAGE) > a platform device cannot be restarted: 409 COMMAND_UNSUPPORTED, and nothing is written
+[w36] restartDevice and testDeviceSignal on GNSS, TPM and FRONT-PANEL answer 409 COMMAND_UNSUPPORTED with details.simCode COMMAND_UNSUPPORTED; no row, no revision
+
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operation 48: restartDevice (DEVICE_MANAGE) > a platform device cannot be restarted: 409 COMMAND_UNSUPPORTED, and nothing is written 14ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operation 48: restartDevice (DEVICE_MANAGE) > a device the Core does not have: 404 NOT_FOUND 5ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operation 48: restartDevice (DEVICE_MANAGE) > who may call: INVESTIGATOR and SUPERVISOR are refused with 403 NOT_PERMITTED and exactly ONE ACCESS_DENIED row each; no command runs 11ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operation 48: restartDevice (DEVICE_MANAGE) > the hosted action checks the same permission by the SHARED matrix: a grant that exists only in the stored matrix passes the guard and is refused by the simulator, with its code and without a row 11ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operation 48: restartDevice (DEVICE_MANAGE) > SR-44: a caller without the permission learns nothing from the path: a malformed ID and an unknown device answer the same 403 13ms
+stdout | src/modules/devices/__tests__/devices.db.test.ts > the cost of one command > restartDevice is one unit of work: the statements of one transaction, one audit row, one commit
+[w36] one restartDevice through the real stages: 7.0 ms; statements on unit-of-work connections since the request began: 6; the command's unit (6): BEGIN ISOLATION LEVEL READ COMMITTED | SELECT seq, hash FROM public.audit_chain_loc | SELECT set_config('statement_timeout', $1, t | select "id", "username", "rank", "name", "di | insert into "audit_log" ("seq", "id", "at",  | COMMIT
+
+stdout | src/modules/devices/__tests__/devices.db.test.ts > F-11 of the engine host: deviceCommand, setActiveCamera and resetClip ran against PostgreSQL > after everything above the tables hold exactly the committed state, the stored chain verifies, and no error line was written
+[w36] rows written by this file after boot and sign-in: {"DEVICE_COMMAND":50,"ACCESS_DENIED":8}; stored = committed; chain ok over 144 rows
+
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 51 and 52: setActiveCamera and resetMicClip (every signed-in role; no audit row) > setActiveCamera changes the camera the monitor shows for every console, writes no audit row, and a repeat changes nothing 59ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 51 and 52: setActiveCamera and resetMicClip (every signed-in role; no audit row) > resetMicClip with no latch set: 204 for every role, nothing changes and no row is written 23ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > operations 51 and 52: setActiveCamera and resetMicClip (every signed-in role; no audit row) > a body outside the schema is refused before the engine: 422 INVALID_INPUT, 400 INVALID_JSON; nothing changes 12ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > the five commands: who may call, through the real stages > nobody without a session: 401 NOT_SIGNED_IN on all five, no row, nothing changed 10ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > the five commands: who may call, through the real stages > a command with a session cookie and an Origin that is no web console origin: 403 ORIGIN_NOT_ALLOWED, nothing runs 7ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > the cost of one command > restartDevice is one unit of work: the statements of one transaction, one audit row, one commit 8ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > F-11 of the engine host: deviceCommand, setActiveCamera and resetClip ran against PostgreSQL > after everything above the tables hold exactly the committed state, the stored chain verifies, and no error line was written 32ms
+stdout | src/modules/devices/__tests__/devices.db.test.ts > restartDevice while a recording runs > answers 409 RECORDING_ACTIVE with the simulator's code for every device that could be restarted, and changes nothing
+[w36] restartDevice during a recording: 409 RECORDING_ACTIVE, details { simCode: RECORDING_ACTIVE, from: RECORDING, event: deviceCommand }, for CAM-01, CAM-02, MIC-01, MIC-02, POE-SWITCH, REC-INDICATOR, TABLET; no row, no revision
+
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > restartDevice while a recording runs > answers 409 RECORDING_ACTIVE with the simulator's code for every device that could be restarted, and changes nothing 54ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > restartDevice while a recording runs > the order of the refusals is the hosted action's: an unknown device 404, a platform device 409 COMMAND_UNSUPPORTED, then 409 RECORDING_ACTIVE 74ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > restartDevice while a recording runs > a test signal and an identify are not refused by a recording: 204 and their rows, which carry no session ID 19ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > restartDevice while a recording runs > the reads show the recording: both tracks and both channels REC, the system state RECORDING 4ms
+ ✓ |db| src/modules/devices/__tests__/devices.db.test.ts > restartDevice while a recording runs > once the recording has stopped and the evidence is sealed, the restart is accepted again 109ms
+
+ Test Files  2 passed (2)
+      Tests  39 passed (39)
+   Start at  14:57:19
+   Duration  6.71s (tests 44%, transform 34%, import 22%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 129 ms; 0 remain with the run prefix dems_test_step_58_tmdi3jaw_

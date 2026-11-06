@@ -1,0 +1,14 @@
+13:24:08.365 declared screen login
+13:24:08.409 tap 540,1497
+13:24:08.557 slept 900 ms
+13:24:09.494 password typed (not shown); inputType 0x80081
+13:24:09.836 slept 300 ms
+13:24:10.186 key 66
+13:24:10.336 signin 200 at device 10-06 13:24:10.030 (POST /api/v1/auth/sign-in 200)
+13:24:10.947 slept 3500 ms
+13:24:14.501 declared screen home
+13:24:14.545 screencap 109_andi_after_signin.png 13:24:14.545..13:24:15.713
+13:24:15.841 serverlog since l01 (3):
+    13:24:10.314 POST /api/v1/auth/sign-in 200
+    13:24:10.382 [socket closed]
+    13:24:10.388 [socket opened]

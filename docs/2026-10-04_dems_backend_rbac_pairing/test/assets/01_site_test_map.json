@@ -1,0 +1,688 @@
+{
+ "web": {
+  "A1": [
+   {
+    "file": "test/live-login-model.test.tsx",
+    "count": 2,
+    "live": false,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "test/live-login-signin.test.tsx",
+    "count": 4,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "lib/__tests__/live-core-errors.test.tsx",
+    "count": 1,
+    "live": false,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "A3": [
+   {
+    "file": "test/live-session-new-create.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "A4": [
+   {
+    "file": "test/sim-fetch.test.ts",
+    "count": 1,
+    "live": false,
+    "static": false,
+    "titled": false
+   },
+   {
+    "file": "test/live-session-new-pending.test.tsx",
+    "count": 1,
+    "live": true,
+    "static": false,
+    "titled": false
+   },
+   {
+    "file": "test/live-session-new-create.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "A5": [
+   {
+    "file": "test/live-evidence-export.test.tsx",
+    "count": 15,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "A6": [
+   {
+    "file": "test/live-evidence-verify.test.tsx",
+    "count": 13,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "A7": [
+   {
+    "file": "test/live-security-audit-export.test.tsx",
+    "count": 17,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "A8": [
+   {
+    "file": "test/live-system-export.test.tsx",
+    "count": 15,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "A9": [
+   {
+    "file": "test/live-security-audit-chain.test.tsx",
+    "count": 15,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "test/live-session-monitor-panels.test.tsx",
+    "count": 6,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "A10": [
+   {
+    "file": "test/live-system-maintenance.test.tsx",
+    "count": 8,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "A11": [
+   {
+    "file": "test/live-system-maintenance.test.tsx",
+    "count": 12,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "B-1": [
+   {
+    "file": "test/live-evidence-archive.test.tsx",
+    "count": 15,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "B-2": [
+   {
+    "file": "test/live-session-monitor-actions.test.tsx",
+    "count": 16,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "B-3": [
+   {
+    "file": "test/live-session-monitor-panels.test.tsx",
+    "count": 5,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "B-4": [
+   {
+    "file": "test/live-session-monitor-panels.test.tsx",
+    "count": 6,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "B-5": [
+   {
+    "file": "test/live-security-audit-chain.test.tsx",
+    "count": 7,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "B-6": [
+   {
+    "file": "test/live-session-new-precheck.test.tsx",
+    "count": 11,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "test/live-strict-mode-starts.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "B-7": [
+   {
+    "file": "test/live-devices-commands.test.tsx",
+    "count": 15,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "test/live-dashboard-devices.test.tsx",
+    "count": 17,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "test/live-dashboard-page.test.tsx",
+    "count": 1,
+    "live": true,
+    "static": false,
+    "titled": false
+   }
+  ],
+  "B-8": [
+   {
+    "file": "test/live-devices-clip.test.tsx",
+    "count": 13,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "B-9": [
+   {
+    "file": "test/live-storage-page.test.tsx",
+    "count": 1,
+    "live": true,
+    "static": false,
+    "titled": false
+   },
+   {
+    "file": "test/live-storage-policy.test.tsx",
+    "count": 17,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "B-10": [
+   {
+    "file": "test/live-system-maintenance.test.tsx",
+    "count": 6,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "test/live-system-demo.test.tsx",
+    "count": 8,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "test/live-system-settings.test.tsx",
+    "count": 4,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "C-7": [
+   {
+    "file": "test/live-system-demo.test.tsx",
+    "count": 6,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "D-1": [
+   {
+    "file": "test/live-evidence-archive.test.tsx",
+    "count": 1,
+    "live": true,
+    "static": false,
+    "titled": false
+   },
+   {
+    "file": "test/live-evidence-verify.test.tsx",
+    "count": 6,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "D-2": [
+   {
+    "file": "test/live-session-new-create.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "D-3": [
+   {
+    "file": "test/live-session-new-create.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "D-4": [
+   {
+    "file": "test/live-system-demo.test.tsx",
+    "count": 8,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "D-5": [
+   {
+    "file": "test/live-devices-commands.test.tsx",
+    "count": 5,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "D-6": [
+   {
+    "file": "test/live-evidence-export.test.tsx",
+    "count": 10,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ]
+ },
+ "mobile": {
+  "S1-1": [
+   {
+    "file": "auth/live-auth.test.tsx",
+    "count": 2,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "auth/live-auth-model.test.ts",
+    "count": 2,
+    "live": false,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "features/login/live-login.test.tsx",
+    "count": 2,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S1-2": [
+   {
+    "file": "features/settings/live-gap-s1-2-biometric.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S1-3": [
+   {
+    "file": "auth/live-auth.test.tsx",
+    "count": 1,
+    "live": true,
+    "static": false,
+    "titled": false
+   },
+   {
+    "file": "features/settings/live-gap-s1-2-biometric.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S1-4": [
+   {
+    "file": "features/session-new/live-session-new-sites.test.tsx",
+    "count": 2,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "features/session-new/live-session-new-replica.test.tsx",
+    "count": 1,
+    "live": true,
+    "static": false,
+    "titled": false
+   }
+  ],
+  "S1-5": [
+   {
+    "file": "features/evidence/live-evidence-export.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S1-6": [
+   {
+    "file": "features/evidence/live-evidence-export.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S1-7": [
+   {
+    "file": "features/audit/live-audit-chain.test.tsx",
+    "count": 2,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "features/audit/audit-live-static.test.ts",
+    "count": 2,
+    "live": false,
+    "static": true,
+    "titled": true
+   }
+  ],
+  "S1-8": [
+   {
+    "file": "features/pairing/live-gap-sites.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S2-1": [
+   {
+    "file": "features/session-live/live-session-live-sites.test.tsx",
+    "count": 4,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "features/session-live/live-gap-read-only-dialog.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S2-2": [
+   {
+    "file": "features/session-new/live-session-new-sites.test.tsx",
+    "count": 4,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "features/session-new/live-session-new-handoff.test.tsx",
+    "count": 2,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S2-3": [
+   {
+    "file": "features/session-recovery/live-recovery-sites.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "features/session-recovery/recovery-live-static.test.ts",
+    "count": 2,
+    "live": true,
+    "static": true,
+    "titled": true
+   }
+  ],
+  "S2-4": [
+   {
+    "file": "features/session-summary/live-summary-sites.test.tsx",
+    "count": 2,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S2-5": [
+   {
+    "file": "features/pairing/live-gap-sites.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S2-6": [
+   {
+    "file": "features/storage/live-storage-sites.test.tsx",
+    "count": 2,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "features/storage/storage-live-static.test.ts",
+    "count": 2,
+    "live": false,
+    "static": true,
+    "titled": true
+   }
+  ],
+  "S2-7": [
+   {
+    "file": "features/settings/live-settings-sites.test.tsx",
+    "count": 4,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "features/settings/settings-live-static.test.ts",
+    "count": 2,
+    "live": false,
+    "static": true,
+    "titled": true
+   }
+  ],
+  "S2-8": [
+   {
+    "file": "features/devices/live-devices-sites.test.tsx",
+    "count": 2,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S3-1": [
+   {
+    "file": "features/settings/settings-live-static.test.ts",
+    "count": 1,
+    "live": false,
+    "static": true,
+    "titled": false
+   },
+   {
+    "file": "features/settings/live-settings-boundary.test.tsx",
+    "count": 1,
+    "live": true,
+    "static": false,
+    "titled": false
+   },
+   {
+    "file": "features/evidence/live-evidence-archive.test.tsx",
+    "count": 4,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "features/session-new/live-session-new-followups.test.tsx",
+    "count": 2,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "navigation/__tests__/back-guard-busy.test.tsx",
+    "count": 1,
+    "live": false,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S3-2": [
+   {
+    "file": "features/devices/live-devices-sites.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "features/devices/devices-live-static.test.ts",
+    "count": 1,
+    "live": false,
+    "static": true,
+    "titled": false
+   }
+  ],
+  "S4-7": [
+   {
+    "file": "features/session-live/live-gap-s4-7-tablet-link.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S4-8": [
+   {
+    "file": "features/session-recovery/live-recovery-sites.test.tsx",
+    "count": 2,
+    "live": true,
+    "static": false,
+    "titled": true
+   },
+   {
+    "file": "features/session-recovery/recovery-live-static.test.ts",
+    "count": 2,
+    "live": true,
+    "static": true,
+    "titled": true
+   }
+  ],
+  "S5-1": [
+   {
+    "file": "features/evidence/live-evidence-export.test.tsx",
+    "count": 4,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S5-2": [
+   {
+    "file": "features/session-recovery/live-recovery-sites.test.tsx",
+    "count": 2,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S5-3": [
+   {
+    "file": "features/storage/live-storage-sites.test.tsx",
+    "count": 3,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S5-4": [
+   {
+    "file": "features/devices/live-devices-sites.test.tsx",
+    "count": 4,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S5-5": [
+   {
+    "file": "features/evidence/live-evidence-archive.test.tsx",
+    "count": 1,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S5-6": [
+   {
+    "file": "features/session-new/live-session-new-replica.test.tsx",
+    "count": 4,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ],
+  "S5-7": [
+   {
+    "file": "features/settings/live-settings-sites.test.tsx",
+    "count": 2,
+    "live": true,
+    "static": false,
+    "titled": true
+   }
+  ]
+ }
+}

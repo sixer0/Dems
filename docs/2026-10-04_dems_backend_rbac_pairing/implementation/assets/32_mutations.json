@@ -1,0 +1,688 @@
+[
+ {
+  "id": "M01",
+  "file": "src/modules/pairing/store.ts",
+  "from": "\"WHERE state = 'ACTIVE' AND expires_at > $1 AND failed_attempts < $2 RETURNING id, code_hash, failed_attempts\"",
+  "to": "\"WHERE state = 'ACTIVE' AND failed_attempts < $2 AND $1 > 0 RETURNING id, code_hash, failed_attempts\"",
+  "note": "the consuming statement does not ask whether the code has expired"
+ },
+ {
+  "id": "M02",
+  "file": "src/modules/pairing/store.ts",
+  "from": "\"WHERE state = 'ACTIVE' AND expires_at > $1 AND failed_attempts < $2 RETURNING id, code_hash, failed_attempts\"",
+  "to": "\"WHERE expires_at > $1 AND failed_attempts < $2 RETURNING id, code_hash, failed_attempts\"",
+  "note": "the consuming statement takes an attempt from a code that is not ACTIVE"
+ },
+ {
+  "id": "M03",
+  "file": "src/modules/pairing/store.ts",
+  "from": "'UPDATE public.pairing_codes SET failed_attempts = failed_attempts + 1 '",
+  "to": "'UPDATE public.pairing_codes SET failed_attempts = failed_attempts + 0 '",
+  "note": "the consuming statement consumes nothing"
+ },
+ {
+  "id": "M04",
+  "file": "src/modules/pairing/store.ts",
+  "from": "\"UPDATE public.pairing_codes SET state = 'REDEEMED', closed_at = $1, failed_attempts = failed_attempts - 1 \"",
+  "to": "\"UPDATE public.pairing_codes SET state = 'REDEEMED', closed_at = $1, failed_attempts = failed_attempts - 0 \"",
+  "note": "a successful redeem does not give its attempt back"
+ },
+ {
+  "id": "M05",
+  "file": "src/modules/pairing/store.ts",
+  "from": "\"WHERE id = $2 AND state = 'ACTIVE' AND expires_at > $1 RETURNING id\";",
+  "to": "\"WHERE id = $2 AND expires_at > $1 RETURNING id\";",
+  "note": "the redeeming statement is not a compare-and-set on ACTIVE"
+ },
+ {
+  "id": "M06",
+  "file": "src/modules/pairing/store.ts",
+  "from": "\"UPDATE public.pairing_codes SET state = 'EXPIRED', closed_at = $1 WHERE state = 'ACTIVE' AND expires_at <= $1 RETURNING id\"",
+  "to": "\"UPDATE public.pairing_codes SET state = 'EXPIRED', closed_at = $1 WHERE state = 'ACTIVE' AND expires_at < $1 RETURNING id\"",
+  "note": "a code is expired one millisecond late"
+ },
+ {
+  "id": "M07",
+  "file": "src/modules/pairing/store.ts",
+  "from": "\"WHERE id = $1 AND state = 'PAIRED' RETURNING id\";\n\nexport async function revokeDevice",
+  "to": "\"WHERE id = $1 RETURNING id\";\n\nexport async function revokeDevice",
+  "note": "a revoke is not a compare-and-set: a retired device is revoked again"
+ },
+ {
+  "id": "M08",
+  "file": "src/modules/pairing/store.ts",
+  "from": "\"UPDATE public.paired_devices SET state = 'UNPAIRED', unpaired_at = $2, updated_at = $2 WHERE id = $1 AND state = 'PAIRED' RETURNING id\"",
+  "to": "\"UPDATE public.paired_devices SET state = 'UNPAIRED', unpaired_at = $2, updated_at = $2 WHERE id = $1 AND state <> 'UNPAIRED' RETURNING id\"",
+  "note": "an unpair is not a compare-and-set on PAIRED"
+ },
+ {
+  "id": "M09",
+  "file": "src/modules/pairing/store.ts",
+  "from": "\"WHERE c.device_id = $1 AND d.id = c.device_id AND d.state = 'PAIRED' RETURNING c.device_id\"",
+  "to": "\"WHERE c.device_id = $1 AND d.id = c.device_id RETURNING c.device_id\"",
+  "note": "a rotation stores a next credential for a retired device"
+ },
+ {
+  "id": "M10",
+  "file": "src/modules/pairing/store.ts",
+  "from": "'WHERE c.current_hash = $1 OR c.next_hash = $1';",
+  "to": "'WHERE c.current_hash = $1';",
+  "note": "the next credential of a rotation is never found"
+ },
+ {
+  "id": "M11",
+  "file": "src/modules/pairing/store.ts",
+  "from": "'UPDATE public.device_credentials SET current_hash = next_hash, next_hash = NULL WHERE device_id = $2 AND next_hash = $1 RETURNING device_id'",
+  "to": "'UPDATE public.device_credentials SET rotated_at = rotated_at WHERE device_id = $2 AND next_hash = $1 RETURNING device_id'",
+  "note": "the promotion promotes nothing"
+ },
+ {
+  "id": "M12",
+  "file": "src/modules/pairing/store.ts",
+  "from": "'UPDATE public.biometric_tokens SET revoked_at = $2, revoke_reason = $3 WHERE device_id = $1 AND used_at IS NULL AND revoked_at IS NULL RETURNING id'",
+  "to": "'UPDATE public.biometric_tokens SET revoked_at = $2, revoke_reason = $3 WHERE device_id = $1 AND revoked_at IS NULL RETURNING id'",
+  "note": "a used biometric token is revoked with the live ones"
+ },
+ {
+  "id": "M13",
+  "file": "src/modules/pairing/store.ts",
+  "from": "'UPDATE public.biometric_tokens SET revoked_at = $2, revoke_reason = $3 WHERE device_id = $1 AND used_at IS NULL AND revoked_at IS NULL RETURNING id'",
+  "to": "'UPDATE public.biometric_tokens SET revoked_at = $2, revoke_reason = $3 WHERE used_at IS NULL AND revoked_at IS NULL AND $1 IS NOT NULL RETURNING id'",
+  "note": "the live biometric tokens of EVERY device are revoked"
+ },
+ {
+  "id": "M14",
+  "file": "src/modules/pairing/store.ts",
+  "from": "\"WHERE state = 'ACTIVE' AND expires_at > $1\";\n\nexport async function readActiveCode",
+  "to": "\"WHERE state = 'ACTIVE' AND $1 > 0\";\n\nexport async function readActiveCode",
+  "note": "the status read shows a code past its time"
+ },
+ {
+  "id": "M15",
+  "file": "src/modules/pairing/store.ts",
+  "from": "'WHERE s.device_id = d.id AND s.ended_at IS NULL AND s.absolute_expires_at > $1 AND s.last_seen_at > $2 '",
+  "to": "'WHERE s.device_id = d.id AND s.ended_at IS NULL AND s.absolute_expires_at > $1 AND $2 > 0 '",
+  "note": "the registry shows the operator of a session that is past its idle limit"
+ },
+ {
+  "id": "M16",
+  "file": "src/modules/pairing/store.ts",
+  "from": "'WHERE s.device_id = d.id AND s.ended_at IS NULL AND s.absolute_expires_at > $1 AND s.last_seen_at > $2 '",
+  "to": "'WHERE s.device_id = d.id AND s.absolute_expires_at > $1 AND s.last_seen_at > $2 '",
+  "note": "the registry shows the operator of an ended session"
+ },
+ {
+  "id": "M17",
+  "file": "src/modules/pairing/store.ts",
+  "from": "'ORDER BY s.issued_at DESC, s.id DESC LIMIT 1) END AS signed_in_operator_id '",
+  "to": "'ORDER BY s.issued_at ASC, s.id DESC LIMIT 1) END AS signed_in_operator_id '",
+  "note": "the registry shows the OLDEST open session"
+ },
+ {
+  "id": "M18",
+  "file": "src/modules/pairing/store.ts",
+  "from": "export const READ_REGISTRY = `${REGISTRY} ORDER BY d.paired_at DESC, length(d.id) DESC, d.id DESC`;",
+  "to": "export const READ_REGISTRY = `${REGISTRY} ORDER BY d.paired_at ASC, length(d.id) DESC, d.id DESC`;",
+  "note": "the registry is listed oldest first"
+ },
+ {
+  "id": "M19",
+  "file": "src/modules/pairing/store.ts",
+  "from": "'FROM public.paired_devices d JOIN public.device_credentials c ON c.device_id = d.id WHERE d.id = $1';\n\nexport async function findDevice",
+  "to": "'FROM public.paired_devices d LEFT JOIN public.device_credentials c ON c.device_id = d.id WHERE d.id = $1';\n\nexport async function findDevice",
+  "note": "a device row without its credential row resolves as a device"
+ },
+ {
+  "id": "M20",
+  "file": "src/modules/pairing/store.ts",
+  "from": "\"VALUES ($1, $2, $3, $4, 'PAIRED', $5, $6, $5, $5)\";",
+  "to": "\"VALUES ($1, $2, $3, $4, 'PAIRED', $5, $6, 0, $5)\";",
+  "note": "a new device has never been seen"
+ },
+ {
+  "id": "M21",
+  "file": "src/modules/pairing/store.ts",
+  "from": "return rows.length === 1 && rows[0] !== undefined ? found(rows[0]) : null;",
+  "to": "return rows[0] !== undefined ? found(rows[0]) : null;",
+  "note": "(equivalent at HTTP level unless two rows match; kept to see)"
+ },
+ {
+  "id": "M22",
+  "file": "src/modules/pairing/store.ts",
+  "from": "return `${DEVICE_ID_PREFIX}${String(number).padStart(DEVICE_ID_MIN_DIGITS, '0')}`;",
+  "to": "return `${DEVICE_ID_PREFIX}${String(number).padStart(DEVICE_ID_MIN_DIGITS, '0').slice(-DEVICE_ID_MIN_DIGITS)}`;",
+  "note": "a device number over 9999 is cut to four digits"
+ },
+ {
+  "id": "M23",
+  "file": "src/modules/pairing/secrets.ts",
+  "from": "return String(random(0, PAIRING_CODE_SPACE)).padStart(PAIRING_CODE_DIGITS, '0');",
+  "to": "return String(random(0, PAIRING_CODE_SPACE));",
+  "note": "a code loses its leading zeros"
+ },
+ {
+  "id": "M24",
+  "file": "src/modules/pairing/secrets.ts",
+  "from": "return String(random(0, PAIRING_CODE_SPACE)).padStart(PAIRING_CODE_DIGITS, '0');",
+  "to": "return String(random(100000, PAIRING_CODE_SPACE)).padStart(PAIRING_CODE_DIGITS, '0');",
+  "note": "a code never starts with a zero: a tenth of the code space is lost"
+ },
+ {
+  "id": "M25",
+  "file": "src/modules/pairing/secrets.ts",
+  "from": "return createHash('sha256').update(`${codeId}:${code}`, 'utf8').digest();",
+  "to": "return createHash('sha256').update(`${code}`, 'utf8').digest();",
+  "note": "the code is hashed without its ID"
+ },
+ {
+  "id": "M26",
+  "file": "src/modules/pairing/secrets.ts",
+  "from": "return storedHash.length === presented.length && timingSafeEqual(storedHash, presented);",
+  "to": "return storedHash.length === presented.length;",
+  "note": "every code matches"
+ },
+ {
+  "id": "M27",
+  "file": "src/modules/pairing/secrets.ts",
+  "from": "return createHash('sha256').update(credential, 'utf8').digest();",
+  "to": "return createHash('sha256').update(credential.slice(4), 'utf8').digest();",
+  "note": "the credential is hashed without its prefix"
+ },
+ {
+  "id": "M28",
+  "file": "src/modules/pairing/secrets.ts",
+  "from": "return `${DEVICE_CREDENTIAL_PREFIX}${random(DEVICE_CREDENTIAL_BYTES).toString('base64url')}`;",
+  "to": "return `${DEVICE_CREDENTIAL_PREFIX}${random(16).toString('base64url')}${'A'.repeat(21)}`;",
+  "note": "a credential holds 128 random bits"
+ },
+ {
+  "id": "M29",
+  "file": "src/modules/pairing/redeem-lock.ts",
+  "from": "if (taken === REDEEM_LOCK_MAX_FAILURES) lock(now);",
+  "to": "if (taken === REDEEM_LOCK_MAX_FAILURES + 1) lock(now);",
+  "note": "taking the third attempt does not lock"
+ },
+ {
+  "id": "M30",
+  "file": "src/modules/pairing/redeem-lock.ts",
+  "from": "if (failed < REDEEM_LOCK_MAX_FAILURES) return { attemptsRemaining: REDEEM_LOCK_MAX_FAILURES - failed, lockedUntil: null, retryInMs: 0 };",
+  "to": "if (failed <= REDEEM_LOCK_MAX_FAILURES) return { attemptsRemaining: REDEEM_LOCK_MAX_FAILURES - failed, lockedUntil: null, retryInMs: 0 };",
+  "note": "the third failure is not the locking one"
+ },
+ {
+  "id": "M31",
+  "file": "src/modules/pairing/redeem-lock.ts",
+  "from": "    succeed() {\n      lockedUntil = null;\n      windows.forget(key);\n    },",
+  "to": "    succeed() {\n      lockedUntil = null;\n    },",
+  "note": "a success lifts the lock but keeps the count"
+ },
+ {
+  "id": "M32",
+  "file": "src/modules/pairing/redeem-lock.ts",
+  "from": "    succeed() {\n      lockedUntil = null;\n      windows.forget(key);\n    },",
+  "to": "    succeed() {\n      windows.forget(key);\n    },",
+  "note": "a success clears the count but keeps the lock"
+ },
+ {
+  "id": "M33",
+  "file": "src/modules/pairing/redeem-lock.ts",
+  "from": "if (now < lockedUntil) return lockedUntil;",
+  "to": "if (now <= lockedUntil) return lockedUntil;",
+  "note": "the lock lasts one millisecond longer"
+ },
+ {
+  "id": "M34",
+  "file": "src/modules/pairing/redeem-lock.ts",
+  "from": "lockedUntil = now + REDEEM_LOCK_DURATION_MS;",
+  "to": "lockedUntil = now + REDEEM_LOCK_DURATION_MS / 2;",
+  "note": "the lock lasts 30 s"
+ },
+ {
+  "id": "M35",
+  "file": "src/modules/pairing/redeem-lock.ts",
+  "from": "    lockedUntil = null;\n    windows.forget(key);\n    return null;",
+  "to": "    lockedUntil = null;\n    return null;",
+  "note": "a lock that has ended keeps the old count"
+ },
+ {
+  "id": "M36",
+  "file": "src/modules/pairing/redeem-lock.ts",
+  "from": "const options = { points: REDEEM_LOCK_MAX_FAILURES, duration: REDEEM_LOCK_WINDOW_MS / 1000 };",
+  "to": "const options = { points: REDEEM_LOCK_MAX_FAILURES + 2, duration: REDEEM_LOCK_WINDOW_MS / 1000 };",
+  "note": "the counter allows five attempts"
+ },
+ {
+  "id": "M37",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "if (consumed !== null && pairingCodeMatches(consumed.codeHash, consumed.codeId, input.code) && (await redeemCode(unit, now, consumed.codeId))) {",
+  "to": "if (consumed !== null && pairingCodeMatches(consumed.codeHash, consumed.codeId, input.code)) {",
+  "note": "a matching code is not redeemed by the compare-and-set"
+ },
+ {
+  "id": "M38",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "if (consumed !== null && pairingCodeMatches(consumed.codeHash, consumed.codeId, input.code) && (await redeemCode(unit, now, consumed.codeId))) {",
+  "to": "if (consumed !== null && (await redeemCode(unit, now, consumed.codeId))) {",
+  "note": "the code is not compared: any six digits pair"
+ },
+ {
+  "id": "M39",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "        lock.succeed();\n",
+  "to": "",
+  "note": "a success does not clear the redeem lock"
+ },
+ {
+  "id": "M40",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "    const failure = await lock.fail(attempt, now);\n    const limited = await placeInBudget();",
+  "to": "    const failure = await lock.fail(attempt, now);\n    const limited = null;",
+  "note": "a failed redeem takes no place in the denial budget"
+ },
+ {
+  "id": "M41",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "      const limited = await placeInBudget();\n      if (limited === null) await appendActivity(unit, redeemLocked(",
+  "to": "      const limited = null;\n      if (limited === null) await appendActivity(unit, redeemLocked(",
+  "note": "a locked redeem takes no place in the denial budget"
+ },
+ {
+  "id": "M42",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "const exhausted = consumed !== null && consumed.failedAttempts >= PAIRING_CODE_MAX_FAILED_REDEEMS && (await exhaustCode(unit, now, consumed.codeId));",
+  "to": "const exhausted = consumed !== null && consumed.failedAttempts > PAIRING_CODE_MAX_FAILED_REDEEMS && (await exhaustCode(unit, now, consumed.codeId));",
+  "note": "the fifth failure does not close the code"
+ },
+ {
+  "id": "M43",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "  refuseSecretInText(input);\n",
+  "to": "",
+  "note": "a device name may carry the code or a credential into the registry"
+ },
+ {
+  "id": "M44",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "const caller = { operatorId: authenticationOf(request).session?.operatorId ?? null, deviceId: pairedDeviceOf(request) };",
+  "to": "const caller = { operatorId: null, deviceId: pairedDeviceOf(request) };",
+  "note": "the rows of a redeem never name the operator of the session"
+ },
+ {
+  "id": "M45",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "throw failure.lockedUntil === null ? invalidCode(failure.attemptsRemaining) : redeemingLocked(failure.lockedUntil, failure.retryInMs);",
+  "to": "throw invalidCode(failure.attemptsRemaining);",
+  "note": "the locking failure answers 401"
+ },
+ {
+  "id": "M46",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "    const expired = await closeExpiredCode(unit, now);\n    const consumed = await consumeRedeemAttempt(unit, now);",
+  "to": "    const expired = null as string | null;\n    const consumed = await consumeRedeemAttempt(unit, now);",
+  "note": "a redeem does not close a code past its time"
+ },
+ {
+  "id": "M47",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "    if (limited === null) {\n      await appendActivity(unit, redeemFailed({ ...caller, attemptsRemaining: failure.attemptsRemaining, lockedUntil: failure.lockedUntil }));\n    }",
+  "to": "    if (limited !== null) throw limited;\n    await appendActivity(unit, redeemFailed({ ...caller, attemptsRemaining: failure.attemptsRemaining, lockedUntil: failure.lockedUntil }));",
+  "note": "beyond the budget the unit rolls back: the attempt is not counted on the code"
+ },
+ {
+  "id": "M48",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "    const attempt = await lock.take(now);\n    if (attempt.kind === 'LOCKED') {",
+  "to": "    const attempt = await lock.take(now);\n    if (attempt.kind === 'LOCKED' && false) {",
+  "note": "a locked redeem is compared all the same"
+ },
+ {
+  "id": "M49",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "return new ApiFailure(401, ApiErrorCode.INVALID_CODE, 'The pairing code is not valid.', { details: { attemptsRemaining } });",
+  "to": "return new ApiFailure(401, ApiErrorCode.INVALID_CODE, 'The pairing code is not valid.');",
+  "note": "the failure answer carries no attemptsRemaining"
+ },
+ {
+  "id": "M50",
+  "file": "src/modules/pairing/redeem.ts",
+  "from": "      await insertDeviceCredential(unit, deviceId, deviceCredentialHash(credential));",
+  "to": "      await insertDeviceCredential(unit, deviceId, deviceCredentialHash(newDeviceCredential()));",
+  "note": "the stored hash is not that of the credential that is returned"
+ },
+ {
+  "id": "M51",
+  "file": "src/modules/pairing/codes.ts",
+  "from": "const replaced = await cancelActiveCode(unit, now, operatorId);\n    if (replaced !== null) await appendActivity(unit, codeClosed({ codeId: replaced, reason: 'CANCELLED', operatorId }));\n\n",
+  "to": "const replaced = await cancelActiveCode(unit, now, operatorId);\n\n",
+  "note": "a replaced code is closed without its row"
+ },
+ {
+  "id": "M52",
+  "file": "src/modules/pairing/codes.ts",
+  "from": "const expiresAt = now + PAIRING_CODE_LIFETIME_MS;",
+  "to": "const expiresAt = now + PAIRING_CODE_LIFETIME_MS + 1;",
+  "note": "a code lives 300 s and one millisecond"
+ },
+ {
+  "id": "M53",
+  "file": "src/modules/pairing/codes.ts",
+  "from": "attemptsRemaining: Math.max(0, PAIRING_CODE_MAX_FAILED_REDEEMS - active.failedAttempts),",
+  "to": "attemptsRemaining: PAIRING_CODE_MAX_FAILED_REDEEMS,",
+  "note": "the status always says five attempts"
+ },
+ {
+  "id": "M54",
+  "file": "src/modules/pairing/codes.ts",
+  "from": "    const expired = await closeExpiredCode(unit, now);\n    const cancelled = await cancelActiveCode(unit, now, operatorId);",
+  "to": "    const expired = null as string | null;\n    const cancelled = await cancelActiveCode(unit, now, operatorId);",
+  "note": "a cancel records an expired code as cancelled"
+ },
+ {
+  "id": "M55",
+  "file": "src/modules/pairing/codes.ts",
+  "from": "    await closeExpiredCode(unit, now);\n    const replaced",
+  "to": "    const replaced",
+  "note": "an issue records an expired code as cancelled"
+ },
+ {
+  "id": "M56",
+  "file": "src/modules/pairing/codes.ts",
+  "from": "await insertCode(unit, { id: codeId, codeHash: pairingCodeHash(codeId, code), issuedBy: operatorId, issuedAt: now, expiresAt });",
+  "to": "await insertCode(unit, { id: codeId, codeHash: pairingCodeHash(codeId, newPairingCode()), issuedBy: operatorId, issuedAt: now, expiresAt });",
+  "note": "the stored hash is not that of the code that is returned"
+ },
+ {
+  "id": "M57",
+  "file": "src/modules/pairing/codes.ts",
+  "from": "    await appendActivity(unit, codeIssued({ operatorId, codeId, expiresAt }));\n",
+  "to": "",
+  "note": "an issue writes no audit row"
+ },
+ {
+  "id": "M58",
+  "file": "src/modules/pairing/codes.ts",
+  "from": "  if (!pending) return null;\n",
+  "to": "",
+  "note": "(the sweep always takes a unit; behaviour equal, cost different)"
+ },
+ {
+  "id": "M59",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "const sessions = await app.sessionRegistry.endForDevice(unit, deviceId, 'DEVICE_REVOKED');",
+  "to": "const sessions: string[] = [];",
+  "note": "a revoke does not end the sessions of the device"
+ },
+ {
+  "id": "M60",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "    await revokeBiometricTokensOfDevice(unit, deviceId, now, 'DEVICE_REVOKED');\n",
+  "to": "",
+  "note": "a revoke leaves the biometric tokens of the device live"
+ },
+ {
+  "id": "M61",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "const sessions = await app.sessionRegistry.endForDevice(unit, deviceId, 'DEVICE_UNPAIRED');",
+  "to": "const sessions = await app.sessionRegistry.endForDevice(unit, deviceId, 'DEVICE_REVOKED');",
+  "note": "an unpair ends the sessions with the reason of a revoke"
+ },
+ {
+  "id": "M62",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "  presence.forget(deviceId);\n",
+  "to": "",
+  "note": "a retired device stays online in the presence counter"
+ },
+ {
+  "id": "M63",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "  app.publish({ kind: 'device.revoked', deviceId, reason });\n",
+  "to": "",
+  "note": "a revoke does not tell the realtime channel to close the sockets"
+ },
+ {
+  "id": "M64",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "if (registration === null || registration.state !== 'PAIRED') throw deviceRevokedAnswer();",
+  "to": "if (registration === null) throw deviceRevokedAnswer();",
+  "note": "a device that was retired in flight still reads its registration"
+ },
+ {
+  "id": "M65",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "if (!(await setNextCredential(unit, deviceId, deviceCredentialHash(credential), now))) throw deviceRevokedAnswer();",
+  "to": "await setNextCredential(unit, deviceId, deviceCredentialHash(credential), now);",
+  "note": "a rotation for a device that is not PAIRED answers a credential and writes a row"
+ },
+ {
+  "id": "M66",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "if (!(await unpairDevice(unit, deviceId, now))) throw deviceRevokedAnswer();",
+  "to": "await unpairDevice(unit, deviceId, now);",
+  "note": "an unpair that changed nothing writes its row all the same"
+ },
+ {
+  "id": "M67",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "throw state === null ? deviceNotFound() : deviceNotPairedAnyMore(deviceId, state);\n    }\n    const sessions",
+  "to": "throw state !== null ? deviceNotFound() : deviceNotPairedAnyMore(deviceId, 'GONE');\n    }\n    const sessions",
+  "note": "404 and 409 of a revoke are swapped"
+ },
+ {
+  "id": "M68",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "  if (state === null) throw deviceNotFound();\n  if (state !== 'PAIRED') throw deviceNotPairedAnyMore(deviceId, state);\n  throw revokeReasonTooShort();",
+  "to": "  throw revokeReasonTooShort();",
+  "note": "a short reason answers INVALID_REASON before 404 and 409"
+ },
+ {
+  "id": "M69",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "online: device.state === 'PAIRED' && presence.isOnline(device.id),",
+  "to": "online: presence.isOnline(device.id),",
+  "note": "a retired device can be listed as online"
+ },
+ {
+  "id": "M70",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "await appendActivity(unit, deviceRevoked({ operatorId, deviceId, reason, sessionsEnded: sessions.length }));",
+  "to": "await appendActivity(unit, deviceRevoked({ operatorId, deviceId, reason, sessionsEnded: 0 }));",
+  "note": "the revoke row does not count the ended sessions"
+ },
+ {
+  "id": "M71",
+  "file": "src/modules/pairing/devices.ts",
+  "from": "    unit.afterCommit(() => publishRetired(app, presence, deviceId, 'REVOKED'));",
+  "to": "    publishRetired(app, presence, deviceId, 'REVOKED');",
+  "note": "device.revoked is published before the commit"
+ },
+ {
+  "id": "M72",
+  "file": "src/modules/pairing/resolver.ts",
+  "from": "      if (device === null) return null;\n      if (device.state !== 'PAIRED') return retired(device.deviceId);\n      if (device.pending) {",
+  "to": "      if (device === null) return null;\n      if (device.pending) {",
+  "note": "a retired credential resolves as PAIRED"
+ },
+ {
+  "id": "M73",
+  "file": "src/modules/pairing/resolver.ts",
+  "from": "      if (device === null) return null;\n      if (device.state !== 'PAIRED') return retired(device.deviceId);\n      await seen(device);\n      return pairedDevice(device.deviceId);\n    },\n  };",
+  "to": "      if (device === null) return null;\n      await seen(device);\n      return pairedDevice(device.deviceId);\n    },\n  };",
+  "note": "the session of a retired device resolves as PAIRED"
+ },
+ {
+  "id": "M74",
+  "file": "src/modules/pairing/resolver.ts",
+  "from": "      if (!isDeviceCredential(credential)) return null;\n",
+  "to": "",
+  "note": "a value of any form is looked up"
+ },
+ {
+  "id": "M75",
+  "file": "src/modules/pairing/resolver.ts",
+  "from": "      if (!DEVICE_ID_PATTERN.test(deviceId)) return null;\n",
+  "to": "",
+  "note": "a device ID of any form is looked up"
+ },
+ {
+  "id": "M76",
+  "file": "src/modules/pairing/resolver.ts",
+  "from": "if (app.clock.now() - device.lastSeenAt < DEVICE_SEEN_MIN_INTERVAL_MS) return;",
+  "to": "if (app.clock.now() - device.lastSeenAt < 1) return;",
+  "note": "last seen is written at every request"
+ },
+ {
+  "id": "M77",
+  "file": "src/modules/pairing/resolver.ts",
+  "from": "if (app.clock.now() - device.lastSeenAt < DEVICE_SEEN_MIN_INTERVAL_MS) return;",
+  "to": "if (app.clock.now() - device.lastSeenAt <= DEVICE_SEEN_MIN_INTERVAL_MS) return;",
+  "note": "last seen is written one millisecond late"
+ },
+ {
+  "id": "M78",
+  "file": "src/modules/pairing/resolver.ts",
+  "from": "        await app.pipeline.run('pairing.promoteCredential', (unit) => promoteCredential(unit, hash, deviceId));\n",
+  "to": "",
+  "note": "the next credential is never promoted"
+ },
+ {
+  "id": "M79",
+  "file": "src/modules/pairing/resolver.ts",
+  "from": "        if (device.pending) return null;\n      }",
+  "to": "      }",
+  "note": "a credential that is still pending after the promotion resolves"
+ },
+ {
+  "id": "M80",
+  "file": "src/modules/pairing/resolver.ts",
+  "from": "      if (device.pending) {",
+  "to": "      if (false) {",
+  "note": "the next credential resolves without being promoted: the old one stays valid for ever"
+ },
+ {
+  "id": "M81",
+  "file": "src/modules/pairing/routes.ts",
+  "from": "judged.error.issues.every((issue) => issue.code === 'too_small' && issue.path.length === 1 && issue.path[0] === 'reason');",
+  "to": "judged.error.issues.every((issue) => issue.path.length === 1 && issue.path[0] === 'reason');",
+  "note": "every problem of the reason counts as \"too short\""
+ },
+ {
+  "id": "M82",
+  "file": "src/modules/pairing/routes.ts",
+  "from": "  if (failure.validationContext !== 'body') throw invalidInput(failure.validationContext);\n",
+  "to": "",
+  "note": "a malformed device ID is not refused as invalid input"
+ },
+ {
+  "id": "M83",
+  "file": "src/modules/pairing/routes.ts",
+  "from": "      if (looksLikeSecret(input.reason)) throw invalidInput('body');\n",
+  "to": "",
+  "note": "a reason with the form of a credential reaches the audit writer"
+ },
+ {
+  "id": "M84",
+  "file": "src/modules/pairing/routes.ts",
+  "from": "      const issued = await issueCode(app, operatorOf(request));\n      withStateRevision(reply);\n",
+  "to": "      const issued = await issueCode(app, operatorOf(request));\n",
+  "note": "the issue answer carries no revision (API-7)"
+ },
+ {
+  "id": "M85",
+  "file": "src/modules/pairing/routes.ts",
+  "from": "      const redeemed = await redeemPairingCode(app, lock, request, request.body);\n      withStateRevision(reply);\n      void reply.code(201);",
+  "to": "      const redeemed = await redeemPairingCode(app, lock, request, request.body);\n      withStateRevision(reply);",
+  "note": "a redeem answers 200"
+ },
+ {
+  "id": "M86",
+  "file": "src/modules/pairing/routes.ts",
+  "from": "await unpairPairedDevice(app, presence, deviceOf(request), authenticationOf(request).session?.operatorId ?? null);",
+  "to": "await unpairPairedDevice(app, presence, deviceOf(request), null);",
+  "note": "the UNPAIRED row never names the operator of the session"
+ },
+ {
+  "id": "M87",
+  "file": "src/modules/pairing/routes.ts",
+  "from": "      if (input.reasonTooShort) return refuseShortRevokeReason(app, input.deviceId);\n",
+  "to": "      if (input.reasonTooShort) throw invalidInput('body');\n",
+  "note": "a short reason answers INVALID_INPUT"
+ },
+ {
+  "id": "M88",
+  "file": "src/modules/pairing/routes.ts",
+  "from": "void reply.header(EPOCH_HEADER_NAME, app.engine.epoch).header(REVISION_HEADER_NAME, app.engine.revision);",
+  "to": "void reply.header(EPOCH_HEADER_NAME, app.engine.epoch).header(REVISION_HEADER_NAME, app.engine.revision - 1);",
+  "note": "the revision header names the revision before the command"
+ },
+ {
+  "id": "M89",
+  "file": "src/modules/pairing/routes.ts",
+  "from": "      const rotated = await rotateDeviceCredential(app, deviceOf(request));\n      withStateRevision(reply);",
+  "to": "      const rotated = await rotateDeviceCredential(app, deviceOf(request));\n      void reply.header('set-cookie', 'x=1');\n      withStateRevision(reply);",
+  "note": "an answer to a device sets a cookie"
+ },
+ {
+  "id": "M90",
+  "file": "src/modules/pairing/activity.ts",
+  "from": "      deviceId: input.deviceId,\n      details: { coreDeviceId: input.core.deviceId, certificateFingerprint: input.core.certificateFingerprint, codeId: input.codeId },",
+  "to": "      deviceId: null,\n      details: { coreDeviceId: input.core.deviceId, certificateFingerprint: input.core.certificateFingerprint, codeId: input.codeId },",
+  "note": "PAIRING_SUCCESS does not name the new device"
+ },
+ {
+  "id": "M91",
+  "file": "src/modules/pairing/activity.ts",
+  "from": "      details: { attemptsRemaining: input.attemptsRemaining, lockedUntil: input.lockedUntil },",
+  "to": "      details: { attemptsRemaining: input.attemptsRemaining },",
+  "note": "the locking failure does not say that it locked"
+ },
+ {
+  "id": "M92",
+  "file": "src/modules/pairing/activity.ts",
+  "from": "      details: { reason: input.reason, sessionsEnded: input.sessionsEnded },\n    },\n    event: { type: 'UNPAIRED', message: 'Device revoked', severity: 'WARNING', deviceId: input.deviceId },",
+  "to": "      details: { reason: input.reason, sessionsEnded: input.sessionsEnded },\n    },\n    event: null,",
+  "note": "a revoke emits no UNPAIRED event"
+ },
+ {
+  "id": "M93",
+  "file": "src/modules/pairing/activity.ts",
+  "from": "      actorId: input.operatorId,\n      deviceId: null,\n      details: { codeId: input.codeId, reason: input.reason },",
+  "to": "      actorId: null,\n      deviceId: null,\n      details: { codeId: input.codeId, reason: input.reason },",
+  "note": "a cancelled code does not name the operator who cancelled it"
+ },
+ {
+  "id": "M94",
+  "file": "src/modules/pairing/database.ts",
+  "from": "    app.log.error({ err: error, source }, READ_FAILED);",
+  "to": "    app.log.error({ error, source }, READ_FAILED);",
+  "note": "a failed read logs the error under another key than err (M14)"
+ },
+ {
+  "id": "M95",
+  "file": "src/modules/pairing/database.ts",
+  "from": "    throw notReady();\n",
+  "to": "    throw error;\n",
+  "note": "a failed read answers 500 with the driver error"
+ },
+ {
+  "id": "M96",
+  "file": "src/modules/pairing/presence.ts",
+  "from": "if (open <= 1) sockets.delete(deviceId);",
+  "to": "if (open < 1) sockets.delete(deviceId);",
+  "note": "a device whose last socket closed stays online"
+ },
+ {
+  "id": "M97",
+  "file": "src/modules/pairing/presence.ts",
+  "from": "sockets.set(deviceId, (sockets.get(deviceId) ?? 0) + 1);",
+  "to": "sockets.set(deviceId, 1);",
+  "note": "two sockets count as one"
+ },
+ {
+  "id": "M98",
+  "file": "src/modules/pairing/index.ts",
+  "from": "    sweepCodes: () => sweepCodes(app),\n  };\n  app.seams.provide('deviceResolver', control);",
+  "to": "    sweepCodes: async () => null,\n  };\n  app.seams.provide('deviceResolver', control);",
+  "note": "the sweep of the control does nothing"
+ }
+]

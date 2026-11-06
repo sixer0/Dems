@@ -1,0 +1,15 @@
+Wed Oct  7 05:10:47 WIB 2026
+ 5:10  1 user, load averages: 2.34 2.40 2.11
+port 4400: 
+port 4410: 
+port 4411: 
+port 4420: 
+port 4421: 
+port 4422: 
+port 4423: 
+port 5173: 
+port 5176: 
+port 5177: 
+port 5178: 
+port 8081: 
+port 4432: postgres 19121 127.0.0.1:4432;

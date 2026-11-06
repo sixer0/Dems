@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""M1 mutation check (rule M15: nothing in the tree is written).
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file)
+and runs the test files of its group. A mutation is DETECTED when jest exits non-zero. The hashes of
+the mutated files are compared before and after the whole run.
+
+Groups:
+  H  the pending-press hook (`runtime/use-pending-press.ts`): the press guard and the reveal delay
+  S  the seeded first render (`runtime/link-notice.ts` `initialOfflineNotice`, `runtime/use-core-link-notice.ts`,
+     the W66 chip's first-render line)
+  B  the `busy` prop of `navigation/back-guard.tsx` and W67's call
+  T  the truthful copy of Start Session
+
+  python3 mutate.py control            the unmutated test files of every group, once
+  python3 mutate.py H                  every mutant of group H (or S, B, T); ids also work (H1 S3 …)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+
+HOOK = 'src/runtime/use-pending-press.ts'
+NOTICE = 'src/runtime/link-notice.ts'
+NOTICE_HOOK = 'src/runtime/use-core-link-notice.ts'
+CHIP = 'src/features/more/use-core-link-chip.ts'
+GUARD = 'src/navigation/back-guard.tsx'
+SCREEN = 'src/features/session-new/session-new-screen.tsx'
+PREVIEWS = 'src/features/session-new/device-previews.tsx'
+INFO = 'src/features/session-new/session-info-step.tsx'
+
+TESTS = {
+    'H': ['src/runtime/use-pending-press.test.tsx', 'src/features/session-new/live-session-new-handoff.test.tsx'],
+    'S': ['src/runtime/use-core-link-notice.test.tsx', 'src/features/more/use-core-link-chip.test.tsx', 'src/runtime/link-notice.test.ts'],
+    'B': ['src/navigation/__tests__/back-guard-busy.test.tsx', 'src/features/session-new/live-session-new-followups.test.tsx'],
+    'T': ['src/features/session-new/live-session-new-followups.test.tsx'],
+}
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+REVEAL = 's.clock.now - pressedAt >= LIVE_PENDING_REVEAL_MS'
+SEED = "  return offlineNoticeAfter(banner === 'offline', link);"
+M = [
+  # ── H: the press guard ──
+  ('H1', HOOK, 'the press guard removed: a second press starts a second command', [e('      if (inFlight.current) return false;\n', '')]),
+  ('H2', HOOK, 'the in-flight flag never set at the press (only the rendered busy state would guard)', [e('      inFlight.current = true;\n', '')]),
+  ('H3', HOOK, 'release does not clear the in-flight flag: the control is stuck after one command', [e('        inFlight.current = false;\n', '')]),
+  ('H4', HOOK, 'a start that throws does not release the control', [e('      } catch (error) {\n        release();\n', '      } catch (error) {\n')]),
+  ('H5', HOOK, 'a command settled before `run` returns still sets the busy state (Simulated mode changes)', [e('      if (!released) {', '      if (true) {')]),
+  ('H6', HOOK, 'busy is never reported (no accessibility busy state)', [e('return { busy: pressedAt !== null, pending, run };', 'return { busy: false, pending, run };')]),
+  # ── H: the reveal delay ──
+  ('H7', HOOK, 'reveal delay 0: the spinner at the press', [e(REVEAL, 's.clock.now - pressedAt >= 0')]),
+  ('H8', HOOK, 'reveal delay halved (210 ms: the spinner at 300 ms on the store clock)', [e(REVEAL, 's.clock.now - pressedAt >= LIVE_PENDING_REVEAL_MS / 2')]),
+  ('H9', HOOK, 'reveal delay + 100 ms (the spinner at 600 ms)', [e(REVEAL, 's.clock.now - pressedAt >= LIVE_PENDING_REVEAL_MS + 100')]),
+  ('H10', HOOK, 'the press is stamped with the wall clock instead of the store clock', [e('setPressedAt(sim.store.getState().clock.now);', 'setPressedAt(Date.now());')]),
+  ('H11', HOOK, 'pending while idle (the idle guard of the selector dropped)', [e('pressedAt !== null && s.clock.now', 's.clock.now')]),
+  ('H12', HOOK, '`>=` to `>` (expected EQUIVALENT: the store clock moves in 100 ms steps, 420 is never hit exactly)', [e(REVEAL, 's.clock.now - pressedAt > LIVE_PENDING_REVEAL_MS')]),
+  # ── S: the seeded first render ──
+  ('S1', NOTICE, "the seed ignores the banner (M0's first snippet: F-1 back)", [e(SEED, '  return offlineNoticeAfter(false, link);')]),
+  ('S2', NOTICE, 'the seed shows whenever the banner is offline, whatever the view', [e(SEED, "  return banner === 'offline' || offlineNoticeAfter(false, link);")]),
+  ('S3', NOTICE, 'the seed always starts from shown (a flash at every cold start)', [e(SEED, '  return offlineNoticeAfter(true, link);')]),
+  ('S4', NOTICE, "a 'resynced' banner counts as lost", [e(SEED, "  return offlineNoticeAfter(banner !== 'hidden', link);")]),
+  ('S5', NOTICE_HOOK, 'the hook starts from "not shown" (the seed not used)', [e('useState(() => initialOfflineNotice(view, banner))', 'useState(() => offlineNoticeAfter(false, view))')]),
+  ('S6', NOTICE_HOOK, 'the hook re-seeds from the banner at every view change (the rule bypassed after the first render)', [e('setOffline(offlineNoticeAfter(offline, view));', 'setOffline(initialOfflineNotice(view, banner));')]),
+  ('S7', NOTICE_HOOK, 'the hook does not read the banner', [e('const banner = useConnectionBanner().kind;', "const banner = 'hidden' as const;")]),
+  ('S8', NOTICE_HOOK, 'the hook hands back the view of a not-LIVE source as up', [e('return { view, offline };', "return { view: view === 'none' ? 'up' : view, offline };")]),
+  ('S9', CHIP, "W66's chip starts from \"not shown\" again", [e('useState(() => initialOfflineNotice(view, banner))', 'useState(() => offlineNoticeAfter(false, view))')]),
+  # ── B: the busy prop ──
+  ('B1', GUARD, 'busy does not ignore a press', [e('                if (busy) return;\n', '')]),
+  ('B2', GUARD, 'busy shows no spinner', [e('{busy ? <Spinner size="sm" color={palette.foreground} testID="back-guard-leave-spinner" /> : null}', '{null}')]),
+  ('B3', GUARD, 'busy sets no accessibility busy state', [e('{...(busy ? { accessibilityState: { busy: true } } : {})}', '{...{}}')]),
+  ('B4', GUARD, 'the default is busy (the dialog changes for every caller)', [e('export function BackGuardDialog({ guard, variant, onConfirm, busy = false }', 'export function BackGuardDialog({ guard, variant, onConfirm, busy = true }')]),
+  ('B5', SCREEN, "W67 passes the in-flight state (the spinner at the press, not after the reveal delay)", [e('busy={cancelPress.pending}', 'busy={cancelPress.busy}')]),
+  ('B6', SCREEN, 'W67 does not pass busy (no spinner on the cancel confirm)', [e(' busy={cancelPress.pending} />', ' />')]),
+  # ── T: the copy ──
+  ('T1', PREVIEWS, 'LIVE keeps "Speak to test (simulated)"', [e("t(liveSource ? 'features.session-new.live.speakToTest' : 'sessionNew.devices.speakToTest')", "t('sessionNew.devices.speakToTest')")]),
+  ('T2', INFO, 'LIVE keeps "Scan case number (simulated)"', [e("t(live ? 'features.session-new.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')", "t('sessionNew.info.caseNumber.scan')")]),
+  ('T3', PREVIEWS, 'SIMULATED takes the Live hint (the Simulated copy changes)', [e("t(liveSource ? 'features.session-new.live.speakToTest' : 'sessionNew.devices.speakToTest')", "t('features.session-new.live.speakToTest')")]),
+  ('T4', INFO, 'SIMULATED takes the Live label (the Simulated copy changes)', [e("t(live ? 'features.session-new.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')", "t('features.session-new.live.scanCaseNumber')")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = sys.argv[1:]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# M1 mutation check, %s; the tree is not edited' % time.strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+    if 'control' in wanted:
+        tests = sorted({t for group in TESTS.values() for t in group})
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'), tests)
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation, %d test files): exit=%d %s (%.0f s)' % (len(tests), run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-4000:])
+            sys.exit(1)
+    chosen = [m for m in M if m[0] in wanted or m[0].rstrip('0123456789') in wanted]
+    detected = missed = unapplied = 0
+    for mid, file, what, edits in chosen:
+        group = mid.rstrip('0123456789')
+        with open(SPEC, 'w') as f:
+            json.dump({'id': mid, 'file': file, 'edits': edits}, f)
+        started = time.time()
+        run = jest(dict(os.environ, CI='1', M1_MUT_SPEC=SPEC), TESTS[group])
+        tail, failed, first = summary(run.stdout)
+        if 'expected exactly 1' in run.stdout:
+            unapplied += 1
+            verdict = 'NOT APPLIED'
+        elif run.returncode != 0:
+            detected += 1
+            verdict = 'DETECTED'
+        else:
+            missed += 1
+            verdict = 'not detected'
+        print('%-4s %-12s %s | %s | %s | failing files: %s | first: %s (%.0f s)' % (mid, verdict, what, file, tail, ', '.join(failed) or '-', ' / '.join(first) or '-', time.time() - started), flush=True)
+    if chosen:
+        print('## %d detected, %d not detected, %d not applied, of %d' % (detected, missed, unapplied, len(chosen)), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    same = before == after
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if same else 'CHANGED'), flush=True)
+    for f in files:
+        print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+
+if __name__ == '__main__':
+    main()

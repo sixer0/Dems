@@ -1,0 +1,28 @@
+# W11b follow-up 3, second round (decision D134): mutations of the new mechanism, each one string replacement,
+# in the scratch copy OUTSIDE the repository (rule M15). 2026-10-05 11:01 to 11:06 WIB, label DEMS_TEST_STEP=w11b3m.
+# unit = needs.test.ts + limits.test.ts + static.test.ts (103 tests); db = needs.db.test.ts + limits.db.test.ts + limits-own.db.test.ts (24 tests).
+# One worker. The scratch copy holds its own copy of test/static: with a link to the repository instead, static.test.ts
+# reads the repository files and cannot see a mutation (M14 survived the first pass for that reason alone).
+# Harness: assets/11b_fu3b_mutate.mts.txt. Restored after every mutation; the helpers folder was compared with
+# the repository afterwards and is equal.
+
+M1 a stated need is ignored (only the caps apply) | unit 3 files | Tests failed 7 of 103
+M2 a stated need may LOWER a limit | unit 3 files | Tests failed 6 of 103
+M3 no ceiling on a stated need | unit 3 files | Tests failed 7 of 103
+M4 a stated need is not checked for being whole milliseconds | unit 3 files | Tests failed 12 of 103
+M5 the ceiling of a stated need is the cap instead of 15 minutes | unit 3 files | Tests failed 10 of 103
+M6 a request for a quiet cluster is not read at all | unit 3 files | Tests failed 4 of 103
+M7 the answer of the clone-lock queue is not looked at (always quiet) | unit 3 files | Tests failed 3 of 103
+M8 the bound of the quiet wait is not enforced | unit 3 files | Tests failed 1 of 103
+M9 no pause between two looks at the queue | unit 3 files | Tests failed 1 of 103
+M10 the connect wait of a pool ignores the stated need | unit 3 files | Tests failed 4 of 103
+M11 a stated connect wait may be shorter than the helper’s own | unit 3 files | Tests failed 1 of 103
+M12 a file's stated hook need shortens the helper's own hooks | unit 3 files | Tests failed 1 of 103
+M13 the helper applies the limits again at every call (a file’s own lower limit is lost) | unit 3 files | Tests failed 0 of 103
+M14 the read of the clone-lock queue is not keyed by its own session | unit 3 files | Tests failed 1 of 103
+M6 a request for a quiet cluster is not read at all | db 3 files | Tests failed 3 of 24
+M7 the answer of the clone-lock queue is not looked at (always quiet) | db 3 files | Tests failed 1 of 24
+M8 the bound of the quiet wait is not enforced | db 3 files | Tests failed 1 of 24
+M13 the helper applies the limits again at every call (a file’s own lower limit is lost) | db 3 files | Tests failed 4 of 24
+M0 unchanged | unit | Tests failed 0 of 103
+M0 unchanged | db | Tests failed 0 of 24

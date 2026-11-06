@@ -1,0 +1,13 @@
+# Mutations of the changed helper, applied to the scratch copy outside the repository, one at a time; test file: __tests__/drop-retry.test.ts (project unit). 2026-10-04 12:32:26 WIB
+M0 unchanged:  Test Files 1 passed (1); Tests 43 passed (43);
+M1 no retry at all [ddl.ts: 'if (!isTerminateRefusal(error)) throw error;' -> 'throw error;']: ⎯⎯⎯⎯⎯⎯ Failed Tests 22 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 22 failed | 21 passed (43);
+M2 a client leak is retried like a worker [ddl.ts: 'if (clients.length > 0) {' -> 'if (clients.length > 1e9) {']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 4 failed | 39 passed (43);
+M3 no bound [ddl.ts: 'if (refusals >= attempts) {' -> 'if (refusals >= attempts * 50) {']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 5 failed | 38 passed (43);
+M4 every 42501 is retried [ddl.ts: 'return errorCode(error) === INSUFFICIENT_PRIVILEGE && TERMINATE_REFUSED.test(errorMessage(error));' -> 'return errorCode(error) === INSUFFICIENT_PRIVILEGE;']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 2 failed | 41 passed (43);
+M5 no wait between attempts [ddl.ts: 'await sleep(pauseMs);' -> 'void pauseMs;']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 1 failed | 42 passed (43);
+M6 the test file does not report [run.ts: 'if (this.isOwner) return;' -> 'if (this.isOwner || !this.isOwner) return;']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 1 failed | 42 passed (43);
+M7 the owner does not listen [run.ts: 'await session.listen(identity.prefix, (payload) => run.#heardRetriedDrop(payload));' -> 'void run;']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 2 failed | 41 passed (43);
+M8 teardown report without the retried drops [run.ts: 'retriedDrops: [...this.#retriedDrops], ms' -> 'retriedDrops: [], ms']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 2 failed | 41 passed (43);
+M9 the retry policy of the run is not passed on [run.ts: 'await dropDatabase(this.#session, guarded, this.#dropRetry);' -> 'await dropDatabase(this.#session, guarded, { attempts: 1 });']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 6 failed | 37 passed (43);
+restored:  Test Files 1 passed (1); Tests 43 passed (43);
+the scratch copy equals the repository again

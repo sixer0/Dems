@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+"""Planted violations for the static tests of this round, on the SCRATCH copy only (rule M15).
+Each plants one change in one file of the scratch copy, runs the tests named, and puts the file back."""
+import re, shutil, subprocess
+W = '/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1b1'
+S = W + '/tree/apps/core-server'; R = '/Users/gsp-budi/Documents/DEMS'
+CASES = [
+  ('P-1 a module names a file inside the core (the window helper by its file)', 'src/modules/identity/lockout.ts', "from '../../core';", "from '../../core/windows';", ['test/static/imports.test.ts']),
+  ('P-2 a production source imports the neutral test support', 'src/modules/health/index.ts', "import { SERVICE_NAME } from '../../config';", "import { SERVICE_NAME } from '../../config';\nimport { passScratchRoutes } from '../../../test/support/scratch-routes';", ['test/static/imports.test.ts']),
+  ('P-3 the engine imports the store by its old path', 'src/engine/rehydrate.ts', "from '../db/store';", "from '../db/seed/store';", ['src/db/store/__tests__/static.test.ts', 'src/engine/__tests__/static.test.ts']),
+  ('P-4 the identity support imports the guard support again (the cycle)', 'test/support/identity.ts', "import { passScratchRoutes } from './scratch-routes';", "import { passScratchRoutes } from './guard';", ['test/static/imports.test.ts']),
+  ('P-5 the health route is written by hand again (method and path beside the helper)', 'src/modules/health/index.ts', "    ...routeOfOperation(operation),\n", "    method: 'GET',\n    url: operation.path,\n    config: { operationId: HEALTH_OPERATION_ID },\n", ['test/static/routes.test.ts']),
+  ('P-6 an identity route gets a hook of its own again', 'src/modules/identity/routes.ts', "    ...routeOfOperation(operationOf('getAuthSession')),\n", "    ...routeOfOperation(operationOf('getAuthSession')),\n    onRequest: async (request) => void operatorSessionOf(request),\n", ['test/static/routes.test.ts', 'src/modules/identity/__tests__/routes.test.ts']),
+  ('P-7 the readiness hold is logged under the key reason again', 'src/plugins/readiness/index.ts', "      log.info({ hold: name, held: true }, 'readiness hold');", "      log.info({ reason: name, held: true }, 'readiness hold');", ['test/static/log-calls.test.ts', 'src/plugins/readiness/__tests__/readiness.test.ts']),
+  ('P-8 the unpair revokes with the reason of a revoke', 'src/modules/pairing/devices.ts', "{ scope: 'DEVICE', deviceId, reason: 'DEVICE_UNPAIRED' }", "{ scope: 'DEVICE', deviceId, reason: 'DEVICE_REVOKED' }", ['src/modules/pairing/__tests__/static.test.ts']),
+  ('P-9 the shim of the old store path grows a statement of its own', 'src/db/seed/store.ts', "export * from '../store';", "export * from '../store';\nexport const EXTRA = 'SELECT 1';", ['src/db/store/__tests__/static.test.ts']),
+  ('P-10 the administration module gets a statement on biometric_tokens of its own again', 'src/modules/admin/statements.ts', "const changedOne = ", "export const REVOKE_AGAIN = 'UPDATE public.biometric_tokens SET revoked_at = $2 WHERE operator_id = $1 RETURNING id';\n\nconst changedOne = ", ['src/modules/admin/__tests__/static.test.ts']),
+]
+detected = 0
+for label, file, old, new, tests in CASES:
+    path = f"{S}/{file}"
+    shutil.copy2(path, path + '.orig')
+    text = open(path).read()
+    assert text.count(old) == 1, (label, text.count(old))
+    open(path, 'w').write(text.replace(old, new))
+    try:
+        out = subprocess.run([f"{R}/node_modules/.bin/vitest", 'run', '--root', S, '--project', 'unit', *tests], capture_output=True, text=True).stdout
+    finally:
+        shutil.move(path + '.orig', path)
+    summary = ' '.join(re.findall(r"Tests\s+.*", out))
+    failed = [re.sub(r"^\s*FAIL\s+\|unit\|\s*", '', l)[:170] for l in out.split('\n') if l.strip().startswith('FAIL')]
+    red = 'failed' in summary
+    detected += red
+    print(f"{label}: {'DETECTED' if red else 'NOT DETECTED'} — {re.sub(r'  +', ' ', summary)}")
+    for f in failed: print(f"     {f}")
+print(f"{detected} of {len(CASES)} detected")

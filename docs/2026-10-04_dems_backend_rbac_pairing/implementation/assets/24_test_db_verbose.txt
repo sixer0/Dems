@@ -1,0 +1,167 @@
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --reporter=verbose src/modules/identity src/plugins/authenticate
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_46_tmdc28do_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_46_tmdc28do_tpl_schema: built in 79 ms (create 29 ms, hook 49 ms)
+[test:db] template dems_test_step_46_tmdc28do_tpl_seed: built in 124 ms (create 43 ms, hook 80 ms)
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > operation 4, getAuthSession > answers the caller's own session, valid against the contract; without a session 401 32ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > operation 4, getAuthSession > RB-3, SR-13: a role change applies to the next request of the same session, with no new sign-in 20ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > operation 4, getAuthSession > a session whose operator is disabled resolves to nothing, even while its row is open 17ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > AC-B-26: idle expiry at 15 minutes, absolute expiry at 8 hours, on the server clock > 15 minutes without activity end the session: 401, AUTH_EXPIRED, the row ended, session.ended published 25ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > AC-B-26: idle expiry at 15 minutes, absolute expiry at 8 hours, on the server clock > a GET does not extend the session; a POST and touchSession do 22ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-23: a web console signs in > sets dems_session_<listen port> with exactly HttpOnly; SameSite=Strict; Path=/ and puts no token into the body 32ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-23: a web console signs in > stores only the SHA-256 of the token, 32 bytes, and answers the session with the role and its permissions as read now 17ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-23: a web console signs in > a second sign-in ends the presented session (ROTATED), and the old cookie no longer resolves 34ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > AC-B-26: idle expiry at 15 minutes, absolute expiry at 8 hours, on the server clock > activity is written at most once a second, and a POST that fails its validation is not activity 19ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > AC-B-26: idle expiry at 15 minutes, absolute expiry at 8 hours, on the server clock > 8 hours end the session regardless of activity (ABSOLUTE) 50ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > AC-B-26: idle expiry at 15 minutes, absolute expiry at 8 hours, on the server clock > a touch never revives a session that is past its limit 18ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-23: a web console signs in > a sign-in that presents no valid session ends nothing 34ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-23: a paired device signs in > gets the token in the body, bound to the device, and no Set-Cookie header at all 17ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-23: a paired device signs in > a sign-in that presents the device's own session token is the device's console too, and that session is rotated 31ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-23: a paired device signs in > a web session token sent as a bearer value resolves to nothing 18ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > ID-1, SR-69: who may sign in at all > no Origin and no device credential: 403 DEVICE_NOT_PAIRED, no attempt, no derivation, no row, no cookie 1ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > ID-1, SR-69: who may sign in at all > the instance's own origin and no device credential: 403 DEVICE_NOT_PAIRED, no attempt, no derivation, no row, no cookie 1ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > ID-1, SR-69: who may sign in at all > an unknown device credential is no console identity either 0ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > ID-1, SR-69: who may sign in at all > the refusal comes before the body is read: malformed JSON and a missing member still answer 403 0ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > ID-1, SR-69: who may sign in at all > a foreign Origin, and a bearer value with a web console origin, are refused by the Origin guard before anything else 0ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > ID-1, SR-69: who may sign in at all > a retired device is told so, and writes no session 2ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > the body of signIn is validated before an attempt is taken (spec §7.3 line 8 before line 9) > no password answers 422 INVALID_INPUT and takes no attempt 1ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > the body of signIn is validated before an attempt is taken (spec §7.3 line 8 before line 9) > an empty username answers 422 INVALID_INPUT and takes no attempt 1ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > the body of signIn is validated before an attempt is taken (spec §7.3 line 8 before line 9) > a password of 129 characters answers 422 INVALID_INPUT and takes no attempt 1ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > the body of signIn is validated before an attempt is taken (spec §7.3 line 8 before line 9) > a password with U+0000 answers 422 INVALID_INPUT and takes no attempt 1ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > the body of signIn is validated before an attempt is taken (spec §7.3 line 8 before line 9) > a username of 65 characters answers 422 INVALID_INPUT and takes no attempt 1ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > the body of signIn is validated before an attempt is taken (spec §7.3 line 8 before line 9) > malformed JSON answers 400 INVALID_JSON and takes no attempt 1ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > the sweeper (ID-P8) > ends every session past a limit with one AUTH_EXPIRED row each, publishes them by reason, and does nothing a second time 98ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > the sweeper (ID-P8) > a session past both limits is ended as ABSOLUTE: the absolute limit wins, by the sweeper and by a request alike 36ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > the body of signIn is validated before an attempt is taken (spec §7.3 line 8 before line 9) > the username is trimmed and lower-cased for the lookup; the password is taken as sent 31ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-24: wrong password, unknown user and disabled user cannot be told apart > gives byte-identical bodies, one AUTH_FAILED row each, and exactly one Argon2id derivation per attempt 67ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > the sweeper (ID-P8) > does not run in an app that does not listen 0ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > AC-B-27: operation 5, signOut > a web console: 204, the cookie cleared with the same name and attributes and Max-Age=0, the token unusable, AUTH_SIGNED_OUT 22ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > AC-B-27: operation 5, signOut > "Lock console": the reason LOCK is written to the row 21ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > AC-B-27: operation 5, signOut > a device: 204 and NO Set-Cookie header; the bearer token is unusable; the row carries the device 18ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > AC-B-27: operation 5, signOut > a body that breaks its schema answers 422 and leaves the session open; without a session the answer is 401, whatever the body 17ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-24: wrong password, unknown user and disabled user cannot be told apart > the derivation runs with the stored parameters for a known operator and with the current ones for nobody 32ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-24: wrong password, unknown user and disabled user cannot be told apart > the typed unknown username is in no audit row and no event 16ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-24: wrong password, unknown user and disabled user cannot be told apart > an operator disabled between the derivation and unit 2 gets the same answer, and no session (AT-C1) 17ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > the seam sessionRegistry: what other modules end > endForOperator ends every open session of the operator inside the caller's unit, returns their IDs and writes no row of its own 50ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > the seam sessionRegistry: what other modules end > a unit that rolls back ends nothing 18ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > the seam sessionRegistry: what other modules end > endForDevice ends the device's sessions; their tokens then answer 403 DEVICE_REVOKED, the web session of the same operator stays 32ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > the seam sessionRegistry: what other modules end > endBiometricSessions ends only BIOMETRIC sessions of that device and operator (TOKEN_REUSE) 17ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-25: the lockout of a console > the fifth failure locks: 423 with lockedUntil; attempts during the lock write AUTH_LOCKED and are not verified; after 60 s a correct sign-in succeeds 95ms
+ ✓ |db| src/modules/identity/__tests__/sessions.db.test.ts > SR-17: sessions are rows > a second app on the same database resolves a session the first one issued (a restart), and its lockout starts fresh 95ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-25: the lockout of a console > a success clears the count; the window of 300 s starts a fresh count; each console has its own 159ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-25: the lockout of a console > a locked device console answers 423 to its device, and its rows carry the device ID 87ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > AC-B-30 (the query): what the sign-in verifies against > every operator has one Argon2id record: 19,456 KiB, 2 passes, parallelism 1, a 16-byte salt of its own and a 32-byte hash 1ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > SR-06: a record with weaker parameters is replaced after a successful sign-in > writes a new Argon2id record that verifies the same password; the sign-in is answered as usual 56ms
+ ✓ |db| src/modules/identity/__tests__/sign-in.db.test.ts > SR-06: a record with weaker parameters is replaced after a successful sign-in > a renewal that fails does not fail the sign-in; it is logged by its code 17ms
+stdout | src/modules/identity/__tests__/concurrency.db.test.ts > AC-B-80 (SD-04, AT-C1): 20 concurrent wrong-password sign-ins on one console > verifies exactly five attempts (five AUTH_FAILED rows, the fifth marked as locking) and answers 423 with AUTH_LOCKED to the other 15
+[w24] AC-B-80: 20 concurrent wrong sign-ins: 5 derivations; statuses {"401":4,"423":16}; 5 AUTH_FAILED (attemptsRemaining 4, 3, 2, 1, 0), 15 AUTH_LOCKED
+
+ ✓ |db| src/modules/identity/__tests__/concurrency.db.test.ts > AC-B-80 (SD-04, AT-C1): 20 concurrent wrong-password sign-ins on one console > verifies exactly five attempts (five AUTH_FAILED rows, the fifth marked as locking) and answers 423 with AUTH_LOCKED to the other 15 80ms
+ ✓ |db| src/plugins/authenticate/__tests__/authenticate.db.test.ts > a session is bound to its transport (ID-13, AC-B-81) > the cookie resolves a web session; a bearer value resolves a device session; neither resolves the other's 65ms
+ ✓ |db| src/plugins/authenticate/__tests__/authenticate.db.test.ts > a session is bound to its transport (ID-13, AC-B-81) > the lookup itself is bound to the transport (database contract §5.2): each token is found on its own transport only 35ms
+ ✓ |db| src/plugins/authenticate/__tests__/authenticate.db.test.ts > a session is bound to its transport (ID-13, AC-B-81) > a device credential resolves to DEVICE while paired, and to the device ID only once it is retired 18ms
+ ✓ |db| src/modules/identity/__tests__/concurrency.db.test.ts > AC-B-80 (SD-04, AT-C1): 20 concurrent wrong-password sign-ins on one console > a correct password among a burst is one of the five or is refused with the lock: never a sixth verification 30ms
+ ✓ |db| src/modules/identity/__tests__/concurrency.db.test.ts > AC-B-80 (SD-04, AT-C1): 20 concurrent wrong-password sign-ins on one console > SR-71: of 25 at once the denial budget lets 20 write a row; the others answer 429 and write none 36ms
+ ✓ |db| src/modules/identity/__tests__/concurrency.db.test.ts > two sign-ins of one operator at the same time (ID-6, ID-7) > on two consoles: two sessions, two tokens, two AUTH_SUCCESS rows 23ms
+ ✓ |db| src/plugins/authenticate/__tests__/authenticate.db.test.ts > SR-15, SR-38: a credential is read from the cookie or the Authorization header, and from nowhere else > a valid token in the query string, in another header or in the body authenticates nothing 32ms
+ ✓ |db| src/plugins/authenticate/__tests__/authenticate.db.test.ts > the seam deviceResolver while the pairing module has not filled it > denies: a device credential and a device session resolve to nothing 23ms
+ ✓ |db| src/plugins/authenticate/__tests__/authenticate.db.test.ts > ID-12 through the real stage 4 (decision D72): this instance's cookie AND a bearer value > answers 401 CREDENTIAL_CONFLICT on every request shape; no audit row, no place in the denial budget, no Set-Cookie, and both sessions stay as they are 36ms
+ ✓ |db| src/modules/identity/__tests__/concurrency.db.test.ts > two sign-ins of one operator at the same time (ID-6, ID-7) > both presenting the same session: it is ended exactly once, one AUTH_SUCCESS says "replaced", and both new sessions are open 36ms
+ ✓ |db| src/modules/identity/__tests__/concurrency.db.test.ts > a sign-out racing other requests of the same session (SR-12) > ends the session exactly once, writes one AUTH_SIGNED_OUT row, and no request after it succeeds 24ms
+ ✓ |db| src/modules/identity/__tests__/concurrency.db.test.ts > the sweeper racing a request (SR-11) > a session past its idle limit is ended once, with one AUTH_EXPIRED row, whoever comes first 40ms
+ ✓ |db| src/plugins/authenticate/__tests__/authenticate.db.test.ts > ID-12 through the real stage 4 (decision D72): this instance's cookie AND a bearer value > with no Origin on a POST, and with the instance's own origin, the Origin guard answers first (403) 31ms
+ ✓ |db| src/plugins/authenticate/__tests__/authenticate.db.test.ts > D69: what a mobile app really sends > a bearer request with another instance's cookie and an unrelated cookie resolves as the bearer session 28ms
+ ✓ |db| src/plugins/authenticate/__tests__/authenticate.db.test.ts > D69: what a mobile app really sends > a bearer request with this instance's own cookie is the 401 30ms
+ ✓ |db| src/modules/identity/__tests__/concurrency.db.test.ts > the sweeper racing a request (SR-11) > statement level: an expiry that waits behind a touch ends nothing; a touch that waits behind an expiry writes nothing 191ms
+ ✓ |db| src/plugins/authenticate/__tests__/authenticate.db.test.ts > D69: what a mobile app really sends > no answer to a device carries Set-Cookie: every operation of the identity core, success and refusal 119ms
+ ✓ |db| src/plugins/authenticate/__tests__/authenticate.db.test.ts > D69: what a mobile app really sends > on the web, only a successful sign-in sets the cookie and only a sign-out clears it 45ms
+ ✓ |db| src/plugins/authenticate/__tests__/authenticate.db.test.ts > SR-75: the throttle counts a resolved principal under its own key > 31 reads of a signed-in operator all pass; the 31st read without a principal answers 429 31ms
+stdout | src/modules/identity/__tests__/sequence.db.test.ts > signIn: two units with the derivation between them (ENG-26) > a success: take the attempt; read the hash set; derive; then ONE transaction that re-checks the operator and writes the session and its row
+[w24] signIn, success:
+  lockout.take web
+  pool  FIND_SIGN_IN_CANDIDATE
+  Argon2id derivation
+  unit  BEGIN ISOLATION LEVEL READ COMMITTED
+  unit  chain lock
+  unit  statement timeout
+  unit  MARK_SIGNED_IN
+  unit  READ_ROLE_PERMISSIONS
+  unit  INSERT_SESSION
+  unit  INSERT audit_log AUTH_SUCCESS
+  unit  event number
+  unit  INSERT events AUTH_LOGIN
+  unit  COMMIT
+  lockout.succeed web
+
+stdout | src/modules/identity/__tests__/sequence.db.test.ts > signIn: two units with the derivation between them (ENG-26) > a failure of a known and of an unknown username: the same work, step for step
+[w24] signIn, failure (known and unknown username alike):
+  lockout.take web
+  pool  FIND_SIGN_IN_CANDIDATE
+  Argon2id derivation
+  denialBudget.consume
+  lockout.fail web
+  unit  BEGIN ISOLATION LEVEL READ COMMITTED
+  unit  chain lock
+  unit  statement timeout
+  unit  READ_OPERATOR_ENABLED
+  unit  INSERT audit_log AUTH_FAILED
+  unit  event number
+  unit  INSERT events AUTH_FAILED
+  unit  COMMIT
+
+ ✓ |db| src/modules/identity/__tests__/sequence.db.test.ts > signIn: two units with the derivation between them (ENG-26) > a success: take the attempt; read the hash set; derive; then ONE transaction that re-checks the operator and writes the session and its row 31ms
+ ✓ |db| src/modules/identity/__tests__/sequence.db.test.ts > signIn: two units with the derivation between them (ENG-26) > a failure of a known and of an unknown username: the same work, step for step 32ms
+stdout | src/modules/identity/__tests__/sequence.db.test.ts > signIn: two units with the derivation between them (ENG-26) > an attempt during the lock: no derivation, no hash set read; one row
+[w24] signIn, during the lock:
+  lockout.take web
+  denialBudget.consume
+  pool  FIND_OPERATOR_ID
+  unit  BEGIN ISOLATION LEVEL READ COMMITTED
+  unit  chain lock
+  unit  statement timeout
+  unit  INSERT audit_log AUTH_LOCKED
+  unit  event number
+  unit  INSERT events AUTH_LOCKED
+  unit  COMMIT
+
+stdout | src/modules/identity/__tests__/secrets.db.test.ts > AC-B-28: a full dump of the database after the identity flows > holds no password, no token, no credential, no typed username and no marker; only the hash of each token
+[w24] AC-B-28 dump of dems_test_step_46_tmdc28do_f01_secrets: 156913 characters; 12 secrets and markers searched in 6 forms each, 0 found; 5 session tokens issued, 5 rows in auth_sessions, each token's SHA-256 present once
+
+stdout | src/modules/identity/__tests__/secrets.db.test.ts > AC-B-29: the log of the same flows, captured at level trace > holds none of the values, no cookie value and no marker
+[w24] AC-B-29 log capture: 21513 characters, 102 lines, 26 request lines; 0 secrets, 0 markers, 0 credential-shaped values
+
+ ✓ |db| src/modules/identity/__tests__/sequence.db.test.ts > signIn: two units with the derivation between them (ENG-26) > an attempt during the lock: no derivation, no hash set read; one row 77ms
+ ✓ |db| src/modules/identity/__tests__/sequence.db.test.ts > signIn: two units with the derivation between them (ENG-26) > a sign-in that presents a session: stage 4 resolves it with one lookup, and unit 2 ends it before it issues the new one 33ms
+ ✓ |db| src/modules/identity/__tests__/sequence.db.test.ts > the other operations > a request without a credential asks the database nothing; getSignInStatus reads memory only 1ms
+ ✓ |db| src/modules/identity/__tests__/sequence.db.test.ts > the other operations > getAuthSession: one indexed lookup at stage 4, and nothing more (GS-26) 17ms
+ ✓ |db| src/modules/identity/__tests__/sequence.db.test.ts > the other operations > touchSession: the lookup, then one unit with the compare-and-set touch; within a second of the last activity, the lookup only 17ms
+ ✓ |db| src/modules/identity/__tests__/sequence.db.test.ts > the other operations > signOut: the lookup, then one unit that ends the session and writes its row 16ms
+ ✓ |db| src/modules/identity/__tests__/secrets.db.test.ts > AC-B-28: a full dump of the database after the identity flows > holds no password, no token, no credential, no typed username and no marker; only the hash of each token 9ms
+ ✓ |db| src/modules/identity/__tests__/secrets.db.test.ts > AC-B-28: a full dump of the database after the identity flows > no audit row and no event names a secret, in its details, its message or a reference 1ms
+ ✓ |db| src/modules/identity/__tests__/secrets.db.test.ts > AC-B-29: the log of the same flows, captured at level trace > holds none of the values, no cookie value and no marker 1ms
+ ✓ |db| src/modules/identity/__tests__/secrets.db.test.ts > AC-B-29: the log of the same flows, captured at level trace > no request line holds a query string: the route is the registry's pattern 0ms
+ ✓ |db| src/modules/identity/__tests__/secrets.db.test.ts > AC-B-29: the log of the same flows, captured at level trace > a parse or validation failure of signIn is logged by its code only 0ms
+ ✓ |db| src/modules/identity/__tests__/secrets.db.test.ts > AC-B-29: the log of the same flows, captured at level trace > the principal of a request line is an operator ID or a device ID, never a session 0ms
+ ✓ |db| src/modules/identity/__tests__/sequence.db.test.ts > the other operations > a request with a session past its limit: the lookup, then the unit that ends it with AUTH_EXPIRED; the sweeper: one read, and one unit only when something is past a limit 19ms
+ ✓ |db| src/modules/identity/__tests__/two-instances.db.test.ts > AC-B-90: one cookie jar, two instances > each instance names its cookie after its own listen port 1ms
+ ✓ |db| src/modules/identity/__tests__/two-instances.db.test.ts > AC-B-90: one cookie jar, two instances > a sign-in on the second instance leaves the first instance's cookie and session valid 58ms
+ ✓ |db| src/modules/identity/__tests__/two-instances.db.test.ts > AC-B-90: one cookie jar, two instances > each instance ignores the other's cookie: alone it is no credential, although its token is a valid row 1ms
+ ✓ |db| src/modules/identity/__tests__/two-instances.db.test.ts > AC-B-90: one cookie jar, two instances > the other instance's cookie beside a bearer value is not a second credential 1ms
+ ✓ |db| src/modules/identity/__tests__/two-instances.db.test.ts > AC-B-90: one cookie jar, two instances > a sign-out on one instance clears only that instance's cookie and ends only its session 4ms
+ ✓ |db| src/modules/identity/__tests__/engine.db.test.ts > API-7 and ENG-8 with the engine running > the engine is ready after the boot, with an epoch of at least 1, and runs on the timer this file gave it 1ms
+ ✓ |db| src/modules/identity/__tests__/engine.db.test.ts > API-7 and ENG-8 with the engine running > each POST answer names the epoch and the revision of the state change that holds its audit row 47ms
+ ✓ |db| src/modules/identity/__tests__/engine.db.test.ts > API-7 and ENG-8 with the engine running > the identity rows continue the one chain: it verifies over all rows, also after a tick of the engine, which never saw its head diverge 6ms
+
+ Test Files  8 passed (8)
+      Tests  93 passed (93)
+   Start at  12:46:56
+   Duration  4.30s (tests 60%, import 30%, transform 10%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 38 ms; 0 remain with the run prefix dems_test_step_46_tmdc28do_

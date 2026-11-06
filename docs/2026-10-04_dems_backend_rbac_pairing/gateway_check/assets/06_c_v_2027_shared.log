@@ -1,0 +1,25 @@
+# suite=shared instant=2027-03-01T12:00:00+07:00
+start 2026-10-05 17:32:54
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+
+ Test Files  68 passed (68)
+      Tests  1814 passed (1814)
+   Start at  12:00:00
+   Duration  11.97s (tests 60%, import 30%, transform 9%, worker 1%)
+
+    Isolate  68 workers spawned · ~70ms startup each (spawn + environment, per file)
+             at least ~2.32s faster with isolate: false — reuses workers across files instead of one per file
+
+npm notice
+npm notice New major version of npm available! 11.19.1 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+EXIT=0
+stop  2026-10-05 17:33:07

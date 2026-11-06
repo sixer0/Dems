@@ -1,0 +1,27 @@
+// Mutation runner configuration of plan row W42 (rule M15: no file of the workspace tree is
+// changed). It lives outside the repository. The workspace's own configuration is taken as it is;
+// one plugin replaces one text in one production file IN MEMORY while the tests run.
+import { mergeConfig } from '/Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/config.js';
+import base from '/Users/gsp-budi/Documents/DEMS/apps/core-server/vitest.config.ts';
+
+const file = process.env.MUT_FILE ?? '';
+const from = Buffer.from(process.env.MUT_FROM_B64 ?? '', 'base64').toString('utf8');
+const to = Buffer.from(process.env.MUT_TO_B64 ?? '', 'base64').toString('utf8');
+let applied = 0;
+
+export default mergeConfig(base, {
+  root: '/Users/gsp-budi/Documents/DEMS/apps/core-server',
+  plugins: [
+    {
+      name: 'w42-mutation',
+      enforce: 'pre',
+      transform(code: string, id: string) {
+        if (file === '' || !id.split('?')[0]!.endsWith(file)) return null;
+        const count = code.split(from).length - 1;
+        if (count !== 1) throw new Error(`mutation text occurs ${count} times in ${file}, expected once`);
+        applied += 1;
+        return { code: code.replace(from, to), map: null };
+      },
+    },
+  ],
+});

@@ -1,0 +1,26 @@
+# Step 40 (W18), follow-up F40-2: mutation checks of the light constants, on the isolated copy (the workspace files are never mutated).
+2026-10-04 08:02:31 WIB
+BASE rc=0 Tests  102 passed (102)
+KILLED | C1 the pending reveal is 400 | rc=1 | Tests  2 failed | 100 passed (102) | failing tests: 2
+       × LIVE_PENDING_REVEAL_MS is 420, the motion token duration.slow (LB-1) 2ms
+       × holds only two numeric declarations: no call, no object, no computed value 1ms
+KILLED | C2 the resynced notice is 2,000 | rc=1 | Tests  2 failed | 100 passed (102) | failing tests: 2
+       × LIVE_RESYNCED_NOTICE_MS is 3,000 (§3.5, "Link back") 2ms
+       × holds only two numeric declarations: no call, no object, no computed value 1ms
+KILLED | C3 the file imports the motion token | rc=1 | Tests  4 failed | 98 passed (102) | failing tests: 4
+       × imports nothing: no import, no re-export, no require 2ms
+       × holds only two numeric declarations: no call, no object, no computed value 1ms
+       × imports only React, the simulator module and its own files 3ms
+KILLED | C4 an invented third constant | rc=1 | Tests  3 failed | 99 passed (102) | failing tests: 3
+       × holds exactly the two constants the specification gives to the light layer 3ms
+       × holds only two numeric declarations: no call, no object, no computed value 0ms
+       × exports the light API and nothing else 3ms
+KILLED | C5 the barrel does not export the file | rc=1 | Tests  6 failed | 96 passed (102) | failing tests: 6
+       × LIVE_PENDING_REVEAL_MS is 420, the motion token duration.slow (LB-1) 2ms
+       × LIVE_RESYNCED_NOTICE_MS is 3,000 (§3.5, "Link back") 0ms
+       × the reveal sits above the feedback tempo of 90 to 180 ms (§2.4) and between the test points of AC-C-57 (no spinner at 300 ms, a spinner at 500 ms) 1ms
+KILLED | C6 the command time-out is copied into the light file | rc=1 | Tests  4 failed | 98 passed (102) | failing tests: 4
+       × holds exactly the two constants the specification gives to the light layer 2ms
+       × holds only two numeric declarations: no call, no object, no computed value 0ms
+       × leaves the other four constants of §2.4 to the modules that use them 1ms
+RESTORED rc=0 Tests  102 passed (102)

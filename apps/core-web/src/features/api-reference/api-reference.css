@@ -1,0 +1,242 @@
+/*
+ * API Reference page styles (masterplan/01_specs.md §14.9; research/04 §5.9; D41(d): size and
+ * colour classes stay on separate elements, so this file owns the typography).
+ *
+ * Rules of the house (03_motion_spec §9.2): only `transform` and `opacity` animate here (the
+ * heartbeat halo, the spinner, the panel enters). Glow goes through `GlowLayer`. Styling inside
+ * the Scalar renderer lives in its `customCss` (scalar-theme.ts), because the renderer's Vue tree
+ * scopes its own classes.
+ */
+
+@layer components {
+  .api-page {
+    --api-gold: var(--accent);
+    --api-muted: var(--color-foreground-2, #d8cec6);
+    --api-hairline: rgb(255 255 255 / 0.06);
+    --api-renderer-h: calc(100dvh - var(--shell-topbar-h, 80px) - 248px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--shell-gutter);
+  }
+
+  /* ── Grid: renderer 9 | Realtime 3 from 1440 px; stacked below (01_specs §14.9) ────────── */
+  .api-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--shell-gutter);
+    align-items: start;
+  }
+
+  @media (min-width: 1440px) {
+    .api-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+    .api-area-renderer { grid-column: span 9; }
+    .api-area-realtime { grid-column: span 3; position: sticky; top: 0; }
+  }
+
+  /* ── Panels (L2 cards) ──────────────────────────────────────────────────────────────────── */
+  .api-panel { display: flex; min-width: 0; }
+
+  .api-card {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 12px;
+    padding: 14px 16px 16px;
+    border-radius: 12px;
+  }
+
+  .api-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 28px;
+  }
+
+  .api-card-icon {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    color: var(--api-gold);
+    filter: drop-shadow(0 0 6px rgb(255 159 61 / 0.35));
+  }
+
+  .api-card-title {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 20px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--foreground);
+  }
+
+  .api-card-action { display: flex; align-items: center; gap: 10px; margin-left: auto; min-width: 0; }
+
+  .api-card-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 12px; min-width: 0; }
+
+  .api-note { margin: 0; font-size: 12px; line-height: 18px; color: var(--muted); }
+  .api-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+  /* ── Header banner ──────────────────────────────────────────────────────────────────────── */
+  .api-banner {
+    position: relative;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    min-width: 0;
+  }
+
+  .api-banner-dot {
+    width: 10px;
+    height: 10px;
+    flex: none;
+    border-radius: 9999px;
+    background: var(--success);
+    box-shadow: 0 0 10px var(--success);
+  }
+  .api-banner[data-tone='warning'] .api-banner-dot { background: var(--warning); box-shadow: 0 0 10px var(--warning); }
+  .api-banner[data-tone='danger'] .api-banner-dot { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+
+  .api-banner-text { display: flex; flex-direction: column; min-width: 0; }
+  .api-banner-title {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--foreground);
+    white-space: nowrap;
+  }
+  .api-banner-detail { margin: 0; font-size: 11.5px; line-height: 16px; color: var(--muted); }
+
+  /* ── Server strip ───────────────────────────────────────────────────────────────────────── */
+  .api-strip { padding: 10px 16px; border-radius: 12px; }
+
+  .api-strip-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 24px;
+  }
+
+  .api-strip-group { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .api-strip-actions { margin-left: auto; gap: 12px; flex-wrap: wrap; }
+
+  .api-strip-icon { width: 18px; height: 18px; flex: none; color: var(--api-gold); }
+
+  .api-strip-label {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .api-mono-chip { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .api-legend-trigger { display: inline-flex; border-radius: 9999px; }
+
+  /* ── Renderer ───────────────────────────────────────────────────────────────────────────── */
+  .api-renderer-body { gap: 0; }
+
+  .dems-api-renderer {
+    position: relative;
+    height: var(--api-renderer-h);
+    min-height: 560px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border-radius: 8px;
+    border: 1px solid var(--api-hairline);
+    background: #191008;
+  }
+
+  .api-renderer-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px;
+  }
+  .api-renderer-skeleton-block { height: 320px; }
+
+  .api-fallback { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 20px; }
+  .api-fallback-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--foreground); }
+  .api-fallback-body { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+  /* ── Realtime panel ─────────────────────────────────────────────────────────────────────── */
+  .api-rt-url {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 2px 8px;
+  }
+  .api-rt-url .api-strip-label { grid-column: 1 / -1; }
+  .api-rt-url-text {
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .api-rt-hero { display: flex; align-items: center; gap: 14px; }
+
+  .api-rt-dot { position: relative; display: inline-flex; width: 14px; height: 14px; flex: none; }
+  .api-rt-dot-core,
+  .api-rt-dot-halo { position: absolute; inset: 0; border-radius: 9999px; }
+  .api-rt-dot-halo { will-change: transform, opacity; }
+
+  .api-rt-seq { display: flex; flex-direction: column; gap: 2px; }
+  .api-rt-seq-value {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 34px;
+    font-variant-numeric: tabular-nums;
+    color: var(--foreground);
+  }
+
+  .api-kv {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px 16px;
+    margin: 0;
+  }
+  .api-kv > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .api-kv dt { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .api-kv dd { margin: 0; font-size: 13px; color: var(--foreground); overflow-wrap: anywhere; }
+
+  .api-rt-connect { display: flex; align-items: center; }
+
+  .api-rt-messages { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .api-rt-scroll { max-height: 360px; }
+  .api-rt-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .api-rt-json {
+    margin: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--api-hairline);
+    border-radius: 8px;
+    background: rgb(0 0 0 / 0.25);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 16px;
+    color: var(--api-muted);
+    white-space: pre;
+    overflow-x: auto;
+  }
+  /* Live mode (W84): an entry's slice list wraps instead of scrolling sideways. */
+  .api-rt-json-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  .api-spin { animation: api-spin 1s linear infinite; }
+
+  @keyframes api-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .api-spin { animation: none; }
+  }
+}

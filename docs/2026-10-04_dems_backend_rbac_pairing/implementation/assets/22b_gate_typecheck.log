@@ -1,0 +1,25 @@
+
+> dems-demo@0.1.0 typecheck
+> npm run typecheck --workspaces --if-present
+
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @dems/mock-core@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0

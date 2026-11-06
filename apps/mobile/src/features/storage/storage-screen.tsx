@@ -1,0 +1,248 @@
+/**
+ * Storage at `/storage` (04_mobile_specs §4.13, MB 8; §2.4 "Storage" row; §7.3 "Storage";
+ * 05_mobile_plan M-14 part a). Owner: step 85 (P6). The route file renders `<StorageScreen />`; the
+ * root stays `SafeScreen id="storage"` (`screen-storage`, 04 §4.0; T-M02, MA-04).
+ *
+ * Regions, in MB 8 order: T1 header (back + "Storage") · T2 capacity card (donut 20% USED, D28/Q1;
+ * "3.2 TB Free" of 4.0 TB; legend; phone KPI strip) · T3 Recent Storage Activity · T4 Manage
+ * Storage → sheet (the tab bar is the shell's). Layouts per class (§2.4; brief: tablet = donut and
+ * activity side by side):
+ *
+ * | Class | Layout |
+ * |---|---|
+ * | compact (phone portrait) | MB 8, one column |
+ * | compact-landscape | capacity card \| activity + Manage Storage |
+ * | medium, expanded (tablet) | capacity card + 4 KPI tiles \| activity + Manage Storage |
+ *
+ * Data: the shared simulator only (`useSim`, D19) plus `useAuth()` for the role gate. Motion: the
+ * §7.3 beats (`storage-motion.ts`): ring sweep hero, legend stagger, activity rows; no ambient loop.
+ * LOW / FULL: colour morph + one pulse + toast + inline Alert (calm escalation).
+ *
+ * Live mode (backend task, plan row W79; 04_client_integration_spec §7.4, §8.6 S2-6, §8.7 S5-3): the
+ * store is the Live source, so every panel reads the Core's replicated slices (`storage`,
+ * `storagePolicy`, `events`, `session`, `evidence`) with the same selectors. Apply sends operation 55
+ * through `useCoreActions()` and `settle` (`useApplyStoragePolicy` below); the role gate stays a hint
+ * (S5-3) and the Core enforces its any-of rule. No production code here starts a Core command on
+ * mount (decision D158).
+ */
+import { useRouter } from 'expo-router';
+import { Button, useToast } from 'heroui-native';
+import { ArrowLeft, Layers } from 'lucide-react-native';
+import { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { settle, useCoreActions } from '@dems/shared/live';
+import { derived, fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
+import { Pane, PaneLayout, SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
+import { triggerHaptic, useMotionSettings } from '@/motion';
+import { newCorrelationId, reportRuntimeIssue, useAuth, useCoreErrorPresenter, useCoreLink } from '@/runtime';
+import { CapacityCard } from './capacity-card';
+import { ManageStorageSheet, type ApplyHandlers, type PolicyDraft } from './manage-storage-sheet';
+import { PanelBoundary } from './panel-boundary';
+import { StorageActivity } from './storage-activity';
+import { StorageKpis } from './storage-kpis';
+import { STORAGE_BEATS, storageEnter } from './storage-motion';
+import { useStoragePolicy } from './use-storage-data';
+
+/**
+ * Donut box per class (dp). MB 8's ring is ≈ 118 of the 245 px column; the box adds the glow's fade
+ * margin around the ring (`donutGeometry`), so the visible ring is ≈ 0.8 of the box.
+ */
+export const RING_SIZE: Record<LayoutClass, number> = { compact: 148, 'compact-landscape': 132, medium: 188, expanded: 200 };
+/** Flex panes state `width: 'auto'` explicitly, so a pane never inherits a fixed width (S77-9). */
+const FLEX_PANE: ViewStyle = { width: 'auto' };
+
+export function StorageScreen() {
+  const { layoutClass } = useLayoutClass();
+  const tablet = layoutClass === 'medium' || layoutClass === 'expanded';
+  const phoneChrome = layoutClass === 'compact' || layoutClass === 'compact-landscape';
+  const [manageOpen, setManageOpen] = useState(false);
+  const { operator } = useAuth();
+  const policy = useStoragePolicy();
+  const applyPolicy = useApplyStoragePolicy();
+  const openManage = useCallback(() => setManageOpen(true), []);
+  const closeManage = useCallback(() => setManageOpen(false), []);
+
+  return (
+    <SafeScreen id="storage">
+      <StorageHeader withBack={phoneChrome} condensed={layoutClass === 'compact-landscape'} />
+      <ScrollView testID="storage-scroll" style={styles.scroll} contentContainerStyle={[styles.content, tablet ? styles.contentTablet : null]}>
+        {/* Keyed per class group (S77-9): a tablet ↔ phone arrangement switch remounts the panes. */}
+        <StorageBody key={tablet ? 'tablet' : 'phone'} layoutClass={layoutClass} onManage={openManage} />
+      </ScrollView>
+      <ManageStorageSheet isOpen={manageOpen} onClose={closeManage} role={operator?.role ?? null} policy={policy} onApply={applyPolicy} />
+    </SafeScreen>
+  );
+}
+
+function StorageHeader({ withBack, condensed }: { withBack: boolean; condensed: boolean }) {
+  const { t } = useTranslation();
+  const router = useRouter();
+  const settings = useMotionSettings();
+  return (
+    <Animated.View
+      entering={storageEnter(STORAGE_BEATS.header, settings)}
+      testID="storage-header"
+      style={[styles.header, condensed ? styles.headerCondensed : null, withBack ? null : styles.headerTablet]}
+    >
+      {withBack ? (
+        <Button
+          isIconOnly
+          variant="ghost"
+          size="md"
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/more'))}
+          accessibilityLabel={t('features.storage.header.back')}
+          testID="storage-back"
+        >
+          <ArrowLeft size={22} color={palette.gold} />
+        </Button>
+      ) : null}
+      <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" style={styles.title}>
+        {t('features.storage.header.title')}
+      </Text>
+    </Animated.View>
+  );
+}
+
+function StorageBody({ layoutClass, onManage }: { layoutClass: LayoutClass; onManage: () => void }) {
+  const settings = useMotionSettings();
+  const tablet = layoutClass === 'medium' || layoutClass === 'expanded';
+  const capacity = (
+    <Animated.View entering={storageEnter(STORAGE_BEATS.capacity, settings)}>
+      <PanelBoundary name="capacity">
+        <CapacityCard ringSize={RING_SIZE[layoutClass]} withKpiStrip={!tablet} />
+      </PanelBoundary>
+    </Animated.View>
+  );
+  const kpiTiles = tablet ? (
+    <PanelBoundary name="kpis">
+      <StorageKpis variant="tiles" />
+    </PanelBoundary>
+  ) : null;
+  const activity = (
+    <Animated.View entering={storageEnter(STORAGE_BEATS.activity, settings)}>
+      <PanelBoundary name="activity">
+        <StorageActivity />
+      </PanelBoundary>
+    </Animated.View>
+  );
+  const manage = (
+    <Animated.View entering={storageEnter(STORAGE_BEATS.manage, settings)}>
+      <ManageStorageButton onPress={onManage} />
+    </Animated.View>
+  );
+
+  if (layoutClass === 'compact') {
+    return (
+      <View testID="storage-panes" style={styles.stack}>
+        {capacity}
+        {activity}
+        {manage}
+      </View>
+    );
+  }
+  return (
+    <PaneLayout testID="storage-panes">
+      <Pane name="capacity" flex={1} style={FLEX_PANE}>
+        <View style={styles.stack}>
+          {capacity}
+          {kpiTiles}
+        </View>
+      </Pane>
+      <Pane name="activity" flex={1} style={FLEX_PANE}>
+        <View style={styles.stack}>
+          {activity}
+          {manage}
+        </View>
+      </Pane>
+    </PaneLayout>
+  );
+}
+
+/** T4: MB 8's gold-edged "Manage Storage" button (`Button variant="outline" size="lg"` + `Layers`). */
+function ManageStorageButton({ onPress }: { onPress: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Button
+      testID="storage-manage"
+      variant="outline"
+      size="lg"
+      className="h-14 flex-row gap-3"
+      style={styles.manage}
+      accessibilityLabel={t('storage.manage.button')}
+      accessibilityHint={t('features.storage.manage.a11yHint')}
+      onPress={() => {
+        triggerHaptic('primaryPress');
+        onPress();
+      }}
+    >
+      <Layers size={22} color={palette.gold} />
+      <Button.Label className="text-base">{t('storage.manage.button')}</Button.Label>
+    </Button>
+  );
+}
+
+/**
+ * Apply → `setStoragePolicy` (settle site S2-6; 04_client_integration_spec §8.6). Three-layer
+ * handling: a success or a friendly failure toast; the failure goes to the runtime log
+ * (`dems.mobile.log.v1`) with a correlation id; the sheet stays open on failure so the operator can
+ * retry. The caller's `applied` runs in `ok` (the sheet closes there) and `settled` in `done` (the
+ * pressed control returns to idle).
+ *
+ * | Mode | The command | Success | A refusal |
+ * |---|---|---|---|
+ * | SIMULATED | the simulator, settled before `settle` returns (CL-25) | "Storage policy updated (simulated)", as before | "could not be updated", as before |
+ * | LIVE | operation 55 on the Core; `ok` runs once the replica holds the revision the answer named (CL-16) | "Storage policy updated": the Core applied it (rule 8); the web console's shared key `storage.manage.live.applied` (closing copy round, D168 DN-2) | the presenter first (a 403, an outage, a 429: LB-5 to LB-10), else the Core's 422 `POLICY_RANGE` keeps "could not be updated" |
+ *
+ * The Core's 403 names the any-of permission in its own spelling (`EVIDENCE_REVIEW_OR_MAINTENANCE`,
+ * finding F64); the Live source maps every spelling to `A | B` (W83, ruling R-D1), so the denied toast
+ * names the Supervisor, the first role that holds one of the two.
+ */
+function useApplyStoragePolicy(): (draft: PolicyDraft, handlers: ApplyHandlers) => void {
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  const actions = useCoreActions();
+  const live = useCoreLink().source === 'LIVE';
+  const presentCoreError = useCoreErrorPresenter();
+  return useCallback(
+    (draft: PolicyDraft, handlers: ApplyHandlers) => {
+      const correlationId = newCorrelationId('storage-policy');
+      settle(() => actions.setStoragePolicy({ retentionPolicy: draft.retentionPolicy, autoArchive: draft.autoArchive }), {
+        ok: () => {
+          reportRuntimeIssue('info', 'storage.manage.apply', 'Storage policy applied', { ...draft }, correlationId);
+          toast.show({ variant: 'success', label: live ? t('storage.manage.live.applied') : t('storage.manage.applied') });
+          handlers.applied();
+        },
+        fail: (error) => {
+          // Live mode: a denial, an outage or a limit is the presenter's (one wording on every screen).
+          if (live && presentCoreError(error)) {
+            reportRuntimeIssue('warn', 'storage.manage.apply', error, { ...draft }, correlationId);
+            return;
+          }
+          reportRuntimeIssue('error', 'storage.manage.apply', error, { ...draft }, correlationId);
+          toast.show({ variant: 'danger', label: t('storage.manage.failed') });
+        },
+        done: handlers.settled,
+      });
+    },
+    [actions, live, presentCoreError, toast, t],
+  );
+}
+
+const styles = StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], minHeight: 56, paddingHorizontal: spacing[1] },
+  headerCondensed: { minHeight: 48 },
+  headerTablet: { minHeight: 64, paddingHorizontal: spacing[4] },
+  title: {
+    fontFamily: fontFamily.native.semibold,
+    fontSize: typography.h2.size,
+    lineHeight: typography.h2.lineHeight,
+    color: palette.foreground,
+  },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: spacing[3], paddingBottom: spacing[4], gap: spacing[3] },
+  contentTablet: { paddingHorizontal: spacing[4] },
+  stack: { gap: spacing[3] },
+  manage: { borderColor: palette.gold, backgroundColor: derived.surfaceTertiary },
+});

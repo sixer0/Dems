@@ -1,0 +1,211 @@
+2026-10-04 11:45:20 WIB
+$ DEMS_TEST_STEP=51 npm run test:db -w @dems/core-server -- --maxWorkers=2
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_51_tmd97li9_
+[test:db] stale sweep: dropped 0; kept 11 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_51_tmd97li9_tpl_schema: built in 79 ms (create 28 ms, hook 49 ms)
+[test:db] template dems_test_step_51_tmd97li9_tpl_seed: built in 139 ms (create 51 ms, hook 87 ms)
+ ❯ |db| src/core/__tests__/boot-checks.db.test.ts (6 tests | 2 failed) 1934ms
+   ❯ the registration (decision D40) (1)
+     × B-2 to B-9 follow B-1 in the order of the contract; B-8 is among them; every one passes on a good database 257ms
+   ❯ B-8 is reported, never blocking (1)
+     × a stored row whose digest is not the shared one: one error line with a rule and a sequence, and the boot goes on to B-9 130ms
+ ❯ |db| test/db/boot-checks.db.test.ts (25 tests | 1 failed) 2235ms
+   ❯ T-PV-3: the boot stops at B-4 for a pool of the owner role, and at B-5 for a trigger in the default mode (4)
+     × a migrated and seeded clone with the runtime pool: every blocking check passes, in order 94ms
+ ❯ |db| src/core/__tests__/seeded.db.test.ts (2 tests | 1 failed) 282ms
+   ❯ a seeded database (2)
+     × passes the nine boot checks in order; B-8 verifies every seeded row 71ms
+[test:db] bulk fixture: dems_test_step_51_tmd97li9_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash d2d9f9e596ed73d2...; digest 953c92ea4c9e1393...; build 272 ms, write 1616 ms, total 1897 ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |db| test/db/boot-checks.db.test.ts > T-PV-3: the boot stops at B-4 for a pool of the owner role, and at B-5 for a trigger in the default mode > a migrated and seeded clone with the runtime pool: every blocking check passes, in order
+AssertionError: expected BootError: boot step engine.rehydrate fai… { stepId: '…' } to be undefined
+
+- Expected:
+undefined
+
++ Received:
+BootError {
+  "message": "boot step engine.rehydrate failed",
+  "cause": EngineError {
+    "message": "the stored rows do not form an engine state; seed the database (npm run db:seed) or reset it (npm run db:reset)",
+    "cause": MappingError {
+      "message": "ROW_SHAPE at engine_counters: the counter event has no row.",
+      "code": "ROW_SHAPE",
+      "place": "engine_counters",
+      "name": "MappingError",
+    },
+    "code": "ENGINE_STATE_UNREADABLE",
+    "detail": {
+      "rule": "ROW_SHAPE",
+    },
+    "name": "EngineError",
+  },
+  "stepId": "engine.rehydrate",
+  "name": "BootError",
+}
+
+ ❯ test/db/boot-checks.db.test.ts:348:28
+    346|     await insertRow(clone.ownerPool(), 'core_state', coreState());
+    347|     const result = await boot(clone, 'app');
+    348|     expect(result.stopped).toBeUndefined();
+       |                            ^
+    349|     // B-8 is in the list since the core services register it: reporte…
+    350|     expect(result.passed).toEqual(['B-1', 'B-2', 'B-3', 'B-4', 'B-5', …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |db| src/core/__tests__/boot-checks.db.test.ts > the registration (decision D40) > B-2 to B-9 follow B-1 in the order of the contract; B-8 is among them; every one passes on a good database
+AssertionError: expected BootError: boot step engine.rehydrate fai… { stepId: '…' } to be undefined
+
+- Expected:
+undefined
+
++ Received:
+BootError {
+  "message": "boot step engine.rehydrate failed",
+  "cause": EngineError {
+    "message": "the stored rows do not form an engine state; seed the database (npm run db:seed) or reset it (npm run db:reset)",
+    "cause": MappingError {
+      "message": "ROW_SHAPE at engine_counters: the counter session has no row.",
+      "code": "ROW_SHAPE",
+      "place": "engine_counters",
+      "name": "MappingError",
+    },
+    "code": "ENGINE_STATE_UNREADABLE",
+    "detail": {
+      "rule": "ROW_SHAPE",
+    },
+    "name": "EngineError",
+  },
+  "stepId": "engine.rehydrate",
+  "name": "BootError",
+}
+
+ ❯ src/core/__tests__/boot-checks.db.test.ts:91:30
+     89|
+     90|     for (const result of [booted, again]) {
+     91|       expect(result.stopped).toBeUndefined();
+       |                              ^
+     92|       expect(result.passed).toEqual(['B-1', 'B-2', 'B-3', 'B-4', 'B-5'…
+     93|       expect(result.app.server.listening).toBe(false);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |db| src/core/__tests__/boot-checks.db.test.ts > B-8 is reported, never blocking > a stored row whose digest is not the shared one: one error line with a rule and a sequence, and the boot goes on to B-9
+AssertionError: expected BootError: boot step engine.rehydrate fai… { stepId: '…' } to be undefined
+
+- Expected:
+undefined
+
++ Received:
+BootError {
+  "message": "boot step engine.rehydrate failed",
+  "cause": EngineError {
+    "message": "the stored rows do not form an engine state; seed the database (npm run db:seed) or reset it (npm run db:reset)",
+    "cause": MappingError {
+      "message": "ROW_SHAPE at engine_counters: the counter session has no row.",
+      "code": "ROW_SHAPE",
+      "place": "engine_counters",
+      "name": "MappingError",
+    },
+    "code": "ENGINE_STATE_UNREADABLE",
+    "detail": {
+      "rule": "ROW_SHAPE",
+    },
+    "name": "EngineError",
+  },
+  "stepId": "engine.rehydrate",
+  "name": "BootError",
+}
+
+ ❯ src/core/__tests__/boot-checks.db.test.ts:193:28
+    191|
+    192|     const booted = await boot(clone);
+    193|     expect(booted.stopped).toBeUndefined();
+       |                            ^
+    194|     expect(booted.passed).toEqual(['B-1', 'B-2', 'B-3', 'B-4', 'B-5', …
+    195|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |db| src/core/__tests__/seeded.db.test.ts > a seeded database > passes the nine boot checks in order; B-8 verifies every seeded row
+AssertionError: expected [ 'B-1', 'B-2', 'B-3', 'B-4', …(6) ] to deeply equal [ 'B-1', 'B-2', 'B-3', 'B-4', …(5) ]
+
+- Expected
++ Received
+
+@@ -6,6 +6,7 @@
+    "B-5",
+    "B-6",
+    "B-7",
+    "B-8",
+    "B-9",
++   "engine.rehydrate",
+  ]
+
+ ❯ src/core/__tests__/seeded.db.test.ts:28:100
+     26|     await core.app.readiness.boot();
+     27|     const lines = core.log.lines();
+     28|     expect(lines.filter((line) => line['msg'] === 'boot step passed').…
+       |                                                                                                    ^
+     29|       'B-1',
+     30|       'B-2',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  3 failed | 30 passed (33)
+      Tests  4 failed | 468 passed (472)
+   Start at  11:45:21
+   Duration  41.52s (tests 91%, import 7%, transform 2%)
+
+[test:db] teardown: dropped 8 database(s) in 128 ms; 0 remain with the run prefix dems_test_step_51_tmd97li9_
+npm error Lifecycle script `test:db` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c vitest run --project db --maxWorkers=2
+exit=1

@@ -1,0 +1,187 @@
+{
+  "at": "09:57:04.546 (epoch 1791341824.546)",
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "coreMode": "LIVE",
+  "submitAt": "09:56:58.118 (epoch 1791341818.118)",
+  "dashboard": true,
+  "sidebarLink": true,
+  "pageShown": true,
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "table",
+    "rows": [
+      {
+        "id": "DEV-0004",
+        "state": "Paired",
+        "online": "Online",
+        "operator": "—",
+        "lastSeen": "18 min ago",
+        "revokeShown": true
+      },
+      {
+        "id": "DEV-0003",
+        "state": "Paired",
+        "online": "Online",
+        "operator": "—",
+        "lastSeen": "19 min ago",
+        "revokeShown": true
+      },
+      {
+        "id": "DEV-0002",
+        "state": "Paired",
+        "online": "Online",
+        "operator": "—",
+        "lastSeen": "59 min ago",
+        "revokeShown": true
+      },
+      {
+        "id": "DEV-0001",
+        "state": "Revoked",
+        "online": "Offline",
+        "operator": "—",
+        "lastSeen": "1 h ago",
+        "revokeShown": false
+      }
+    ],
+    "summary": {
+      "paired": "3",
+      "online": "3",
+      "text": "3 paired · 3 online3 paired · 3 online"
+    },
+    "toasts": []
+  },
+  "registry": {
+    "status": 200,
+    "devices": [
+      {
+        "id": "DEV-0004",
+        "state": "PAIRED",
+        "online": true,
+        "signedInOperatorId": null,
+        "revokedAt": null
+      },
+      {
+        "id": "DEV-0003",
+        "state": "PAIRED",
+        "online": true,
+        "signedInOperatorId": null,
+        "revokedAt": null
+      },
+      {
+        "id": "DEV-0002",
+        "state": "PAIRED",
+        "online": true,
+        "signedInOperatorId": null,
+        "revokedAt": null
+      },
+      {
+        "id": "DEV-0001",
+        "state": "REVOKED",
+        "online": false,
+        "signedInOperatorId": null,
+        "revokedAt": "2026-10-07T01:54:24.156Z"
+      }
+    ]
+  },
+  "screenshot": {
+    "file": "08_web_paired_devices_start.png",
+    "at": "09:57:04.540 (epoch 1791341824.540)"
+  },
+  "network": {
+    "api": [
+      {
+        "sent": "09:56:54.668 (epoch 1791341814.668)",
+        "method": "GET",
+        "path": "/api/v1/auth/session",
+        "status": 401,
+        "done": "09:56:54.671 (epoch 1791341814.671)"
+      },
+      {
+        "sent": "09:56:54.670 (epoch 1791341814.670)",
+        "method": "GET",
+        "path": "/api/v1/auth/status",
+        "status": 200,
+        "done": "09:56:54.674 (epoch 1791341814.674)"
+      },
+      {
+        "sent": "09:56:54.819 (epoch 1791341814.819)",
+        "method": "GET",
+        "path": "/api/v1/health",
+        "status": 200,
+        "done": "09:56:54.866 (epoch 1791341814.866)"
+      },
+      {
+        "sent": "09:56:58.137 (epoch 1791341818.137)",
+        "method": "POST",
+        "path": "/api/v1/auth/sign-in",
+        "status": 200,
+        "done": "09:56:58.163 (epoch 1791341818.163)"
+      },
+      {
+        "sent": "09:57:01.834 (epoch 1791341821.834)",
+        "method": "GET",
+        "path": "/api/v1/pairing/code",
+        "status": 200,
+        "done": "09:57:01.837 (epoch 1791341821.837)"
+      },
+      {
+        "sent": "09:57:01.834 (epoch 1791341821.834)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "09:57:01.837 (epoch 1791341821.837)"
+      },
+      {
+        "sent": "09:57:04.542 (epoch 1791341824.542)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "09:57:04.545 (epoch 1791341824.545)"
+      }
+    ],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [
+      {
+        "url": "ws://127.0.0.1:5173/?…",
+        "status": 101,
+        "frames": 1,
+        "types": [
+          "connected"
+        ]
+      },
+      {
+        "url": "ws://127.0.0.1:5173/ws",
+        "status": 101,
+        "frames": 6,
+        "types": [
+          "heartbeat",
+          "hello"
+        ]
+      },
+      {
+        "url": "ws://127.0.0.1:5173/ws",
+        "status": 101,
+        "frames": 139,
+        "types": [
+          "delta",
+          "heartbeat",
+          "hello",
+          "meters",
+          "snapshot"
+        ]
+      }
+    ],
+    "console": []
+  }
+}

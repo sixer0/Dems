@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+"""W51 mutation check of the mobile runtime's own logic.
+
+Each mutation changes ONE text of ONE production file IN MEMORY (a jest transformer outside the
+repository: mutating-transformer.cjs) and runs the row's test files plus the existing runtime,
+provider and release-gate tests. A mutation is DETECTED when jest exits non-zero. Nothing in the
+tree is written; the hashes of the mutated files are compared before and after the whole run.
+
+  python3 mutate.py [id ...]      (no id: all)
+"""
+import hashlib, json, os, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+TESTS = [
+    'src/runtime/live-core-link.test.tsx', 'src/runtime/live-core-errors.test.tsx', 'src/runtime/live-runtime.test.tsx',
+    'src/runtime/live-device.test.tsx', 'src/runtime/live-health.test.tsx', 'src/runtime/live-screens.test.tsx',
+    'src/runtime/live-no-raw-fetch.test.tsx', 'src/runtime/runtime.test.tsx', 'src/runtime/sim-adapters.test.ts',
+    'src/features/settings/heartbeat-release-gate.test.tsx', 'src/providers/app-providers.test.tsx',
+]
+CL = 'src/runtime/core-link.ts'
+CB = 'src/runtime/connection-banner.ts'
+CE = 'src/runtime/core-errors.ts'
+DB = 'src/runtime/debug.ts'
+PR = 'src/runtime/sim-runtime-provider.tsx'
+AD = 'src/runtime/sim-adapters.ts'
+CT = 'src/runtime/contract.ts'
+UH = 'src/features/home/use-health.ts'
+
+M = [
+  # ── the source selection and the release fallback (core-link.ts) ──
+  ('S01', CL, "return source === 'SIMULATED' || isDevBuild;", "return true;", 'every source is available in a release build'),
+  ('S02', CL, "return source === 'SIMULATED' || isDevBuild;", "return source !== 'HEARTBEAT' || isDevBuild;", 'the rule before this row: LIVE available in a release build'),
+  ('S03', CL, "return isCoreLinkSourceAvailable(source, isDevBuild) ? source : DEFAULT_CORE_LINK_SOURCE;", "return source;", 'no fallback of an unavailable source'),
+  ('S04', CL, "['SIMULATED', 'HEARTBEAT', 'LIVE'];", "['SIMULATED', 'HEARTBEAT'];", 'LIVE is not in the source list'),
+  ('S05', CL, "source === 'HEARTBEAT' || source === 'SIMULATED' || source === 'LIVE' ? source", "source === 'HEARTBEAT' || source === 'SIMULATED' ? source", 'a stored LIVE is not read'),
+  ('S06', CL, "if (source === 'HEARTBEAT' || source === 'LIVE') return heartbeat", "if (source === 'HEARTBEAT') return heartbeat", 'the LIVE link follows the tablet link'),
+  ('S07', CL, "DEFAULT_CORE_LINK_SOURCE: CoreLinkSource = 'SIMULATED';", "DEFAULT_CORE_LINK_SOURCE: CoreLinkSource = 'LIVE';", 'the default source is LIVE'),
+  ('S08', CL, "setState({ source: effectiveCoreLinkSource(source), hydrated: true });", "setState({ source, hydrated: true });", 'a stored LIVE hydrates as LIVE in a release build'),
+  ('S09', CL, "if (!isCoreLinkSourceAvailable(source)) {", "if (false) {", 'setCoreLinkSource accepts LIVE in a release build'),
+  # ── the source selection in the provider ──
+  ('P01', PR, "return decideCoreLinkSource().then((source) => source !== 'LIVE');", "return decideCoreLinkSource().then(() => true);", 'the simulator reads its snapshot although the source is LIVE'),
+  ('P02', PR, "if (!isCoreLinkSourceAvailable('LIVE')) return undefined;\n  return decideCoreLinkSource()", "if (true) return undefined;\n  return decideCoreLinkSource()", 'no gate on the snapshot storage at all'),
+  ('P03', PR, "return preferred === 'LIVE' ? DEFAULT_CORE_LINK_SOURCE : preferred;", "return preferred;", 'a runtime with a simulator reports LIVE'),
+  ('P04', PR, "const wantsLive = sim === undefined && effectiveCoreLinkSource(preferred) === 'LIVE';", "const wantsLive = sim === undefined && effectiveCoreLinkSource(preferred) !== 'SIMULATED';", 'HEARTBEAT builds a Live source'),
+  ('P05', PR, "const wantsLive = sim === undefined && effectiveCoreLinkSource(preferred) === 'LIVE';", "const wantsLive = false;", 'LIVE never builds a Live source'),
+  ('P06', PR, "const wantsLive = sim === undefined && effectiveCoreLinkSource(preferred) === 'LIVE';", "const wantsLive = sim === undefined && preferred === 'LIVE';", 'the build flag is not asked before a Live source is built (second line: createMobileLive)'),
+  ('P07', PR, "      stoppedHere.current = true;\n      outer.stop();", "      stoppedHere.current = true;", 'the mock-core client is stopped only on the later promise job'),
+  ('P08', PR, "      void Promise.resolve().then(() => {\n        if (current) outer.stop();\n      });", "", 'the mock-core client is not stopped after the commit'),
+  ('P09', PR, "      stoppedHere.current = false;\n      outer.start();", "      stoppedHere.current = false;", 'the mock-core client is not started again on leaving LIVE'),
+  ('P10', PR, "useMemo<CoreLinkInfo>(() => ({ source: 'LIVE', state: coreLinkStateFor('LIVE', heartbeat, tabletLink), heartbeat })", "useMemo<CoreLinkInfo>(() => ({ source: 'HEARTBEAT', state: coreLinkStateFor('LIVE', heartbeat, tabletLink), heartbeat })", 'the Live runtime reports HEARTBEAT'),
+  ('P11', PR, "createRuntimeContract({ status, coreLink, session, pairing })", "createRuntimeContract({ status, coreLink, session })", 'the Live contract has no pairing member'),
+  ('P12', PR, "if (message.type !== 'session.updated') return;", "if (message.type === 'session.updated') return;", 'no role notice'),
+  ('P13', PR, "gated={!liveUnavailable}", "gated", 'the fallback simulator waits for a snapshot it may not read'),
+  ('P14', PR, "<HeartbeatContext.Provider value={mobile.live.heartbeat}>", "<HeartbeatContext.Provider value={null}>", 'the heartbeat context is not the Live socket'),
+  ('P15', PR, "        if (event.phase === 'RESYNCED') resyncBus.emit();", "        if (event.phase === 'RESYNCING') resyncBus.emit();", 'the resync bus is not emitted when the link is back'),
+  ('P16', PR, "() => ({ ready, implementation: 'live', restored: false })", "() => ({ ready: true, implementation: 'live', restored: false })", 'the Live runtime is ready before the credential is read'),
+  # ── the adapters ──
+  ('A01', AD, "export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | null {\n  if (__DEV__) {", "export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | null {\n  if (true) {", 'a release build builds a Live source'),
+  ('A02', AD, "const bearer = (): string | null => memory.session ?? memory.device?.deviceCredential ?? null;", "const bearer = (): string | null => memory.device?.deviceCredential ?? memory.session ?? null;", 'the device credential is presented instead of the session token'),
+  ('A03', AD, "        memory.session = null;\n        memory.device = null;\n        setPairing('UNPAIRED', pairingNoticeOf(end), null);", "        memory.session = null;\n        setPairing('UNPAIRED', pairingNoticeOf(end), null);", 'a revoked device keeps its credential in memory'),
+  ('A04', AD, "        setPairing('UNPAIRED', pairingNoticeOf(end), null);\n        await removeStored();", "        setPairing('UNPAIRED', pairingNoticeOf(end), null);", 'a revoked device keeps its stored items'),
+  ('A05', AD, "return end.reason === 'UNPAIRED' ? 'unpaired' : 'revoked';", "return end.reason === 'UNPAIRED' ? 'revoked' : 'unpaired';", 'the two notices are swapped'),
+  ('A06', AD, "} else if (answer.status === 401) {", "} else if (answer.status === 403) {", 'a 401 on operation 21 deletes nothing'),
+  ('A07', AD, "          await forget('unknown');", "          await forget('revoked');", 'an unknown credential gets the revoked notice'),
+  ('A08', AD, "      setPairing('UNPAIRED', notice, null);\n      live.setPairing(null);\n      await removeStored();", "      setPairing('UNPAIRED', notice, null);\n      live.setPairing(null);", 'an unknown credential stays in the store'),
+  ('A09', AD, "      await removeStored();\n      live.reconnect('CREDENTIAL');", "      await removeStored();", 'no socket is opened after the credential was forgotten'),
+  ('A10', AD, "      if (end.kind === 'SESSION_ENDED' && !end.wasSignedIn && memory.session === null && memory.device !== null) {", "      if (false) {", 'a 4401 of the device socket asks nothing'),
+  ('A11', AD, "        unconfirmed = answer.status === null;", "        unconfirmed = false;", 'operation 21 is not asked again after no answer'),
+  ('A12', AD, "        unconfirmed = answer.status === null;", "        unconfirmed = true;", 'operation 21 is asked again after every answer'),
+  ('A13', AD, "          void abandonRegistration(redeemed);", "", 'a credential that could not be stored leaves its registration'),
+  ('A14', AD, "        if (memory.device === redeemed) memory.device = null;", "", 'a credential that could not be stored stays in memory'),
+  ('A15', AD, "if (wanted && !visibility.isHidden() && live.link === 'STALE') live.reconnect('RETRY');", "if (wanted && !visibility.isHidden() && live.link === 'OFFLINE') live.reconnect('RETRY');", 'a STALE link is not reconnected in the foreground'),
+  ('A16', AD, "if (wanted && !visibility.isHidden() && live.link === 'STALE') live.reconnect('RETRY');", "if (wanted && !visibility.isHidden()) live.reconnect('RETRY');", 'every return to the foreground reconnects'),
+  ('A17', AD, "        if (memory.device === null && stored !== null) memory.device = stored;", "", 'the stored credential is not taken into memory'),
+  ('A18', AD, "getItem: (name) => allowed.then((yes) => (yes ? inner.getItem(name) : never)),", "getItem: (name) => allowed.then(() => inner.getItem(name)),", 'a refused snapshot storage is read all the same'),
+  ('A19', AD, "        memory.session = issued.sessionToken;", "", 'the session token is not kept'),
+  ('A20', AD, "      sessionCleared: () => {\n        memory.session = null;\n      },", "      sessionCleared: () => {},", 'the session token outlives its session'),
+  ('A21', AD, "void forget('revoked');", "", 'the clean-up that gave up changes nothing'),
+  ('A22', AD, "        if (memory.device !== null && unconfirmed) void confirmRegistration();\n      },\n      stop()", "      },\n      stop()", 'operation 21 is not asked at start'),
+  ('A23', AD, "      autoStart: false,", "      autoStart: true,", 'the source starts before the stored credential is read'),
+  ('A24', AD, "const name = typeof modelName === 'string' ? modelName.trim().slice(0, DEVICE_NAME_MAX).trim() : '';", "const name = typeof modelName === 'string' ? modelName : '';", 'the device name is not bounded'),
+  # ── the banner rule ──
+  ('B01', CB, "return link.source === 'HEARTBEAT' || link.source === 'LIVE';", "return link.source === 'HEARTBEAT';", 'CONNECTING is no transient in LIVE'),
+  ('B02', CB, "return link.source === 'HEARTBEAT' || link.source === 'LIVE';", "return true;", 'CONNECTING is a transient in every mode'),
+  ('B03', CB, "link.heartbeat === 'CONNECTING') return current;", "link.heartbeat === 'OFFLINE') return current;", 'OFFLINE keeps the banner instead of CONNECTING'),
+  ('B04', CB, "if (current === 'offline') return 'resynced';", "if (current === 'offline') return 'hidden';", 'no Resynced after an outage'),
+  ('B05', CB, "if (link.state === 'OFFLINE') return 'offline';", "if (link.state === 'OFFLINE') return current;", 'an outage shows no banner'),
+  # ── the 429 wording and the presenter ──
+  ('E01', CE, "if (error.status === HTTP_TOO_MANY_REQUESTS || error.code === CODE_RATE_LIMITED) {", "if (false) {", 'a 429 is not told apart'),
+  ('E02', CE, "if (error.status === HTTP_TOO_MANY_REQUESTS || error.code === CODE_RATE_LIMITED) {", "if (error.code === CODE_RATE_LIMITED) {", 'the status alone does not make a limit'),
+  ('E03', CE, "if (error.status === HTTP_TOO_MANY_REQUESTS || error.code === CODE_RATE_LIMITED) {", "if (error.status === HTTP_TOO_MANY_REQUESTS) {", 'the code alone does not make a limit'),
+  ('E04', CE, "? Math.ceil(error.retryAfterSeconds) : null;", "? Math.floor(error.retryAfterSeconds) : null;", 'the seconds are rounded down'),
+  ('E05', CE, "error.retryAfterSeconds > 0 ? Math.ceil", "error.retryAfterSeconds >= 0 ? Math.ceil", 'zero seconds are shown as a number'),
+  ('E06', CE, "seconds === null ? { key: 'mobile.live.refusal.limitHintSoon' } : { key: 'mobile.live.refusal.limitHint', values: { seconds } },", "{ key: 'mobile.live.refusal.limitHintSoon' },", 'the seconds are never shown'),
+  ('E07', CE, "{ retryAfterSeconds: seconds, coalesced: true, haptic: 'gateWarn' },", "{ retryAfterSeconds: seconds, outage: true, coalesced: true, haptic: 'gateWarn' },", 'a limit counts as an outage'),
+  ('E08', CE, "      'LIMIT',\n      'warning',", "      'LIMIT',\n      'danger',", 'a limit is a danger toast'),
+  ('E09', CE, "      { key: 'mobile.live.refusal.limit' },", "      { key: 'mobile.live.refusal.offline' },", 'a limit gets the offline wording'),
+  ('E10', CE, "if (error.code === CODE_STOPPED) return presentation('STOPPED', 'warning', null, null);", "", 'STOPPED shows a toast'),
+  ('E11', CE, "    if (error.code === CODE_TIMEOUT) return presentation('TIMEOUT', 'danger', offline, { key: 'mobile.live.refusal.timeoutHint' }, rest);", "", 'a time-out says "Nothing was changed."'),
+  ('E12', CE, "const rest = { outage: true, coalesced: true, haptic: 'coreLinkLost' } as const;", "const rest = { outage: true, coalesced: false, haptic: 'coreLinkLost' } as const;", 'the offline toast is not coalesced'),
+  ('E13', CE, "if (last !== undefined && at >= last && at - last < windowMs) return false;", "if (last !== undefined && at >= last && at - last <= windowMs) return false;", 'the window is one millisecond longer'),
+  ('E14', CE, "if (last !== undefined && at >= last && at - last < windowMs) return false;", "if (last !== undefined && at - last < windowMs) return false;", 'a clock that went back silences the toast'),
+  ('E15', CE, "      if (shown.coalesced && !coalescer.admit(shown.kind)) return 'coalesced';", "", 'nothing is coalesced in the hook'),
+  ('E16', CE, "      if (shown.label === null) return 'silent';", "      if (shown.label === null) return 'unhandled';", 'STOPPED is handed back to the call site'),
+  ('E17', CE, "const ROLE_ORDER: readonly OperatorRole[] = [OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR, OperatorRole.TECHNICIAN];", "const ROLE_ORDER: readonly OperatorRole[] = [OperatorRole.TECHNICIAN, OperatorRole.SUPERVISOR, OperatorRole.INVESTIGATOR];", 'the roles are ordered the other way'),
+  ('E18', CE, "if (error.code === SimErrorCode.NOT_SIGNED_IN) {", "if (false) {", 'a 401 reads as a denial'),
+  ('E19', CE, "if (error.code !== null && CREDENTIAL_CODES.includes(error.code)) {", "if (false) {", 'a missing credential reads as an outage'),
+  ('E20', CE, "REFUSAL_TEXT.get(error.code) ?? 'mobile.live.refusal.refused'", "'mobile.live.refusal.refused'", 'no text of its own for a refusal code'),
+  ('E21', CE, "const CORE_ERROR_COALESCE_MS = 3_000;", "const CORE_ERROR_COALESCE_MS = 30_000;", 'the window is 30 s'),
+  # ── the debug parameter ──
+  ('D01', DB, "function applyCoreSourceFromUrl(url: string | null | undefined, origin: 'launch' | 'link'): void {\n  if (__DEV__) {", "function applyCoreSourceFromUrl(url: string | null | undefined, origin: 'launch' | 'link'): void {\n  if (true) {", 'core= is applied in a release build'),
+  ('D02', DB, "  if (!enabled) return Promise.resolve();\n  launchCoreSource ??=", "  launchCoreSource ??=", 'the launch URL is read in a release build'),
+  ('D03', DB, "if (liveOf(sim) !== null || coreSourceFromUrl(url) === 'LIVE') {", "if (false) {", 'a scenario is loaded in LIVE mode'),
+  ('D04', DB, "if (liveOf(sim) !== null || coreSourceFromUrl(url) === 'LIVE') {", "if (liveOf(sim) !== null) {", 'a scenario is loaded into the simulator the same URL replaces'),
+  ('D05', DB, "return CORE_LINK_SOURCES.find((source) => source === value) ?? null;", "return CORE_LINK_SOURCES.find((source) => source === value.toUpperCase()) ?? null;", 'core=live is accepted'),
+  ('D06', DB, "if (source === null || source === getCoreLinkSource()) return;", "if (source === null) return;", 'a value that is already the source is stored again'),
+  ('D07', DB, "      else applyCoreSourceFromUrl(url, origin);", "", 'a later deep link does not change the source'),
+  ('D08', DB, "const match = /[?&]core=([^&#]*)/.exec(url);", "const match = /core=([^&#]*)/.exec(url);", 'score=LIVE is read as core=LIVE'),
+  # ── the contract and the health call ──
+  ('C01', CT, "return pairing !== undefined && pairing.required && pairing.state !== 'PAIRED';", "return pairing !== undefined && pairing.required && pairing.state === 'UNPAIRED';", 'CHECKING does not block'),
+  ('C02', CT, "return pairing !== undefined && pairing.required && pairing.state !== 'PAIRED';", "return pairing !== undefined && pairing.state !== 'PAIRED';", 'a gate that is not required blocks'),
+  ('C03', CT, "    ...(overrides.pairing ? { pairing: overrides.pairing } : {}),", "    pairing: overrides.pairing ?? PAIRING_NOT_REQUIRED,", 'every contract carries a pairing member'),
+  ('H01', UH, "queryFn: () => (live ? fetchCoreServerHealth(live) : fetchHealth()),", "queryFn: () => fetchHealth(),", 'LIVE reads mock-core'),
+  ('H02', UH, "  throw new Error(`getServiceHealth -> ${answer.kind}${answer.status === null ? '' : ` (HTTP ${answer.status})`}`);", "  return { status: 'ok', service: 'dems-core-server', version: '?', apiVersion: 'v1', serverTime: '', uptimeMs: 0, ws: { path: '/ws', heartbeatIntervalMs: 1000, clients: 0 } };", 'a failed health call is shown as an answer'),
+  ('H03', UH, "if (event.phase === 'RESYNCED') void refetch({ cancelRefetch: false });", "", 'the health is not read again when the link is back'),
+  ('H04', UH, "queryKey: live ? ([...HEALTH_QUERY_KEY, 'core-server'] as const) : HEALTH_QUERY_KEY,", "queryKey: HEALTH_QUERY_KEY,", 'both services share one query'),
+  # ── added after run 1 (the code that the reading of run 1 added) ──
+  ('N01', AD, "        const stored = await withinBudget(\n          () => port.sessionIssued?.({ biometricToken: issued.biometricToken, operatorId: issued.operatorId }),\n          MOBILE_SECRETS_BUDGET_MS,\n          timers,\n          'runtime.live.biometricPort',\n        );\n        if (stored.late) reportRuntimeIssue('error', 'runtime.live.biometricPort', 'The biometric storage did not answer in time; the session is kept');", "        await port.sessionIssued?.({ biometricToken: issued.biometricToken, operatorId: issued.operatorId });", 'a biometric storage that fails costs the session'),
+  ('N02', AD, "      reportRuntimeIssue('error', source, 'A storage call of the Live source failed', { errorName: error instanceof Error ? error.name : typeof error });", "", 'a failed storage call is not logged'),
+  ('N03', AD, "      reportRuntimeIssue('error', source, 'A storage call of the Live source failed', { errorName: error instanceof Error ? error.name : typeof error });", "      reportRuntimeIssue('error', source, error);", "the storage's own text is logged"),
+  ('N04', AD, "export const MOBILE_SECRETS_BUDGET_MS = 4_000;", "export const MOBILE_SECRETS_BUDGET_MS = 6_000;", 'the budget is outside the wait of the Live source'),
+  ('N05', AD, "        const port = biometric;\n        if (!port?.sessionIssued) return;", "        const port = biometric;\n        if (true) return;", 'the biometric port is never told'),
+  # ── decision D118 (the controller's note): operations that want the device credential ──
+  ('K01', AD, "const chosen = (DEVICE_CREDENTIAL_OPERATIONS.includes(operationId) ? deviceClient : sessionClient) as unknown as LooseClient;", "const chosen = sessionClient as unknown as LooseClient;", 'the biometric sign-in carries the session token'),
+  ('K02', AD, "const deviceBearer = (): string | null => memory.device?.deviceCredential ?? null;", "const deviceBearer = (): string | null => memory.session ?? memory.device?.deviceCredential ?? null;", 'the device client prefers the session token'),
+  ('K03', AD, "['signInWithBiometric', 'rotateDeviceCredential'];", "['signInWithBiometric'];", 'the rotation is sent with the session token'),
+  ('K04', AD, "['signInWithBiometric', 'rotateDeviceCredential'];", "['rotateDeviceCredential'];", 'the biometric sign-in is not on the list'),
+  ('K05', CE, "const REFUSAL_TEXT: ReadonlyMap<string, string> = new Map([['DEMO_DISABLED', 'mobile.live.refusal.demoDisabled']]);", "const REFUSAL_TEXT: ReadonlyMap<string, string> = new Map([['DEMO_DISABLED', 'mobile.live.refusal.demoDisabled'], ['DEVICE_NOT_PAIRED', 'mobile.live.refusal.demoDisabled']]);", 'DEVICE_NOT_PAIRED has a wording of its own'),
+]
+
+def sha(path):
+    return hashlib.sha256(open(path, 'rb').read()).hexdigest()
+
+def run(spec):
+    env = dict(os.environ)
+    if spec is None:
+        env.pop('W51_MUT_SPEC', None)
+    else:
+        json.dump(spec, open(SPEC, 'w'))
+        env['W51_MUT_SPEC'] = SPEC
+    started = time.time()
+    done = subprocess.run(['npm', 'exec', '-w', '@dems/mobile', '--', 'jest', '--config', CONFIG, '--maxWorkers=2', '--silent', '--forceExit', *TESTS],
+                          cwd=ROOT, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    failed = [line.strip() for line in out.splitlines() if line.strip().startswith('●') and '›' in line]
+    summary = next((line.strip() for line in out.splitlines() if line.startswith('Tests:')), '(no summary)')
+    broken = 'W51 mutation' in out and 'occurs' in out
+    return done.returncode, summary, failed, broken, time.time() - started, out
+
+def main():
+    wanted = set(sys.argv[1:])
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print(f"## W51 mutation check, {time.strftime('%Y-%m-%d %H:%M:%S')}; {len(TESTS)} test files per run; the tree is not edited")
+    if not wanted:
+        code, summary, failed, _, took, out = run(None)
+        print(f"control (no mutation): exit={code} {summary} ({took:.0f} s)")
+        if code != 0:
+            print(out[-3000:])
+            sys.exit(2)
+    detected = survived = 0
+    for mid, file, old, new, what in M:
+        if wanted and mid not in wanted:
+            continue
+        code, summary, failed, broken, took, out = run({'id': mid, 'file': file, 'from': old, 'to': new})
+        if broken:
+            print(f"{mid} NOT APPLIED ({file}): the text does not occur exactly once")
+            survived += 1
+            continue
+        if code != 0 and not failed and 'Tests:' not in out:
+            print(f"{mid} ERROR ({file}): jest gave no result\n{out[-1500:]}")
+            survived += 1
+            continue
+        verdict = 'DETECTED' if code != 0 else 'SURVIVED'
+        detected += code != 0
+        survived += code == 0
+        first = failed[0][:150] if failed else ''
+        print(f"{mid} {verdict} ({took:.0f} s) {file.split('/')[-1]}: {what} | {summary} | {first}")
+        sys.stdout.flush()
+    after = {f: sha(APP + '/' + f) for f in files}
+    print(f"## {detected} detected, {survived} not detected, of {detected + survived}")
+    print("## the mutated files in the tree, before and after: " + ("identical" if before == after else "CHANGED"))
+    for f in files:
+        print(f"   {before[f][:16]} {after[f][:16]} {f}")
+
+main()

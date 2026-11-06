@@ -1,0 +1,116 @@
+# FX-M1 mutation check, 2026-10-06 11:49:58; the tree is not edited
+control (no mutation): exit=0 Tests:       93 passed, 93 total (31 s)
+S1-a DETECTED exit=1 Tests:       6 failed, 58 passed, 64 total (14 s) — the signed-out hand-off follows the stack again (back to whatever is underneath) [src/features/pairing/pairing-model.ts]
+     fails: E2E-S-1: after a redeem the app reaches Login by itself, whatever deep links pushed underneath › "Continue to sign-in" is the same hand-off: Login, never back to Stack Check
+     fails: E2E-S-1: after a redeem the app reaches Login by itself, whatever deep links pushed underneath › the phone of E2E-S-1: launched at /login?core=LIVE&motion=off, Stack Check and Pair pushed, then paired → Login, nothing to go back to
+     fails: E2E-S-4: while the gate holds, a warm deep link to a guarded screen opens Pair › the guarded link stays pending through the gate (MP-12): after pairing and sign-in it opens
+     fails: Pairing screen › pair(code): Discover → Verify on the simulator clock, then PAIRED with one PAIRING_SUCCESS audit row and the hand-off
+S1-b DETECTED exit=1 Tests:       4 failed, 52 passed, 56 total (13 s) — the hand-off replaces the top screen only (no stack reset) [src/features/pairing/use-pairing-flow.ts]
+     fails: E2E-S-1: after a redeem the app reaches Login by itself, whatever deep links pushed underneath › "Continue to sign-in" is the same hand-off: Login, never back to Stack Check
+     fails: E2E-S-1: after a redeem the app reaches Login by itself, whatever deep links pushed underneath › the phone of E2E-S-1: launched at /login?core=LIVE&motion=off, Stack Check and Pair pushed, then paired → Login, nothing to go back to
+     fails: Pairing screen › pair(code): Discover → Verify on the simulator clock, then PAIRED with one PAIRING_SUCCESS audit row and the hand-off
+     fails: a correct code (AC-C-75, MP-5, MP-6) › with screens underneath (deep links pushed Stack Check), the signed-out hand-off resets to the boot router, never back (E2E-S-1)
+S1-c DETECTED exit=1 Tests:       1 failed, 27 passed, 28 total (6 s) — "Continue to sign-in" hands the press event to leave() again [src/features/pairing/pairing-code-panel.tsx]
+     fails: E2E-S-1: after a redeem the app reaches Login by itself, whatever deep links pushed underneath › "Continue to sign-in" is the same hand-off: Login, never back to Stack Check
+S1-d DETECTED exit=1 Tests:       4 failed, 52 passed, 56 total (10 s) — the automatic hand-off leaves as a Cancel [src/features/pairing/use-pairing-flow.ts]
+     fails: E2E-S-1: after a redeem the app reaches Login by itself, whatever deep links pushed underneath › the phone of E2E-S-1: launched at /login?core=LIVE&motion=off, Stack Check and Pair pushed, then paired → Login, nothing to go back to
+     fails: E2E-S-4: while the gate holds, a warm deep link to a guarded screen opens Pair › the guarded link stays pending through the gate (MP-12): after pairing and sign-in it opens
+     fails: Pairing screen › pair(code): Discover → Verify on the simulator clock, then PAIRED with one PAIRING_SUCCESS audit row and the hand-off
+     fails: a correct code (AC-C-75, MP-5, MP-6) › with screens underneath (deep links pushed Stack Check), the signed-out hand-off resets to the boot router, never back (E2E-S-1)
+S1-e DETECTED exit=1 Tests:       5 failed, 17 passed, 22 total (6 s) — the landing never notices a sign-out [src/runtime/signed-out-landing.tsx]
+     fails: E2E-S-1: after a redeem the app reaches Login by itself, whatever deep links pushed underneath › the re-pair after a revocation (step 6): the same hand-off reaches Login
+     fails: E2E-S-1: after a sign-out the app lands on Login, not on a public screen left underneath › Stack Check underneath: the sign-out lands on Login
+     fails: E2E-S-1: after a sign-out the app lands on Login, not on a public screen left underneath › a revocation over Stack Check lands on Pair (the gate holds), and over Pair it stays on Pair
+     fails: E2E-S-1: after a sign-out the app lands on Login, not on a public screen left underneath › a sign-in after it still follows the boot router (Home), the landing stays out of the way
+S1-f DETECTED exit=1 Tests:       6 failed, 16 passed, 22 total (9 s) — a public screen left on top is accepted (no reset) [src/runtime/signed-out-landing.tsx]
+     fails: E2E-S-1: after a redeem the app reaches Login by itself, whatever deep links pushed underneath › the re-pair after a revocation (step 6): the same hand-off reaches Login
+     fails: E2E-S-1: after a sign-out the app lands on Login, not on a public screen left underneath › Stack Check underneath: the sign-out lands on Login
+     fails: E2E-S-1: after a sign-out the app lands on Login, not on a public screen left underneath › a revocation over Stack Check lands on Pair (the gate holds), and over Pair it stays on Pair
+     fails: E2E-S-1: after a sign-out the app lands on Login, not on a public screen left underneath › a sign-in after it still follows the boot router (Home), the landing stays out of the way
+S1-g DETECTED exit=1 Tests:       3 failed, 19 passed, 22 total (6 s) — the reset replaces the top screen only (no pop to the first) [src/runtime/signed-out-landing.tsx]
+     fails: E2E-S-1: after a redeem the app reaches Login by itself, whatever deep links pushed underneath › "Continue to sign-in" is the same hand-off: Login, never back to Stack Check
+     fails: E2E-S-1: after a redeem the app reaches Login by itself, whatever deep links pushed underneath › the phone of E2E-S-1: launched at /login?core=LIVE&motion=off, Stack Check and Pair pushed, then paired → Login, nothing to go back to
+     fails: resetToBootRouter › pops to the first screen, then replaces it with `/` (no query): nothing visited before stays underneath
+S1-h NOT DETECTED exit=0 Tests:       19 passed, 19 total (8 s) — the root layout no longer mounts the landing [src/app/_layout.tsx]
+S3-a DETECTED exit=1 Tests:       3 failed, 30 passed, 33 total (18 s) — the Live link is not mapped while the run is ended [src/runtime/ended-link.ts]
+     fails: E2E-S-3: a revocation (4403) is not drawn as an outage while the app reopens its socket › revoked by `device.revoked` then 4403, the credential still being deleted: the link reads CONNECTING, no notice, no banner
+     fails: the mapping (pure) › only OFFLINE changes, and only while the run was ended on purpose
+     fails: the notices of the gate (§9.4, §6.6) › row FX-M1, E2E-S-3: while the revoked credential is deleted and before the socket is reopened, the screen never says "Core server unreachable"
+S3-b DETECTED exit=1 Tests:       3 failed, 2 passed, 5 total (3 s) — the heartbeat is not mapped while the run is ended [src/runtime/ended-link.ts]
+     fails: E2E-S-3: a revocation (4403) is not drawn as an outage while the app reopens its socket › revoked by `device.revoked` then 4403, the credential still being deleted: the link reads CONNECTING, no notice, no banner
+     fails: E2E-S-3: a revocation (4403) is not drawn as an outage while the app reopens its socket › when the reopened socket cannot connect, the next OFFLINE shows the notice (the end is over once it reconnects)
+     fails: the mapping (pure) › only OFFLINE changes, and only while the run was ended on purpose
+S3-c DETECTED exit=1 Tests:       4 failed, 29 passed, 33 total (19 s) — the end of the run is never seen [src/runtime/ended-link.ts]
+     fails: E2E-S-3: a revocation (4403) is not drawn as an outage while the app reopens its socket › revoked by `device.revoked` then 4403, the credential still being deleted: the link reads CONNECTING, no notice, no banner
+     fails: E2E-S-3: a revocation (4403) is not drawn as an outage while the app reopens its socket › when the reopened socket cannot connect, the next OFFLINE shows the notice (the end is over once it reconnects)
+     fails: the mapping (pure) › an end of the run is read from the socket status only, and never throws
+     fails: the notices of the gate (§9.4, §6.6) › row FX-M1, E2E-S-3: while the revoked credential is deleted and before the socket is reopened, the screen never says "Core server unreachable"
+S3-d DETECTED exit=1 Tests:       2 failed, 31 passed, 33 total (41 s) — the Pair screen's hook hands the raw link on [src/runtime/ended-link.ts]
+     fails: E2E-S-3: a revocation (4403) is not drawn as an outage while the app reopens its socket › revoked by `device.revoked` then 4403, the credential still being deleted: the link reads CONNECTING, no notice, no banner
+     fails: the notices of the gate (§9.4, §6.6) › row FX-M1, E2E-S-3: while the revoked credential is deleted and before the socket is reopened, the screen never says "Core server unreachable"
+S3-e DETECTED exit=1 Tests:       2 failed, 3 passed, 5 total (7 s) — the runtime's Core link ignores the end [src/runtime/sim-runtime-provider.tsx]
+     fails: E2E-S-3: a revocation (4403) is not drawn as an outage while the app reopens its socket › revoked by `device.revoked` then 4403, the credential still being deleted: the link reads CONNECTING, no notice, no banner
+     fails: E2E-S-3: a revocation (4403) is not drawn as an outage while the app reopens its socket › when the reopened socket cannot connect, the next OFFLINE shows the notice (the end is over once it reconnects)
+S4-a DETECTED exit=1 Tests:       6 failed, 13 passed, 19 total (15 s) — the intent does not look at the gate [src/app/+native-intent.tsx]
+     fails: E2E-S-4: while the gate holds, a warm deep link to a guarded screen opens Pair › from Stack Check, demsdemo:///dev-gallery opens /pair
+     fails: E2E-S-4: while the gate holds, a warm deep link to a guarded screen opens Pair › from Stack Check, demsdemo:///evidence?selected=EV-1&motion=off opens /pair
+     fails: E2E-S-4: while the gate holds, a warm deep link to a guarded screen opens Pair › from Stack Check, demsdemo:///home opens /pair
+     fails: E2E-S-4: while the gate holds, a warm deep link to a guarded screen opens Pair › from Stack Check, demsdemo:///login opens /pair
+S4-b DETECTED exit=1 Tests:       6 failed, 13 passed, 19 total (11 s) — /login (and the gallery) are not counted as gated [src/app/+native-intent.tsx]
+     fails: E2E-S-4: while the gate holds, a warm deep link to a guarded screen opens Pair › from Stack Check, demsdemo:///dev-gallery opens /pair
+     fails: E2E-S-4: while the gate holds, a warm deep link to a guarded screen opens Pair › from Stack Check, demsdemo:///evidence?selected=EV-1&motion=off opens /pair
+     fails: E2E-S-4: while the gate holds, a warm deep link to a guarded screen opens Pair › from Stack Check, demsdemo:///home opens /pair
+     fails: E2E-S-4: while the gate holds, a warm deep link to a guarded screen opens Pair › from Stack Check, demsdemo:///login opens /pair
+S4-c DETECTED exit=1 Tests:       2 failed, 21 passed, 23 total (15 s) — a change of the gate is not written while running [src/runtime/sim-adapters.ts]
+     fails: the Live source writes the gate while it runs › a tablet the Core knows: PAIRED, not held; after a stop and a new source, the old one does not clear the new one’s gate
+     fails: the Live source writes the gate while it runs › a tablet without a credential: held from start() (CHECKING, then UNPAIRED); a redeem releases it; stop() clears it
+S4-d DETECTED exit=1 Tests:       1 failed, 3 passed, 4 total (3 s) — stop() does not release the gate [src/runtime/sim-adapters.ts]
+     fails: the Live source writes the gate while it runs › a tablet the Core knows: PAIRED, not held; after a stop and a new source, the old one does not clear the new one’s gate
+S4-e DETECTED exit=1 Tests:       1 failed, 3 passed, 4 total (3 s) — start() does not write the gate before the credential is read [src/runtime/sim-adapters.ts]
+     fails: the Live source writes the gate while it runs › a tablet without a credential: held from start() (CHECKING, then UNPAIRED); a redeem releases it; stop() clears it
+T1-a DETECTED exit=1 Tests:       3 failed, 10 passed, 13 total (2 s) — no re-check of a probe that timed out [src/runtime/sim-adapters.ts]
+     fails: E2E-T-1 on the real Live source: a keep-alive whose timer ran out on a starved thread › is re-checked once and answered: no rejection, no error record, nothing on console.error or console.warn
+     fails: E2E-T-1 on the real Live source: a keep-alive whose timer ran out on a starved thread › no answer to the attempt nor to the re-check, link still ONLINE: the rejection is info ("not an outage"), never an error
+     fails: the other probes and the commands, through the client the pages use › the service health (the Stack Check poll of E2E-S, 10:13:18): re-checked once, the answer handed on
+T1-b DETECTED exit=1 Tests:       2 failed, 11 passed, 13 total (3 s) — the Live source's reports are not judged (an unanswered call is an error again) [src/runtime/sim-adapters.ts]
+     fails: E2E-T-1 on the real Live source: a keep-alive whose timer ran out on a starved thread › no answer to the attempt nor to the re-check, link still ONLINE: the rejection is info ("not an outage"), never an error
+     fails: the other probes and the commands, through the client the pages use › a Core action refused for a link that is not up is judged as well: a warning, never an error (the wiring of onError)
+T1-c DETECTED exit=1 Tests:       5 failed, 8 passed, 13 total (3 s) — the first failure while the link is up is already a warning [src/runtime/probe-failure.ts]
+     fails: E2E-T-1 on the real Live source: a keep-alive whose timer ran out on a starved thread › no answer to the attempt nor to the re-check, link still ONLINE: the rejection is info ("not an outage"), never an error
+     fails: the pure rules (R5) › consecutive failures while the link is up: warn from the second in a row, still never an error
+     fails: the pure rules (R5) › logLiveReport writes the judgement: the level, the message and the link view replace the report’s
+     fails: the pure rules (R5) › the E2E-T-1 record, link ONLINE: the first failed keep-alive is info, not an outage, and never an error
+T1-d DETECTED exit=1 Tests:       1 failed, 12 passed, 13 total (3 s) — a down link makes the record info [src/runtime/probe-failure.ts]
+     fails: the pure rules (R5) › the link decides what an outage is: down → the record keeps its words as a warning; settling → no outage
+T1-e DETECTED exit=1 Tests:       2 failed, 11 passed, 13 total (8 s) — a command that timed out is re-sent too [src/runtime/probe-failure.ts]
+     fails: the other probes and the commands, through the client the pages use › a command that timed out is NOT sent again: one request, the time-out handed on as it was
+     fails: the pure rules (R5) › re-checks a probe that timed out, and nothing else
+T1-f DETECTED exit=1 Tests:       1 failed, 12 passed, 13 total (2 s) — the probe's first time-out is a warning again [src/runtime/sim-adapters.ts]
+     fails: E2E-T-1 on the real Live source: a keep-alive whose timer ran out on a starved thread › is re-checked once and answered: no rejection, no error record, nothing on console.error or console.warn
+T1-g DETECTED exit=1 Tests:       3 failed, 10 passed, 13 total (2 s) — a probe failure while the link is up keeps "Core server unreachable" [src/runtime/probe-failure.ts]
+     fails: E2E-T-1 on the real Live source: a keep-alive whose timer ran out on a starved thread › no answer to the attempt nor to the re-check, link still ONLINE: the rejection is info ("not an outage"), never an error
+     fails: the pure rules (R5) › logLiveReport writes the judgement: the level, the message and the link view replace the report’s
+     fails: the pure rules (R5) › the E2E-T-1 record, link ONLINE: the first failed keep-alive is info, not an outage, and never an error
+T1-h DETECTED exit=1 Tests:       1 failed, 12 passed, 13 total (2 s) — the consecutive count never grows [src/runtime/sim-adapters.ts]
+     fails: E2E-T-1 on the real Live source: a keep-alive whose timer ran out on a starved thread › no answer to the attempt nor to the re-check, link still ONLINE: the rejection is info ("not an outage"), never an error
+   (load 14.3 > 14: waiting)
+F-a DETECTED exit=1 Tests:       3 failed, 14 passed, 17 total (3 s) — a warn record reaches console.warn again [src/runtime/log.ts]
+     fails: E2E-T-1 on the real Live source: a keep-alive whose timer ran out on a starved thread › no answer to the attempt nor to the re-check, link still ONLINE: the rejection is info ("not an outage"), never an error
+     fails: which console a record reaches (R6) › a warn record never reaches console.warn: it stays in the log, with its level
+     fails: which console a record reaches (R6) › outside Jest a warn record is mirrored as console.info (Metro and logcat keep it), never as a warning
+F-b DETECTED exit=1 Tests:       1 failed, 3 passed, 4 total (2 s) — an error record no longer reaches console.error [src/runtime/log.ts]
+     fails: which console a record reaches (R6) › an error record, a fault of the app, still reaches console.error
+## 27 detected, 1 not detected, 0 not applied
+## the mutated files in the tree, before and after: identical
+   87b8e2bcd04a00ad  src/app/+native-intent.tsx
+   7596a9222c5e1c55  src/app/_layout.tsx
+   a384b2510a381825  src/features/pairing/pairing-code-panel.tsx
+   09208e85fa54c99a  src/features/pairing/pairing-model.ts
+   cb73e811daa38f73  src/features/pairing/use-pairing-flow.ts
+   aa5b6fca78992e84  src/runtime/ended-link.ts
+   721f1eb723a2050a  src/runtime/log.ts
+   25019912fde57a3f  src/runtime/probe-failure.ts
+   befdaebbc0798f41  src/runtime/signed-out-landing.tsx
+   4272199c14a53e94  src/runtime/sim-adapters.ts
+   b50d17fba641437b  src/runtime/sim-runtime-provider.tsx
+# finished 11:54:46

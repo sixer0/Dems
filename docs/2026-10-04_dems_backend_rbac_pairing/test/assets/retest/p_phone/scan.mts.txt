@@ -1,0 +1,18 @@
+// R-P secret scan: counts (never prints) the demo password, dvc_/ses_/bio_ token shapes, and six digits in
+// two groups of three separated by a space or hyphen (pairing-code shape) in every text file given.
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { DEMO_OPERATOR_PASSWORD } from '/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset';
+const files: string[] = [];
+const walk = (p: string) => { const s = statSync(p); if (s.isDirectory()) for (const e of readdirSync(p)) walk(join(p, e)); else if (!/\.(png|mp4)$/.test(p)) files.push(p); };
+process.argv.slice(2).forEach(walk);
+let pw = 0, tok = 0, sep = 0, six = 0;
+for (const f of files) {
+  const t = readFileSync(f, 'utf8');
+  const a = t.split(DEMO_OPERATOR_PASSWORD).length - 1;
+  const b = (t.match(/\b(dvc|ses|bio)_[A-Za-z0-9_-]{6,}/g) ?? []).length;
+  const c = (t.match(/(?<![\d.:,])\d{3}[ -]\d{3}(?![\d.:,])/g) ?? []).length;
+  if (a || b || c) console.log(`HIT ${f.replace(/^.*\/docs\//, 'docs/')}: password ${a}, token shapes ${b}, separated-six-digit shapes ${c}`);
+  pw += a; tok += b; sep += c;
+}
+console.log(`scanned ${files.length} text files: password ${pw}, token shapes ${tok}, separated-six-digit shapes ${sep}`);

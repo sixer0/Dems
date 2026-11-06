@@ -1,0 +1,13 @@
+## item 4: package.json and README against their pre-images
+26,27c26,27
+<     "emulator": "emulator -avd dems_tablet -no-metrics -gpu host -no-boot-anim",
+<     "emulator:phone": "emulator -avd dems_phone -no-metrics -gpu host -no-boot-anim",
+---
+>     "emulator": "emulator -avd dems2_tablet -no-metrics -gpu host -no-boot-anim",
+>     "emulator:phone": "emulator -avd dems2_phone -no-metrics -gpu host -no-boot-anim",
+## README (additions only expected)
+158a159
+> - Correction (2026-10-06): the line above no longer holds. `npm run emulator` now boots `dems2_tablet` and `npm run emulator:phone` boots `dems2_phone`. They still boot from the snapshot and pass no `-port`, so the command above remains the one to use.
+removed lines vs pre-image: 0
+removed lines vs acaff20: 0
+package.json parses

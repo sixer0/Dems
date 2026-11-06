@@ -1,0 +1,12 @@
+#!/bin/sh
+# Runs the mutations against the row's test file, one at a time, through the scratch
+# configuration. Run from the workspace root; no `cd`. Usage: run_mutations.sh [id ...]
+M=/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/w47b
+if [ "$#" -eq 0 ]; then set -- BASELINE $(python3 -c "import json; print(' '.join(x['id'] for x in json.load(open('$M/mutations.json'))))"); fi
+for id in "$@"; do
+  if [ "$id" = BASELINE ]; then mutation=""; note="no mutation: the tree as it is, through the scratch configuration"; else mutation="$id"; note=$(python3 -c "import json; x=[x for x in json.load(open('$M/mutations.json')) if x['id']=='$id'][0]; print((x['file'] + ': ' if 'file' in x else '') + x['note'])"); fi
+  echo "=== $id | $note | $(date '+%H:%M:%S')"
+  W47_MUTATION="$mutation" DEMS_TEST_STEP=69b npm exec -w @dems/core-server -- vitest run --config "$M/harness.vitest.config.mjs" --project db --maxWorkers=2 --reporter verbose test/acceptance/rbac-matrix.test.ts > "$M/mutation_$id.log" 2>&1
+  echo "exit $?"
+  grep -E "^ +(Test Files|Tests) |^ +× |w47-harness|remain with the run prefix|^\[w47\] DEVICE_CREDENTIAL|^\[w47\] D118|^\[w47\] [A-Z]+@DEVICE" "$M/mutation_$id.log" | sed 's/^ *× .* > / × /' | sort | uniq -c | cut -c1-300
+done

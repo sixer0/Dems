@@ -1,0 +1,4 @@
+shot B4_tablet_0017_after_web_verify_no_reload
+ids rt2_0017_after
+rec pull rt2_verify
+noshot

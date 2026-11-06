@@ -1,0 +1,18 @@
+13:23:12.517 mark k06 at 13:23:12.517
+13:23:12.560 declared screen settings-maintenance
+13:23:12.612 key 4
+13:23:12.754 slept 1800 ms
+13:23:14.604 key 4
+13:23:14.743 slept 2000 ms
+13:23:16.825 declared screen more
+13:23:16.871 ids(3): more-operator-name@651,387 "Rina Wijaya" ; more-operator-role@431,456 "Technician" ; more-sign-out@776,663 "Sign out"
+13:23:19.652 tapid more-sign-out at 776,663 "Sign out"
+13:23:22.222 slept 3500 ms
+13:23:25.752 declared screen login
+13:23:25.784 screencap 107_e2e_s1_after_sign_out_rina.png 13:23:25.784..13:23:26.434
+13:23:26.506 corelog (2): 13:23:22.586 POST /api/v1/auth/sign-out 204 | 13:23:22.597 GET /api/v1/auth/status 200
+13:23:26.560 serverlog since k06 (4):
+    13:23:22.219 POST /api/v1/auth/sign-out 204
+    13:23:22.221 [socket closed]
+    13:23:22.816 [socket opened]
+    13:23:22.874 GET /api/v1/auth/status 200

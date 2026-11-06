@@ -1,0 +1,14 @@
+-- Custom SQL migration file, put your code below!
+-- 0034_capture_config_supervisor_revocation (hand-written; the `0018` exception class, MG-2).
+--
+-- `ROLE_PERMISSIONS` of `@dems/shared/sim/auth` no longer states SUPERVISOR -> CAPTURE_CONFIG:
+-- the capture topology is the principal's layer (PT GSP, 2026-10-29) and the installing technician
+-- writes it. The supervisor keeps the read of operations 76 and 77 - both `AUTHENTICATED_ACCESS`,
+-- "every role may read it" - so it can still verify that a camera is attached and running, and can
+-- no longer re-point a slot.
+--
+-- A database seeded BEFORE this change holds the grant as a row, and the boot refuses a stored
+-- matrix that differs from the vocabulary (`db/mapping/rbac.ts`, SD-5, AC-B-17). This file brings
+-- the stored matrix back in line; on a database seeded AFTER it the row was never written and the
+-- DELETE matches nothing. No GRANT changes: nothing here alters what `dems_app` may do.
+DELETE FROM role_permissions WHERE role_id = 'SUPERVISOR' AND permission_id = 'CAPTURE_CONFIG';

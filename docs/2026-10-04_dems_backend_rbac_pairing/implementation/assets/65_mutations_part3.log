@@ -1,0 +1,7 @@
+28 mutations; texts that do not occur exactly once: 0
+## 2026-10-05 22:53:50 WIB baseline: the three test files of the row, no mutation
+baseline exit=0 Test Files  3 passed (3) | Tests  39 passed (39) (10.1 s)
+K02 DETECTED    exit=1 action-bar.tsx: B-2 marker: no chip waits at the button (LB-4) [Test Files  1 failed | 2 passed (3) | Tests  1 failed | 38 passed (39)] first: × success: one POST with the label, the chip waits at the button while the answer is out, a second press sends nothing, and the toast and the flight label are read in `ok` 172ms
+K07 DETECTED    exit=1 action-bar.tsx: B-2 snapshot: no shutter at the press (LB-4) [Test Files  1 failed | 2 passed (3) | Tests  2 failed | 37 passed (39)] first: × success: the shutter flashes at the press, the toast follows the settle with the camera read in `ok` 110ms
+P04 DETECTED    exit=1 use-pending-press.ts: onWait is called although the outcome is known (Simulated mode would flash and pend) [Test Files  1 failed | 2 passed (3) | Tests  1 failed | 38 passed (39)] first: × no chip waits, no control turns busy and no pending state is revealed after a marker, a snapshot and a note 113ms
+## 2026-10-05 22:54:14 WIB 3 mutations: 3 detected, 0 survived [], 0 not applied []

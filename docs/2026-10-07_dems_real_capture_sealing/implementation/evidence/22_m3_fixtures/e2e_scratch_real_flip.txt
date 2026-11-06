@@ -1,0 +1,9 @@
+e2e: waiting for .locks/heavy-host.lock (up to 1800 s)
+e2e: series scratch, 1 checks, ports 127.0.0.1:8559 and :8561, results in .cache/m3worker/e2e/scratch; heavy-host lock held (.locks/heavy-host.lock)
+av1_av2a_pm80_r1                         expect PASS got FAIL      rc 1       UNEXPECTED  load  5.80   21.0 s
+1 checks (1 expected PASS, 0 negative controls expected FAIL): 0 as expected, 1 unexpected: av1_av2a_pm80_r1
+ports still listening after the series: none
+load at the start of the timing-sensitive checks: 5.8 .. 5.8
+AGGREGATE EXIT CODE 1
+make: *** [e2e] Error 1
+scratch real flip: make exit=2

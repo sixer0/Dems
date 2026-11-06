@@ -1,0 +1,16 @@
+window 2026-10-07 10:39:45.425 WIB .. 2026-10-07 10:40:21.591 WIB; log lines total 537
+request lines: 0; socket lines: 0; other lines: 0
+# mock-core lines in the window (heartbeat side):
+1791344143780 Server listening at http://127.0.0.1:4400  
+1791344144217 incoming request  
+1791344144220 request completed  
+1791344144239 incoming request  
+1791344144239 request completed  
+1791344223880 incoming request  
+1791344223881 ws client connected http://127.0.0.1:5173 1
+1791344223896 incoming request  
+1791344223896 ws client connected http://127.0.0.1:5173 2
+1791344223933 ws client disconnected  1
+1791344245023 ws client disconnected  0
+1791344389538 incoming request  
+1791344389539 ws client connected http://127.0.0.1:4400 1

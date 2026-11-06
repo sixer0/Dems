@@ -1,0 +1,111 @@
+load averages: 9.76 10.37 9.81
+## 2026-10-04 19:32:10 WIB $ npm run test -w @dems/core-web -- --maxWorkers=2 --reporter=default --reporter=json --outputFile.json=/tmp/claude-501/w50-gate/web.json
+ ✓ src/lib/__tests__/packaged-csp.test.ts (9 tests) 3ms
+ Test Files  48 passed (48)
+      Tests  598 passed (598)
+   Start at  19:32:11
+   Duration  66.47s (tests 59%, import 19%, environment 14%, setup 5%, transform 4%)
+    Isolate  48 workers spawned · ~446ms startup each (spawn + environment, per file)
+             at least ~10.26s faster with isolate: false — reuses workers across files instead of one per file
+JSON report written to /tmp/claude-501/w50-gate/web.json
+exit=0
+
+## per file, from the JSON report of that run: 48 files, 598 tests, 598 passed
+   the files that existed before this row: 39 files, 438 tests, 438 passed
+   the new files of this row: 9 files, 160 tests, 160 passed
+     src/lib/__tests__/live-core-endpoint.test.tsx: 9 / 9
+     src/lib/__tests__/live-core-errors.test.tsx: 30 / 30
+     src/test/live-runtime-bridge.test.tsx: 26 / 26
+     src/test/live-runtime-mode.test.tsx: 25 / 25
+     src/test/live-runtime-sink.test.tsx: 11 / 11
+     src/test/live-runtime-startup.test.tsx: 22 / 22
+     src/test/live-runtime-static.test.tsx: 9 / 9
+     src/test/live-runtime-storage.test.tsx: 23 / 23
+     src/test/live-runtime-surface.test.tsx: 5 / 5
+
+## 2026-10-04 19:33:17 WIB $ npm run typecheck -w @dems/core-web
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+exit=0
+
+## 2026-10-04 19:33:34 WIB $ npm run lint -w @dems/core-web
+> @dems/core-web@0.1.0 lint
+> oxlint
+exit=0
+
+## 2026-10-04 19:33:34 WIB $ npm run test -w @dems/shared -- --maxWorkers=2
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+ Test Files  68 passed (68)
+      Tests  1807 passed (1807)
+   Start at  19:33:35
+   Duration  13.60s (tests 60%, import 30%, transform 9%, worker 1%)
+    Isolate  68 workers spawned · ~79ms startup each (spawn + environment, per file)
+             at least ~2.62s faster with isolate: false — reuses workers across files instead of one per file
+exit=0
+
+## 2026-10-04 19:33:48 WIB $ npm run typecheck -w @dems/shared
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+exit=0
+
+## 2026-10-04 19:33:53 WIB $ npm run lint -w @dems/shared
+> @dems/shared@0.1.0 lint
+> oxlint
+exit=0
+
+## 2026-10-04 19:33:53 WIB $ npm run typecheck -w @dems/mobile
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+exit=0
+
+## 2026-10-04 19:34:01 WIB the three test files that must be absent from the diff against acaff20
+$ git diff --stat acaff20 -- apps/core-web/src/test/routes.test.tsx apps/core-web/src/lib/__tests__/core-endpoint.test.tsx apps/core-web/src/lib/__tests__/packaged-csp.test.ts
+(end of output; bytes: 0)
+$ git diff --stat acaff20 -- apps/core-web   (every tracked file of the workspace that differs)
+ apps/core-web/package.json                         |  1 +
+ .../dashboard/__tests__/dashboard.test.tsx         | 13 +++-
+ .../__tests__/security-audit.test.tsx              |  2 +-
+ .../storage/__tests__/storage-page.test.tsx        | 13 +++-
+ apps/core-web/src/lib/core-endpoint.ts             | 72 +++++++++++++++++-----
+ apps/core-web/src/main.tsx                         | 48 +++++++++++----
+ apps/core-web/src/router.tsx                       | 21 ++++++-
+ apps/core-web/src/routes/__root.tsx                | 64 ++++++++++++++-----
+ apps/core-web/src/test/sim-fetch.test.ts           | 13 +++-
+ apps/core-web/vite.config.ts                       | 51 +++++++++++++--
+ 10 files changed, 245 insertions(+), 53 deletions(-)
+$ git status --short apps/core-web | grep '^??'   (new, untracked)
+?? apps/core-web/src/lib/__tests__/live-core-endpoint.test.tsx
+?? apps/core-web/src/lib/__tests__/live-core-errors.test.tsx
+?? apps/core-web/src/lib/core-errors.ts
+?? apps/core-web/src/runtime/
+?? apps/core-web/src/test/live-runtime-bridge.test.tsx
+?? apps/core-web/src/test/live-runtime-mode.test.tsx
+?? apps/core-web/src/test/live-runtime-sink.test.tsx
+?? apps/core-web/src/test/live-runtime-startup.test.tsx
+?? apps/core-web/src/test/live-runtime-static.test.tsx
+?? apps/core-web/src/test/live-runtime-storage.test.tsx
+?? apps/core-web/src/test/live-runtime-surface.test.tsx
+
+## AC-C-35: $ git diff acaff20 -- apps/core-web/src/lib/packaged-csp.ts apps/mock-core | wc -c
+       0
+## AC-C-41: $ git diff acaff20 -- apps/core-web/src/routes/_app.tsx apps/core-web/src/routes/login.tsx apps/core-web/src/routes/_app/session/new.tsx | wc -c
+       0
+## read-only paths: $ git status --short release scripts/release packages/shared/src/demo-data packages/shared/assets apps/mock-core | wc -l
+       0
+## this row's only file in packages/shared: $ git diff --stat acaff20 -- packages/shared/src/i18n/en/common.ts
+ packages/shared/src/i18n/en/common.ts | 87 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 87 insertions(+)
+## $ git diff acaff20 -- packages/shared/src/i18n/en/common.ts | grep -c '^-[^-]'   (removed lines: additive means 0)
+0
+## modification times of what other rows own (none after this row's start, 17:58)
+2026-10-04 07:15:37  apps/core-web/vite.config.ts
+2026-10-04 07:30:46  apps/core-web/package.json
+2026-10-01 03:12:48  apps/core-web/src/routeTree.gen.ts
+2026-10-01 10:19:49  apps/core-web/src/env.d.ts
+2026-10-01 10:20:28  apps/core-web/src/lib/packaged-csp.ts
+2026-10-04 08:00:51  packages/shared/src/live/constants.ts
+2026-10-04 16:45:21  packages/shared/src/live/source/live-sim.ts
+2026-10-04 07:28:30  packages/shared/src/sim/vocabulary.ts
+## listeners on the lane's ports: $ lsof -nP -iTCP:4423 -iTCP:5178 -iTCP:9398 -sTCP:LISTEN
+lsof exit 1 (1 with no output: no listener)
+## 2026-10-04 19:34:01 WIB end

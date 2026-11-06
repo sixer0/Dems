@@ -1,0 +1,243 @@
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 --silent=false --reporter=verbose src/modules/system src/modules/alerts
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ✓ |unit| src/modules/alerts/__tests__/acknowledge.test.ts > becameAcknowledged: whether this call acknowledged the alert > true when the alert of that ID was not acknowledged before and is acknowledged after 1ms
+ ✓ |unit| src/modules/alerts/__tests__/acknowledge.test.ts > becameAcknowledged: whether this call acknowledged the alert > false for an alert that was acknowledged already, for one that still is not, and for an ID no alert has 0ms
+ ✓ |unit| src/modules/alerts/__tests__/acknowledge.test.ts > becameAcknowledged: whether this call acknowledged the alert > false for another alert that became acknowledged in the same lists: only the alert of that ID counts 0ms
+ ✓ |unit| src/modules/alerts/__tests__/acknowledge.test.ts > becameAcknowledged: whether this call acknowledged the alert > an alert that is in the list only afterwards and acknowledged there counts as acknowledged by the call 0ms
+ ✓ |unit| src/modules/alerts/__tests__/acknowledge.test.ts > becameAcknowledged: whether this call acknowledged the alert > agrees with the simulator: true exactly when `acknowledgeAlertTransition` changed the state 0ms
+ ✓ |unit| src/modules/alerts/__tests__/acknowledge.test.ts > becameAcknowledged: whether this call acknowledged the alert > changes neither list 0ms
+ ✓ |unit| src/modules/alerts/__tests__/acknowledge.test.ts > acknowledgementLine: the fields of the log line (SR-82) > holds the operator ID and the alert ID, and nothing else of the caller: no session, no device, no role, no permission 0ms
+ ✓ |unit| src/modules/alerts/__tests__/acknowledge.test.ts > acknowledgementLine: the fields of the log line (SR-82) > a caller that is no operator has no operator ID (stage 6 refuses such a caller before the handler; the engine refuses it again) 0ms
+ ✓ |unit| src/modules/alerts/__tests__/acknowledge.test.ts > acknowledgementLine: the fields of the log line (SR-82) > the message and the unit label are fixed texts 0ms
+stdout | src/modules/alerts/__tests__/routes.test.ts > MODG: the route list of the alerts module equals its registry operations > registers exactly the two operations of the registry tag Alerts, each with the method, the path and the operation ID of the registry
+[w40] MODG routes of src/modules/alerts:   GET /api/v1/alerts listAlerts | POST /api/v1/alerts/:id/acknowledge acknowledgeAlert
+[w40] MODG registry, tag Alerts (69-70):   GET /api/v1/alerts listAlerts | POST /api/v1/alerts/:id/acknowledge acknowledgeAlert
+
+stdout | src/modules/system/__tests__/routes.test.ts > MODG: the route list of the system module equals its registry operations > registers exactly the five operations of the registry tag System, each with the method, the path and the operation ID of the registry
+[w40] MODG routes of src/modules/system:   GET /api/v1/system/status getSystemStatus | POST /api/v1/system/diagnostics runDiagnostics | POST /api/v1/system/services/restart restartServices | POST /api/v1/system/update startSoftwareUpdate | POST /api/v1/settings updateSettings
+[w40] MODG registry, tag System (64-68):   GET /api/v1/system/status getSystemStatus | POST /api/v1/system/diagnostics runDiagnostics | POST /api/v1/system/services/restart restartServices | POST /api/v1/system/update startSoftwareUpdate | POST /api/v1/settings updateSettings
+
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > MODG: the route list of the alerts module equals its registry operations > registers exactly the two operations of the registry tag Alerts, each with the method, the path and the operation ID of the registry 35ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > MODG: the route list of the alerts module equals its registry operations > in the real app: the same two routes, nothing else under /api/v1/alerts, and each matches its registry entry 45ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > MODG: the route list of the alerts module equals its registry operations > the operations are 69 and 70 of the specification 0ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > MODG: the route list of the alerts module equals its registry operations > the schemas are the registry's: the 200 answer of 69 is its own object; 70 has no body in either direction and its `{id}` is held to the registry's pattern 3ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > MODG: the route list of the alerts module equals its registry operations > no route carries a hook or a rule of its own: the route configuration is the operation ID and nothing else 2ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > MODG: the route list of the alerts module equals its registry operations > the rules stage 6 applies to the two routes are the registry's: both AUTHENTICATED; a read, and a command without an audit row 12ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > MODG: the route list of the alerts module equals its registry operations > spec §7.17 member 29: operation 70 runs the one hosted action the contract maps to it; the read stands for none 0ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > MODG: the route list of the system module equals its registry operations > registers exactly the five operations of the registry tag System, each with the method, the path and the operation ID of the registry 35ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > MODG: the route list of the system module equals its registry operations > in the real app: the same five routes, nothing else under /api/v1/system or /api/v1/settings, and each matches its registry entry 41ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > MODG: the route list of the system module equals its registry operations > the operations are 64 to 68 of the specification 0ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > MODG: the route list of the system module equals its registry operations > the schemas of each route are the registry's own objects: the body of 68 and the one success answer of each; 67 has no body to describe 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > MODG: the route list of the system module equals its registry operations > no route carries a hook or a rule of its own: the route configuration is the operation ID and nothing else 2ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > MODG: the route list of the system module equals its registry operations > the rules stage 6 applies to the five routes are the registry's: two AUTHENTICATED, DIAGNOSTICS_RUN, and MAINTENANCE twice 11ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > MODG: the route list of the system module equals its registry operations > spec §7.17: each command runs a hosted action the contract maps to its operation; operation 68 has two, and the route runs the one that takes any member 0ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 64 getSystemStatus > INVESTIGATOR reads the five slices of the committed state in their wire form: 200, valid against the contract 25ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 64 getSystemStatus > SUPERVISOR reads the five slices of the committed state in their wire form: 200, valid against the contract 13ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 64 getSystemStatus > TECHNICIAN reads the five slices of the committed state in their wire form: 200, valid against the contract 8ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 64 getSystemStatus > takes the committed state ONCE, opens no unit of work and changes nothing 16ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 64 getSystemStatus > the idle Core: sixteen services running, version 2.5.0 available, no diagnostics run yet, the default settings 9ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 64 getSystemStatus > follows the state: a diagnostics run, a running update and a changed setting are in the next answer 11ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 64 getSystemStatus > nobody without a session reads it: 401 NOT_SIGNED_IN for an anonymous caller and for a paired device without an operator 8ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 64 getSystemStatus > an engine that is not running: 503 NOT_READY 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 64 getSystemStatus > the projection is the five slices by reference and nothing else of the state 10ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 65 runDiagnostics > INVESTIGATOR starts a run: 202 with its ID, one hosted action in one unit, the DIAGNOSTICS_RUN row names the caller 8ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 65 runDiagnostics > SUPERVISOR starts a run: 202 with its ID, one hosted action in one unit, the DIAGNOSTICS_RUN row names the caller 7ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 69 listAlerts > the idle Core has no alert: 200 with an empty list under the slice name 22ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 69 listAlerts > INVESTIGATOR reads the `alerts` slice of the committed state in its wire form: active and resolved, acknowledged or not, oldest first 18ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 69 listAlerts > SUPERVISOR reads the `alerts` slice of the committed state in its wire form: active and resolved, acknowledged or not, oldest first 9ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 69 listAlerts > TECHNICIAN reads the `alerts` slice of the committed state in its wire form: active and resolved, acknowledged or not, oldest first 7ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 69 listAlerts > reads the one slice ONCE, opens no unit of work and changes nothing 10ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 69 listAlerts > AC-B-71 on the simulator: every alert of the list was raised by a fault, and the row that fault wrote names the alert's kind, target, instant, severity and text 8ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 69 listAlerts > the slice is a ring of 100: after 103 raised alerts the list holds the newest 100 14ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 69 listAlerts > nobody without a session reads the alerts: 401 NOT_SIGNED_IN 8ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 69 listAlerts > an engine that is not running: 503 NOT_READY 10ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > INVESTIGATOR acknowledges an alert: 204 without a body, with the epoch and the revision of the unit; that alert is acknowledged and nothing else moved 9ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > SUPERVISOR acknowledges an alert: 204 without a body, with the epoch and the revision of the unit; that alert is acknowledged and nothing else moved 7ms
+stdout | src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > SR-82, AC-B-89: an acknowledgement writes NO audit row and EXACTLY ONE log line with the operator ID and the alert ID, and nothing else of the alert
+[w40] the log line of acknowledgeAlert: {"level":30,"time":"<time>","pid":"<pid>","hostname":"<host>","reqId":"<request id>","operatorId":"OPR-001","alertId":"ALR-000001","msg":"alert acknowledged"}
+
+stdout | src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON)
+[w40] acknowledgeAlert: body [1] answers 400 INVALID_JSON; against the contract: {"ok":false,"reason":"UNDOCUMENTED_STATUS","issues":["400"]}
+
+stdout | src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON)
+[w40] acknowledgeAlert: body {"broken":  answers 400 INVALID_JSON; against the contract: {"ok":false,"reason":"UNDOCUMENTED_STATUS","issues":["400"]}
+
+stdout | src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON)
+[w40] acknowledgeAlert: body "text" answers 400 INVALID_JSON; against the contract: {"ok":false,"reason":"UNDOCUMENTED_STATUS","issues":["400"]}
+
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 65 runDiagnostics > TECHNICIAN starts a run: 202 with its ID, one hosted action in one unit, the DIAGNOSTICS_RUN row names the caller 5ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 65 runDiagnostics > while a run is in progress the answer is the ID of that run, and nothing is written: no row, no revision 5ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 65 runDiagnostics > once the eight checks have resolved, the next call starts a new run with the next ID 7ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 65 runDiagnostics > a caller without DIAGNOSTICS_RUN is refused by stage 6: 403 NOT_PERMITTED, one denial row, and the engine is not reached 19ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 65 runDiagnostics > nobody without a session starts a run: 401, and the engine is not reached 7ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 65 runDiagnostics > an engine that is not running: 503 NOT_READY and no revision 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 66 restartServices > a TECHNICIAN restarts the services: 200 with the number the action returned, one DEVICE_COMMAND row with the scope CORE_SERVICES, every service started now 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 66 restartServices > the number is the simulator's: a service that is stopped is not restarted and not counted 5ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 66 restartServices > INVESTIGATOR lacks MAINTENANCE: 403 NOT_PERMITTED by stage 6 with one denial row; the engine is not reached 9ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 66 restartServices > SUPERVISOR lacks MAINTENANCE: 403 NOT_PERMITTED by stage 6 with one denial row; the engine is not reached 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 66 restartServices > while a session is open (CREATE): 409 SESSION_ACTIVE with the simulator's code, no row, no revision, nothing changed 7ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 66 restartServices > while a session is open (PRECHECK): 409 SESSION_ACTIVE with the simulator's code, no row, no revision, nothing changed 5ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 66 restartServices > while a session is open (ARMED): 409 SESSION_ACTIVE with the simulator's code, no row, no revision, nothing changed 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 66 restartServices > while a session is open (RECORDING): 409 SESSION_ACTIVE with the simulator's code, no row, no revision, nothing changed 6ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > TECHNICIAN acknowledges an alert: 204 without a body, with the epoch and the revision of the unit; that alert is acknowledged and nothing else moved 6ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > one unit of work with ONE hosted action: the caller as it is, and the `{id}` of the path as its one argument 6ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > SR-82, AC-B-89: an acknowledgement writes NO audit row and EXACTLY ONE log line with the operator ID and the alert ID, and nothing else of the alert 7ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > a second acknowledgement of the same alert: 204, nothing changes, the same revision, and NO second line 9ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > an alert the Core does not have: 204 as the simulator answers, nothing changes, no line 7ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > a resolved alert can still be acknowledged: it stays resolved and becomes acknowledged, with its line 7ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > one line per alert that became acknowledged, in order, each with its own caller 7ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > an `{id}` outside the registry's pattern (ALR-00001): 422 INVALID_INPUT at stage 7, no unit, no line 6ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > an `{id}` outside the registry's pattern (alr-000001): 422 INVALID_INPUT at stage 7, no unit, no line 8ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > an `{id}` outside the registry's pattern (ALR-12345x): 422 INVALID_INPUT at stage 7, no unit, no line 6ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > an `{id}` outside the registry's pattern (DIAG-000001): 422 INVALID_INPUT at stage 7, no unit, no line 5ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > an `{id}` outside the registry's pattern (ALR-000001%20): 422 INVALID_INPUT at stage 7, no unit, no line 5ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > an `{id}` outside the registry's pattern (%41LR-00000): 422 INVALID_INPUT at stage 7, no unit, no line 4ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > an `{id}` outside the registry's pattern (ALR-٠٠٠٠٠١): 422 INVALID_INPUT at stage 7, no unit, no line 4ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON) 13ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > nobody without a session acknowledges an alert: 401 before the path is validated, no unit, no line 10ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > a unit that is not committed: 503 NOT_READY, the alert as it was, NO line 12ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > an engine that is not running: 503 NOT_READY, no unit, no line 9ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > 70 acknowledgeAlert > an engine that stops right after the commit: the answer is still 204 with the revision of the unit (nothing is read afterwards), and the line is in the log 8ms
+ ✓ |unit| src/modules/alerts/__tests__/routes.test.ts > an unexpected failure > answers 500 INTERNAL_ERROR with no detail on both operations, and is in the log and in the persistent error log by its name; no line of an acknowledgement is written 28ms
+stdout | src/modules/system/__tests__/routes.test.ts > the three commands without a request body > runDiagnostics takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON)
+[w40] runDiagnostics: body [1] answers 400 INVALID_JSON; against the contract: {"ok":false,"reason":"UNDOCUMENTED_STATUS","issues":["400"]}
+
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 66 restartServices > nobody without a session restarts the services: 401 10ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 67 startSoftwareUpdate > a TECHNICIAN starts the update: 202 without a body, one UPDATE_STARTED row by the caller, the update RUNNING with six scheduled steps 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 67 startSoftwareUpdate > a second call while the update runs: 202, nothing changes, nothing is written, the same revision 8ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 67 startSoftwareUpdate > once the update has completed no version is available: a further call answers 202 and changes nothing 8ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 67 startSoftwareUpdate > while a session is open (CREATE): 409 SESSION_ACTIVE with the simulator's code, no row, no revision, the update not started 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 67 startSoftwareUpdate > while a session is open (PRECHECK): 409 SESSION_ACTIVE with the simulator's code, no row, no revision, the update not started 10ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 67 startSoftwareUpdate > while a session is open (ARMED): 409 SESSION_ACTIVE with the simulator's code, no row, no revision, the update not started 9ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 67 startSoftwareUpdate > while a session is open (RECORDING): 409 SESSION_ACTIVE with the simulator's code, no row, no revision, the update not started 11ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 67 startSoftwareUpdate > the order is the simulator's: with an update already running, or none available, a session does not make the call a conflict (202, nothing changes) 8ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 67 startSoftwareUpdate > INVESTIGATOR lacks MAINTENANCE: 403 NOT_PERMITTED by stage 6 with one denial row; the update is not started 11ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 67 startSoftwareUpdate > SUPERVISOR lacks MAINTENANCE: 403 NOT_PERMITTED by stage 6 with one denial row; the update is not started 9ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 67 startSoftwareUpdate: nobody without a session > 401 NOT_SIGNED_IN for an anonymous caller and for a paired device without an operator; the engine is not reached 7ms
+stdout | src/modules/system/__tests__/routes.test.ts > the three commands without a request body > runDiagnostics takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON)
+[w40] runDiagnostics: body {"broken":  answers 400 INVALID_JSON; against the contract: {"ok":false,"reason":"UNDOCUMENTED_STATUS","issues":["400"]}
+
+stdout | src/modules/system/__tests__/routes.test.ts > the three commands without a request body > runDiagnostics takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON)
+[w40] runDiagnostics: body "text" answers 400 INVALID_JSON; against the contract: {"ok":false,"reason":"UNDOCUMENTED_STATUS","issues":["400"]}
+
+stdout | src/modules/system/__tests__/routes.test.ts > the three commands without a request body > restartServices takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON)
+[w40] restartServices: body [1] answers 400 INVALID_JSON; against the contract: {"ok":false,"reason":"UNDOCUMENTED_STATUS","issues":["400"]}
+
+stdout | src/modules/system/__tests__/routes.test.ts > the three commands without a request body > restartServices takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON)
+[w40] restartServices: body {"broken":  answers 400 INVALID_JSON; against the contract: {"ok":false,"reason":"UNDOCUMENTED_STATUS","issues":["400"]}
+
+stdout | src/modules/system/__tests__/routes.test.ts > the three commands without a request body > restartServices takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON)
+[w40] restartServices: body "text" answers 400 INVALID_JSON; against the contract: {"ok":false,"reason":"UNDOCUMENTED_STATUS","issues":["400"]}
+
+stdout | src/modules/system/__tests__/routes.test.ts > the three commands without a request body > startSoftwareUpdate takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON)
+[w40] startSoftwareUpdate: body [1] answers 400 INVALID_JSON; against the contract: {"ok":false,"reason":"UNDOCUMENTED_STATUS","issues":["400"]}
+
+stdout | src/modules/system/__tests__/routes.test.ts > the three commands without a request body > startSoftwareUpdate takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON)
+[w40] startSoftwareUpdate: body {"broken":  answers 400 INVALID_JSON; against the contract: {"ok":false,"reason":"UNDOCUMENTED_STATUS","issues":["400"]}
+
+stdout | src/modules/system/__tests__/routes.test.ts > the three commands without a request body > startSoftwareUpdate takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON)
+[w40] startSoftwareUpdate: body "text" answers 400 INVALID_JSON; against the contract: {"ok":false,"reason":"UNDOCUMENTED_STATUS","issues":["400"]}
+
+stdout | src/modules/system/__tests__/routes.test.ts > 68 updateSettings > SR-82, AC-B-89: a change writes NO audit row and EXACTLY ONE log line with the operator ID and the names of the changed settings, sorted, and no value
+[w40] the log line of updateSettings: {"level":30,"time":"<time>","pid":"<pid>","hostname":"<host>","reqId":"<request id>","operatorId":"OPR-001","changedKeys":["notifySound","notifyWarnings","presentationMode","timeFormat"],"msg":"settings changed"}
+
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > the three commands without a request body > runDiagnostics takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON) 10ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > the three commands without a request body > restartServices takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON) 7ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > the three commands without a request body > startSoftwareUpdate takes no body: an empty JSON object is accepted, and a body that is no JSON object is still refused at stage 7 (400 INVALID_JSON) 11ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > INVESTIGATOR changes a setting: 200 with the settings after the change, valid against the contract, with the epoch and the revision of the unit 8ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > SUPERVISOR changes a setting: 200 with the settings after the change, valid against the contract, with the epoch and the revision of the unit 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > TECHNICIAN changes a setting: 200 with the settings after the change, valid against the contract, with the epoch and the revision of the unit 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > one unit of work with ONE hosted action: the caller as it is, and a patch that holds exactly the members the body held 7ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > SR-82, AC-B-89: a change writes NO audit row and EXACTLY ONE log line with the operator ID and the names of the changed settings, sorted, and no value 13ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > the line names only what changed: a member sent with the value it already has is not named 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > one line per call that changed something, in order, each with its own caller 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a call that changes nothing (the values the settings already have): 200 with the settings as they are, no line, no row, the same revision 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a call that changes nothing (an empty object): 200 with the settings as they are, no line, no row, the same revision 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a call that changes nothing (no body at all): 200 with the settings as they are, no line, no row, the same revision 5ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a call that changes nothing (only a key the settings do not have): 200 with the settings as they are, no line, no row, the same revision 8ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > the scan itself > reads the production sources of the folder 2ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > the scan itself > every pattern finds each of its planted texts (positive control) 3ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 1: no clock, no timer, nothing of the host > no file reads the system time, sets a timer or reads a clock at all 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 1: no clock, no timer, nothing of the host > no file imports a module of the runtime, names the process or the network, uses the console or a random source 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 1: no clock, no timer, nothing of the host > the imports of the folder are the contract, a type of the shared simulator, Fastify's types, zod, the guard's route helper, the type of a principal and its own file 1ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > no file reads a role, a permission, a session or a device, or names a caller that is no operator 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > no file writes a denial row, builds a refusal, takes a place in the denial budget, adds a hook or catches an error 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > the principal of the request is named once: held for the unit of operation 70 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > what is held goes to two places and no further: the hosted action, and the builder of the log line 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > the operator ID is read in ONE place, for the log line, and nothing is decided by it 1ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > no unit of work of its own, no table, no statement, no audit writer, no publication: the module raises no alert and writes no row for one 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > of the engine it uses `slice` for the read and `run` for the command: nothing else 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > inside the unit: the pending alerts, ONE hosted action, the pending alerts again; the unit's own writers are not touched 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > the command answers 204 with the epoch and the revision of the unit, after the unit 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > no slot of the scaffold is provided or replaced, and no test file is imported 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 4 (SR-82, M14): the one log line > the folder has ONE log call: level info, on the request's logger, with the fields of the line builder and the fixed message 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 4 (SR-82, M14): the one log line > it is written after the unit resolved (the commit) and before the answer 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 4 (SR-82, M14): the one log line > the line holds two fields: the caller's operator ID and the validated `{id}` of the path; nothing of the alert itself 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 4 (SR-82, M14): the one log line > no object of the folder holds a member under which an error would be logged (M14) 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 5 (M2): routes come from the registry > two routes, each spread from its registry entry, in registry order; no method shorthand and no literal path 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 5 (M2): routes come from the registry > the `{id}` is held to the pattern of the registry entry, not to one written here 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 5 (M2): routes come from the registry > the plugin keeps the name the frozen app factory imports 0ms
+ ✓ |unit| src/modules/alerts/__tests__/static.test.ts > rule 5 (M2): routes come from the registry > of a request it reads the principal, the validated `{id}` and the logger: nothing else 0ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > an unknown key beside a real change: the change is made, the line names the real setting only 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a wrong type or value (a text for a switch) is refused by the contract's schema: 422 INVALID_INPUT, no unit, no line, nothing changed 8ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a wrong type or value (a number for a switch) is refused by the contract's schema: 422 INVALID_INPUT, no unit, no line, nothing changed 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a wrong type or value (null for a switch) is refused by the contract's schema: 422 INVALID_INPUT, no unit, no line, nothing changed 5ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a wrong type or value (a time format that does not exist) is refused by the contract's schema: 422 INVALID_INPUT, no unit, no line, nothing changed 8ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a wrong type or value (a number for the time format) is refused by the contract's schema: 422 INVALID_INPUT, no unit, no line, nothing changed 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a wrong type or value (one valid member beside one invalid) is refused by the contract's schema: 422 INVALID_INPUT, no unit, no line, nothing changed 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a body that is no JSON object ([1]): 400 INVALID_JSON, no unit, no line 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a body that is no JSON object ({"timeFormat": ): 400 INVALID_JSON, no unit, no line 5ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a body that is no JSON object ("12"): 400 INVALID_JSON, no unit, no line 9ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > nobody without a session changes a setting: 401 before the body is read, no unit, no line 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > a unit that is not committed: 503 NOT_READY, the settings as they were, NO line 6ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > an engine that is not running: 503 NOT_READY, no unit, no line 8ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > an engine that stops between the commit and the answer: 503 without a revision, the change is stored, and its line IS in the log 15ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > 68 updateSettings > the module logs nothing else: over every call of this file's kinds, the only message of the module is the one of a change 10ms
+ ✓ |unit| src/modules/system/__tests__/routes.test.ts > an unexpected failure > answers 500 INTERNAL_ERROR with no detail on each of the five operations, and is in the log and in the persistent error log by its name; no line of a settings change is written 15ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > the scan itself > reads the production sources of the folder 1ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > the scan itself > every pattern finds each of its planted texts (positive control) 4ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 1: no clock, no timer, nothing of the host > no file reads the system time, sets a timer or reads a clock at all: the engine stamps what is stamped 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 1: no clock, no timer, nothing of the host > no file imports a module of the runtime, names the process or the network, uses the console or a random source 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 1: no clock, no timer, nothing of the host > the imports of the folder are the contract, types of the shared simulator, Fastify's types, the guard's route helper, the type of a principal and its own files 1ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > no file reads a role, a permission, a session or a device, or names a caller that is no operator 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > no file writes a denial row, builds a refusal, takes a place in the denial budget, adds a hook or catches an error 3ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > the principal of the request is named four times: handed on, as it is, to the three plain commands, and held once for the unit of operation 68 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > what is held goes to two places and no further: the hosted action, and the builder of the log line 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > the operator ID is read in ONE place, for the log line, and nothing is decided by it 2ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > no unit of work of its own, no table, no statement, no audit writer, no publication 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > of the engine it uses `state` for the read, `command` for the three plain commands, and `run` then `slice` for operation 68: nothing else 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > inside the unit of operation 68: the pending settings, ONE hosted action, the pending settings again; the unit's own writers are not touched 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > each plain command awaits its hosted action and answers from its outcome; operation 68 answers the committed slice, read after the unit 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > no slot of the scaffold is provided or replaced, and no test file is imported 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 4 (SR-82, M14): the one log line > the folder has ONE log call: level info, on the request's logger, with the fields of the line builder and the fixed message 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 4 (SR-82, M14): the one log line > it is written after the unit resolved (the commit) and before the committed slice is read 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 4 (SR-82, M14): the one log line > the line holds two fields, both built from what the unit returned and from the caller: never the body, the patch or a slice 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 4 (SR-82, M14): the one log line > no object of the folder holds a member under which an error would be logged (M14) 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 5 (M2): routes come from the registry > five routes, each spread from its registry entry, in registry order; no method shorthand and no literal path 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 5 (M2): routes come from the registry > the plugin keeps the name the frozen app factory imports 0ms
+ ✓ |unit| src/modules/system/__tests__/static.test.ts > rule 5 (M2): routes come from the registry > of a request it reads the principal, the validated body and the logger: nothing else 0ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > settingsPatchOf: what of a body reaches the hosted action > the members of the settings slice are exactly the four the patch knows 1ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > settingsPatchOf: what of a body reaches the hosted action > holds a member exactly when the body held it, with the body's value: each of the 16 subsets 1ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > settingsPatchOf: what of a body reaches the hosted action > keeps a false and a "24": a member is taken by presence, not by truth 0ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > settingsPatchOf: what of a body reaches the hosted action > takes nothing else of a body: a key the schema would have dropped is not handed on 0ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > settingsPatchOf: what of a body reaches the hosted action > what the contract's schema lets through is what the patch holds, and what it refuses never reaches it 1ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > settingsPatchOf: what of a body reaches the hosted action > the simulator applies the patch as the body said: every single member, both ways 0ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > changedSettingsKeys: the names of the settings a call changed > names each member whose value differs, and only those: each of the 16 subsets, sorted 0ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > changedSettingsKeys: the names of the settings a call changed > is empty for the same slice and for an equal one 0ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > changedSettingsKeys: the names of the settings a call changed > the order is the alphabet's, whatever the order of the slice's members 0ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > changedSettingsKeys: the names of the settings a call changed > agrees with the simulator: what `updateSettingsPatch` changes is what is named, for every pair of a state and a patch 0ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > changedSettingsKeys: the names of the settings a call changed > returns names only: no value of either slice is in the result 1ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > settingsChangeLine: the fields of the log line (SR-82) > holds the operator ID and the names, and nothing else of the caller: no session, no device, no role, no permission 0ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > settingsChangeLine: the fields of the log line (SR-82) > a caller that is no operator has no operator ID (stage 6 refuses such a caller before the handler; the engine refuses it again) 0ms
+ ✓ |unit| src/modules/system/__tests__/settings.test.ts > settingsChangeLine: the fields of the log line (SR-82) > the message and the unit label are fixed texts 0ms
+
+ Test Files  6 passed (6)
+      Tests  180 passed (180)
+   Start at  16:42:35
+   Duration  2.56s (transform 41%, import 34%, tests 24%)
+

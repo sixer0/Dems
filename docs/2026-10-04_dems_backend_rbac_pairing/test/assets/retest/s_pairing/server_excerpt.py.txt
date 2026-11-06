@@ -1,0 +1,46 @@
+# R-S: excerpt of .cache/manual/main-server.log for this row's windows (host clock, WIB). Request lines keep
+# ONLY time, method, route, status and the principal ID that names the client (an ID, never a credential);
+# socket events keep time, event, close code, closedBy and kind. GET /api/v1/health lines are counted, not listed.
+#   python3 server_excerpt.py > 07_server_log_excerpt.txt
+import datetime
+import json
+
+LOG = '/Users/gsp-budi/Documents/DEMS/.cache/manual/main-server.log'
+D = lambda h, m, s: datetime.datetime(2026, 10, 6, h, m, s).timestamp()
+WINDOWS = [
+    ('step 0: relaunch of the app (DEV-0002 paired, signed out)', D(12, 45, 57), D(12, 46, 15)),
+    ('web: SUPERVISOR andi.pratama signs in, opens Paired Devices', D(12, 47, 49), D(12, 48, 1)),
+    ('step 1: revoke DEV-0002 and what followed', D(12, 49, 19), D(12, 49, 31)),
+    ('step 2: warm guarded links while unpaired', D(12, 54, 41), D(12, 58, 5)),
+    ('step 3: issue PCD-000003, redeem, hand-off (DEV-0003)', D(13, 1, 10), D(13, 1, 36)),
+    ('step 4: phone sign-in as budi.santoso on DEV-0003', D(13, 6, 24), D(13, 6, 36)),
+    ('step 5: phone sign-out', D(13, 8, 12), D(13, 8, 43)),
+    ('end: the web SUPERVISOR session signs out', D(13, 13, 2), D(13, 13, 4)),
+]
+rows = []
+for line in open(LOG, encoding='utf8'):
+    if line.startswith('{'):
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            pass
+for title, start, end in WINDOWS:
+    print(f'== {title}  ({datetime.datetime.fromtimestamp(start):%H:%M:%S}-{datetime.datetime.fromtimestamp(end):%H:%M:%S})')
+    health = 0
+    for r in rows:
+        t = r.get('time', 0) / 1000
+        if not start <= t <= end:
+            continue
+        ts = datetime.datetime.fromtimestamp(t).strftime('%H:%M:%S.%f')[:-3]
+        route, msg = r.get('route') or '', r.get('msg', '')
+        if route == '/api/v1/health':
+            health += 1
+            continue
+        if route:
+            print(f"   {ts}  {r.get('method')} {route} {r.get('status')}  [{r.get('principal')}]")
+        elif msg.startswith('socket'):
+            extra = ' '.join(x for x in (f"code={r['code']}" if r.get('code') is not None else '', f"closedBy={r['closedBy']}" if r.get('closedBy') else '', f"kind={r['kind']}" if r.get('kind') else '') if x)
+            print(f"   {ts}  {msg} {extra}  [{r.get('principal')}]")
+        elif r.get('level', 30) >= 40:
+            print(f"   {ts}  level {r.get('level')} {msg}")
+    print(f'   (GET /api/v1/health 200 lines in this window, not listed: {health})')

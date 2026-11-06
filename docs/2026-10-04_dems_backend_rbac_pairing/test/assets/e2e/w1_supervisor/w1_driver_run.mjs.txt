@@ -1,0 +1,20 @@
+// E2E-W1 step runner: reads one step (the body of an async function) from stdin, appends it verbatim to
+// w1_steps_driver.mjs.txt (the replayable driver transcript), connects to the walk's page and runs it with the
+// library in scope. The step's return value is printed redacted.
+import { readFileSync, appendFileSync } from 'node:fs'
+import { join } from 'node:path'
+import * as lib from './lib.mjs'
+const label = process.argv[2] ?? 'step'
+const body = readFileSync(0, 'utf8')
+appendFileSync(join(lib.ASSETS, 'w1_steps_driver.mjs.txt'), `\n// ──── step: ${label} (${new Date().toISOString()}) ────\n${body}\n`)
+await lib.connect()
+const fn = new Function('lib', ...Object.keys(lib), `return (async () => {\n${body}\n})()`)
+try {
+  const out = await fn(lib, ...Object.values(lib))
+  console.log(JSON.stringify(lib.redact(out ?? null), null, 1))
+} catch (error) {
+  console.log(`STEP ERROR: ${error?.message}`)
+  process.exitCode = 1
+} finally {
+  lib.close()
+}

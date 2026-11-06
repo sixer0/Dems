@@ -1,0 +1,32 @@
+2026-10-06T05:02:43.317Z browser pid 45818, CDP port 64164 (OS-assigned), owner verified
+2026-10-06T05:02:43.373Z viewport 1440x900
+2026-10-06T05:02:45.558Z signed in as andi.pratama (SUPERVISOR); landed on /dashboard
+2026-10-06T05:02:50.563Z ring 1440: {"state":"ATTENTION","size":258,"word":"ATTENTIONATTENTION","wordWidth":164,"fontSize":"24.608px","innerDiameter":191,"wordLeftInsideInner":13,"wordRightInsideInner":13}
+2026-10-06T05:02:50.566Z strip 1440: rows=1 overlaps=[] offscreen=[]
+2026-10-06T05:02:50.770Z screenshot 11b_after_d4d5_dashboard_1440x900.png
+2026-10-06T05:02:50.825Z screenshot 11b_after_d4_ring_1440x900.png
+2026-10-06T05:02:51.376Z camera 1 menu: [{"text":"Details","disabled":false},{"text":"Test signal","disabled":false},{"text":"RestartRequires the Technician role","disabled":true}]
+2026-10-06T05:02:51.441Z screenshot 11b_after_d1_dashboard_camera1_menu.png
+2026-10-06T05:02:52.072Z test signal toast: Test signal sent to Camera 1
+2026-10-06T05:02:52.257Z screenshot 11b_after_d1_dashboard_test_signal_toast.png
+2026-10-06T05:02:52.877Z viewport 390x844
+2026-10-06T05:02:58.629Z ring 390: {"state":"ATTENTION","size":284,"word":"ATTENTIONATTENTION","wordWidth":196,"fontSize":"29.344px","innerDiameter":210,"wordLeftInsideInner":7,"wordRightInsideInner":7}
+2026-10-06T05:02:58.748Z screenshot 11b_after_d4d5_dashboard_390x844.png
+2026-10-06T05:02:58.813Z screenshot 11b_after_d4_ring_390x844.png
+2026-10-06T05:02:59.616Z strip 390: rows=3 overlaps=[] offscreen=[]
+2026-10-06T05:02:59.616Z strip 390 values: [["strip-cameras","Ready",53,98,19,195,98,false],["strip-mics","Ready",229,274,195,371,274,false],["strip-storage","3.2 TB Free",53,123,19,195,123,false],["strip-time","Synchronized",229,311,195,371,311,false],["strip-security","Secure",53,101,19,195,101,false],["strip-network","Connected",229,297,195,371,297,false]]
+2026-10-06T05:02:59.664Z screenshot 11b_after_d5_strip_390x844.png
+2026-10-06T05:02:59.679Z viewport 1440x900
+2026-10-06T05:03:02.955Z metadata: {"dataPackage":"foreign","regions":["Core record","Bundled DEMO package · EV-20261001-0012 · manifest.json"],"firstJsonIds":["EV-20261001-0012","EV-20261006-0012"],"alert":"The bundled DEMO package is another recordThis item plays the demo media of the bundled package EV-20261001-0012 (session SES-20261001-0022, recorded 1 Oct 2026). Its documents describe that package, not this item. This item's metadata is the Core record.","headings":["Record of this itemCore record","Bundled DEMO package · EV-20261001-0012DEMO"]}
+2026-10-06T05:03:03.096Z screenshot 11b_after_d3_metadata_tab.png
+2026-10-06T05:03:06.287Z integrity on open: {"card":{"verdict":"PASS","last":"Last verification PASS · 6 Oct 2026 11:57:47 UTC+07:00 · AKP Andi Pratama","button":"Verify again","progress":"The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. | Last verification PASS · 6 Oct 2026 11:57:47 UTC+07:00 · AKP Andi Pratama | Verify again to see each check."},"core":{"verification":{"status":"PASS","at":1791262667314},"lastCustody":{"at":1791262667314,"action":"VERIFIED","actorId":"OPR-002","detail":null}}}
+2026-10-06T05:03:06.762Z screenshot 11b_after_d2_integrity_on_open.png
+2026-10-06T05:03:09.657Z integrity after Verify: {"card":{"verdict":"PASS","last":"Last verification PASS · 6 Oct 2026 12:03:06 UTC+07:00 · AKP Andi Pratama","button":"Verify again","progress":"The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. | Last verification PASS · 6 Oct 2026 12:03:06 UTC+07:00 · AKP Andi Pratama | 6 of 6 checks | DEMO - recomputed · Recomputed in this browser for display only. It writes nothing and is not the record."},"core":{"verification":{"status":"PASS","at":1791262986900},"lastCustody":{"at":1791262986900,"action":"VERIFIED","actorId":"OPR-002","detail":null}}}
+2026-10-06T05:03:09.718Z screenshot 11b_after_d2_integrity_after_verify.png
+2026-10-06T05:03:12.864Z integrity after reload: {"card":{"verdict":"PASS","last":"Last verification PASS · 6 Oct 2026 12:03:06 UTC+07:00 · AKP Andi Pratama","button":"Verify again","progress":"The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. | Last verification PASS · 6 Oct 2026 12:03:06 UTC+07:00 · AKP Andi Pratama | Verify again to see each check."},"core":{"verification":{"status":"PASS","at":1791262986900},"lastCustody":{"at":1791262986900,"action":"VERIFIED","actorId":"OPR-002","detail":null}}}
+2026-10-06T05:03:13.307Z screenshot 11b_after_d2_integrity_after_reload.png
+2026-10-06T05:03:14.109Z custody time cells: [{"lines":2,"text":["6 Oct 2026","12:03:06"]},{"lines":2,"text":["6 Oct 2026","11:57:47"]},{"lines":2,"text":["6 Oct 2026","11:27:23"]},{"lines":2,"text":["6 Oct 2026","09:34:13"]},{"lines":2,"text":["6 Oct 2026","09:14:49"]}]
+2026-10-06T05:03:14.137Z screenshot 11b_after_d6_custody_1440x900.png
+2026-10-06T05:03:14.183Z sign-out POST /api/v1/auth/sign-out -> 204
+2026-10-06T05:03:14.183Z exceptions 0; blocked other-origin requests 0
+2026-10-06T05:03:14.723Z browser closed, profile removed

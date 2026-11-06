@@ -1,0 +1,17 @@
+## item 3: offline document hash before the regeneration (pre-image module), and after
+offline sha256 (current module): 360019bc02f8a4a0255d7a5df9bfe7d074d41f26f1a04a55551bf7b0d7263c10  -
+## --check before the regeneration (expected: stale)
+packages/shared/openapi/openapi.json is stale: run npm run openapi:gen -w @dems/shared
+exit 1
+## regenerate
+wrote packages/shared/openapi/openapi.json (all (committed): 75 operations, 2 security schemes, version 0.2.1; offline: 10 operations, 0 security schemes, version 0.1.0; 901541 bytes)
+exit 0
+## --check after
+packages/shared/openapi/openapi.json is up to date (all (committed): 75 operations, 2 security schemes, version 0.2.1; offline: 10 operations, 0 security schemes, version 0.1.0)
+exit 0
+## offline document: pre-image module (scratch copy outside the tree) vs the changed module
+pre-image offline sha256: 360019bc02f8a4a0255d7a5df9bfe7d074d41f26f1a04a55551bf7b0d7263c10  -
+changed   offline sha256: 360019bc02f8a4a0255d7a5df9bfe7d074d41f26f1a04a55551bf7b0d7263c10  -
+pre-image all sha256:     7f76ed795682edf63320fb19fca016ec46019f25248afe41d515d69a90fffee0  -
+pre-image openapi.json:   7f76ed795682edf63320fb19fca016ec46019f25248afe41d515d69a90fffee0  -
+changed   openapi.json:   f6fa37626b23036f287443e127823acb4eb68826c09f969720044d3d1efe2d83  -

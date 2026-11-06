@@ -1,0 +1,1531 @@
+diff --git b/apps/core-server/test/helpers/db/__tests__/drop-retry.db.test.ts b/apps/core-server/test/helpers/db/__tests__/drop-retry.db.test.ts
+new file mode 100644
+index 0000000..97967f0
+--- /dev/null
++++ b/apps/core-server/test/helpers/db/__tests__/drop-retry.db.test.ts
+@@ -0,0 +1,268 @@
++// Row W11b against the real server: the forced drop that PostgreSQL refuses with SQLSTATE 42501
++// while a backend that the owner role may not end is on the database.
++//
++//   - what `dems_owner` can see of such a backend, which is what the helper decides on;
++//   - a client session of another role: PostgreSQL itself refuses the drop here; the helper does
++//     not repeat it and names the role and the application, never the statement;
++//   - the retry: the refusal is injected at the driver seam (`testing/refusing-driver.ts`),
++//     because an autovacuum worker cannot be summoned; everything else is the real server,
++//     the report of a test file to the owner of its run included;
++//   - the teardown of the global setup: the line that counts the retried drops, and "1 remain"
++//     when a database stays.
++//
++// The stand-in tests of the same behaviour: `drop-retry.test.ts`.
++import { describe, expect, it } from 'vitest';
++import { APP_ROLE } from '../constants';
++import { readOwnerCredentials } from '../credentials';
++import { backendsOn, dropDatabase, isTerminateRefusal, waitForSessionsToEnd } from '../ddl';
++import { DbTestHelperError } from '../errors';
++import { setupDbTestProject } from '../global-setup';
++import { injectedResolver, standardDefinitions } from '../hooks';
++import { TestRun, useTestDatabase, type ProvidedTestRun } from '../index';
++import { createRunIdentity, guardOwnDatabase } from '../names';
++import { OwnerSession, runnerOf } from '../session';
++import { PROBE_HOOKS, SELFTEST_TEMPLATE } from '../testing/probe-hooks';
++import { privateRunEnv, probeResolver, startPrivateRun } from '../testing/private-run';
++import { refusingDriver } from '../testing/refusing-driver';
++
++const db = useTestDatabase({ template: SELFTEST_TEMPLATE });
++
++const STATEMENT_MARKER = 'w11b-statement-marker';
++
++async function exists(name: string): Promise<boolean> {
++  const rows = await db.ownerPool().query('SELECT 1 FROM pg_database WHERE datname = $1', [name]);
++  return rows.rows.length === 1;
++}
++
++async function refusal(action: () => Promise<unknown>): Promise<DbTestHelperError> {
++  try {
++    await action();
++  } catch (error) {
++    if (error instanceof DbTestHelperError) return error;
++    throw error;
++  }
++  throw new Error('not refused');
++}
++
++interface Capture {
++  readonly provided: ProvidedTestRun[];
++  readonly lines: string[];
++  readonly project: { provide(key: 'demsTestRun', value: ProvidedTestRun): void };
++  readonly log: (line: string) => void;
++}
++
++function capture(): Capture {
++  const provided: ProvidedTestRun[] = [];
++  const lines: string[] = [];
++  return { provided, lines, project: { provide: (_key, value) => void provided.push(value) }, log: (line) => void lines.push(line) };
++}
++
++describe('what dems_owner sees of a backend of another role', () => {
++  it('the database, the role and the application name; not the backend type, the state, the start time or the statement', async () => {
++    const clone = await db.another({ slug: 'seen' });
++    const pool = db.run.poolOn(clone.name, 'app', 'dems-w11b-held');
++    const held = await pool.connect();
++    try {
++      const pid = (await held.query<{ pid: number }>(`SELECT pg_backend_pid() AS pid, '${STATEMENT_MARKER}' AS marker`)).rows[0]?.pid;
++      const seen = await db.ownerPool().query(
++        'SELECT datname::text AS datname, usename::text AS usename, application_name, backend_type, state, backend_start, query ' +
++          'FROM pg_stat_activity WHERE pid = $1',
++        [pid],
++      );
++      expect(seen.rows).toEqual([
++        {
++          datname: clone.name,
++          usename: APP_ROLE,
++          application_name: 'dems-w11b-held',
++          backend_type: null,
++          state: null,
++          backend_start: null,
++          query: '<insufficient privilege>',
++        },
++      ]);
++      // Its own session, for contrast: there the same columns are filled.
++      const own = await db.ownerPool().query('SELECT backend_type, state FROM pg_stat_activity WHERE pid = pg_backend_pid()');
++      expect(own.rows).toEqual([{ backend_type: 'client backend', state: 'active' }]);
++      // What the helper reads after a refusal.
++      expect(await backendsOn(runnerOf(db.ownerPool()), clone.name)).toEqual([{ role: APP_ROLE, application: 'dems-w11b-held', backends: 1 }]);
++    } finally {
++      held.release();
++      await pool.end();
++    }
++    await clone.drop();
++  });
++});
++
++describe('a client session of another role at the forced drop', () => {
++  it('PostgreSQL refuses the drop; the helper does not repeat it, names role and application, and prints no statement', async () => {
++    const clone = await db.another({ slug: 'client_leak' });
++    const guarded = guardOwnDatabase(clone.name, db.run.identity, 'drop');
++    const pool = db.run.poolOn(clone.name, 'app', 'dems-w11b-leak');
++    const held = await pool.connect();
++    const session = await OwnerSession.open(readOwnerCredentials(db.run.dataDir), { applicationName: 'dems-test-w11b' });
++    try {
++      await held.query(`SELECT '${STATEMENT_MARKER}' AS marker`);
++      const sent = session.statementCount;
++
++      // The statement level, without the check the helper makes before a drop: the default
++      // policy of 20 attempts, 250 ms apart.
++      const error = await refusal(() => dropDatabase(session, guarded));
++
++      expect(error.code).toBe('SESSIONS_REMAIN');
++      expect(error.message).toContain(`${clone.name} cannot be dropped`);
++      expect(error.message).toContain(`1 of role ${APP_ROLE} (application "dems-w11b-leak")`);
++      expect(error.message).toContain('SQLSTATE 42501');
++      expect(error.message).toContain('db.onCleanup');
++      expect(error.message).not.toContain(STATEMENT_MARKER);
++      expect(error.message).not.toMatch(/select/i);
++      // The cause is the refusal of the server itself.
++      expect(isTerminateRefusal(error.cause)).toBe(true);
++      // One forced drop and one catalog read: no second attempt.
++      expect(session.statementCount).toBe(sent + 2);
++      // Nothing was ended, nothing was dropped.
++      expect((await held.query<{ db: string }>('SELECT current_database()::text AS db')).rows).toEqual([{ db: clone.name }]);
++      expect(await exists(clone.name)).toBe(true);
++    } finally {
++      held.release();
++      await pool.end();
++    }
++    try {
++      // The session is closed; the server needs a moment to end its backend.
++      expect(await waitForSessionsToEnd(session, clone.name, 5_000)).toEqual([]);
++      await dropDatabase(session, guarded);
++      expect(await exists(clone.name)).toBe(false);
++    } finally {
++      await session.close();
++    }
++  });
++
++  it('found before the drop is sent, which is the usual case: role and application are named there too', async () => {
++    const run = await TestRun.attach(db.run.identity, { resolveDefinition: probeResolver(), sessionDrainMs: 300 });
++    try {
++      const database = await run.createDatabase({ template: SELFTEST_TEMPLATE.key, slug: 'leak_named' });
++      const pool = run.poolOn(database.name, 'app', 'dems-w11b-leak');
++      const held = await pool.connect();
++      try {
++        await held.query(`SELECT '${STATEMENT_MARKER}' AS marker`);
++        const error = await refusal(() => database.drop());
++        expect(error.code).toBe('SESSIONS_REMAIN');
++        expect(error.message).toContain(`(1 of role ${APP_ROLE} (application "dems-w11b-leak"))`);
++        expect(error.message).not.toContain(STATEMENT_MARKER);
++        expect(await exists(database.name)).toBe(true);
++      } finally {
++        held.release();
++        await pool.end();
++      }
++      await database.drop();
++      expect(await exists(database.name)).toBe(false);
++    } finally {
++      await run.close();
++    }
++  });
++});
++
++describe('the retry, with the refusal injected at the driver seam', () => {
++  it('refused twice, then dropped for real; the test file reports it and the owner of the run counts it', async () => {
++    const owner = await startPrivateRun('rt');
++    const driver = refusingDriver(2);
++    const file = await TestRun.attach(owner.identity, { resolveDefinition: probeResolver(), clientFactory: driver.factory, dropRetry: { pauseMs: 20 } });
++    try {
++      const database = await file.createDatabase({ template: 'schema', slug: 'retried' });
++      await database.appPool().query('SELECT 1');
++      const forced = `DROP DATABASE IF EXISTS "${database.name}" WITH (FORCE)`;
++
++      await database.drop();
++
++      expect(driver.refused).toEqual([forced, forced]);
++      expect(driver.sent).toEqual([forced]);
++      expect(await exists(database.name)).toBe(false);
++      expect(database.dropped).toBe(true);
++      expect(file.retriedDrops).toEqual([{ name: database.name, refusals: 2 }]);
++      await file.close();
++
++      // The owner's session was told on the run's channel; its teardown hands the count on.
++      const report = await owner.teardown();
++      expect(report.retriedDrops).toEqual([{ name: database.name, refusals: 2 }]);
++      expect(report.remaining).toEqual([]);
++      expect(report.failed).toEqual([]);
++    } finally {
++      await file.close();
++      if (!owner.closed) await owner.teardown();
++    }
++  });
++});
++
++describe('the teardown of the global setup', () => {
++  it('prints one line that counts the retried drops, before its summary line', async () => {
++    const seen = capture();
++    const driver = refusingDriver(1);
++    const teardown = await setupDbTestProject(seen.project, {
++      env: privateRunEnv('rl'),
++      resolveDefinition: injectedResolver(standardDefinitions({ schema: PROBE_HOOKS.schema })),
++      log: seen.log,
++      clientFactory: driver.factory,
++      dropRetry: { pauseMs: 20 },
++    });
++    await teardown();
++
++    expect(driver.refused).toHaveLength(1);
++    expect(seen.lines.at(-2)).toMatch(
++      /^forced drops that needed a retry: [1-9]\d* \(\d+ refusal\(s\) with SQLSTATE 42501 while a backend that the owner role may not end, such as an autovacuum worker, was on the database; each drop then went through\)$/,
++    );
++    expect(seen.lines.at(-1)).toMatch(/^teardown: dropped 1 database\(s\) in \d+ ms; 0 remain with the run prefix dems_test_[a-z0-9_]+$/);
++    expect(seen.lines.filter((line) => line.startsWith('forced drops that needed a retry'))).toHaveLength(1);
++  });
++
++  it('a run with no retried drop says so in the same place', async () => {
++    const seen = capture();
++    const teardown = await setupDbTestProject(seen.project, { env: privateRunEnv('rq'), resolveDefinition: async () => null, log: seen.log });
++    await teardown();
++    expect(seen.lines.at(-2)).toBe('forced drops that needed a retry: 0');
++    expect(seen.lines.at(-1)).toContain('teardown: dropped 0 database(s)');
++  });
++
++  it('a database that cannot be dropped: the summary says "1 remain", never "0 remain", and the run fails', async () => {
++    const seen = capture();
++    const teardown = await setupDbTestProject(seen.project, {
++      env: privateRunEnv('rr'),
++      resolveDefinition: injectedResolver(standardDefinitions({ schema: PROBE_HOOKS.schema })),
++      log: seen.log,
++      sessionDrainMs: 300,
++    });
++    const provided = seen.provided[0];
++    expect(provided).toBeDefined();
++    if (provided === undefined) return;
++    const identity = createRunIdentity(provided.label, provided.stamp);
++    const file = await TestRun.attach(identity, { resolveDefinition: async () => null });
++    const database = await file.createDatabase({ template: 'schema', slug: 'stays' });
++    const pool = file.poolOn(database.name, 'app', 'dems-w11b-stays');
++    const held = await pool.connect();
++    try {
++      const failure: unknown = await teardown().then(
++        () => undefined,
++        (error: unknown) => error,
++      );
++
++      expect(failure).toBeInstanceOf(DbTestHelperError);
++      expect((failure as DbTestHelperError).code).toBe('CLEANUP_INCOMPLETE');
++      expect((failure as DbTestHelperError).message).toContain(`test:db left 1 database(s) behind: ${database.name}.`);
++      expect((failure as DbTestHelperError).message).toContain(`1 of role ${APP_ROLE} (application "dems-w11b-stays")`);
++      expect(seen.lines.at(-1)).toMatch(new RegExp(`^teardown: dropped 1 database\\(s\\) in \\d+ ms; 1 remain with the run prefix ${identity.prefix}$`));
++      expect(seen.lines.at(-2)).toMatch(/^forced drops that needed a retry: \d+/);
++      expect(seen.lines.join('\n')).not.toContain('0 remain');
++      expect(await exists(database.name)).toBe(true);
++    } finally {
++      held.release();
++      await pool.end();
++      await file.close();
++      // What the failed teardown left: removed here, by a run with the same identity.
++      const cleaner = await TestRun.attach(identity, { resolveDefinition: async () => null });
++      try {
++        await cleaner.dropDatabase(database.name);
++        expect(await cleaner.listDatabases()).toEqual([]);
++      } finally {
++        await cleaner.close();
++      }
++    }
++  });
++});
+diff --git b/apps/core-server/test/helpers/db/__tests__/drop-retry.test.ts b/apps/core-server/test/helpers/db/__tests__/drop-retry.test.ts
+new file mode 100644
+index 0000000..43cf5c3
+--- /dev/null
++++ b/apps/core-server/test/helpers/db/__tests__/drop-retry.test.ts
+@@ -0,0 +1,556 @@
++// Row W11b: the forced drop that PostgreSQL refuses (SQLSTATE 42501, "permission denied to
++// terminate process") while a backend that the owner role may not end is on the database.
++//
++//   - a background worker of the server (autovacuum; it has no role): wait, send the same
++//     statement again, a bounded number of times, and succeed quietly;
++//   - a client session of another role: a leak of the test; fail at once, naming the role and
++//     the application, never a statement;
++//   - still refused at the bound: fail with the last error and with what was on the database.
++//
++// No database and no socket here: a stand-in runner for the statement level, the stand-in
++// cluster for the level of a run. Against the real server: `drop-retry.db.test.ts`.
++import { afterEach, describe, expect, it } from 'vitest';
++import { DROP_RETRY_ATTEMPTS, DROP_RETRY_PAUSE_MS, OWNER_ROLE, STALE_AFTER_SECONDS } from '../constants';
++import { clientsOfOtherRoles, describeBackends, dropDatabase, isTerminateRefusal, type BackendGroup } from '../ddl';
++import { DbGuardError, DbTestHelperError } from '../errors';
++import { retriedDropsLine } from '../global-setup';
++import { injectedResolver, type TemplateDefinition } from '../hooks';
++import { createRunIdentity, guardOwnDatabase, type RunIdentity } from '../names';
++import { TestRun, type RunOptions } from '../run';
++import type { DriverOptions, Row } from '../session';
++import { FakeCluster, fakeDataDir, type FakeDatabase } from '../testing/fake-cluster';
++
++const REFUSAL_TEXT = 'permission denied to terminate process';
++
++function terminateRefused(): Error {
++  return Object.assign(new Error(REFUSAL_TEXT), { code: '42501' });
++}
++
++async function refusal(action: () => Promise<unknown>): Promise<DbTestHelperError> {
++  try {
++    await action();
++  } catch (error) {
++    if (error instanceof DbTestHelperError) return error;
++    throw error;
++  }
++  throw new Error('not refused');
++}
++
++// ── The statement level: `dropDatabase` on a stand-in runner ────────────────────────────────────
++
++interface Script {
++  /** How many forced drops are refused before one goes through; `Infinity`: every one. */
++  readonly refuse: number;
++  /** The error of a refused drop. Default: the refusal the retry is for. */
++  readonly error?: () => Error;
++  /** What is on the database when the helper looks after the n-th refusal (1, 2, ...). */
++  readonly connected?: (refusal: number) => BackendGroup[];
++}
++
++function standIn(script: Script) {
++  const statements: Array<{ text: string; values: readonly unknown[] }> = [];
++  let refused = 0;
++  return {
++    statements,
++    drops: (): string[] => statements.map((statement) => statement.text).filter((text) => text.startsWith('DROP DATABASE')),
++    reads: () => statements.filter((statement) => statement.text.includes('pg_stat_activity')),
++    runner: {
++      async run<R extends Row = Row>(text: string, values: readonly unknown[] = []): Promise<R[]> {
++        statements.push({ text, values });
++        if (text.startsWith('DROP DATABASE')) {
++          if (refused < script.refuse) {
++            refused += 1;
++            throw (script.error ?? terminateRefused)();
++          }
++          return [];
++        }
++        if (text.includes('FROM pg_stat_activity')) return (script.connected?.(refused) ?? []) as unknown as R[];
++        throw new Error(`the drop is not expected to send: ${text}`);
++      },
++    },
++  };
++}
++
++const RUN = createRunIdentity('step_33b', 'tmd0a1b2');
++const NAME = guardOwnDatabase(`${RUN.prefix}f01_drop_retry`, RUN, 'drop');
++const FORCED = `DROP DATABASE IF EXISTS "${NAME}" WITH (FORCE)`;
++const WORKER: BackendGroup = { role: null, application: '', backends: 1 };
++const OWN_LEFTOVER: BackendGroup = { role: OWNER_ROLE, application: 'dems-test-fixture', backends: 1 };
++
++describe('the forced drop, refused while a background worker is on the database', () => {
++  it('not refused: one statement, no catalog read', async () => {
++    const server = standIn({ refuse: 0 });
++    expect(await dropDatabase(server.runner, NAME)).toEqual({ refusals: 0 });
++    expect(server.statements).toEqual([{ text: FORCED, values: [] }]);
++  });
++
++  it.each([1, 2, 7, 19])('refused %i time(s), then it goes through: the same statement again, one catalog read per refusal', async (times) => {
++    const server = standIn({ refuse: times, connected: () => [WORKER] });
++
++    const outcome = await dropDatabase(server.runner, NAME, { pauseMs: 0 });
++
++    expect(outcome).toEqual({ refusals: times });
++    expect(server.drops()).toEqual(Array.from({ length: times + 1 }, () => FORCED));
++    expect(server.reads()).toHaveLength(times);
++    for (const read of server.reads()) expect(read.values).toEqual([NAME]);
++    // Nothing else was sent: a drop and a read per refusal, and the drop that went through.
++    expect(server.statements).toHaveLength(2 * times + 1);
++  });
++
++  it('the backend had left again when the helper looked: retried all the same', async () => {
++    const server = standIn({ refuse: 2, connected: () => [] });
++    expect(await dropDatabase(server.runner, NAME, { pauseMs: 0 })).toEqual({ refusals: 2 });
++    expect(server.drops()).toHaveLength(3);
++  });
++
++  it('a leftover session of the owner role beside the worker does not change that: the forced drop ends it later', async () => {
++    const server = standIn({ refuse: 1, connected: () => [WORKER, OWN_LEFTOVER] });
++    expect(await dropDatabase(server.runner, NAME, { pauseMs: 0 })).toEqual({ refusals: 1 });
++  });
++
++  it('waits between two attempts', async () => {
++    const server = standIn({ refuse: 3, connected: () => [WORKER] });
++    const started = performance.now();
++    await dropDatabase(server.runner, NAME, { pauseMs: 30 });
++    // Three waits of 30 ms; a timer may fire a fraction of a millisecond early.
++    expect(performance.now() - started).toBeGreaterThanOrEqual(85);
++  });
++
++  it('the default bound is 20 attempts, 250 ms apart', async () => {
++    expect([DROP_RETRY_ATTEMPTS, DROP_RETRY_PAUSE_MS]).toEqual([20, 250]);
++    const server = standIn({ refuse: Infinity, connected: () => [WORKER] });
++    const error = await refusal(() => dropDatabase(server.runner, NAME, { pauseMs: 0 }));
++    expect(error.code).toBe('DROP_REFUSED');
++    expect(server.drops()).toHaveLength(20);
++    expect(error.message).toContain('refused the forced drop 20 time(s)');
++  });
++
++  it('bounded: still refused at the last attempt, it fails with the last error and with what was on the database', async () => {
++    const last = terminateRefused();
++    let thrown = 0;
++    const server = standIn({
++      refuse: Infinity,
++      error: () => {
++        thrown += 1;
++        return thrown === 4 ? last : terminateRefused();
++      },
++      connected: () => [WORKER, OWN_LEFTOVER],
++    });
++
++    const error = await refusal(() => dropDatabase(server.runner, NAME, { attempts: 4, pauseMs: 0 }));
++
++    expect(error.code).toBe('DROP_REFUSED');
++    expect(error.cause).toBe(last);
++    expect(server.drops()).toEqual([FORCED, FORCED, FORCED, FORCED]);
++    expect(error.message).toContain(`${NAME} could not be dropped`);
++    expect(error.message).toContain('refused the forced drop 4 time(s)');
++    expect(error.message).toContain(`SQLSTATE 42501: ${REFUSAL_TEXT}`);
++    expect(error.message).toContain('1 without a role (a background worker of PostgreSQL, such as autovacuum)');
++    expect(error.message).toContain(`1 of role ${OWNER_ROLE} (application "dems-test-fixture")`);
++    expect(error.message).toContain('no client session of another role');
++    expect(error.message).toContain("removed by the run's teardown");
++    // No statement after the last refusal but the read of who was there.
++    expect(server.statements.at(-1)?.text).toContain('pg_stat_activity');
++  });
++
++  it('bounded, and nothing was left to see: the message says so', async () => {
++    const server = standIn({ refuse: Infinity, connected: () => [] });
++    const error = await refusal(() => dropDatabase(server.runner, NAME, { attempts: 2, pauseMs: 0 }));
++    expect(error.code).toBe('DROP_REFUSED');
++    expect(error.message).toContain('nothing was on the database any more when the helper looked');
++  });
++
++  it('an attempt count below one still sends the drop once', async () => {
++    const server = standIn({ refuse: Infinity, connected: () => [WORKER] });
++    expect((await refusal(() => dropDatabase(server.runner, NAME, { attempts: 0, pauseMs: 0 }))).code).toBe('DROP_REFUSED');
++    expect(server.drops()).toHaveLength(1);
++  });
++});
++
++describe('the forced drop, refused while a client session of another role is on the database', () => {
++  it('is not repeated: it fails at once and names the role and the application', async () => {
++    const server = standIn({
++      refuse: Infinity,
++      connected: () => [WORKER, { role: 'dems_app', application: 'dems-core-server', backends: 2 }, OWN_LEFTOVER],
++    });
++
++    const error = await refusal(() => dropDatabase(server.runner, NAME, { attempts: 20, pauseMs: 0 }));
++
++    expect(error.code).toBe('SESSIONS_REMAIN');
++    expect(server.drops()).toEqual([FORCED]);
++    expect(error.message).toContain(`${NAME} cannot be dropped`);
++    expect(error.message).toContain('2 of role dems_app (application "dems-core-server")');
++    expect(error.message).toContain('SQLSTATE 42501');
++    expect(error.message).toContain('db.onCleanup');
++    // Only the leak is named: not the worker, not the helper's own leftover.
++    expect(error.message).not.toContain('without a role');
++    expect(error.message).not.toContain(`of role ${OWNER_ROLE}`);
++    expect(isTerminateRefusal(error.cause)).toBe(true);
++  });
++
++  it('a session that shows up at a later refusal ends the retry there', async () => {
++    const server = standIn({
++      refuse: Infinity,
++      connected: (refused) => (refused < 3 ? [WORKER] : [{ role: 'dems_app', application: '', backends: 1 }]),
++    });
++    const error = await refusal(() => dropDatabase(server.runner, NAME, { attempts: 20, pauseMs: 0 }));
++    expect(error.code).toBe('SESSIONS_REMAIN');
++    expect(server.drops()).toHaveLength(3);
++    // No application name was set: the role alone is named.
++    expect(error.message).toContain('(1 of role dems_app)');
++  });
++
++  it('every role but the owner role counts, whatever its name', async () => {
++    const server = standIn({ refuse: Infinity, connected: () => [{ role: 'somebody_else', application: 'psql', backends: 1 }] });
++    const error = await refusal(() => dropDatabase(server.runner, NAME, { pauseMs: 0 }));
++    expect(error.code).toBe('SESSIONS_REMAIN');
++    expect(error.message).toContain('1 of role somebody_else (application "psql")');
++  });
++
++  it('the helper asks for role and application name only: never for the statement, the state or the backend type', async () => {
++    const server = standIn({ refuse: 1, connected: () => [WORKER] });
++    await dropDatabase(server.runner, NAME, { pauseMs: 0 });
++    const [read] = server.reads();
++    expect(read?.text).toBe(
++      "SELECT usename::text AS role, coalesce(application_name, '') AS application, count(*)::int AS backends " +
++        'FROM pg_stat_activity WHERE datname = $1 GROUP BY 1, 2 ORDER BY 1 NULLS FIRST, 2',
++    );
++    expect(read?.text).not.toMatch(/\bquery\b|\bstate\b|backend_type|client_addr/);
++  });
++});
++
++describe('what is and what is not the refusal that is retried', () => {
++  const others: Array<[string, Error]> = [
++    ['the database is in use (55006)', Object.assign(new Error('database "x" is being accessed by other users'), { code: '55006' })],
++    ['not the owner of the database (42501, another message)', Object.assign(new Error('must be owner of database x'), { code: '42501' })],
++    ['a template database (42809)', Object.assign(new Error('cannot drop a template database'), { code: '42809' })],
++    ['the same words without the SQLSTATE', new Error(REFUSAL_TEXT)],
++    ['a lost connection', Object.assign(new Error('Connection terminated unexpectedly'), { code: 'ECONNRESET' })],
++  ];
++
++  it.each(others)('%s: not retried, and the error comes back as it is', async (_label, error) => {
++    const server = standIn({ refuse: Infinity, error: () => error });
++    await expect(dropDatabase(server.runner, NAME, { pauseMs: 0 })).rejects.toBe(error);
++    expect(server.statements).toEqual([{ text: FORCED, values: [] }]);
++    expect(isTerminateRefusal(error)).toBe(false);
++  });
++
++  it('SQLSTATE 42501 with the message of the server is the refusal', () => {
++    expect(isTerminateRefusal(terminateRefused())).toBe(true);
++    expect(isTerminateRefusal(undefined)).toBe(false);
++    expect(isTerminateRefusal({ code: '42501' })).toBe(false);
++  });
++});
++
++describe('how backends are described', () => {
++  it('a worker by what it is, a session by role and application; the owner role is not "another role"', () => {
++    const groups: BackendGroup[] = [WORKER, { role: 'dems_app', application: 'dems-core-server', backends: 3 }, { role: 'dems_app', application: '', backends: 1 }, OWN_LEFTOVER];
++    expect(describeBackends(groups)).toBe(
++      '1 without a role (a background worker of PostgreSQL, such as autovacuum), 3 of role dems_app (application "dems-core-server"), ' +
++        `1 of role dems_app, 1 of role ${OWNER_ROLE} (application "dems-test-fixture")`,
++    );
++    expect(clientsOfOtherRoles(groups)).toEqual([groups[1], groups[2]]);
++  });
++
++  it('the line of the teardown: a count, and the refusals when there were any', () => {
++    expect(retriedDropsLine([])).toBe('forced drops that needed a retry: 0');
++    expect(
++      retriedDropsLine([
++        { name: `${RUN.prefix}f01_a`, refusals: 1 },
++        { name: `${RUN.prefix}f02_b`, refusals: 4 },
++      ]),
++    ).toBe(
++      'forced drops that needed a retry: 2 (5 refusal(s) with SQLSTATE 42501 while a backend that the owner role may not end, ' +
++        'such as an autovacuum worker, was on the database; each drop then went through)',
++    );
++  });
++});
++
++// ── The level of a run: the stand-in cluster ────────────────────────────────────────────────────
++
++const NOW_MS = Date.UTC(2026, 9, 4, 5, 0, 0);
++const NOW_SECONDS = NOW_MS / 1000;
++const TEMPLATES: TemplateDefinition[] = [
++  { key: 'schema', base: 'empty', build: async () => undefined },
++  { key: 'seed', base: 'schema', build: async () => undefined },
++];
++const cleanups: Array<() => void | Promise<void>> = [];
++
++function stampAt(seconds: number, tail: string): string {
++  return `${seconds.toString(36).padStart(6, '0')}${tail}`;
++}
++
++async function ownerRun(cluster: FakeCluster, options: RunOptions = {}): Promise<TestRun> {
++  const data = fakeDataDir();
++  cleanups.push(data.remove);
++  const run = await TestRun.start({
++    env: { DEMS_TEST_STEP: '33b' },
++    dataDir: data.dir,
++    clientFactory: cluster.factory,
++    probe: async () => undefined,
++    now: () => NOW_MS,
++    sessionDrainMs: 30,
++    dropRetry: { attempts: 5, pauseMs: 0 },
++    resolveDefinition: injectedResolver(TEMPLATES),
++    ...options,
++  });
++  cleanups.push(() => run.close());
++  return run;
++}
++
++async function attachedRun(cluster: FakeCluster, identity: RunIdentity, options: RunOptions = {}): Promise<TestRun> {
++  const data = fakeDataDir();
++  cleanups.push(data.remove);
++  const run = await TestRun.attach(identity, {
++    dataDir: data.dir,
++    clientFactory: cluster.factory,
++    sessionDrainMs: 30,
++    dropRetry: { attempts: 5, pauseMs: 0 },
++    resolveDefinition: injectedResolver(TEMPLATES),
++    ...options,
++  });
++  cleanups.push(() => run.close());
++  return run;
++}
++
++function fakeOf(cluster: FakeCluster, name: string): FakeDatabase {
++  const database = cluster.databases.get(name);
++  if (database === undefined) throw new Error(`the stand-in cluster has no database ${name}`);
++  return database;
++}
++
++function forcedDropsOf(cluster: FakeCluster, name: string): string[] {
++  return cluster.databaseStatements().filter((text) => text === `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
++}
++
++afterEach(async () => {
++  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
++});
++
++describe('a test file drops its database while a background worker is on it', () => {
++  it('the worker leaves after three refusals: the drop goes through, and only the own database was named', async () => {
++    const cluster = new FakeCluster(['dems_demo', 'dems_lane_1']);
++    const run = await ownerRun(cluster);
++    const database = await run.createDatabase({ template: 'schema', slug: 'visited' });
++    Object.assign(fakeOf(cluster, database.name), { background: 1, backgroundLeavesAfter: 3 });
++
++    await database.drop();
++
++    expect(cluster.databases.has(database.name)).toBe(false);
++    expect(database.dropped).toBe(true);
++    expect(forcedDropsOf(cluster, database.name)).toHaveLength(4);
++    expect(run.retriedDrops).toEqual([{ name: database.name, refusals: 3 }]);
++    expect(cluster.namesInDatabaseStatements().every((name) => name.startsWith(run.identity.prefix))).toBe(true);
++    expect(cluster.databases.has('dems_demo')).toBe(true);
++    expect(cluster.databases.has('dems_lane_1')).toBe(true);
++  });
++
++  it('a leftover session of the owner role beside the worker: retried, then the forced drop ends it', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster);
++    const database = await run.createDatabase({ template: 'schema', slug: 'own_leftover' });
++    Object.assign(fakeOf(cluster, database.name), { background: 1, backgroundLeavesAfter: 1, sessions: [{ role: OWNER_ROLE, sessions: 1 }] });
++
++    await database.drop();
++
++    expect(cluster.databases.has(database.name)).toBe(false);
++    expect(run.retriedDrops).toEqual([{ name: database.name, refusals: 1 }]);
++  });
++
++  it('no refusal, no entry: the usual drop is one statement as before', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster);
++    const database = await run.createDatabase({ template: 'schema', slug: 'usual' });
++    await database.drop();
++    expect(forcedDropsOf(cluster, database.name)).toHaveLength(1);
++    expect(run.retriedDrops).toEqual([]);
++    expect(cluster.statements.some((statement) => statement.text.includes('pg_notify'))).toBe(false);
++  });
++
++  it('a session of the runtime role that is open before the drop: no DROP is sent, and role and application are named', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster);
++    const database = await run.createDatabase({ template: 'schema', slug: 'leaky' });
++    fakeOf(cluster, database.name).sessions = [{ role: 'dems_app', sessions: 1, application: 'dems-core-server' }];
++
++    const error = await refusal(() => database.drop());
++
++    expect(error.code).toBe('SESSIONS_REMAIN');
++    expect(error.message).toContain('(1 of role dems_app (application "dems-core-server"))');
++    expect(forcedDropsOf(cluster, database.name)).toEqual([]);
++  });
++
++  it('a session of the runtime role that connects after the helper looked: the refused drop is not repeated', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster);
++    const database = await run.createDatabase({ template: 'schema', slug: 'late_leak' });
++    cluster.beforeStatement = (text) => {
++      if (text.startsWith('DROP DATABASE')) fakeOf(cluster, database.name).sessions = [{ role: 'dems_app', sessions: 1, application: 'dems-core-server' }];
++    };
++
++    const error = await refusal(() => database.drop());
++
++    expect(error.code).toBe('SESSIONS_REMAIN');
++    expect(error.message).toContain('1 of role dems_app (application "dems-core-server")');
++    expect(error.message).toContain('refused the forced drop (SQLSTATE 42501)');
++    expect(forcedDropsOf(cluster, database.name)).toHaveLength(1);
++    expect(cluster.databases.has(database.name)).toBe(true);
++    expect(database.dropped).toBe(false);
++    expect(run.retriedDrops).toEqual([]);
++  });
++});
++
++describe('the owner of a run learns of the retried drops of its test files', () => {
++  it('a test file reports on the channel of the run; the teardown report holds them, and the owner\'s own', async () => {
++    const cluster = new FakeCluster();
++    const owner = await ownerRun(cluster);
++    await owner.ensureTemplate('schema', 'create-only');
++    // Only the owner listens, to the channel named like its prefix.
++    expect(cluster.listenedChannels()).toEqual([owner.identity.prefix]);
++    const file = await attachedRun(cluster, owner.identity);
++    expect(cluster.listenedChannels()).toEqual([owner.identity.prefix]);
++    const a = await file.createDatabase({ template: 'schema', slug: 'a' });
++    const b = await file.createDatabase({ template: 'schema', slug: 'b' });
++    const c = await file.createDatabase({ template: 'schema', slug: 'c' });
++    fakeOf(cluster, a.name).refuseNextDrops = 2;
++    Object.assign(fakeOf(cluster, b.name), { background: 1, backgroundLeavesAfter: 1 });
++
++    await a.drop();
++    await b.drop();
++    await c.drop();
++
++    const fromTheFile = [
++      { name: a.name, refusals: 2 },
++      { name: b.name, refusals: 1 },
++    ];
++    expect(file.retriedDrops).toEqual(fromTheFile);
++    expect(owner.retriedDrops).toEqual(fromTheFile);
++    // What travelled: the channel, a database name and a count.
++    expect(cluster.statements.filter((statement) => statement.text.includes('pg_notify')).map((statement) => statement.values)).toEqual(
++      fromTheFile.map((drop) => [owner.identity.prefix, JSON.stringify(drop)]),
++    );
++    await file.close();
++
++    const template = `${owner.identity.prefix}tpl_schema`;
++    fakeOf(cluster, template).refuseNextDrops = 1;
++    const sent = cluster.statements.length;
++    const report = await owner.teardown();
++
++    expect(report.retriedDrops).toEqual([...fromTheFile, { name: template, refusals: 1 }]);
++    expect(report.remaining).toEqual([]);
++    expect(report.failed).toEqual([]);
++    // The owner counts its own drops itself: it sends no notification.
++    expect(cluster.statements.slice(sent).some((statement) => statement.text.includes('pg_notify'))).toBe(false);
++  });
++
++  it('a notification that is not such a report is ignored', async () => {
++    const cluster = new FakeCluster();
++    const owner = await ownerRun(cluster);
++    const other = createRunIdentity('step_41', stampAt(NOW_SECONDS - 60, 'y7'));
++    const stranger = cluster.factory({} as DriverOptions);
++    const good = JSON.stringify({ name: `${owner.identity.prefix}f01_x`, refusals: 2 });
++    for (const [channel, payload] of [
++      [owner.identity.prefix, 'not json'],
++      [owner.identity.prefix, '[]'],
++      [owner.identity.prefix, 'null'],
++      [owner.identity.prefix, JSON.stringify({ name: 'dems_demo', refusals: 1 })],
++      [owner.identity.prefix, JSON.stringify({ name: `${owner.identity.prefix}f01_x`, refusals: 0 })],
++      [owner.identity.prefix, JSON.stringify({ name: `${owner.identity.prefix}f01_x`, refusals: '2' })],
++      [owner.identity.prefix, JSON.stringify({ name: 42, refusals: 2 })],
++      [other.prefix, good],
++    ]) {
++      await stranger.query('SELECT pg_notify($1, $2)', [channel, payload]);
++    }
++    expect(owner.retriedDrops).toEqual([]);
++    await stranger.query('SELECT pg_notify($1, $2)', [owner.identity.prefix, good]);
++    expect(owner.retriedDrops).toEqual([{ name: `${owner.identity.prefix}f01_x`, refusals: 2 }]);
++  });
++});
++
++describe('a drop that stays refused: the database is left to the teardown of the run, which goes through the same retry', () => {
++  it('refused at every attempt in the file; the worker leaves during the teardown: dropped there, nothing remains', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster);
++    const database = await run.createDatabase({ template: 'seed', slug: 'stuck_for_a_while' });
++    fakeOf(cluster, database.name).background = 1;
++
++    const error = await refusal(() => database.drop());
++
++    expect(error.code).toBe('DROP_REFUSED');
++    expect(error.message).toContain('refused the forced drop 5 time(s)');
++    expect(error.message).toContain('1 without a role');
++    expect(forcedDropsOf(cluster, database.name)).toHaveLength(5);
++    expect(cluster.databases.has(database.name)).toBe(true);
++    expect(database.dropped).toBe(false);
++    expect(run.retriedDrops).toEqual([]);
++
++    // Still there when the teardown starts, gone after two more refusals.
++    fakeOf(cluster, database.name).backgroundLeavesAfter = 2;
++    const report = await run.teardown();
++
++    expect(forcedDropsOf(cluster, database.name)).toHaveLength(5 + 3);
++    expect(report.dropped).toEqual([database.name, `${run.identity.prefix}tpl_schema`, `${run.identity.prefix}tpl_seed`]);
++    expect(report.remaining).toEqual([]);
++    expect(report.failed).toEqual([]);
++    expect(report.retriedDrops).toEqual([{ name: database.name, refusals: 2 }]);
++    expect(cluster.names()).toEqual(['postgres', 'template0', 'template1']);
++  });
++
++  it('refused at every attempt of the teardown too: reported as remaining, by name and reason, never as dropped', async () => {
++    const cluster = new FakeCluster();
++    const run = await ownerRun(cluster);
++    const database = await run.createDatabase({ template: 'schema', slug: 'stuck' });
++    fakeOf(cluster, database.name).background = 1;
++    await refusal(() => database.drop());
++
++    const report = await run.teardown();
++
++    expect(report.remaining).toEqual([database.name]);
++    expect(report.dropped).toEqual([`${run.identity.prefix}tpl_schema`]);
++    expect(report.failed).toHaveLength(1);
++    expect(report.failed[0]?.name).toBe(database.name);
++    expect(report.failed[0]?.reason).toContain('refused the forced drop 5 time(s)');
++    expect(report.failed[0]?.reason).toContain('1 without a role (a background worker of PostgreSQL, such as autovacuum)');
++    expect(report.retriedDrops).toEqual([]);
++    expect(cluster.databases.has(database.name)).toBe(true);
++    // Five attempts by the file and five by the teardown; nothing else was named.
++    expect(forcedDropsOf(cluster, database.name)).toHaveLength(10);
++    expect(cluster.namesInDatabaseStatements().every((name) => name.startsWith(run.identity.prefix))).toBe(true);
++  });
++
++  it('the stale sweep goes through the same retry', async () => {
++    const stale = createRunIdentity('step_29', stampAt(NOW_SECONDS - STALE_AFTER_SECONDS - 3600, 'k3'));
++    const cluster = new FakeCluster([`${stale.prefix}f01_crashed`]);
++    fakeOf(cluster, `${stale.prefix}f01_crashed`).refuseNextDrops = 2;
++    const run = await ownerRun(cluster);
++
++    const report = await run.sweepStale();
++
++    expect(report.dropped).toEqual([`${stale.prefix}f01_crashed`]);
++    expect(report.failed).toEqual([]);
++    expect(forcedDropsOf(cluster, `${stale.prefix}f01_crashed`)).toHaveLength(3);
++    expect(run.retriedDrops).toEqual([{ name: `${stale.prefix}f01_crashed`, refusals: 2 }]);
++  });
++});
++
++describe('the guards are what they were: the retry is behind them', () => {
++  const younger = createRunIdentity('step_41', stampAt(NOW_SECONDS - 60, 'y7'));
++  const foreign = ['dems_demo', 'dems_demo_next', 'dems_lane_1', 'postgres', 'template0', 'template1', `${younger.prefix}f01_identity`, `${younger.prefix}tpl_schema`, 'some_other_database'];
++
++  it.each(foreign)('dropDatabase(%j) is refused before a statement is sent, whatever the retry policy', async (name) => {
++    const cluster = new FakeCluster(foreign.filter((other) => !['postgres', 'template0', 'template1'].includes(other)));
++    // If a drop of it were ever sent, the stand-in would refuse it and the helper would repeat it.
++    fakeOf(cluster, name).refuseNextDrops = 3;
++    const run = await ownerRun(cluster, { dropRetry: { attempts: 50, pauseMs: 0 } });
++    const sent = cluster.statements.length;
++
++    const error = await refusal(() => run.dropDatabase(name));
++
++    expect(error).toBeInstanceOf(DbGuardError);
++    expect(error.message).toContain('refused before any statement');
++    expect(cluster.statements).toHaveLength(sent);
++    expect(cluster.databaseStatements()).toEqual([]);
++    expect(cluster.databases.has(name)).toBe(true);
++    expect(fakeOf(cluster, name).refuseNextDrops).toBe(3);
++  });
++});
+diff --git a/apps/core-server/test/helpers/db/constants.ts b/apps/core-server/test/helpers/db/constants.ts
+index 01d921d..c8732dc 100644
+--- a/apps/core-server/test/helpers/db/constants.ts
++++ b/apps/core-server/test/helpers/db/constants.ts
+@@ -55,6 +55,14 @@ export const STALE_AFTER_SECONDS = 6 * 60 * 60;
+ export const DEFAULT_LOCK_TIMEOUT_MS = 120_000;
+ /** Longest wait for the sessions of a database to end before it is locked or dropped. */
+ export const DEFAULT_SESSION_DRAIN_MS = 5_000;
++/**
++ * The forced drop of a database is refused (SQLSTATE 42501) while a backend that `dems_owner` may
++ * not end is connected to it. An autovacuum worker is such a backend: it visits a database that
++ * has just been written to within seconds and stays for milliseconds. The helper then waits and
++ * sends the same drop again: at most this many attempts, this far apart (`ddl.ts`, row W11b).
++ */
++export const DROP_RETRY_ATTEMPTS = 20;
++export const DROP_RETRY_PAUSE_MS = 250;
+ /** Longest wait for a connection. */
+ export const CONNECT_TIMEOUT_MS = 5_000;
+ /** Longest wait of the reachability probe. */
+diff --git a/apps/core-server/test/helpers/db/ddl.ts b/apps/core-server/test/helpers/db/ddl.ts
+index 33a1d6a..e91dd85 100644
+--- a/apps/core-server/test/helpers/db/ddl.ts
++++ b/apps/core-server/test/helpers/db/ddl.ts
+@@ -12,7 +12,8 @@
+  * This file and the reset routine are the only places of the server workspace that drop a
+  * database (T-AO-4, LN-6).
+  */
+-import { CLONE_LOCK_KEY, EMPTY_TEMPLATE, LOCK_CLASS, OWNER_ROLE } from './constants';
++import { CLONE_LOCK_KEY, DROP_RETRY_ATTEMPTS, DROP_RETRY_PAUSE_MS, EMPTY_TEMPLATE, LOCK_CLASS, OWNER_ROLE } from './constants';
++import { DbTestHelperError, errorCode, errorMessage } from './errors';
+ import { quoteDatabaseName, type GuardedDatabaseName } from './names';
+ import type { StatementRunner } from './session';
+ 
+@@ -65,6 +66,50 @@ export async function sessionsOn(runner: Runner, database: string): Promise<Sess
+   );
+ }
+ 
++export interface BackendGroup {
++  /**
++   * `pg_stat_activity.usename`. NULL for a backend that has no role: a background worker of the
++   * server on that database, which in this cluster is an autovacuum worker.
++   */
++  readonly role: string | null;
++  /** `pg_stat_activity.application_name`; empty for a background worker. */
++  readonly application: string;
++  readonly backends: number;
++}
++
++/**
++ * Every backend on one database, by role and application name, the ones without a role included.
++ *
++ * Measured on PostgreSQL 18.4 (row W11b): of a backend of another role, and of one without a
++ * role, `dems_owner` sees `datid`, `datname`, `pid`, `usesysid`, `usename` and
++ * `application_name`; `backend_type`, `state` and the times are NULL and the statement text is
++ * withheld. So the role tells the kinds apart, not the backend type: a client session has a
++ * role, an autovacuum worker has none. The statement text is never asked for.
++ */
++export async function backendsOn(runner: Runner, database: string): Promise<BackendGroup[]> {
++  return runner.run<Indexed<BackendGroup>>(
++    "SELECT usename::text AS role, coalesce(application_name, '') AS application, count(*)::int AS backends " +
++      'FROM pg_stat_activity WHERE datname = $1 GROUP BY 1, 2 ORDER BY 1 NULLS FIRST, 2',
++    [database],
++  );
++}
++
++/** The client sessions of a role other than the owner role: what `dems_owner` may not end. */
++export function clientsOfOtherRoles(groups: readonly BackendGroup[]): BackendGroup[] {
++  return groups.filter((group) => group.role !== null && group.role !== OWNER_ROLE);
++}
++
++/** Names the role and the application of each group; never a statement. */
++export function describeBackends(groups: readonly BackendGroup[]): string {
++  return groups
++    .map((group) =>
++      group.role === null
++        ? `${group.backends} without a role (a background worker of PostgreSQL, such as autovacuum)`
++        : `${group.backends} of role ${group.role}${group.application === '' ? '' : ` (application ${JSON.stringify(group.application)})`}`,
++    )
++    .join(', ');
++}
++
+ /** The roles that have a session on any database whose name starts with `prefix` (T-TI-3). */
+ export async function sessionRolesWithPrefix(runner: Runner, prefix: string): Promise<string[]> {
+   const rows = await runner.run<{ role: string }>(
+@@ -150,7 +195,95 @@ export async function unlockTemplate(runner: Runner, name: GuardedDatabaseName):
+   await runner.run(`ALTER DATABASE ${quoteDatabaseName(name)} WITH IS_TEMPLATE false`);
+ }
+ 
+-/** TI-10: the forced form ends leftover sessions of `dems_owner`; it cannot end another role's (PG-26). */
+-export async function dropDatabase(runner: Runner, name: GuardedDatabaseName): Promise<void> {
+-  await runner.run(`DROP DATABASE IF EXISTS ${quoteDatabaseName(name)} WITH (FORCE)`);
++const INSUFFICIENT_PRIVILEGE = '42501';
++const TERMINATE_REFUSED = /permission denied to terminate process/;
++
++/**
++ * True for the one refusal the forced drop is repeated after: the server would have to end a
++ * backend that the owner role may not end. Another error with the same SQLSTATE (not the owner
++ * of the database, for one) is not this refusal.
++ */
++export function isTerminateRefusal(error: unknown): boolean {
++  return errorCode(error) === INSUFFICIENT_PRIVILEGE && TERMINATE_REFUSED.test(errorMessage(error));
++}
++
++export interface DropRetryPolicy {
++  /** How many times the forced drop is sent at most. */
++  readonly attempts: number;
++  /** The wait between two attempts, in milliseconds. */
++  readonly pauseMs: number;
++}
++
++export interface DropOutcome {
++  /** How often the server refused the forced drop before it went through. 0 is the normal case. */
++  readonly refusals: number;
++}
++
++/**
++ * TI-10: the forced form ends leftover sessions of `dems_owner`; it cannot end another role's
++ * (PG-26), and it cannot end a background worker of the server either.
++ *
++ * The server checks every backend on the database before it ends one, and refuses the whole
++ * statement with SQLSTATE 42501 "permission denied to terminate process" if the owner role may
++ * not end one of them; nothing is ended and nothing is dropped. Two kinds of backend cause that
++ * (measured, row W11b):
++ *
++ *   - an autovacuum worker. It has no role, comes by itself to a database that has just been
++ *     written to, and leaves by itself after milliseconds. The helper waits and sends the same
++ *     statement again, a bounded number of times;
++ *   - a client session of another role (`dems_app`): a leak of the test. Waiting does not help
++ *     and must not hide it: the drop fails at once and names the role and the application.
++ *
++ * The plain form (without FORCE) is not used first: with any session on the database it takes
++ * the server five seconds to refuse it, and an autovacuum worker that asked for the database
++ * meanwhile then enters the moment it fails, so that the forced drop after it is refused too.
++ */
++export async function dropDatabase(runner: Runner, name: GuardedDatabaseName, policy: Partial<DropRetryPolicy> = {}): Promise<DropOutcome> {
++  const attempts = Math.max(1, Math.trunc(policy.attempts ?? DROP_RETRY_ATTEMPTS));
++  const pauseMs = Math.max(0, policy.pauseMs ?? DROP_RETRY_PAUSE_MS);
++  const started = performance.now();
++  let refusals = 0;
++  for (;;) {
++    try {
++      await runner.run(`DROP DATABASE IF EXISTS ${quoteDatabaseName(name)} WITH (FORCE)`);
++      return { refusals };
++    } catch (error) {
++      if (!isTerminateRefusal(error)) throw error;
++      refusals += 1;
++      const connected = await backendsOn(runner, name);
++      const clients = clientsOfOtherRoles(connected);
++      if (clients.length > 0) {
++        throw new DbTestHelperError(
++          'SESSIONS_REMAIN',
++          `${name} cannot be dropped: a session of another role is connected to it (${describeBackends(clients)}), ` +
++            'and PostgreSQL refused the forced drop (SQLSTATE 42501): the owner role may not end that session. ' +
++            'Close the app or the pool under test in the cleanup of the file (db.onCleanup). ' +
++            "The database is removed by the run's teardown, or by the stale sweep of a later run.",
++          { cause: error },
++        );
++      }
++      if (refusals >= attempts) {
++        const seen =
++          connected.length === 0
++            ? 'nothing was on the database any more when the helper looked'
++            : `on the database: ${describeBackends(connected)}; no client session of another role`;
++        throw new DbTestHelperError(
++          'DROP_REFUSED',
++          `${name} could not be dropped: PostgreSQL refused the forced drop ${refusals} time(s) in ${Math.round(performance.now() - started)} ms ` +
++            `(SQLSTATE 42501: ${errorMessage(error)}). At the last refusal, ${seen}. ` +
++            "The database is removed by the run's teardown, or by the stale sweep of a later run.",
++          { cause: error },
++        );
++      }
++      await sleep(pauseMs);
++    }
++  }
++}
++
++/**
++ * Tells the owner of a run, on the run's notification channel of the maintenance database, that
++ * a drop needed a retry. The payload holds a database name and a count.
++ */
++export async function notifyRun(runner: Runner, channel: string, payload: string): Promise<void> {
++  await runner.run('SELECT pg_notify($1, $2)', [channel, payload]);
+ }
+diff --git a/apps/core-server/test/helpers/db/errors.ts b/apps/core-server/test/helpers/db/errors.ts
+index d730fca..992aa23 100644
+--- a/apps/core-server/test/helpers/db/errors.ts
++++ b/apps/core-server/test/helpers/db/errors.ts
+@@ -33,6 +33,7 @@ export type DbTestHelperErrorCode =
+   | 'TEMPLATE_HOOK_INVALID'
+   // Cleanup.
+   | 'SESSIONS_REMAIN'
++  | 'DROP_REFUSED'
+   | 'CLEANUP_INCOMPLETE'
+   | 'DATABASE_NOT_READY';
+ 
+diff --git a/apps/core-server/test/helpers/db/global-setup.ts b/apps/core-server/test/helpers/db/global-setup.ts
+index 7eb510c..5888882 100644
+--- a/apps/core-server/test/helpers/db/global-setup.ts
++++ b/apps/core-server/test/helpers/db/global-setup.ts
+@@ -14,7 +14,9 @@
+  *   5. `tpl_schema` and `tpl_seed`, when their hooks are plugged in (`hooks.ts`).
+  *   6. The run identity is provided to the test files.
+  * The returned teardown drops every database with the run prefix (TI-11) and fails the run if
+- * one remains.
++ * one remains. Before its summary it prints one line that says how many forced drops of the run
++ * needed a retry (row W11b): those drops succeeded; the line is there so that the cause, a
++ * background worker of the server on the database at that instant, stays visible.
+  *
+  * A line printed here holds names, counts and times, never a credential.
+  */
+@@ -22,7 +24,7 @@ import { APP_ROLE, LOG_PREFIX, OWNER_ROLE, PROVIDE_KEY } from './constants';
+ import { DbTestHelperError } from './errors';
+ import { TEMPLATE_HOOK_MODULES, conventionResolver } from './hooks';
+ import type { ProvidedTestRun } from './provided';
+-import { TestRun, type StartOptions } from './run';
++import { TestRun, type RetriedDrop, type StartOptions } from './run';
+ import { verifyAppRole } from './session';
+ 
+ /** The part of Vitest's `TestProject` the setup needs. */
+@@ -42,6 +44,20 @@ function ms(value: number): string {
+   return `${Math.round(value)} ms`;
+ }
+ 
++/**
++ * The one line about retried drops. Such a drop was refused by PostgreSQL with SQLSTATE 42501
++ * while no client session of another role was on the database, and went through at a later
++ * attempt (`ddl.ts`); nothing failed.
++ */
++export function retriedDropsLine(retried: readonly RetriedDrop[]): string {
++  if (retried.length === 0) return 'forced drops that needed a retry: 0';
++  const refusals = retried.reduce((sum, drop) => sum + drop.refusals, 0);
++  return (
++    `forced drops that needed a retry: ${retried.length} (${refusals} refusal(s) with SQLSTATE 42501 ` +
++    'while a backend that the owner role may not end, such as an autovacuum worker, was on the database; each drop then went through)'
++  );
++}
++
+ export async function setupDbTestProject(project: ProjectLike, options: GlobalSetupOptions = {}): Promise<() => Promise<void>> {
+   const log = options.log ?? ((line: string) => process.stdout.write(`${LOG_PREFIX} ${line}\n`));
+   const resolveDefinition = options.resolveDefinition ?? conventionResolver();
+@@ -93,6 +109,7 @@ export async function setupDbTestProject(project: ProjectLike, options: GlobalSe
+ 
+   return async function teardownDbTestProject(): Promise<void> {
+     const report = await run.teardown();
++    log(retriedDropsLine(report.retriedDrops));
+     log(
+       `teardown: dropped ${report.dropped.length} database(s) in ${ms(report.ms)}; ` +
+         `${report.remaining.length} remain with the run prefix ${run.identity.prefix}`,
+diff --git a/apps/core-server/test/helpers/db/run.ts b/apps/core-server/test/helpers/db/run.ts
+index 7b42764..e9fc6cf 100644
+--- a/apps/core-server/test/helpers/db/run.ts
++++ b/apps/core-server/test/helpers/db/run.ts
+@@ -27,13 +27,17 @@ import {
+ } from './constants';
+ import { DEFAULT_DATA_DIR, readAppCredentials, readOwnerCredentials, type RoleCredentials } from './credentials';
+ import {
++  backendsOn,
++  clientsOfOtherRoles,
+   cloneDatabase,
+   createEmptyDatabase,
++  describeBackends,
+   describeSessions,
+   dropDatabase,
+   findDatabase,
+   listDatabasesWithPrefix,
+   lockTemplate,
++  notifyRun,
+   releaseCloneLock,
+   releaseLivenessLock,
+   sessionRolesWithPrefix,
+@@ -42,6 +46,7 @@ import {
+   unlockTemplate,
+   waitForSessionsToEnd,
+   type DatabaseRow,
++  type DropRetryPolicy,
+ } from './ddl';
+ import { PROJECT_ENDPOINT, assertServerReachable, type Endpoint } from './endpoint';
+ import { DbTestHelperError, errorCode, errorMessage } from './errors';
+@@ -76,6 +81,11 @@ export interface RunOptions {
+   readonly lockTimeoutMs?: number;
+   /** Longest wait for the sessions of a database to end, in milliseconds. */
+   readonly sessionDrainMs?: number;
++  /**
++   * The bounded retry of a forced drop that PostgreSQL refuses while a background worker of the
++   * server is on the database (`ddl.ts`). Default: 20 attempts, 250 ms apart. Tests shorten it.
++   */
++  readonly dropRetry?: Partial<DropRetryPolicy>;
+   /** The clock, in milliseconds since the epoch. A test passes an old one to make a stale run. */
+   readonly now?: () => number;
+   /** Seam for tests of the role refusals: builds the driver client of the run's own session. */
+@@ -131,11 +141,23 @@ export interface SweepReport {
+   readonly failed: ReadonlyArray<{ readonly name: string; readonly reason: string }>;
+ }
+ 
++/** A forced drop that PostgreSQL refused at first and that went through at a later attempt. */
++export interface RetriedDrop {
++  readonly name: string;
++  /** How often the server refused it before it went through. */
++  readonly refusals: number;
++}
++
+ export interface TeardownReport {
+   readonly dropped: readonly string[];
+-  /** Databases with the run prefix that still exist. Empty when the run cleaned up. */
++  /** Databases with the run prefix that still exist, read from `pg_database` after the drops. Empty when the run cleaned up. */
+   readonly remaining: readonly string[];
+   readonly failed: ReadonlyArray<{ readonly name: string; readonly reason: string }>;
++  /**
++   * The drops of the whole run that needed a retry: the ones of this process and the ones the
++   * test files reported from their own processes. Informational; such a drop succeeded.
++   */
++  readonly retriedDrops: readonly RetriedDrop[];
+   readonly ms: number;
+ }
+ 
+@@ -264,9 +286,11 @@ export class TestRun {
+   readonly #app: RoleCredentials;
+   readonly #resolve: DefinitionResolver;
+   readonly #drainMs: number;
++  readonly #dropRetry: Partial<DropRetryPolicy>;
+   readonly #now: () => number;
+   readonly #databases = new Set<TestDatabase>();
+   readonly #templateTimings: TemplateTiming[] = [];
++  readonly #retriedDrops: RetriedDrop[] = [];
+   #chain: Promise<void> = Promise.resolve();
+   #closed = false;
+ 
+@@ -288,6 +312,7 @@ export class TestRun {
+     this.#app = fields.app;
+     this.#resolve = fields.options.resolveDefinition ?? conventionResolver();
+     this.#drainMs = fields.options.sessionDrainMs ?? DEFAULT_SESSION_DRAIN_MS;
++    this.#dropRetry = fields.options.dropRetry ?? {};
+     this.#now = fields.options.now ?? Date.now;
+   }
+ 
+@@ -312,7 +337,11 @@ export class TestRun {
+         // Held by this session until the run ends or its process dies: "this run is alive".
+         if (!(await tryLivenessLock(session, key))) continue;
+         if ((await listDatabasesWithPrefix(session, identity.prefix)).length === 0) {
+-          return new TestRun({ identity, isOwner: true, dataDir, session, owner, app, options });
++          const run = new TestRun({ identity, isOwner: true, dataDir, session, owner, app, options });
++          // The test files drop their databases in processes of their own; a drop that needed a
++          // retry is reported to this session, on the channel named like the run prefix.
++          await session.listen(identity.prefix, (payload) => run.#heardRetriedDrop(payload));
++          return run;
+         }
+         await releaseLivenessLock(session, key);
+       }
+@@ -348,6 +377,14 @@ export class TestRun {
+     return this.#templateTimings;
+   }
+ 
++  /**
++   * The forced drops that needed a retry, as far as this process knows: its own, and for the
++   * owner of a run also the ones its test files have reported so far.
++   */
++  get retriedDrops(): readonly RetriedDrop[] {
++    return this.#retriedDrops;
++  }
++
+   /** The runtime role's credentials, for the role check of the global setup. */
+   get appCredentials(): RoleCredentials {
+     return this.#app;
+@@ -510,14 +547,41 @@ export class TestRun {
+     // cannot be ended by `dems_owner` (PG-26): give it time to close, then refuse.
+     const foreign = await waitForSessionsToEnd(this.#session, guarded, this.#drainMs, (session) => session.role !== OWNER_ROLE);
+     if (foreign.length > 0) {
++      // Role and application name of what is still open, so that the owning test can be found.
++      const named = clientsOfOtherRoles(await backendsOn(this.#session, guarded));
+       throw new DbTestHelperError(
+         'SESSIONS_REMAIN',
+-        `${guarded} cannot be dropped: sessions are still open on it (${describeSessions(foreign)}). ` +
++        `${guarded} cannot be dropped: sessions are still open on it (${named.length > 0 ? describeBackends(named) : describeSessions(foreign)}). ` +
+           'Close the app or the pool under test in the cleanup of the file (db.onCleanup). ' +
+           "The database is removed by the run's teardown, or by the stale sweep of a later run.",
+       );
+     }
+-    await dropDatabase(this.#session, guarded);
++    // Refused while a background worker of the server is on the database: repeated, bounded.
++    const outcome = await dropDatabase(this.#session, guarded, this.#dropRetry);
++    if (outcome.refusals > 0) await this.#noteRetriedDrop({ name: guarded, refusals: outcome.refusals });
++  }
++
++  /** The drop went through after a retry: counted here by the owner of the run, reported to it by a test file. */
++  async #noteRetriedDrop(drop: RetriedDrop): Promise<void> {
++    this.#retriedDrops.push(drop);
++    if (this.isOwner) return;
++    // Informational: a report that cannot be sent must not fail a drop that succeeded.
++    await notifyRun(this.#session, this.identity.prefix, JSON.stringify(drop)).catch(() => undefined);
++  }
++
++  /** A test file's report of a retried drop, received on the run's channel. Anything else is ignored. */
++  #heardRetriedDrop(payload: string): void {
++    let report: unknown;
++    try {
++      report = JSON.parse(payload);
++    } catch {
++      return;
++    }
++    if (typeof report !== 'object' || report === null) return;
++    const { name, refusals } = report as { name?: unknown; refusals?: unknown };
++    if (typeof name !== 'string' || !name.startsWith(TEST_DATABASE_PREFIX)) return;
++    if (typeof refusals !== 'number' || !Number.isInteger(refusals) || refusals < 1) return;
++    this.#retriedDrops.push({ name, refusals });
+   }
+ 
+   // ── Connections on a database of the run ─────────────────────────────────────────────────────
+@@ -639,8 +703,9 @@ export class TestRun {
+           failed.push({ name, reason: errorMessage(error) });
+         }
+       }
++      // Read from the catalog after the drops: a database that a refused drop left is listed here.
+       const remaining = (await listDatabasesWithPrefix(this.#session, this.identity.prefix)).map((row) => row.name);
+-      return { dropped, remaining, failed, ms: performance.now() - started };
++      return { dropped, remaining, failed, retriedDrops: [...this.#retriedDrops], ms: performance.now() - started };
+     } finally {
+       await this.close();
+     }
+diff --git a/apps/core-server/test/helpers/db/session.ts b/apps/core-server/test/helpers/db/session.ts
+index 598d75f..1c2a06a 100644
+--- a/apps/core-server/test/helpers/db/session.ts
++++ b/apps/core-server/test/helpers/db/session.ts
+@@ -143,17 +143,28 @@ export async function verifySession(runner: Pick<StatementRunner, 'run'>, expect
+ 
+ // ── The helper's own session on the maintenance database ───────────────────────────────────────
+ 
++/** What the driver hands to a listener of `notification`. */
++export interface DriverNotification {
++  readonly channel: string;
++  readonly payload?: string | undefined;
++}
++
+ /** What the session needs from a driver client. Tests pass a fake through `clientFactory`. */
+ export interface DriverClient {
+   connect(): Promise<unknown>;
+   query(text: string, values?: unknown[]): Promise<{ rows: Row[] }>;
+   end(): Promise<unknown>;
+   on(event: 'error', listener: (error: Error) => void): unknown;
++  on(event: 'notification', listener: (message: DriverNotification) => void): unknown;
+ }
+ 
+ export type ClientFactory = (options: DriverOptions) => DriverClient;
+ 
+-const defaultClientFactory: ClientFactory = (options) => new Client(options);
++/** The real driver. Test support wraps it to inject a refusal; nothing else builds a client. */
++export const defaultClientFactory: ClientFactory = (options) => new Client(options);
++
++/** A notification channel is written as a quoted identifier: letters, digits and underscores only. */
++const CHANNEL_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
+ 
+ export interface OwnerSessionOptions {
+   readonly applicationName?: string;
+@@ -254,6 +265,22 @@ export class OwnerSession implements StatementRunner {
+     return (await sent).rows as R[];
+   }
+ 
++  /**
++   * Subscribes the session to a notification channel of the maintenance database; `listener`
++   * gets the payload of each notification on it. The server delivers a notification while the
++   * session is idle and, at the latest, before it answers the session's next statement.
++   */
++  async listen(channel: string, listener: (payload: string) => void): Promise<void> {
++    if (!CHANNEL_PATTERN.test(channel)) {
++      throw new DbTestHelperError('NAME_INVALID', 'A notification channel is 1 to 63 characters of [a-z0-9_] and starts with a letter.');
++    }
++    this.#client.on('notification', (message) => {
++      if (message.channel === channel) listener(message.payload ?? '');
++    });
++    // A utility statement takes no bind parameter (PG-19); the pattern has limited the name.
++    await this.run(`LISTEN "${channel}"`);
++  }
++
+   /** Ends the session. Its advisory locks go with it. */
+   async close(): Promise<void> {
+     if (this.#closed) return;
+diff --git a/apps/core-server/test/helpers/db/testing/fake-cluster.ts b/apps/core-server/test/helpers/db/testing/fake-cluster.ts
+index a78a584..89d4603 100644
+--- a/apps/core-server/test/helpers/db/testing/fake-cluster.ts
++++ b/apps/core-server/test/helpers/db/testing/fake-cluster.ts
+@@ -12,15 +12,27 @@ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { APP_ROLE, OWNER_ROLE } from '../constants';
+ import { APP_FILE_KEYS, APP_FILE_NAME, OWNER_FILE_KEYS, OWNER_FILE_NAME } from '../credentials';
+-import type { ClientFactory, DriverOptions, Row } from '../session';
++import type { ClientFactory, DriverNotification, DriverOptions, Row } from '../session';
+ 
+ export interface FakeDatabase {
+   name: string;
+   owner: string;
+   isTemplate: boolean;
+   allowConnections: boolean;
+-  /** Client sessions on the database, by role. */
+-  sessions: Array<{ role: string; sessions: number }>;
++  /** Client sessions on the database, by role (and, where a test says so, by application name). */
++  sessions: Array<{ role: string; sessions: number; application?: string }>;
++  /**
++   * Backends without a role on the database: an autovacuum worker. As in PostgreSQL, a forced
++   * drop by the owner role is refused while one is there.
++   */
++  background: number;
++  /** After this many more refused drops the background backends have left. Unset: they stay. */
++  backgroundLeavesAfter?: number | undefined;
++  /**
++   * The next forced drops that are refused although nothing is left on the database when the
++   * helper looks: the backend came and went within the statement.
++   */
++  refuseNextDrops: number;
+ }
+ 
+ export interface RecordedStatement {
+@@ -39,6 +51,10 @@ export class FakeCluster {
+   readonly locksHeldElsewhere = new Set<number>();
+   /** Liveness keys held by a session of the helper: key to session number. Released at `end()`. */
+   readonly #heldLocks = new Map<number, number>();
++  /** What each session listens to, and whom it tells: session number to channels and listeners. */
++  readonly #subscriptions = new Map<number, { channels: Set<string>; listeners: Array<(message: DriverNotification) => void> }>();
++  /** Called with every statement before it is executed: a test changes the cluster "meanwhile". */
++  beforeStatement: ((text: string) => void) | undefined;
+   #sessions = 0;
+   /** What the session reports about itself. A test changes it to play a superuser. */
+   identity: Row = {
+@@ -61,7 +77,16 @@ export class FakeCluster {
+   }
+ 
+   add(name: string, fields: Partial<FakeDatabase> = {}): FakeDatabase {
+-    const database: FakeDatabase = { name, owner: OWNER_ROLE, isTemplate: false, allowConnections: true, sessions: [], ...fields };
++    const database: FakeDatabase = {
++      name,
++      owner: OWNER_ROLE,
++      isTemplate: false,
++      allowConnections: true,
++      sessions: [],
++      background: 0,
++      refuseNextDrops: 0,
++      ...fields,
++    };
+     this.databases.set(name, database);
+     return database;
+   }
+@@ -91,17 +116,28 @@ export class FakeCluster {
+     this.clients.push(options);
+     this.#sessions += 1;
+     const session = this.#sessions;
++    const subscription = { channels: new Set<string>(), listeners: [] as Array<(message: DriverNotification) => void> };
++    this.#subscriptions.set(session, subscription);
+     return {
+       connect: async () => undefined,
+-      // As in PostgreSQL: the advisory locks of a session go when it ends.
++      // As in PostgreSQL: the advisory locks and the subscriptions of a session go when it ends.
+       end: async () => {
+         for (const [key, holder] of this.#heldLocks) if (holder === session) this.#heldLocks.delete(key);
++        this.#subscriptions.delete(session);
++      },
++      on: (event: 'error' | 'notification', listener: ((error: Error) => void) | ((message: DriverNotification) => void)) => {
++        if (event === 'notification') subscription.listeners.push(listener as (message: DriverNotification) => void);
++        return undefined;
+       },
+-      on: () => undefined,
+       query: async (text: string, values: unknown[] = []) => ({ rows: this.#execute(session, text, values) }),
+     };
+   };
+ 
++  /** The channels that sessions of the helper listen to, sorted. */
++  listenedChannels(): string[] {
++    return [...new Set([...this.#subscriptions.values()].flatMap((subscription) => [...subscription.channels]))].sort();
++  }
++
+   /** A session-level advisory lock that is tried, not waited for: re-entrant within a session. */
+   #tryLock(session: number, key: number): boolean {
+     if (this.locksHeldElsewhere.has(key)) return false;
+@@ -121,10 +157,38 @@ export class FakeCluster {
+     return database;
+   }
+ 
++  #refusedToTerminate(): Error {
++    return Object.assign(new Error('permission denied to terminate process'), { code: '42501' });
++  }
++
+   #execute(session: number, text: string, values: unknown[]): Row[] {
++    this.beforeStatement?.(text);
+     this.statements.push({ text, values });
+     if (text.includes('FROM pg_roles r WHERE r.rolname = current_user')) return [this.identity];
+     if (text.startsWith('SET lock_timeout = ')) return [];
++    const listen = /^LISTEN "([a-z][a-z0-9_]*)"$/.exec(text);
++    if (listen !== null) {
++      this.#subscriptions.get(session)?.channels.add(listen[1] ?? '');
++      return [];
++    }
++    if (text.includes('pg_notify($1, $2)')) {
++      const message: DriverNotification = { channel: String(values[0]), payload: String(values[1]) };
++      // As in PostgreSQL: every session that listens to the channel is told, whoever sent it.
++      for (const subscription of this.#subscriptions.values()) {
++        if (subscription.channels.has(message.channel)) for (const listener of subscription.listeners) listener(message);
++      }
++      return [{}];
++    }
++    // Every backend on a database, by role and application: the ones without a role first.
++    if (text.includes('FROM pg_stat_activity') && text.includes('AS backends')) {
++      const database = this.databases.get(String(values[0]));
++      if (database === undefined) return [];
++      const groups: Row[] = database.background > 0 ? [{ role: null, application: '', backends: database.background }] : [];
++      for (const group of [...database.sessions].sort((a, b) => a.role.localeCompare(b.role))) {
++        groups.push({ role: group.role, application: group.application ?? '', backends: group.sessions });
++      }
++      return groups;
++    }
+     if (text.includes('FROM pg_database d') && text.includes('starts_with(d.datname, $1)')) {
+       const prefix = String(values[0]);
+       return this.names()
+@@ -183,9 +247,23 @@ export class FakeCluster {
+       const database = this.databases.get(drop[1] ?? '');
+       if (database === undefined) return [];
+       if (database.isTemplate) throw Object.assign(new Error('cannot drop a template database'), { code: '42809' });
+-      if (database.sessions.some((session) => session.role !== OWNER_ROLE)) {
+-        throw Object.assign(new Error('permission denied to terminate process'), { code: '42501' });
++      if (database.refuseNextDrops > 0) {
++        database.refuseNextDrops -= 1;
++        throw this.#refusedToTerminate();
++      }
++      // The server checks every backend before it ends one: a single backend that the owner role
++      // may not end refuses the whole statement, and the sessions of the owner role stay too.
++      if (database.background > 0) {
++        if (database.backgroundLeavesAfter !== undefined) {
++          database.backgroundLeavesAfter -= 1;
++          if (database.backgroundLeavesAfter <= 0) {
++            database.background = 0;
++            database.backgroundLeavesAfter = undefined;
++          }
++        }
++        throw this.#refusedToTerminate();
+       }
++      if (database.sessions.some((session) => session.role !== OWNER_ROLE)) throw this.#refusedToTerminate();
+       this.databases.delete(database.name);
+       return [];
+     }
+diff --git b/apps/core-server/test/helpers/db/testing/refusing-driver.ts b/apps/core-server/test/helpers/db/testing/refusing-driver.ts
+new file mode 100644
+index 0000000..d998fbf
+--- /dev/null
++++ b/apps/core-server/test/helpers/db/testing/refusing-driver.ts
+@@ -0,0 +1,54 @@
++/**
++ * Test support (not a test file): the real driver behind the helper's driver seam
++ * (`clientFactory`), with one change. The first forced drops it is handed are NOT sent; they are
++ * answered with the refusal PostgreSQL gives while a backend that the owner role may not end is
++ * on the database (SQLSTATE 42501, "permission denied to terminate process"). Every other
++ * statement, and every later forced drop, goes to the server unchanged.
++ *
++ * An autovacuum worker cannot be summoned for a test: it comes when the server decides. With
++ * this the retry of the helper runs against the real PostgreSQL in every other respect: the
++ * catalog read after a refusal, the drop that goes through, the report to the owner of the run.
++ * The refusal by the server itself was reproduced once, outside the suite (row W11b).
++ */
++import { defaultClientFactory, type ClientFactory, type DriverClient, type DriverNotification } from '../session';
++
++const FORCED_DROP = /^DROP DATABASE IF EXISTS "[a-z0-9_]+" WITH \(FORCE\)$/;
++
++export interface RefusingDriver {
++  readonly factory: ClientFactory;
++  /** The forced drops that were answered with the refusal instead of being sent. */
++  readonly refused: string[];
++  /** The forced drops that went to the server. */
++  readonly sent: string[];
++}
++
++/** Refuses the first `refusals` forced drops of all sessions built by the returned factory. */
++export function refusingDriver(refusals: number): RefusingDriver {
++  let left = refusals;
++  const refused: string[] = [];
++  const sent: string[] = [];
++  const factory: ClientFactory = (options) => {
++    const real = defaultClientFactory(options);
++    const client: DriverClient = {
++      connect: () => real.connect(),
++      end: () => real.end(),
++      on: (event: 'error' | 'notification', listener: ((error: Error) => void) | ((message: DriverNotification) => void)) =>
++        event === 'error'
++          ? real.on('error', listener as (error: Error) => void)
++          : real.on('notification', listener as (message: DriverNotification) => void),
++      query: async (text, values) => {
++        if (FORCED_DROP.test(text)) {
++          if (left > 0) {
++            left -= 1;
++            refused.push(text);
++            throw Object.assign(new Error('permission denied to terminate process'), { code: '42501' });
++          }
++          sent.push(text);
++        }
++        return real.query(text, values);
++      },
++    };
++    return client;
++  };
++  return { factory, refused, sent };
++}

@@ -1,0 +1,12 @@
+// Keeps one headless shell alive (fresh profile, OS-chosen devtools port) until SIGTERM/SIGINT, then removes the profile.
+import { launch, shutdown } from './w2_lib.mjs'
+import { writeFileSync } from 'node:fs'
+const [name, lifeSec = '3600'] = process.argv.slice(2)
+const b = await launch(name)
+writeFileSync(`${process.env.TMPDIR}/w2_browser_${name}.json`, JSON.stringify({ http: b.http, port: b.port, pid: b.proc.pid, profile: b.profile, product: b.version.Browser }))
+console.log(`launched ${name} at ${b.http}: ${b.version.Browser} pid ${b.proc.pid} (launcher pid ${process.pid})`)
+let done = false
+const stop = async () => { if (done) return; done = true; await shutdown(b); console.log(`stopped ${name}, profile removed`); process.exit(0) }
+process.on('SIGTERM', stop); process.on('SIGINT', stop)
+setTimeout(stop, Number(lifeSec) * 1000)
+b.proc.on('exit', () => { if (!done) { console.log(`browser ${name} exited by itself`); stop() } })

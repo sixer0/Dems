@@ -1,0 +1,42 @@
+## 2026-10-05 22:47:06 WIB baseline (no mutation): the row's test files
+baseline exit 0 Test Files  4 passed (4) | Tests  52 passed (52) (8 s)
+P01 SURVIVED    FC-7: the in-flight marker of the resume effect is ignored | Test Files  1 passed (1) | Tests  16 passed (16) |  (3 s)
+P02 detected    A3: a Live 403 shows the Simulated sentence, not the denied toast | Test Files  1 failed (1) | Tests  2 failed | 14 passed (16) | × refusal: a 403 shows the denied toast that names the role (not the Simulated sentence); Next returns to idle, the form is kept 8083ms (23 s)
+P03 detected    A3/D-3: the presenter is skipped in the catch of createAndCheck | Test Files  1 failed (1) | Tests  6 failed | 10 passed (16) | × outage: the offline toast of LB-6; Next returns to idle, the form is kept, nothing else is sent 8096ms (54 s)
+P04 detected    D-3: the pre-check is not awaited before step 2 | Test Files  1 failed (1) | Tests  3 failed | 13 passed (16) | × success: step 2 is shown only after the pre-check settled (its answer first, its delta later) 430ms (16 s)
+P05 detected    C-3: the state read after the create is ignored (a pre-check is always sent) | Test Files  1 failed (1) | Tests  1 failed | 15 passed (16) | × success: the Core answers 200 for a session it already holds in PRECHECK: the state is read after the awaited create, no pre-check is sent 8083ms (16 s)
+P06 detected    D-2: the cancel is not awaited before the second create | Test Files  1 failed (1) | Tests  2 failed | 14 passed (16) | × refusal: the cancel is refused (403): the denied toast, no second create, step 1 with the form kept 8166ms (16 s)
+P07 SURVIVED    A3: a second submit is not ignored while a create is out | Test Files  1 passed (1) | Tests  16 passed (16) |  (8 s)
+P08 detected    A4: the scanned number is not written into the field | Test Files  2 failed (2) | Tests  5 failed | 24 passed (29) | × an answer after 1 s: two quick presses send ONE request; no spinner at 300 ms; the in-button spinner at 500 ms; nothing is added outside the control 414ms (33 s)
+## 2026-10-05 22:50:02 WIB 8 mutations: 6 detected, 2 survived ['P01', 'P07'], 0 not applied []
+## 2026-10-05 22:50:47 WIB baseline (no mutation): the row's test files
+baseline exit 0 Test Files  4 passed (4) | Tests  52 passed (52) (10 s)
+P01 detected    FC-7: the in-flight marker of the resume effect is ignored | Test Files  1 failed (1) | Tests  3 failed | 13 passed (16) | × success: StrictMode runs the effect twice, ONE request goes out while it is in flight; the delta then moves the gate on 560ms (5 s)
+P07 detected    A3: a second submit is not ignored while a create is out | Test Files  1 failed (1) | Tests  1 failed | 15 passed (16) | × success: the create is sent once with the form, then the pre-check; step 2 shows the Core's session 927ms (8 s)
+## 2026-10-05 22:51:09 WIB 2 mutations: 2 detected, 0 survived [], 0 not applied []
+## 2026-10-05 22:51:23 WIB baseline (no mutation): the row's test files
+baseline exit 0 Test Files  4 passed (4) | Tests  52 passed (52) (8 s)
+P09 detected    A4: a refused scan is not handed to the presenter | Test Files  1 failed (1) | Tests  2 failed | 14 passed (16) | × refusal: a 403 shows the denied toast, then the field gets the replica's next number (the adapter's fallback) 8056ms (24 s)
+P10 SURVIVED    B-6: step 3 opens although the acknowledgement was refused | Test Files  1 passed (1) | Tests  16 passed (16) |  (4 s)
+P11 detected    B-6: the start toast and the navigation do not wait for the answer | Test Files  1 failed (1) | Tests  1 failed | 15 passed (16) | × success: the toast names the ID read before the call, then /session; one request 8090ms (12 s)
+P12 detected    B-6: a refused start is not handed to the presenter | Test Files  1 failed (1) | Tests  2 failed | 14 passed (16) | × refusal: a 403 shows the denied toast; no "Recording started", no navigation, Start idle 8108ms (20 s)
+P13 detected    B-6: a refused cancel closes the dialog and leaves | Test Files  1 failed (1) | Tests  2 failed | 14 passed (16) | × refusal: a 403 shows the denied toast; the dialog stays open, the page stays 137ms (5 s)
+P14 detected    B-6: a refused retry is not handed to the presenter | Test Files  1 failed (1) | Tests  2 failed | 14 passed (16) | × refusal: a 403 shows the denied toast; the gate stays blocked and the button idle 8087ms (20 s)
+P16 detected    the Live flag is not passed to the Devices step | Test Files  1 failed (1) | Tests  1 failed | 15 passed (16) | × the blocked Core link is worded as a missing paired tablet, without the "clear the fault" line; never an "unreachable" sentence 85ms (4 s)
+## 2026-10-05 22:53:01 WIB 7 mutations: 6 detected, 1 survived ['P10'], 0 not applied []
+## 2026-10-05 22:53:20 WIB baseline (no mutation): the row's test files
+baseline exit 0 Test Files  4 passed (4) | Tests  52 passed (52) (8 s)
+P10 detected    B-6: step 3 opens although the acknowledgement was refused | Test Files  1 failed (1) | Tests  1 failed | 15 passed (16) | × refusal: a 403 shows the denied toast; step 2 stays and Next is idle again 131ms (4 s)
+## 2026-10-05 22:53:32 WIB 1 mutations: 1 detected, 0 survived [], 0 not applied []
+## 2026-10-05 22:53:38 WIB baseline (no mutation): the row's test files
+baseline exit 0 Test Files  4 passed (4) | Tests  52 passed (52) (10 s)
+H01 detected    the spinner shows at once | Test Files  1 failed (1) | Tests  6 failed | 7 passed (13) | × an answer after 1 s: two quick presses send ONE request; no spinner at 300 ms; the in-button spinner at 500 ms; nothing is added outside the control 452ms (3 s)
+H02 detected    a second press is not ignored | Test Files  1 failed (1) | Tests  9 failed | 4 passed (13) | × an answer after 1 s: two quick presses send ONE request; no spinner at 300 ms; the in-button spinner at 500 ms; nothing is added outside the control 364ms (3 s)
+H03 detected    nothing is shown while a command is in flight | Test Files  1 failed (1) | Tests  6 failed | 7 passed (13) | × an answer after 1 s: two quick presses send ONE request; no spinner at 300 ms; the in-button spinner at 500 ms; nothing is added outside the control 350ms (3 s)
+H04 detected    aria-busy is never written | Test Files  1 failed (1) | Tests  5 failed | 8 passed (13) | × an answer after 1 s: two quick presses send ONE request; no spinner at 300 ms; the in-button spinner at 500 ms; nothing is added outside the control 358ms (3 s)
+H05 detected    the reveal timer outlives the answer | Test Files  1 failed (1) | Tests  1 failed | 12 passed (13) | × an answer after 50 ms: no spinner is ever rendered 110ms (3 s)
+S01 detected    a refused scan leaves the field empty (no fallback) | Test Files  1 failed (1) | Tests  2 failed | 14 passed (16) | × refusal: a 403 shows the denied toast, then the field gets the replica's next number (the adapter's fallback) 8074ms (24 s)
+S02 detected    a refused scan is not reported to the page | Test Files  1 failed (1) | Tests  2 failed | 14 passed (16) | × refusal: a 403 shows the denied toast, then the field gets the replica's next number (the adapter's fallback) 8050ms (24 s)
+D01 detected    the Live sentence shows in Simulated mode too | Test Files  1 failed (1) | Tests  1 failed | 12 passed (13) | × live=false (Simulated): the blocked Core link 22ms (3 s)
+D02 detected    Live: "clear the fault" is still shown for a missing tablet | Test Files  2 failed (2) | Tests  2 failed | 27 passed (29) | × live=true (Live): the blocked Core link 19ms (4 s)
+## 2026-10-05 22:55:00 WIB 9 mutations: 9 detected, 0 survived [], 0 not applied []

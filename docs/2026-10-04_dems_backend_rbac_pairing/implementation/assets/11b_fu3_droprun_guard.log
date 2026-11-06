@@ -1,0 +1,13 @@
+
+> @dems/core-server@0.2.0 test:db:drop-run
+> tsx test/drop-dead-run.ts
+
+usage: drop-dead-run.ts <run prefix: dems_test_<label>_<stamp>_>   (one prefix, exactly)
+
+> @dems/core-server@0.2.0 test:db:drop-run
+> tsx test/drop-dead-run.ts dems_demo
+
+[16:35:19.865] caller: run dems_test_step_33d_tmfhav9x_* as dems_owner on 127.0.0.1:4432, PostgreSQL 18.4
+[16:35:19.866] asked to remove the run dems_demo*
+[16:35:19.866] REFUSED (GUARD_NOT_A_TEST_DATABASE): refused before any statement: "dems_demo" is not the prefix of a test run (dems_test_<label>_<stamp>_, with its last underscore).
+[16:35:19.868] caller's run closed: dropped 0, remaining 0

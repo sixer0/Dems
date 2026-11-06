@@ -1,0 +1,9 @@
+10:21:07.625 nav / load=true
+10:21:10.346 wait page-dashboard present: 0 ms (at 10:21:10.346)
+10:21:10.422 press start-new-session ok at 10:21:10.448
+10:21:10.515 wait page-session-new present: 69 ms (at 10:21:10.584)
+10:21:10.643 slept 2500 ms
+10:21:13.206 screenshot w1_probe_session_new_step1.png 10:21:13.206..10:21:13.295
+10:21:13.393 ids => ["sn-header-session","sn-step-position","sn-step-info","sn-field-case","sn-case-number","sn-scan","sn-subject-type","sn-subject-TERSANGKA","sn-subject-SAKSI","sn-subject-LAINNYA","sn-subject-name","sn-investigator","sn-investigator-input","sn-room","sn-profile","sn-notes","sn-preview","sn-readiness","sn-readiness-count","sn-cancel","sn-next"]
+10:21:13.498 js => [["BUTTON",null,"Tersangka"],["BUTTON",null,"Saksi"],["BUTTON",null,"Lainnya"]]
+10:21:13.596 js => [["INPUT","text","<input aria-required=\"true\" autocomplete=\"off\" maxlength=\"120\" placeholder=\"Full name\" tabindex=\"0\" id=\"react-aria9324998301-_r_9i_\" aria-labelledby=\"react-aria9324998301-_r_9j_\" class=\"input input--p"]]

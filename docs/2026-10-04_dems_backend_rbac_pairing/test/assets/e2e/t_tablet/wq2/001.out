@@ -1,0 +1,4 @@
+api GET /api/v1/auth/session -> 401 (112 bytes, wq/api_1791255936845.json): {"error":{"code":"NOT_SIGNED_IN","message":"Sign in first.","requestId":"1531b160-9f35-4528-bc9d-864fb982e146"}}
+nav /devices load=true at 10:05:41.088
+shot W02_web_devices.png at 10:05:41.844
+testids dev (0): 

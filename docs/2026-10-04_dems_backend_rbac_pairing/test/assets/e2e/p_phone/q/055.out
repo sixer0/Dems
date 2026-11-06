@@ -1,0 +1,6 @@
+10:22:21.999 js => "All checks passed"
+10:22:22.082 press sn-next ok at 10:22:22.124
+10:22:22.189 slept 2500 ms
+10:22:24.872 screenshot 53_sc3_web_step3_ready.png 10:22:24.872..10:22:25.025
+10:22:25.111 ids => ["sn-header-session","sn-step-position","sn-step-ready","sn-session-id","sn-summary","sn-summary-devices","sn-countdown-switch","sn-start","sn-cancel","sn-back"]
+10:22:25.174 js => {"sw":"<div data-slot=\"switch\" data-testid=\"sn-countdown-switch\" class=\"switch switch--md\" data-rac=\"\" data-selected=\"true\"><label data-slot=\"switch-content\" data-react-aria-pressable=\"true\" class=\"switch__content\" data-rac=\"\" data-selected=\"true\"><span style=\"border: 0px; clip: rect(0px, 0px, 0px, 0px); c","start":"<button data-slot=\"button\" data-testid=\"sn-start\" class=\"button button--lg button--primary sn-start\" data-rac=\"\" type=\"button\" tabindex=\"0\" data-react-aria-pressable=\"true\" id=\"react-aria9324998301-_r"}

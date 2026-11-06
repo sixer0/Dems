@@ -1,0 +1,99 @@
+
+== 01:51:25 0. before (no reset): ports free?; dems_lane_1 counts
+   active_session           1
+   alerts                   0
+   audit_log                220
+   device_credentials       1
+   paired_devices           1
+   session_history          16
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 01:51:25 1. start the lane-1 backend
+npm PID 18634, listener PID 18690
+   "port":4421,"database":"dems_lane_1","demoControls":false
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T18:51:26.519Z","uptimeMs":180,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 01:51:26 2. device session: phone, Metro 8083, tcp:4420 -> tcp:4421 (cap 600 s)
+[device-session phone 01:51:26] lock held; hard cap 600 s, until 02:01:26 (watchdog PID 18734)
+[device-session phone 01:51:26] session serial: emulator-5554 (dems2_phone)
+[device-session phone 01:51:26] emulator-5554: screen awake, no keyguard
+[device-session phone 01:51:27] Metro PID 18771 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session phone 01:51:29] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 01:51:29] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 01:51:29] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), Metro 8083, cwd /Users/gsp-budi/Documents/DEMS/apps/mobile
+-- before: prefs {"coreLinkSource":"SIMULATED"}; simulator auth 
+/system/bin/sh: com.dems.demo.tablet: inaccessible or not found
+-- 01:51:51 ACK 001 | ERROR in "link": Command failed: adb -s emulator-5554 shell am start -W -a android.intent.action.VIEW -d demsdemo:///login?core=LIVE&motion=off com.dems.demo.tablet | slept 8000 ms | screencap 73_phone_live_login.png (1721215 bytes)
+-- 01:51:57 ACK 002 | tap 540,1105 | slept 1200 ms | tap 540,2338 | slept 800 ms | tap 540,1105 | slept 600 ms | username typed (budi.santoso); editor inputType 0x80001 | slept 400 ms | tap 540,1265 | slept 700 ms | focused true; editor inputType 0x80081 | screencap 002.png (1229551 bytes)
+-- 01:52:07 ACK 003 | password typed (not shown); editor inputType 0x80081 | key 66 | signin 200 (POST /api/v1/auth/sign-in 200) | slept 5000 ms | screencap 73_phone_live_home_offer_check.png (227200 bytes); the app's biometric offer declined: "Not now" at 540,1444 | slept 2500 ms | screencap 73_phone_live_home.png (205498 bytes)
+-- 01:52:25 ACK 004 | deep link 'demsdemo:///login?core=LIVE&motion=off' | slept 9000 ms | corelog (4): GET /api/v1/pairing/device 200 | GET /api/v1/auth/session 401 | GET /api/v1/auth/status 200 | POST /api/v1/auth/sign-in 200 | screencap 73_phone_live_login.png (205498 bytes)
+-- 01:52:41 ACK 005 | deep link demsdemo:///session/new?step=1 | slept 3500 ms | ids: screen-session-new@540,1212 ; session-new-header@540,137 ; session-new-back@95,137 "Back" ; session-new-profile-menu@986,137 "Load last session profile" ; session-new-stepper-root@540,310 "Session setup progress" ; session-new-stepper@540,310 ; session-new-stepper-step-0@208,363 "Step 1 of 3, Session Info, current" ; session-new-stepper-step-1@541,363 "Step 2 of 3, Devices Check, not started" ; session-new-stepper-step-2@872,363 "Step 3 of 3, Ready, not started" ; session-new-scroll@540,1292 ; session-new-step-1@540,1292 ; session-new-info@540,1292 ; session-new-case-number@540,668 "LP/YYYY/MMDD-NNNN" ; session-new-scan@913,669 "Fill in the next case number" ; session-new-subject-type@540,915 ; session-new-subject-TERSANGKA@229,915 "Tersangka" ; session-new-subject-SAKSI@540,915 "Saksi" ; session-new-subject-LAINNYA@851,915 "Lainnya" ; session-new-subject-gloss@540,1020 "Long-press a type for its English meaning." ; session-new-subject-name@540,1230 "Full name" ; session-new-investigator@540,1482 "Investigator" ; session-new-room@540,1734 "Room / Location" ; session-new-profile@540,1986 "Recording Profile" ; session-new-notes@540,2166 "Context for this interview" ; session-new-next@540,2257 "Next" | screencap 005.png (206130 bytes)
+-- 01:53:12 ACK 006 | tap 913,669 | slept 800 ms | tap 229,915 | slept 600 ms | tap 540,1230 | slept 900 ms | text typed (Dewi W73 Device); editor inputType 0x2001 | slept 500 ms | key 111 | slept 900 ms | screencap 73_phone_step1_filled_live.png (218021 bytes) | tapid session-new-next at 540,2257 "Next" | create 201 (POST /api/v1/session 201) | precheck 202 (POST /api/v1/session/{id}/precheck 202) | slept 7000 ms | ids: screen-session-new@540,1212 ; session-new-header@540,137 ; session-new-back@95,137 "Back" ; session-new-stepper-root@540,310 "Session setup progress" ; session-new-stepper@540,310 ; session-new-stepper-step-0@208,363 "Step 1 of 3, Session Info, completed" ; session-new-stepper-step-1@541,363 "Step 2 of 3, Devices Check, current" ; session-new-stepper-step-2@872,363 "Step 3 of 3, Ready, not started" ; session-new-scroll@540,1292 ; session-new-step-2@540,1292 ; session-new-previews-card@540,661 ; session-new-previews@540,661 ; session-new-preview-CAM-1@304,624 ; session-new-feed-CAM-1@304,587 "Camera 1" ; session-new-meter-AUDIO-01@373,758 "MIC 1, -27 dBFS" ; session-new-preview-CAM-2@776,624 ; session-new-feed-CAM-2@776,587 "Camera 2" ; session-new-meter-AUDIO-02@845,758 "MIC 2, -15 dBFS" ; session-new-previews-hint@540,832 "Microphone levels from the Core server" ; session-new-gate@540,1553 ; session-new-gate-progress@883,1012 "8 of 8 checked" ; session-new-gate-pass@300,1222 "All checks passed" ; session-new-checks@540,1727 ; session-new-check-CORE@540,1391 "Core Machine, ONLINE, PASS" ; session-new-check-CORE-value@482,1423 "ONLINE" ; session-new-check-CORE-status@871,1392 "PASS" ; session-new-check-LENS_1@540,1592 "Video Lens 1, READY, PASS" ; session-new-check-LENS_1-value@482,1624 "READY" ; session-new-check-LENS_1-status@871,1593 "PASS" ; session-new-check-LENS_2@540,1793 "Video Lens 2, READY, PASS" ; session-new-check-LENS_2-value@482,1825 "READY" ; session-new-check-LENS_2-status@871,1793 "PASS" ; session-new-check-MIC_1@540,1994 "MIC 1, READY, PASS" ; session-new-check-MIC_1-value@482,2026 "READY" ; session-new-check-MIC_1-status@871,1994 "PASS" ; session-new-check-MIC_2@540,2129 "MIC 2, READY, PASS" ; session-new-check-MIC_2-value@482,2181 "READY" ; session-new-check-MIC_2-status@871,2166 "PASS" ; session-new-check-STORAGE@540,2229 "Storage, READY, PASS" ; session-new-check-STORAGE-value@482,2282 "READY" ; session-new-check-STORAGE-status@871,2266 "PASS" ; session-new-next@540,2257 "busy" | screencap 006.png (498473 bytes)
+-- 01:53:28 ACK 007 | tapid session-new-next at 540,2257 "busy" | slept 2500 ms | ids: screen-session-new@540,1212 ; session-new-header@540,137 ; session-new-back@95,137 "Back" ; session-new-stepper-root@540,310 "Session setup progress" ; session-new-stepper@540,310 ; session-new-stepper-step-0@208,363 "Step 1 of 3, Session Info, completed" ; session-new-stepper-step-1@541,363 "Step 2 of 3, Devices Check, completed" ; session-new-stepper-step-2@872,363 "Step 3 of 3, Ready, current" ; session-new-scroll@540,1292 ; session-new-step-3@540,1213 ; session-new-ready-ring@540,647 ; session-new-ready@540,1460 ; session-new-summary-case@540,1026 "Case, LP/2026/1006-0013" ; session-new-summary-subject@706,1174 ; session-new-summary-investigator@540,1323 "Investigator, AKP Budi Santoso" ; session-new-summary-devices@540,1737 "Devices" ; session-new-countdown@147,1901 "3-2-1 countdown, on" ; session-new-start@540,2257 "busy" | screencap 007.png (252246 bytes)
+-- 01:53:49 ACK 008 | tap 540,2257 | start 200 (POST /api/v1/session/{id}/start 200) | slept 9000 ms | screencap 73_phone_monitor_recording_live.png (527152 bytes)
+-- 01:54:21 ACK 009 | stopped PID 18690 in 115 ms (SIGTERM); down 6 s; started again, listener PID 21103 (8067 ms after the stop) | slept 3000 ms | screencap 73_phone_after_restart_3s.png (312389 bytes) | slept 11000 ms | corelog (9): POST /api/v1/auth/sign-in 200 | POST /api/v1/auth/touch 200 | POST /api/v1/session 201 | POST /api/v1/session/{id}/precheck 202 | POST /api/v1/session/{id}/start 200 | GET /api/v1/auth/session 200 | ids: screen-session-recovery@540,1212 ; recovery-card@540,1067 ; recovery-ring@200,263 "Session recovery" ; recovery-title@579,205 "Session recovery" ; recovery-session-id@521,273 "SES-20261006-0029" ; recovery-state-chip@437,331 "Fault" ; recovery-fault@540,553 ; recovery-pipeline@540,1073 ; recovery-pipeline-step-0@601,802 "Step 1 of 5, Recovery marker and journal, waiting" ; recovery-pipeline-step-1@601,955 "Step 2 of 5, Track integrity, waiting" ; recovery-pipeline-step-2@601,1107 "Step 3 of 5, Last good segment, waiting" ; recovery-pipeline-step-3@601,1259 "Step 4 of 5, Time-source continuity, waiting" ; recovery-pipeline-step-4@601,1377 "Step 5 of 5, Incomplete session analysis, waiting" ; recovery-live-derived@540,1513 "The Core reports the recovery stage and the outcome. The che" ; recovery-start@540,1682 "Start recovery" ; recovery-start-hint@540,1797 "Recovery closes the session as incomplete. It never seals it" ; recovery-home@540,1913 "Go to Home" ; recovery-details@540,2216 ; recovery-track-VIDEO-01@540,2305 "Camera 1 · VIDEO-01, Waiting" ; recovery-track-VIDEO-02@540,2374 "Camera 2 · VIDEO-02, Waiting" | screencap 009.png (312403 bytes)
+-- 01:54:39 ACK 010 | tap 540,1682 | recover 202 (POST /api/v1/session/{id}/recover 202) | slept 600 ms | screencap 73_phone_recovery_analysing_live.png (318881 bytes) | slept 5000 ms | ids: screen-session-recovery@540,1212 ; recovery-card@540,750 ; recovery-ring@200,263 "Session recovery" ; recovery-title@579,205 "Session recovery" ; recovery-session-id@521,273 "SES-20261006-0029" ; recovery-state-chip@504,331 "INCOMPLETE" ; recovery-pipeline@540,802 ; recovery-pipeline-step-0@601,493 "Step 1 of 5, Recovery marker and journal, completed" ; recovery-pipeline-step-1@601,659 "Step 2 of 5, Track integrity, completed" ; recovery-pipeline-step-2@601,827 "Step 3 of 5, Last good segment, completed" ; recovery-pipeline-step-3@601,992 "Step 4 of 5, Time-source continuity, completed" ; recovery-pipeline-step-4@601,1136 "Step 5 of 5, Incomplete session analysis, completed" ; recovery-live-derived@540,1288 "The Core reports the recovery stage and the outcome. The che" ; recovery-outcome@540,1899 ; recovery-outcome-line@540,1605 "Session marked INCOMPLETE. It will never be sealed (SYS-008)" ; recovery-outcome-evidence@540,1774 "Evidence item, EV-20261006-0017 (recorded, unsealed)" ; recovery-outcome-duration@540,1928 "Recorded length, 00:00:17" ; recovery-outcome-size@540,2066 "Size, 39.9 MB" ; recovery-acknowledge@540,2239 "Acknowledge" ; recovery-view-evidence@540,2347 "View evidence item" | screencap 73_phone_recovery_outcome_live.png (316528 bytes)
+-- 01:55:16 ACK 011 | tap 540,2239 | ackalert 204 (POST /api/v1/alerts/{id}/acknowledge 204) | slept 2500 ms | screencap 73_phone_after_acknowledge_live.png (440440 bytes) | corelog (11): POST /api/v1/session/{id}/start 200 | GET /api/v1/auth/session 200 | POST /api/v1/session/{id}/recover 202 | POST /api/v1/alerts/{id}/acknowledge 204 | force-stopped the app | slept 800 ms | deep link 'demsdemo:///login?core=SIMULATED&motion=off' | slept 8000 ms | screencap 73_phone_simulated_start.png (1718665 bytes)
+-- 01:55:52 ACK 012 | tap 540,1105 | slept 1200 ms | tap 540,2338 | slept 800 ms | tap 540,1105 | slept 600 ms | username typed (budi.santoso); editor inputType 0x80001 | slept 400 ms | tap 540,1265 | slept 700 ms | password typed (not shown); editor inputType 0x80081 | key 66 | slept 5000 ms | screencap refused: a password was typed and the sign-in is not answered 200 | slept 2000 ms | deep link demsdemo:///session/recovery | slept 4000 ms | ids: screen-session-recovery@540,1212 ; recovery-idle@540,1213 ; recovery-idle-action@540,1308 "Go to Home" | screencap refused: a password was typed and the sign-in is not answered 200
+-- 01:56:35 ACK 013 | signin NOT SEEN in 1 s; the app was force-stopped (fields cleared) before any screencap | deep link 'demsdemo:///login?core=SIMULATED&motion=off' | slept 7000 ms | screencap 73_phone_simulated_relaunch.png (1719223 bytes) | deep link demsdemo:///session/recovery | slept 4000 ms | screencap 73_phone_recovery_simulated.png (1719271 bytes) | ids: screen-login@540,1212 | corelog (11): GET /api/v1/auth/session 200 | POST /api/v1/session/{id}/recover 202 | POST /api/v1/alerts/{id}/acknowledge 204 | done 0
+-- driver exit: 0
+-- Core request lines of the sitting (method, path template, status):
+      1 DEMS-LIVE] POST /api/v1/session/{id}/start 200
+      1 DEMS-LIVE] POST /api/v1/session/{id}/recover 202
+      1 DEMS-LIVE] POST /api/v1/session/{id}/precheck 202
+      1 DEMS-LIVE] POST /api/v1/session 201
+      1 DEMS-LIVE] POST /api/v1/auth/touch 200
+      1 DEMS-LIVE] POST /api/v1/auth/sign-in 200
+      1 DEMS-LIVE] POST /api/v1/alerts/{id}/acknowledge 204
+      1 DEMS-LIVE] GET /api/v1/pairing/device 200
+      1 DEMS-LIVE] GET /api/v1/auth/status 200
+      1 DEMS-LIVE] GET /api/v1/auth/session 401
+      1 DEMS-LIVE] GET /api/v1/auth/session 200
+-- credential/token lines in the JS log (must be 0): 0
+-- prefs after: {"coreLinkSource":"SIMULATED"}; simulator auth 
+-- remove this row's dump file only: adb shell rm /sdcard/w73.xml
+   ls: /sdcard/w73.xml: No such file or directory
+-- lock at end: isKeyguardShowing=false
+[device-session phone 01:56:36] Metro 18771 stopped
+[device-session phone 01:56:36] session ended with status 0
+device session exit=0
+
+== 01:56:36 3. backend requests during the sitting (both server processes)
+      1 GET /api/v1/auth/session 200 principal=operator
+      1 GET /api/v1/auth/session 401 principal=device
+      1 GET /api/v1/auth/status 200 principal=device
+      1 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/device 200 principal=device
+      1 POST /api/v1/alerts/:id/acknowledge 204 principal=operator
+      1 POST /api/v1/auth/sign-in 200 principal=device
+      1 POST /api/v1/auth/touch 200 principal=operator
+      1 POST /api/v1/session 201 principal=operator
+      1 POST /api/v1/session/:id/precheck 202 principal=operator
+      1 POST /api/v1/session/:id/recover 202 principal=operator
+      1 POST /api/v1/session/:id/start 200 principal=operator
+-- start and stop lines:
+   1791226286345 configuration loaded
+   1791226286409 engine started
+   1791226436409 shutdown complete
+   1791226444009 configuration loaded
+   1791226444138 engine started
+   epoch lines:    2 "epoch":27
+   epoch lines:    1 "epoch":28
+-- bearer/cookie/credential lines in the server logs (must be 0): 0
+
+== 01:56:36 4. stop the backend (whichever process listens now); nothing left
+-- shutdown complete lines: 1 (before the last stop) + last: 2
+lsof exit 1 (1 = none)
+
+reverse rules listed above (none expected)
+   active_session           0
+   alerts                   1
+   audit_log                237
+   device_credentials       1
+   paired_devices           1
+   session_history          17
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 01:56:37 end
+run exit=0

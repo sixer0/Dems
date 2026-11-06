@@ -1,0 +1,28 @@
+// RF-T secret scan (from R-T) (count-only). The password comes from the dataset constant and is never printed.
+// Patterns: the password exactly; the password case-insensitive with separators (space . _ - or none) between
+// its letters/digits; dvc_/ses_/bio_ token shapes; six digits written as 3+3 with a separator (a pairing-code shape).
+// Prints counts and file names only; for the code shape, the file, the line number and the non-digit context.
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, extname } from 'node:path';
+import { DEMO_OPERATOR_PASSWORD } from '/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset';
+const roots = process.argv.slice(2);
+const BIN = new Set(['.png', '.mp4', '.jpg', '.jpeg']);
+const files: string[] = [];
+const walk = (p: string) => { const s = statSync(p); if (s.isDirectory()) for (const f of readdirSync(p)) walk(join(p, f)); else if (!BIN.has(extname(p).toLowerCase())) files.push(p); };
+roots.forEach(walk);
+const esc = (c: string) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const loose = new RegExp([...DEMO_OPERATOR_PASSWORD].filter((c) => /[a-z0-9]/i.test(c)).map(esc).join('[\\s._-]*'), 'gi');
+const token = /\b(dvc|ses|bio)_[A-Za-z0-9_-]{6,}/g;
+const code = /(?<![\d.:,])\b\d{3}[ -]\d{3}\b(?![\d.:,])/g;
+let exact = 0, looseHits = 0, tokens = 0, codes = 0;
+const where: string[] = [];
+for (const f of files) {
+  const t = readFileSync(f, 'utf8');
+  const e = t.split(DEMO_OPERATOR_PASSWORD).length - 1; exact += e;
+  const l = (t.match(loose) ?? []).length; looseHits += l;
+  const k = (t.match(token) ?? []).length; tokens += k;
+  if (e || l || k) where.push(`${f.split('/retest2/t/').pop()}: exact ${e}, loose ${l}, token ${k}`);
+  t.split('\n').forEach((line, i) => { for (const m of line.matchAll(code)) { codes += 1; where.push(`code-shape ${f.split('/').pop()}:${i + 1} context "${line.slice(Math.max(0, m.index! - 14), m.index!).replace(/\d/g, '#')}"`); } });
+}
+console.log(`${new Date().toTimeString().slice(0, 8)} scanned ${files.length} text files; password exact ${exact}; password loose ${looseHits}; token shapes ${tokens}; 3+3 digit codes ${codes}`);
+for (const w of where.slice(0, 40)) console.log(`  ${w}`);

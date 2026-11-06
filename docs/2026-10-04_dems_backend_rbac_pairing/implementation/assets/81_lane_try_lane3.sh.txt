@@ -1,0 +1,14 @@
+#!/bin/sh
+# W81: the lane check on LANE 3 ONLY. W75 and W77 use lane 3 too: wait for its lock (at most 240 s per
+# attempt, two attempts), never another lane, never a second backend. Exit 75 of lockf = still busy.
+set -u
+for attempt in 1 2; do
+  echo "== $(date '+%H:%M:%S') attempt $attempt: wait for the lock of lane 3 (up to 240 s)"
+  /usr/bin/lockf -k -t 240 .locks/core-server.lane3.lock /bin/sh .cache/w81/lane/run_lane.sh 3 > .cache/w81/lane/run_lane3.log 2>&1
+  code=$?
+  if [ $code -eq 75 ]; then echo "lane 3 is busy (lockf exit 75)"; continue; fi
+  echo "lane 3: run_lane.sh exit $code (log .cache/w81/lane/run_lane3.log)"
+  exit $code
+done
+echo "ABORT: lane 3 stayed busy"
+exit 9

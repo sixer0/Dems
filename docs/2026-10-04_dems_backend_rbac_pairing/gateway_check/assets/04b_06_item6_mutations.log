@@ -1,0 +1,10 @@
+M-6a (scratch copy only): 'signInWithBiometric' taken out of ACTIVITY_EXEMPT_OPERATIONS (the list as it was before item 6)
+1
+× a sign-in, by password or by biometric token, and a sign-out settle their session themselves 3ms
+× a biometric sign-in that presents a session reaches its handler without a unit for the activity: its own unit ends that session (finding F-4 of the biometric row) 1ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+AssertionError: expected [ 'signIn', 'signOut' ] to deeply equal [ 'signIn', 'signOut', …(1) ]
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+Tests  2 failed | 40 passed (42)
+M-6b (scratch copy only): a name that is no operation of the registry in the list
+src/plugins/authenticate/index.ts(161,97): error TS2820: Type '"signInWithBiometrics"' is not assignable to type '"scanCaseNumber" | "beginPrecheck" | "retryPrecheck" | "acknowledgePrecheckWarnings" | "archiveEvidence" | "runDiagnostics" | "restartServices" | "setStoragePolicy" | "startSoftwareUpdate" | ... 65 more ... | "reportBiometricFailure"'. Did you mean '"signInWithBiometric"'?

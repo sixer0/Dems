@@ -1,0 +1,3 @@
+W96 end: GET /api/v1/admin/users read by the SUPERVISOR page (context a), console output of drv_web.mjs eval at host 09:20:44.496 (copied verbatim from the command output; the browser is closed now):
+[09:20:44.496] ["OPR-001:INVESTIGATOR:true","OPR-002:SUPERVISOR:true","OPR-003:TECHNICIAN:true"]
+Supporting: AUD-000162 (09:20:32.313) is the last ROLE_CHANGED row (w96_audit_rows.log). No role change was made after it by this row.

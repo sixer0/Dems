@@ -1,0 +1,7 @@
+nav /evidence/EV-20261006-0017 load=true at 16:42:46.453
+testids evidence-tab (3): evidence-tab-media evidence-tab-metadata evidence-tab-integrity
+mouse evidence-tab-integrity at 1348,525 16:42:46.578
+slept 2000
+testids evidence-verify (3): evidence-verify-card evidence-verify-label evidence-verify
+testids integrity (0): 
+shot W02_web_evidence_0017_integrity_before.png at 16:42:48.674

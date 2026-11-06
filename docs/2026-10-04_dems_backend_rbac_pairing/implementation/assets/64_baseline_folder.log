@@ -1,0 +1,9 @@
+2026-10-05 20:28:37 WIB
+$ npm run test -w @dems/core-web -- src/features/session-new (baseline, before the first edit)
+
+ Test Files  2 passed (2)
+      Tests  15 passed (15)
+   Start at  20:28:37
+   Duration  3.14s (tests 57%, transform 16%, environment 12%, import 11%, setup 4%)
+
+exit 0

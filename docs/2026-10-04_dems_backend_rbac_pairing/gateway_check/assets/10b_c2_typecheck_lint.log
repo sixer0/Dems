@@ -1,0 +1,28 @@
+$ npm --prefix apps/core-web run typecheck   (09:41:15)
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+
+$ npm --prefix apps/core-web run lint   (09:41:27)
+
+> @dems/core-web@0.1.0 lint
+> oxlint
+
+exit=0
+
+$ npm --prefix packages/shared run typecheck   (09:41:27)
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+
+$ npm --prefix packages/shared run lint   (09:41:30)
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+

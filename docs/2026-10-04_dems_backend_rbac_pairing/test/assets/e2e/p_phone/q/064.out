@@ -1,0 +1,6 @@
+10:28:37.615 nav /session load=true
+10:28:40.800 wait page-session-monitor present: 0 ms (at 10:28:40.800)
+10:28:40.881 press sm-action-end ok at 10:28:40.907
+10:28:41.035 wait sm-end-dialog present: 1 ms (at 10:28:41.036)
+10:28:41.088 slept 600 ms
+10:28:41.753 js => ["TEXTAREA",null]

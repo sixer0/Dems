@@ -1,0 +1,9 @@
+## 2026-10-05 22:43:57 WIB
+22:43  2 users, load averages: 3.23 4.80 4.35
+     ✓ exports EV 0004 for a supervisor: verified source, custody audit row, then the prebuilt zip download 1888ms
+     ✓ downloads the DEMO export manifest JSON for an item without a prebuilt zip 1510ms
+     ✓ loads a scenario and resets the demo through loadScenario, writing SCENARIO_LOADED 348ms
+     ✓ loads lazily with ?debug=1 on any route and shows the ambient-loop count against the cap 307ms
+ Test Files  62 passed (62)
+      Tests  849 passed (849)
+exit=0

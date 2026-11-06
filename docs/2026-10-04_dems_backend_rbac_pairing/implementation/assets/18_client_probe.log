@@ -1,0 +1,83 @@
+# Step 40 (W18): the subpath @dems/shared/live under each client's compiler options.
+# A probe file outside the repository, with a tsconfig that extends the client's own and lists only the probe.
+2026-10-04 07:52:58 WIB
+
+## web: tsconfig
+{ "extends": "/Users/gsp-budi/Documents/DEMS/apps/core-web/tsconfig.app.json", "compilerOptions": { "incremental": false, "tsBuildInfoFile": "<scratch>/probe-web/probe.tsbuildinfo", "noEmit": true, "listFiles": false }, "include": [], "files": ["./probe.ts"] }
+$ tsc -p <scratch>/probe-web/tsconfig.json --noEmit --listFiles | grep -E 'error|packages/shared/src/live|probe.ts'
+node_modules/typescript/lib/lib.es2022.error.d.ts
+packages/shared/src/sim/errors.ts
+node_modules/zod/v4/core/errors.d.cts
+node_modules/zod/v4/classic/errors.d.cts
+packages/shared/src/live/core-actions.ts
+packages/shared/src/live/settle.ts
+packages/shared/src/live/errors.ts
+packages/shared/src/live/mode.ts
+packages/shared/src/live/hooks.ts
+packages/shared/src/live/index.ts
+<scratch>/probe-web/probe.ts
+exit=0
+## web: negative control (two wrong lines appended to the probe)
+probe.ts(44,14): error TS2322: Type 'string' is not assignable to type 'number'.
+  Type 'string' is not assignable to type 'number'.
+probe.ts(45,17): error TS2345: Argument of type '{ ok: () => undefined; }' is not assignable to parameter of type 'SettleHandlers<number>'.
+  Property 'fail' is missing in type '{ ok: () => undefined; }' but required in type 'SettleHandlers<number>'.
+exit=2
+
+## mobile: tsconfig
+{ "extends": "/Users/gsp-budi/Documents/DEMS/apps/mobile/tsconfig.json", "compilerOptions": { "noEmit": true }, "include": [], "files": ["./probe.ts"] }
+$ tsc -p <scratch>/probe-mobile/tsconfig.json --noEmit --listFiles | grep -E 'error|packages/shared/src/live|probe.ts'
+node_modules/typescript/lib/lib.es2022.error.d.ts
+node_modules/typescript/lib/lib.esnext.error.d.ts
+packages/shared/src/sim/errors.ts
+node_modules/zod/v4/core/errors.d.cts
+node_modules/zod/v4/classic/errors.d.cts
+packages/shared/src/live/core-actions.ts
+packages/shared/src/live/settle.ts
+packages/shared/src/live/errors.ts
+packages/shared/src/live/mode.ts
+packages/shared/src/live/hooks.ts
+packages/shared/src/live/index.ts
+<scratch>/probe-mobile/probe.ts
+exit=0
+## mobile: negative control (two wrong lines appended to the probe)
+probe.ts(44,14): error TS2322: Type 'string' is not assignable to type 'number'.
+  Type 'string' is not assignable to type 'number'.
+probe.ts(45,17): error TS2345: Argument of type '{ ok: () => undefined; }' is not assignable to parameter of type 'SettleHandlers<number>'.
+  Property 'fail' is missing in type '{ ok: () => undefined; }' but required in type 'SettleHandlers<number>'.
+exit=2
+
+# Follow-up F40-2 (light constants), 2026-10-04 08:03:10 WIB
+## probe file
+// Step 40 (W18), follow-up F40-2: the two light constants under this client's compiler options.
+import { LIVE_PENDING_REVEAL_MS, LIVE_RESYNCED_NOTICE_MS } from '@dems/shared/live';
+
+export const reveal: 420 = LIVE_PENDING_REVEAL_MS;
+export const notice: 3000 = LIVE_RESYNCED_NOTICE_MS;
+## web
+$ tsc -p <scratch>/probe-web/tsconfig.json --noEmit --listFiles | grep -E 'error|src/live/constants|probe.ts'
+node_modules/typescript/lib/lib.es2022.error.d.ts
+packages/shared/src/live/constants.ts
+packages/shared/src/sim/errors.ts
+node_modules/zod/v4/core/errors.d.cts
+node_modules/zod/v4/classic/errors.d.cts
+packages/shared/src/live/errors.ts
+<scratch>/probe-web/probe.ts
+exit=0
+## web: negative control (one wrong line appended)
+probe.ts(7,14): error TS2322: Type '420' is not assignable to type '400'.
+exit=2
+## mobile
+$ tsc -p <scratch>/probe-mobile/tsconfig.json --noEmit --listFiles | grep -E 'error|src/live/constants|probe.ts'
+node_modules/typescript/lib/lib.es2022.error.d.ts
+node_modules/typescript/lib/lib.esnext.error.d.ts
+packages/shared/src/live/constants.ts
+packages/shared/src/sim/errors.ts
+node_modules/zod/v4/core/errors.d.cts
+node_modules/zod/v4/classic/errors.d.cts
+packages/shared/src/live/errors.ts
+<scratch>/probe-mobile/probe.ts
+exit=0
+## mobile: negative control (one wrong line appended)
+probe.ts(7,14): error TS2322: Type '420' is not assignable to type '400'.
+exit=2

@@ -1,0 +1,19 @@
+-- Custom SQL migration file, put your code below! --
+-- 0023_profile_codes_privileges (hand-written; task 4, the element CHECK on
+-- capture_devices.profiles, contract revision dbc-11; the 0010 / 0014 / 0016 / 0018 / 0020
+-- pattern; MG-2, MG-5). Requirement AD-06 (4). Migration set 11: 0021 (hand-written, the data
+-- step) + 0022 (generated, the CHECK) + this file.
+--
+-- No statement names the owner role or the provisioning superuser (MG-9, OW-9).
+--
+-- NO GRANT IS NEEDED, AND NONE IS WRITTEN. 0022 adds one CHECK to capture_devices; a constraint
+-- carries no privilege. The runtime role already inserts a device row and updates its profile
+-- list (0005: the ten-column UPDATE list names profiles), which is how adoption and the
+-- connection test write the codes. No table, no column and no role is new.
+--
+-- MG-5: the last file of the set carries the version; DB_SCHEMA_VERSION / DB_CONTRACT_REVISION
+-- in src/db/schema/meta.ts change in the same commit (boot check B-3 compares them). The step is
+-- taken: from this version on the database, and not only the code, refuses a profile list that
+-- holds anything but codes, and code written against that promise (the production camera adapter
+-- reads the list as codes) must not start on a database that does not keep it.
+UPDATE public.schema_meta SET schema_version = 10, contract_revision = 'dbc-11' WHERE singleton;

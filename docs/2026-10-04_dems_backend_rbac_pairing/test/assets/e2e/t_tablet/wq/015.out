@@ -1,0 +1,5 @@
+mousetext "Archive" DIV at 853,526 10:48:57.360
+slept 1500
+eval: ["EV-20261006-0015 archived"]
+eval: ["-:"]
+shot B33_web_archive_confirm.png at 10:48:58.979

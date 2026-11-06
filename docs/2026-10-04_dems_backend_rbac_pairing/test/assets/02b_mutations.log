@@ -1,0 +1,545 @@
+=== BASELINE | no mutation: the tree as it is, through the scratch configuration | 19:45:42
+exit 0
+   1       Tests  37 passed (37)
+   1  Test Files  1 passed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 126 ms; 0 remain with the run prefix dems_test_step_69b_tmdvg7xq_
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== P01 | apps/core-server/src/plugins/permission-guard/decision.ts: AUTHENTICATED lets a paired DEVICE through (any principal instead of an OPERATOR) | 19:45:56
+exit 1
+   1       Tests  3 failed | 34 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × DEVICE: a paired device with no operator: its device credential as a bearer value 199ms
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 14ms
+   1 [test:db] teardown: dropped 3 database(s) in 184 ms; 0 remain with the run prefix dems_test_step_69b_tmdvgkh4_
+   1 [w47-harness] mutation P01 applied to apps/core-server/src/plugins/permission-guard/decision.ts (1 change(s))
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== P02 | apps/core-server/src/plugins/permission-guard/decision.ts: the permission is not checked: every OPERATOR passes a rule that names one | 19:46:07
+exit 1
+   1       Tests  14 failed | 23 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 6ms
+   1  × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 254ms
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 261ms
+   1  × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 188ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 274ms
+   1  × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 166ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 265ms
+   1  × a holder of DEMO_CONTROL gets 403 DEMO_DISABLED and no row; the other roles 403 NOT_PERMITTED and one row, whatever the flag; nobody 401 385ms
+   1  × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 202ms
+   1  × a permission taken from a role that should have it: exactly the cells that grant opened go red 191ms
+   1  × a role that loses the permission is refused with 403 and exactly one ACCESS_DENIED row on each of them, at its next request, on the web and on the device 175ms
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 17ms
+   1  × the session of one role presented where the cell expects another: every cell is red, and where both are refused the row names the wrong actor and the wrong role 241ms
+   1 [test:db] teardown: dropped 3 database(s) in 169 ms; 0 remain with the run prefix dems_test_step_69b_tmdvgwh6_
+   1 [w47-harness] mutation P02 applied to apps/core-server/src/plugins/permission-guard/decision.ts (1 change(s))
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 74 let through by stage 6, 0 × 401, 1 × 403; 3 with a denial row; 0 × 429; 22 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 74 let through by stage 6, 0 × 401, 1 × 403; 0 with a denial row; 0 × 429; 3 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 74 let through by stage 6, 0 × 401, 1 × 403; 3 with a denial row; 0 × 429; 31 not as specified
+=== P03 | apps/core-server/src/plugins/permission-guard/decision.ts: a retired device is not refused: it is treated as an anonymous caller everywhere | 19:46:20
+exit 1
+   1       Tests  6 failed | 31 passed (37)
+   1  Test Files  1 failed (1)
+   1  × RETIRED_DEVICE: a retired device: the credential of a REVOKED device 129ms
+   1  × RETIRED_DEVICE_SESSION: a retired device: the session token of an operator who was signed in on the device when it was revoked 142ms
+   1  × UNPAIRED_CREDENTIAL: a retired device: the old credential of a device that unpaired itself (state UNPAIRED) 125ms
+   1  × a retired device presented where the cell expects a PAIRED one: every cell is red, and the device operations answer 403 DEVICE_REVOKED 154ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 14ms
+   1 [test:db] teardown: dropped 3 database(s) in 153 ms; 0 remain with the run prefix dems_test_step_69b_tmdvh8i0_
+   1 [w47-harness] mutation P03 applied to apps/core-server/src/plugins/permission-guard/decision.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== P04 | apps/core-server/src/plugins/permission-guard/index.ts: the denial row is not written (the refusal is still answered) | 19:46:31
+exit 1
+   1       Tests  18 failed | 19 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 6ms
+   1  × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 256ms
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 130ms
+   1  × RETIRED_DEVICE: a retired device: the credential of a REVOKED device 137ms
+   1  × RETIRED_DEVICE_SESSION: a retired device: the session token of an operator who was signed in on the device when it was revoked 170ms
+   1  × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 286ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 225ms
+   1  × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 170ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 124ms
+   1  × UNPAIRED_CREDENTIAL: a retired device: the old credential of a device that unpaired itself (state UNPAIRED) 153ms
+   1  × a holder of DEMO_CONTROL gets 403 DEMO_DISABLED and no row; the other roles 403 NOT_PERMITTED and one row, whatever the flag; nobody 401 279ms
+   1  × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 143ms
+   1  × a permission taken from a role that should have it: exactly the cells that grant opened go red 159ms
+   1  × a role that loses the permission is refused with 403 and exactly one ACCESS_DENIED row on each of them, at its next request, on the web and on the device 73ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 28ms
+   1  × the session of one role presented where the cell expects another: every cell is red, and where both are refused the row names the wrong actor and the wrong role 149ms
+   1 [test:db] teardown: dropped 3 database(s) in 251 ms; 0 remain with the run prefix dems_test_step_69b_tmdvhjs8_
+   1 [w47-harness] mutation P04 applied to apps/core-server/src/plugins/permission-guard/index.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 1 let through by stage 6, 0 × 401, 0 × 403; 0 with a denial row; 74 × 429; 74 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 0 with a denial row; 0 × 429; 3 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 1 let through by stage 6, 0 × 401, 0 × 403; 0 with a denial row; 74 × 429; 74 not as specified
+=== P05 | apps/core-server/src/plugins/permission-guard/index.ts: an audited refusal takes no place in the denial budget | 19:46:42
+exit 1
+   1       Tests  16 failed | 21 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 409ms
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 240ms
+   1  × RETIRED_DEVICE: a retired device: the credential of a REVOKED device 224ms
+   1  × RETIRED_DEVICE_SESSION: a retired device: the session token of an operator who was signed in on the device when it was revoked 261ms
+   1  × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 341ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 232ms
+   1  × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 253ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 258ms
+   1  × UNPAIRED_CREDENTIAL: a retired device: the old credential of a device that unpaired itself (state UNPAIRED) 235ms
+   1  × a holder of DEMO_CONTROL gets 403 DEMO_DISABLED and no row; the other roles 403 NOT_PERMITTED and one row, whatever the flag; nobody 401 319ms
+   1  × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 226ms
+   1  × a permission taken from a role that should have it: exactly the cells that grant opened go red 237ms
+   1  × a role that loses the permission is refused with 403 and exactly one ACCESS_DENIED row on each of them, at its next request, on the web and on the device 131ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 10ms
+   1 [test:db] teardown: dropped 3 database(s) in 190 ms; 0 remain with the run prefix dems_test_step_69b_tmdvhuaq_
+   1 [w47-harness] mutation P05 applied to apps/core-server/src/plugins/permission-guard/index.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 22 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 3 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 31 not as specified
+=== P06 | apps/core-server/src/plugins/authenticate/index.ts: two credentials in one request are not refused at stage 4 (the request goes on as anonymous) | 19:46:54
+exit 1
+   1       Tests  6 failed | 31 passed (37)
+   1  Test Files  1 failed (1)
+   1  × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 1ms
+   1  × AC-B-81, SR-73: the four credential-misuse cells answer 401 CREDENTIAL_CONFLICT, 403, 401 and 401, resolve no principal and change nothing 1ms
+   1  × COOKIE_AND_BEARER: the cookie of a web session AND the bearer value of a device session in one request (web console Origin) 153ms
+   1  × DEVICE_TOKEN_AS_COOKIE: a device session's token sent as the cookie (web console Origin) 207ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 17ms
+   1 [test:db] teardown: dropped 3 database(s) in 148 ms; 0 remain with the run prefix dems_test_step_69b_tmdvi6hl_
+   1 [w47-harness] mutation P06 applied to apps/core-server/src/plugins/authenticate/index.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== P07 | apps/core-server/src/plugins/permission-guard/decision.ts: the demo flag is not checked for an operator | 19:47:05
+exit 1
+   1       Tests  2 failed | 35 passed (37)
+   1  Test Files  1 failed (1)
+   1  × a holder of DEMO_CONTROL gets 403 DEMO_DISABLED and no row; the other roles 403 NOT_PERMITTED and one row, whatever the flag; nobody 401 1204ms
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 9ms
+   1 [test:db] teardown: dropped 3 database(s) in 150 ms; 0 remain with the run prefix dems_test_step_69b_tmdvihkg_
+   1 [w47-harness] mutation P07 applied to apps/core-server/src/plugins/permission-guard/decision.ts (1 change(s))
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== P08 | apps/core-server/src/plugins/permission-guard/denial.ts: the ACCESS_DENIED row of a missing permission names no actor | 19:47:16
+exit 1
+   1       Tests  12 failed | 25 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 308ms
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 223ms
+   1  × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 241ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 192ms
+   1  × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 231ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 182ms
+   1  × a holder of DEMO_CONTROL gets 403 DEMO_DISABLED and no row; the other roles 403 NOT_PERMITTED and one row, whatever the flag; nobody 401 197ms
+   1  × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 130ms
+   1  × a permission taken from a role that should have it: exactly the cells that grant opened go red 127ms
+   1  × a role that loses the permission is refused with 403 and exactly one ACCESS_DENIED row on each of them, at its next request, on the web and on the device 76ms
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 8ms
+   1 [test:db] teardown: dropped 3 database(s) in 121 ms; 0 remain with the run prefix dems_test_step_69b_tmdvissx_
+   1 [w47-harness] mutation P08 applied to apps/core-server/src/plugins/permission-guard/denial.ts (1 change(s))
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 19 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 3 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 28 not as specified
+=== P09 | apps/core-server/src/plugins/permission-guard/denial.ts: the refusal of exportAudit writes ACCESS_DENIED instead of EXPORT_DENIED (and no event) | 19:47:26
+exit 1
+   1       Tests  9 failed | 28 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 0ms
+   1  × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 289ms
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 236ms
+   1  × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 220ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 190ms
+   1  × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 137ms
+   1  × a permission taken from a role that should have it: exactly the cells that grant opened go red 141ms
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 8ms
+   1 [test:db] teardown: dropped 3 database(s) in 155 ms; 0 remain with the run prefix dems_test_step_69b_tmdvj2nc_
+   1 [w47-harness] mutation P09 applied to apps/core-server/src/plugins/permission-guard/denial.ts (1 change(s))
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 1 not as specified
+=== P10 | apps/core-server/src/plugins/origin-guard/origin-decision.ts: a bearer request with a web console origin passes the Origin guard | 19:47:35
+exit 1
+   1       Tests  5 failed | 32 passed (37)
+   1  Test Files  1 failed (1)
+   1  × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 1ms
+   1  × AC-B-81, SR-73: the four credential-misuse cells answer 401 CREDENTIAL_CONFLICT, 403, 401 and 401, resolve no principal and change nothing 1ms
+   1  × BEARER_WITH_WEB_ORIGIN: the bearer value of a valid device session with a web console Origin 191ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 8ms
+   1 [test:db] teardown: dropped 3 database(s) in 129 ms; 0 remain with the run prefix dems_test_step_69b_tmdvjb86_
+   1 [w47-harness] mutation P10 applied to apps/core-server/src/plugins/origin-guard/origin-decision.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== P11 | apps/core-server/src/modules/identity/session-store.ts: ID-13 broken: the cookie also resolves a session that is bound to a device | 19:47:44
+exit 1
+   1       Tests  5 failed | 32 passed (37)
+   1  Test Files  1 failed (1)
+   1  × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 1ms
+   1  × AC-B-81, SR-73: the four credential-misuse cells answer 401 CREDENTIAL_CONFLICT, 403, 401 and 401, resolve no principal and change nothing 1ms
+   1  × DEVICE_TOKEN_AS_COOKIE: a device session's token sent as the cookie (web console Origin) 221ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 9ms
+   1 [test:db] teardown: dropped 3 database(s) in 193 ms; 0 remain with the run prefix dems_test_step_69b_tmdvjk72_
+   1 [w47-harness] mutation P11 applied to apps/core-server/src/modules/identity/session-store.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== P12 | apps/core-server/src/plugins/permission-guard/decision.ts: a DEVICE operation is open to a web console session | 19:47:55
+exit 1
+   1       Tests  8 failed | 29 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 334ms
+   1  × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 247ms
+   1  × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 233ms
+   1  × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 149ms
+   1  × a permission taken from a role that should have it: exactly the cells that grant opened go red 144ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 7ms
+   1 [test:db] teardown: dropped 3 database(s) in 116 ms; 0 remain with the run prefix dems_test_step_69b_tmdvjvqg_
+   1 [w47-harness] mutation P12 applied to apps/core-server/src/plugins/permission-guard/decision.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== P13 | apps/core-server/src/plugins/throttle/limits.ts: the denial budget is 19, not 20: the test, which moves the clock at 20, must meet a 429 | 19:48:06
+exit 1
+   1       Tests  14 failed | 23 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 4ms
+   1  × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 265ms
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 133ms
+   1  × RETIRED_DEVICE: a retired device: the credential of a REVOKED device 152ms
+   1  × RETIRED_DEVICE_SESSION: a retired device: the session token of an operator who was signed in on the device when it was revoked 155ms
+   1  × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 154ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 118ms
+   1  × UNPAIRED_CREDENTIAL: a retired device: the old credential of a device that unpaired itself (state UNPAIRED) 139ms
+   1  × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 105ms
+   1  × a permission taken from a role that should have it: exactly the cells that grant opened go red 105ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 24ms
+   1  × the session of one role presented where the cell expects another: every cell is red, and where both are refused the row names the wrong actor and the wrong role 131ms
+   1 [test:db] teardown: dropped 3 database(s) in 159 ms; 0 remain with the run prefix dems_test_step_69b_tmdvk6mg_
+   1 [w47-harness] mutation P13 applied to apps/core-server/src/plugins/throttle/limits.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 1 let through by stage 6, 0 × 401, 0 × 403; 0 with a denial row; 74 × 429; 74 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 1 let through by stage 6, 0 × 401, 0 × 403; 0 with a denial row; 74 × 429; 74 not as specified
+=== P14 | apps/core-server/src/plugins/permission-guard/decision.ts: the condition DEVICE_SESSION is not held: a web session passes stage 6 on setBiometricEnrollment | 19:48:15
+exit 1
+   1       Tests  7 failed | 30 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 277ms
+   1  × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 216ms
+   1  × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 219ms
+   1  × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 213ms
+   1  × a permission taken from a role that should have it: exactly the cells that grant opened go red 199ms
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 12ms
+   1 [test:db] teardown: dropped 3 database(s) in 156 ms; 0 remain with the run prefix dems_test_step_69b_tmdvkfxb_
+   1 [w47-harness] mutation P14 applied to apps/core-server/src/plugins/permission-guard/decision.ts (1 change(s))
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== P15 | apps/core-server/src/plugins/permission-guard/decision.ts: the condition CONSOLE_IDENTITY is not held at stage 6 (the sign-in route still checks it itself: same status, same code) | 19:48:27
+exit 1
+   1       Tests  5 failed | 32 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × AC-B-81, SR-73: the four credential-misuse cells answer 401 CREDENTIAL_CONFLICT, 403, 401 and 401, resolve no principal and change nothing 0ms
+   1  × UNPAIRED_DEVICE: an unpaired device: no credential and no Origin, as the mobile app sends before it is paired 85ms
+   1  × WEB_TOKEN_AS_BEARER: a web session's token sent as a bearer value (no Origin) 100ms
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 6ms
+   1 [test:db] teardown: dropped 3 database(s) in 122 ms; 0 remain with the run prefix dems_test_step_69b_tmdvkrcb_
+   1 [w47-harness] mutation P15 applied to apps/core-server/src/plugins/permission-guard/decision.ts (1 change(s))
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== P16 | apps/core-server/src/plugins/permission-guard/denial.ts: the row and the answer of a missing permission name another permission | 19:48:36
+exit 1
+   1       Tests  12 failed | 25 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 234ms
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 176ms
+   1  × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 184ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 172ms
+   1  × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 170ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 177ms
+   1  × a holder of DEMO_CONTROL gets 403 DEMO_DISABLED and no row; the other roles 403 NOT_PERMITTED and one row, whatever the flag; nobody 401 330ms
+   1  × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 127ms
+   1  × a permission taken from a role that should have it: exactly the cells that grant opened go red 129ms
+   1  × a role that loses the permission is refused with 403 and exactly one ACCESS_DENIED row on each of them, at its next request, on the web and on the device 88ms
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 7ms
+   1 [test:db] teardown: dropped 3 database(s) in 120 ms; 0 remain with the run prefix dems_test_step_69b_tmdvl0pi_
+   1 [w47-harness] mutation P16 applied to apps/core-server/src/plugins/permission-guard/denial.ts (1 change(s))
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 22 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 3 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 21 not as specified
+=== P17 | apps/core-server/src/plugins/permission-guard/access-rules.ts: a retired device may also call getSignInStatus | 19:48:45
+exit 1
+   1       Tests  4 failed | 33 passed (37)
+   1  Test Files  1 failed (1)
+   1  × RETIRED_DEVICE: a retired device: the credential of a REVOKED device 165ms
+   1  × RETIRED_DEVICE_SESSION: a retired device: the session token of an operator who was signed in on the device when it was revoked 180ms
+   1  × UNPAIRED_CREDENTIAL: a retired device: the old credential of a device that unpaired itself (state UNPAIRED) 153ms
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 8ms
+   1 [test:db] teardown: dropped 3 database(s) in 162 ms; 0 remain with the run prefix dems_test_step_69b_tmdvla5a_
+   1 [w47-harness] mutation P17 applied to apps/core-server/src/plugins/permission-guard/access-rules.ts (1 change(s))
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== P18 | apps/core-server/src/plugins/throttle/limits.ts: the strict limit of a class key is 29, not 30 | 19:48:54
+exit 1
+   1       Tests  7 failed | 30 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × AC-B-81, SR-73: the four credential-misuse cells answer 401 CREDENTIAL_CONFLICT, 403, 401 and 401, resolve no principal and change nothing 0ms
+   1  × ANONYMOUS: an unauthenticated caller: a signed-out web console (no credential; a web console Origin on a POST, none on a GET) 147ms
+   1  × DEVICE_TOKEN_AS_COOKIE: a device session's token sent as the cookie (web console Origin) 133ms
+   1  × UNPAIRED_DEVICE: an unpaired device: no credential and no Origin, as the mobile app sends before it is paired 118ms
+   1  × WEB_TOKEN_AS_BEARER: a web session's token sent as a bearer value (no Origin) 112ms
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 10ms
+   1 [test:db] teardown: dropped 3 database(s) in 160 ms; 0 remain with the run prefix dems_test_step_69b_tmdvljye_
+   1 [w47-harness] mutation P18 applied to apps/core-server/src/plugins/throttle/limits.ts (1 change(s))
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== P19 | packages/shared/src/api/administration.ts: THE REGISTRY is changed: operations 11 to 14 name PAIRING_MANAGE instead of USER_ADMIN (the same role holds both, so no caller is answered differently) | 19:49:04
+exit 1
+   1       Tests  2 failed | 35 passed (37)
+   1  Test Files  1 failed (1)
+   1  × each permission is enforced at exactly the operations spec §4.3 lists for it 1ms
+   1  × every registry entry has the method, the path, the access rule, the conditions and the audit rule of its row 7ms
+   1 [test:db] teardown: dropped 3 database(s) in 103 ms; 0 remain with the run prefix dems_test_step_69b_tmdvlty3_
+   1 [w47-harness] mutation P19 applied to packages/shared/src/api/administration.ts (1 change(s))
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== Q01 | apps/core-server/src/plugins/permission-guard/decision.ts: D118: the guard does not evaluate the condition DEVICE_CREDENTIAL (whoever has a principal holds it) | 19:49:14
+exit 1
+   1       Tests  6 failed | 31 passed (37)
+   1  Test Files  1 failed (1)
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 256ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 258ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 282ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 10ms
+   1  × the session of an operator on the device presented where the cell expects the device itself: every cell is red, and an operation that needs the device's own credential answers 403 with the reason, no row and no place in the budget 142ms
+   1 [test:db] teardown: dropped 3 database(s) in 157 ms; 0 remain with the run prefix dems_test_step_69b_tmdvm31i_
+   1 [w47-harness] mutation Q01 applied to apps/core-server/src/plugins/permission-guard/decision.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 53 let through by stage 6, 0 × 401, 22 × 403; 22 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 72 let through by stage 6, 0 × 401, 3 × 403; 3 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 44 let through by stage 6, 0 × 401, 31 × 403; 31 with a denial row; 0 × 429; 1 not as specified
+=== Q02 | apps/core-server/src/plugins/permission-guard/denial.ts: D118: the guard writes an ACCESS_DENIED row (and takes a place in the budget) for the refusal of the condition | 19:49:25
+exit 1
+   1       Tests  7 failed | 30 passed (37)
+   1  Test Files  1 failed (1)
+   1  × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 1ms
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 206ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 202ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 216ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 7ms
+   1  × the session of an operator on the device presented where the cell expects the device itself: every cell is red, and an operation that needs the device's own credential answers 403 with the reason, no row and no place in the budget 141ms
+   1 [test:db] teardown: dropped 3 database(s) in 168 ms; 0 remain with the run prefix dems_test_step_69b_tmdvmd8g_
+   1 [w47-harness] mutation Q02 applied to apps/core-server/src/plugins/permission-guard/denial.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 23 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 4 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 32 with a denial row; 0 × 429; 1 not as specified
+=== Q03 | apps/core-server/src/plugins/permission-guard/denial.ts: D118: the answer of the condition carries no reason | 19:49:34
+exit 1
+   1       Tests  6 failed | 31 passed (37)
+   1  Test Files  1 failed (1)
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 296ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 324ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 341ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 13ms
+   1  × the session of an operator on the device presented where the cell expects the device itself: every cell is red, and an operation that needs the device's own credential answers 403 with the reason, no row and no place in the budget 202ms
+   1 [test:db] teardown: dropped 3 database(s) in 512 ms; 0 remain with the run prefix dems_test_step_69b_tmdvmm8x_
+   1 [w47-harness] mutation Q03 applied to apps/core-server/src/plugins/permission-guard/denial.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 1 not as specified
+=== Q04 | packages/shared/src/api/pairing.ts: D118: THE REGISTRY loses the condition on operation 23 (the document keeps it) | 19:49:47
+exit 1
+   1       Tests  4 failed | 33 passed (37)
+   1  Test Files  1 failed (1)
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × every registry entry has the method, the path, the access rule, the conditions and the audit rule of its row 9ms
+   1  × the condition DEVICE_CREDENTIAL (decision D118): the reason of its refusal is the same in the document (§7.2) and in the registry, and it stands only on the marker DEVICE 0ms
+   1  × the session of an operator on the device presented where the cell expects the device itself: every cell is red, and an operation that needs the device's own credential answers 403 with the reason, no row and no place in the budget 225ms
+   1 [test:db] teardown: dropped 3 database(s) in 164 ms; 0 remain with the run prefix dems_test_step_69b_tmdvmzgd_
+   1 [w47-harness] mutation Q04 applied to packages/shared/src/api/pairing.ts (1 change(s))
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 53 let through by stage 6, 0 × 401, 22 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 72 let through by stage 6, 0 × 401, 3 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 44 let through by stage 6, 0 × 401, 31 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== Q05 | apps/core-server/src/plugins/permission-guard/index.ts: D118: a DEVICE_NOT_PAIRED refusal takes a place in the denial budget without writing a row | 19:49:57
+exit 1
+   1       Tests  17 failed | 20 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 4ms
+   1  × AC-B-81, SR-73: the four credential-misuse cells answer 401 CREDENTIAL_CONFLICT, 403, 401 and 401, resolve no principal and change nothing 1ms
+   1  × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 139ms
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 89ms
+   1  × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 226ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 164ms
+   1  × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 114ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 88ms
+   1  × UNPAIRED_DEVICE: an unpaired device: no credential and no Origin, as the mobile app sends before it is paired 86ms
+   1  × WEB_TOKEN_AS_BEARER: a web session's token sent as a bearer value (no Origin) 93ms
+   1  × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 92ms
+   1  × a permission taken from a role that should have it: exactly the cells that grant opened go red 85ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 17ms
+   1  × the session of an operator on the device presented where the cell expects the device itself: every cell is red, and an operation that needs the device's own credential answers 403 with the reason, no row and no place in the budget 111ms
+   1  × the session of one role presented where the cell expects another: every cell is red, and where both are refused the row names the wrong actor and the wrong role 87ms
+   1 [test:db] teardown: dropped 3 database(s) in 168 ms; 0 remain with the run prefix dems_test_step_69b_tmdvnasi_
+   1 [w47-harness] mutation Q05 applied to apps/core-server/src/plugins/permission-guard/index.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 1 let through by stage 6, 0 × 401, 0 × 403; 0 with a denial row; 74 × 429; 74 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 1 let through by stage 6, 0 × 401, 0 × 403; 0 with a denial row; 74 × 429; 74 not as specified
+=== Q06 | apps/core-server/src/plugins/permission-guard/decision.ts: D118: the condition refuses the device itself too | 19:50:05
+exit 1
+   1       Tests  4 failed | 33 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × DEVICE: a paired device with no operator: its device credential as a bearer value 116ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 9ms
+   1 [test:db] teardown: dropped 3 database(s) in 131 ms; 0 remain with the run prefix dems_test_step_69b_tmdvnh9d_
+   1 [w47-harness] mutation Q06 applied to apps/core-server/src/plugins/permission-guard/decision.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== Q07 | apps/core-server/src/plugins/permission-guard/decision.ts: D118: a web console session is answered with the reason of the condition (the condition before the marker) | 19:50:14
+exit 1
+   1       Tests  8 failed | 29 passed (37)
+   1  Test Files  1 failed (1)
+   1  × 375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification 1ms
+   1  × INVESTIGATOR: the seeded INVESTIGATOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 192ms
+   1  × SUPERVISOR: the seeded SUPERVISOR, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 148ms
+   1  × TECHNICIAN: the seeded TECHNICIAN, signed in on the web console (the session cookie; a web console Origin on a POST, none on a GET) 141ms
+   1  × a permission granted to a role that should not have it (in the clone, after the boot): exactly the cells that grant opens go red 134ms
+   1  × a permission taken from a role that should have it: exactly the cells that grant opened go red 142ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 7ms
+   1 [test:db] teardown: dropped 3 database(s) in 129 ms; 0 remain with the run prefix dems_test_step_69b_tmdvnqdu_
+   1 [w47-harness] mutation Q07 applied to apps/core-server/src/plugins/permission-guard/decision.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== Q08 | apps/core-server/src/plugins/permission-guard/denial.ts: D118: the answer of the condition carries another reason | 19:50:21
+exit 1
+   1       Tests  6 failed | 31 passed (37)
+   1  Test Files  1 failed (1)
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 207ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 223ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 195ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 7ms
+   1  × the session of an operator on the device presented where the cell expects the device itself: every cell is red, and an operation that needs the device's own credential answers 403 with the reason, no row and no place in the budget 135ms
+   1 [test:db] teardown: dropped 3 database(s) in 114 ms; 0 remain with the run prefix dems_test_step_69b_tmdvnx8h_
+   1 [w47-harness] mutation Q08 applied to apps/core-server/src/plugins/permission-guard/denial.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 1 not as specified
+=== Q09 | apps/core-server/src/plugins/permission-guard/decision.ts: D118: a retired device is not decided before the condition on an operation that carries it | 19:50:29
+exit 1
+   1       Tests  6 failed | 31 passed (37)
+   1  Test Files  1 failed (1)
+   1  × RETIRED_DEVICE: a retired device: the credential of a REVOKED device 171ms
+   1  × RETIRED_DEVICE_SESSION: a retired device: the session token of an operator who was signed in on the device when it was revoked 177ms
+   1  × UNPAIRED_CREDENTIAL: a retired device: the old credential of a device that unpaired itself (state UNPAIRED) 147ms
+   1  × a retired device presented where the cell expects a PAIRED one: every cell is red, and the device operations answer 403 DEVICE_REVOKED 141ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 6ms
+   1 [test:db] teardown: dropped 3 database(s) in 125 ms; 0 remain with the run prefix dems_test_step_69b_tmdvo5e6_
+   1 [w47-harness] mutation Q09 applied to apps/core-server/src/plugins/permission-guard/decision.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== F01 | THE SECOND STEP, SIMULATED: operation 8 signInWithBiometric gets the condition in the registry AND the same words in its row of the document. Expected: GREEN, with no change of the test files | 19:50:37
+exit 0
+   1       Tests  37 passed (37)
+   1  Test Files  1 passed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 106 ms; 0 remain with the run prefix dems_test_step_69b_tmdvoefd_
+   1 [w47-harness] mutation F01 applied to apps/core-server/test/acceptance/rbac-matrix.support.ts (1 change(s))
+   1 [w47-harness] mutation F01 applied to packages/shared/src/api/identity.ts (1 change(s))
+   1 [w47] D118 on signInWithBiometric, rotateDeviceCredential: DEVICE 401 INVALID_CREDENTIALS · AUTH_FAILED | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 8 signInWithBiometric, 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 51 let through by stage 6, 0 × 401, 24 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 70 let through by stage 6, 0 × 401, 5 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 42 let through by stage 6, 0 × 401, 33 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== F02 | the second step, half done: operation 8 gets the condition in the registry only, the document does not say so. Expected: the comparison with section 7 red, the columns green | 19:50:46
+exit 1
+   1       Tests  3 failed | 34 passed (37)
+   1  Test Files  1 failed (1)
+   1  × every registry entry has the method, the path, the access rule, the conditions and the audit rule of its row 8ms
+   1  × the condition DEVICE_CREDENTIAL (decision D118): the reason of its refusal is the same in the document (§7.2) and in the registry, and it stands only on the marker DEVICE 0ms
+   1  × the session of an operator on the device presented where the cell expects the device itself: every cell is red, and an operation that needs the device's own credential answers 403 with the reason, no row and no place in the budget 127ms
+   1 [test:db] teardown: dropped 3 database(s) in 111 ms; 0 remain with the run prefix dems_test_step_69b_tmdvomvs_
+   1 [w47-harness] mutation F02 applied to packages/shared/src/api/identity.ts (1 change(s))
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 51 let through by stage 6, 0 × 401, 24 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 70 let through by stage 6, 0 × 401, 5 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 42 let through by stage 6, 0 × 401, 33 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+done at 19:50:54

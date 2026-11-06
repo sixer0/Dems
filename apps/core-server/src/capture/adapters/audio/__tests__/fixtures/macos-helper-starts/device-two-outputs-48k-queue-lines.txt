@@ -1,0 +1,31 @@
+FIXTURE  device-two-outputs-48k-queue-lines
+BASIS    DEVICE_VERBATIM
+SOURCE   row MM2, capture 15 (test/mm2_macos_microphone_48k.md s5; kept whole in .cache/task4-mm/session2.log, 1368 bytes, 25 lines): the user's USB interface at 48,000 Hz, device index 0, TWO outputs (inputs 1 and 3), the reader of the second one stalled from 3 to 6 s, exit status 0
+LAUNCH   the product's two output sections word for word (-f fifo -fifo_format f32le -drop_pkts_on_overflow 1 -queue_size 32 -format_opts flush_packets=1), each behind -t 9, which the product's list does not hold
+CHANGED  the five pointers (the record prints 0x<ptr>) are synthetic numbers, one per object, the queue's the same in both of its lines as row N4b printed it; the two pipe paths are synthetic. No device name stands in these lines
+--- helper standard error ---
+Input #0, avfoundation, from 'none:0':
+  Duration: N/A, start: 398198.680521, bitrate: 9216 kb/s
+  Stream #0:0: Audio: pcm_f32le, 48000 Hz, 5.1, flt, 9216 kb/s, start 398198.680521
+Stream mapping:
+  Stream #0:0 -> #0:0 (pcm_f32le (native) -> pcm_f32le (native))
+  Stream #0:0 -> #1:0 (pcm_f32le (native) -> pcm_f32le (native))
+[Parsed_pan_0 @ 0x600002c84000] Pure channel mapping detected: 0
+[Parsed_pan_0 @ 0x600002c84180] Pure channel mapping detected: 2
+Output #0, fifo, to '/synthetic/run/MIC-01.pcm':
+  Metadata:
+    encoder         : Lavf63.1.102
+  Stream #0:0: Audio: pcm_f32le, 48000 Hz, mono, flt, 1536 kb/s
+    Metadata:
+      encoder         : Lavc63.1.102 pcm_f32le
+Output #1, fifo, to '/synthetic/run/MIC-02.pcm':
+  Metadata:
+    encoder         : Lavf63.1.102
+  Stream #1:0: Audio: pcm_f32le, 48000 Hz, mono, flt, 1536 kb/s
+    Metadata:
+      encoder         : Lavc63.1.102 pcm_f32le
+[fifo @ 0x600001e4c500] FIFO queue full
+[fifo @ 0x600001e4c500] FIFO queue flushed
+[out#0/fifo @ 0x600003d08000] video:0KiB audio:1518KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+[out#1/fifo @ 0x600003d08300] video:0KiB audio:1518KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+size=N/A time=00:00:09.00 bitrate=N/A speed=0.998x elapsed=0:00:09.02    

@@ -1,0 +1,457 @@
+[
+ {
+  "id": "M00",
+  "file": "src/modules/devices/index.ts",
+  "from": "M00-none",
+  "to": "M00-none",
+  "note": "control: no text replaced (must fail with 'the text to replace is not in')"
+ },
+ {
+  "id": "M01",
+  "file": "src/modules/devices/operations.ts",
+  "from": "restartDevice: DeviceCommand.RESTART,",
+  "to": "restartDevice: DeviceCommand.IDENTIFY,",
+  "note": "restartDevice runs IDENTIFY (never refused by a recording, no restart)"
+ },
+ {
+  "id": "M02",
+  "file": "src/modules/devices/operations.ts",
+  "from": "testDeviceSignal: DeviceCommand.TEST_SIGNAL,",
+  "to": "testDeviceSignal: DeviceCommand.RESTART,",
+  "note": "testDeviceSignal runs RESTART"
+ },
+ {
+  "id": "M03",
+  "file": "src/modules/devices/operations.ts",
+  "from": "identifyDevice: DeviceCommand.IDENTIFY,",
+  "to": "identifyDevice: DeviceCommand.TEST_SIGNAL,",
+  "note": "identifyDevice runs TEST_SIGNAL"
+ },
+ {
+  "id": "M04",
+  "file": "src/modules/devices/operations.ts",
+  "from": "  'getDeviceInventory',\n  'restartDevice',",
+  "to": "  'restartDevice',\n  'getDeviceInventory',",
+  "note": "the module's operation list in another order than the registry"
+ },
+ {
+  "id": "M05",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'deviceCommand', request.params.id, command)),",
+  "to": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'deviceCommand', 'CAM-01', command)),",
+  "note": "a device command always goes to CAM-01, whatever the path says"
+ },
+ {
+  "id": "M06",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'deviceCommand', request.params.id, command)),",
+  "to": "handler: async (request, reply) => commandDone(reply, await app.engine.command({ ...request.principal, operatorId: 'OPR-003' }, 'deviceCommand', request.params.id, command)),",
+  "note": "the actor of a device command is a constant operator, not the caller"
+ },
+ {
+  "id": "M07",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'deviceCommand', request.params.id, command)),",
+  "to": "handler: async (request, reply) => { void app.engine.command(request.principal, 'deviceCommand', request.params.id, command).catch(() => undefined); return commandDone(reply, { value: undefined, epoch: app.engine.epoch, revision: app.engine.revision }); },",
+  "note": "a device command is answered before it has committed (and a refusal is lost)"
+ },
+ {
+  "id": "M08",
+  "file": "src/modules/devices/index.ts",
+  "from": "schema: { params: deviceParamsOf(operation) },",
+  "to": "schema: {},",
+  "note": "the path ID is not validated"
+ },
+ {
+  "id": "M09",
+  "file": "src/modules/devices/index.ts",
+  "from": "return z.object({ id: z.string().regex(operation.pathParam.pattern) });",
+  "to": "return z.object({ id: z.string() });",
+  "note": "the path ID is any string, not the registry's pattern"
+ },
+ {
+  "id": "M10",
+  "file": "src/modules/devices/index.ts",
+  "from": "return z.object({ id: z.string().regex(operation.pathParam.pattern) });",
+  "to": "return z.object({ id: z.string().regex(/^[A-Za-z][A-Za-z0-9-]{0,31}$/) });",
+  "note": "the path ID pattern accepts lower case"
+ },
+ {
+  "id": "M11",
+  "file": "src/modules/devices/index.ts",
+  "from": ".header(REVISION_HEADER_NAME, outcome.revision)",
+  "to": "",
+  "note": "no x-dems-revision on the answer of a command"
+ },
+ {
+  "id": "M12",
+  "file": "src/modules/devices/index.ts",
+  "from": ".header(EPOCH_HEADER_NAME, outcome.epoch)",
+  "to": ".header(EPOCH_HEADER_NAME, outcome.revision)",
+  "note": "x-dems-epoch carries the revision"
+ },
+ {
+  "id": "M13",
+  "file": "src/modules/devices/index.ts",
+  "from": ".header(REVISION_HEADER_NAME, outcome.revision)",
+  "to": ".header(REVISION_HEADER_NAME, outcome.revision - 1)",
+  "note": "x-dems-revision names the revision before the command"
+ },
+ {
+  "id": "M14",
+  "file": "src/modules/devices/index.ts",
+  "from": ".code(204).send();",
+  "to": ".code(200).send();",
+  "note": "a command answers 200 instead of 204"
+ },
+ {
+  "id": "M15",
+  "file": "src/modules/devices/index.ts",
+  "from": ".code(204).send();",
+  "to": ".code(204).send({ ok: true });",
+  "note": "a command's 204 is given a body"
+ },
+ {
+  "id": "M16",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'setActiveCamera', request.body.cameraId)),",
+  "to": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'setActiveCamera', 'VIDEO-02')),",
+  "note": "setActiveCamera always selects VIDEO-02"
+ },
+ {
+  "id": "M17",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'setActiveCamera', request.body.cameraId)),",
+  "to": "handler: async (request, reply) => commandDone(reply, await app.engine.command({ ...request.principal, operatorId: 'OPR-001' }, 'setActiveCamera', request.body.cameraId)),",
+  "note": "the actor of setActiveCamera is a constant operator"
+ },
+ {
+  "id": "M18",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'setActiveCamera', request.body.cameraId)),",
+  "to": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'resetClip', 'AUDIO-01')),",
+  "note": "setActiveCamera runs another hosted action"
+ },
+ {
+  "id": "M19",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'setActiveCamera', request.body.cameraId)),",
+  "to": "handler: async (request, reply) => { void app.engine.command(request.principal, 'setActiveCamera', request.body.cameraId).catch(() => undefined); return commandDone(reply, { value: undefined, epoch: app.engine.epoch, revision: app.engine.revision }); },",
+  "note": "setActiveCamera is answered before it has committed"
+ },
+ {
+  "id": "M20",
+  "file": "src/modules/devices/index.ts",
+  "from": "schema: { body: ActiveCameraRequestSchema },",
+  "to": "schema: {},",
+  "note": "setActiveCamera does not validate its body"
+ },
+ {
+  "id": "M21",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'resetClip', request.body.channel)),",
+  "to": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'resetClip', 'AUDIO-01')),",
+  "note": "resetMicClip always resets AUDIO-01"
+ },
+ {
+  "id": "M22",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'resetClip', request.body.channel)),",
+  "to": "handler: async (request, reply) => commandDone(reply, await app.engine.command({ ...request.principal }, 'resetClip', request.body.channel)),",
+  "note": "resetMicClip hands the engine a copy of the principal"
+ },
+ {
+  "id": "M23",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (request, reply) => commandDone(reply, await app.engine.command(request.principal, 'resetClip', request.body.channel)),",
+  "to": "handler: async (request, reply) => commandDone(reply, { value: undefined, epoch: app.engine.epoch, revision: app.engine.revision }),",
+  "note": "resetMicClip answers 204 and runs nothing"
+ },
+ {
+  "id": "M24",
+  "file": "src/modules/devices/index.ts",
+  "from": "schema: { body: MicClipResetRequestSchema },",
+  "to": "schema: {},",
+  "note": "resetMicClip does not validate its body"
+ },
+ {
+  "id": "M25",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (): Promise<DeviceHealthResponse> => deviceHealthOf(app.engine.state(), app.clock.now()),",
+  "to": "handler: async (): Promise<DeviceHealthResponse> => deviceHealthOf(app.engine.state(), 0),",
+  "note": "getDeviceHealth does not read the server clock"
+ },
+ {
+  "id": "M26",
+  "file": "src/modules/devices/index.ts",
+  "from": "schema: { response: { 200: DeviceHealthResponseSchema } },",
+  "to": "schema: {},",
+  "note": "getDeviceHealth has no response schema"
+ },
+ {
+  "id": "M27",
+  "file": "src/modules/devices/index.ts",
+  "from": "schema: { response: { 200: VideoStatusResponseSchema } },",
+  "to": "schema: {},",
+  "note": "getVideoStatus has no response schema"
+ },
+ {
+  "id": "M28",
+  "file": "src/modules/devices/index.ts",
+  "from": "schema: { response: { 200: DeviceInventorySchema } },",
+  "to": "schema: {},",
+  "note": "getDeviceInventory has no response schema"
+ },
+ {
+  "id": "M29",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (): Promise<VideoStatusResponse> => videoStatusOf(app.engine.state()),",
+  "to": "handler: async (): Promise<VideoStatusResponse> => { const holder = app as unknown as { w36Video?: VideoStatusResponse }; holder.w36Video ??= videoStatusOf(app.engine.state()); return holder.w36Video; },",
+  "note": "getVideoStatus answers the state of its first call"
+ },
+ {
+  "id": "M30",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (): Promise<DeviceInventory> => deviceInventoryOf(app.engine.state()),",
+  "to": "handler: async (): Promise<DeviceInventory> => ({ ...deviceInventoryOf(app.engine.state()), activeCameraId: 'VIDEO-01' }),",
+  "note": "the inventory always shows VIDEO-01 as the active camera"
+ },
+ {
+  "id": "M31",
+  "file": "src/modules/devices/index.ts",
+  "from": "handler: async (): Promise<AudioStatusResponse> => audioStatusOf(app.engine.state(), app.clock.now()),",
+  "to": "handler: async (): Promise<AudioStatusResponse> => { try { return audioStatusOf(app.engine.state(), app.clock.now()); } catch { return { channels: [] } as unknown as AudioStatusResponse; } },",
+  "note": "getAudioStatus swallows the engine's refusal"
+ },
+ {
+  "id": "M32",
+  "file": "src/modules/devices/status.ts",
+  "from": "  const clip = mic.clipLatched;",
+  "to": "  const clip = false;",
+  "note": "the CLIP latch is never shown"
+ },
+ {
+  "id": "M33",
+  "file": "src/modules/devices/status.ts",
+  "from": "  if (mic.state === MicState.NO_SIGNAL) {",
+  "to": "  if (false) {",
+  "note": "a mic without signal is answered at the noise floor, noSignal false"
+ },
+ {
+  "id": "M34",
+  "file": "src/modules/devices/status.ts",
+  "from": "if (mic.state === MicState.CLIP) return",
+  "to": "if (false) return",
+  "note": "a clipping mic is answered at the noise floor"
+ },
+ {
+  "id": "M35",
+  "file": "src/modules/devices/status.ts",
+  "from": "return { dbfs: frame.dbfs, peak: frame.peak, clip, noSignal: frame.noSignal };\n  }",
+  "to": "return { dbfs: frame.dbfs, peak: frame.peak, clip, noSignal: false };\n  }",
+  "note": "noSignal is always false"
+ },
+ {
+  "id": "M36",
+  "file": "src/modules/devices/status.ts",
+  "from": "    online: camera.online,",
+  "to": "    online: true,",
+  "note": "a camera is always online"
+ },
+ {
+  "id": "M37",
+  "file": "src/modules/devices/status.ts",
+  "from": "    recState: camera.recState,",
+  "to": "    recState: null,",
+  "note": "a camera never shows its recording state"
+ },
+ {
+  "id": "M38",
+  "file": "src/modules/devices/status.ts",
+  "from": "    lens: camera.lens,",
+  "to": "    lens: 'READY',",
+  "note": "a lens is always READY"
+ },
+ {
+  "id": "M39",
+  "file": "src/modules/devices/status.ts",
+  "from": "    deviceId: camera.deviceId,",
+  "to": "    deviceId: camera.id,",
+  "note": "the device ID of a camera is its track ID"
+ },
+ {
+  "id": "M40",
+  "file": "src/modules/devices/status.ts",
+  "from": "    bitrateMbps: camera.bitrateMbps,",
+  "to": "    bitrateMbps: 0,",
+  "note": "the bitrate of a track is 0"
+ },
+ {
+  "id": "M41",
+  "file": "src/modules/devices/status.ts",
+  "from": "      state: mic.state,",
+  "to": "      state: 'READY',",
+  "note": "a mic is always READY"
+ },
+ {
+  "id": "M42",
+  "file": "src/modules/devices/status.ts",
+  "from": "      recState: mic.recState,",
+  "to": "      recState: null,",
+  "note": "a mic never shows its recording state"
+ },
+ {
+  "id": "M43",
+  "file": "src/modules/devices/status.ts",
+  "from": "      deviceId: mic.deviceId,",
+  "to": "      deviceId: mic.id,",
+  "note": "the device ID of a mic is its track ID"
+ },
+ {
+  "id": "M44",
+  "file": "src/modules/devices/status.ts",
+  "from": "      gainDb: mic.gainDb,",
+  "to": "      gainDb: 0,",
+  "note": "the gain of a mic is 0"
+ },
+ {
+  "id": "M45",
+  "file": "src/modules/devices/status.ts",
+  "from": "      phantom: mic.phantom,",
+  "to": "      phantom: false,",
+  "note": "phantom power is always off"
+ },
+ {
+  "id": "M46",
+  "file": "src/modules/devices/status.ts",
+  "from": "    estimatedRemainingMs: Math.round(summary.estimatedRemainingMs),",
+  "to": "    estimatedRemainingMs: summary.estimatedRemainingMs,",
+  "note": "the remaining time is not rounded to whole milliseconds"
+ },
+ {
+  "id": "M47",
+  "file": "src/modules/devices/status.ts",
+  "from": "    freeBytes: summary.freeBytes,",
+  "to": "    freeBytes: summary.totalBytes,",
+  "note": "free space is the whole volume"
+ },
+ {
+  "id": "M48",
+  "file": "src/modules/devices/status.ts",
+  "from": "      days: state.storagePolicy.retentionDays,",
+  "to": "      days: 0,",
+  "note": "retention days are 0"
+ },
+ {
+  "id": "M49",
+  "file": "src/modules/devices/status.ts",
+  "from": "      autoArchive: state.storagePolicy.autoArchive,",
+  "to": "      autoArchive: false,",
+  "note": "auto-archive is always off"
+ },
+ {
+  "id": "M50",
+  "file": "src/modules/devices/status.ts",
+  "from": "    volumes: state.storage.volumes.map((volume) => ({",
+  "to": "    volumes: state.storage.volumes.slice(0, 1).map((volume) => ({",
+  "note": "only the first storage volume is answered"
+ },
+ {
+  "id": "M51",
+  "file": "src/modules/devices/status.ts",
+  "from": "    systemState: system.state,",
+  "to": "    systemState: 'READY',",
+  "note": "the system state is always READY"
+ },
+ {
+  "id": "M52",
+  "file": "src/modules/devices/status.ts",
+  "from": "flags: system.flags.map((flag) => ({ id: flag.id, severity: flag.severity, message: flag.message })),",
+  "to": "flags: [],",
+  "note": "no flag is answered"
+ },
+ {
+  "id": "M53",
+  "file": "src/modules/devices/status.ts",
+  "from": "severity: flag.severity,",
+  "to": "severity: 'WARNING',",
+  "note": "every flag is a warning"
+ },
+ {
+  "id": "M54",
+  "file": "src/modules/devices/status.ts",
+  "from": "      lastSyncAt: toWibIso(state.time.lastSyncAt),",
+  "to": "      lastSyncAt: toWibIso(now),",
+  "note": "lastSyncAt is the instant of the read"
+ },
+ {
+  "id": "M55",
+  "file": "src/modules/devices/status.ts",
+  "from": "    serverTime: toWibIso(now),",
+  "to": "    serverTime: new Date(now).toISOString(),",
+  "note": "serverTime is UTC, not UTC+07:00"
+ },
+ {
+  "id": "M56",
+  "file": "src/modules/devices/status.ts",
+  "from": "      source: state.time.source,",
+  "to": "      source: 'GNSS',",
+  "note": "the time source is always GNSS"
+ },
+ {
+  "id": "M57",
+  "file": "src/modules/devices/status.ts",
+  "from": "      tpmOk: state.security.tpm.ok,",
+  "to": "      tpmOk: true,",
+  "note": "the TPM is always healthy"
+ },
+ {
+  "id": "M58",
+  "file": "src/modules/devices/status.ts",
+  "from": "      tamper: state.security.tamper,",
+  "to": "      tamper: false,",
+  "note": "the tamper switch is never tripped"
+ },
+ {
+  "id": "M59",
+  "file": "src/modules/devices/status.ts",
+  "from": "      state: state.security.state,",
+  "to": "      state: 'OK',",
+  "note": "the security state is always OK"
+ },
+ {
+  "id": "M60",
+  "file": "src/modules/devices/status.ts",
+  "from": "status: service.status }",
+  "to": "status: 'RUNNING' }",
+  "note": "every service is RUNNING"
+ },
+ {
+  "id": "M61",
+  "file": "src/modules/devices/status.ts",
+  "from": "    ports: state.ports,",
+  "to": "    ports: [],",
+  "note": "the inventory has no ports"
+ },
+ {
+  "id": "M62",
+  "file": "src/modules/devices/status.ts",
+  "from": "    tabletLink: state.tabletLink,",
+  "to": "    tabletLink: { ...state.tabletLink, state: 'CONNECTED' },",
+  "note": "the tablet link is always CONNECTED"
+ },
+ {
+  "id": "M63",
+  "file": "src/modules/devices/status.ts",
+  "from": "    otherDevices: state.otherDevices,",
+  "to": "    otherDevices: state.otherDevices.slice(0, 2),",
+  "note": "the inventory leaves out the last other device"
+ },
+ {
+  "id": "M64",
+  "file": "src/modules/devices/status.ts",
+  "from": "    audio: audioChannelsOf(state.mics, now),",
+  "to": "    audio: audioChannelsOf(state.mics, now).reverse(),",
+  "note": "the two audio channels of the health answer are swapped"
+ }
+]

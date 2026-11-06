@@ -1,0 +1,18 @@
+window 2026-10-07T03:01:42.129Z -> 2026-10-07T03:04:36.447Z (174.3 s); database dems_demo
+table                   count_before count_after d_count  d_ins  d_upd  d_del
+active_session                     1           1       0      1    144      1
+audit_chain_head                   1           1       0      0     14      0
+audit_log                        207         221      14     14      0      0
+auth_sessions                     11          11       0      0      5      0
+core_state                         1           1       0      0      1      0
+engine_counters                    5           5       0      0     23      0
+events                           200         208       8      8      0      0
+evidence_custody                  46          49       3      3      0      0
+evidence_items                    19          20       1      1      0      0
+evidence_tracks                   76          80       4      4      0      0
+hardware_snapshot                  1           1       0      0    178      0
+health_snapshots                  77          80       3      3      0      0
+paired_devices                     4           4       0      0      2      0
+session_history                   19          20       1      1      0      0
+tables whose name could hold meter frames (/meter|frame|level|vu/i): none of the 30
+total d_ins 35, d_upd 367, d_del 1; row writes per second 2.31; database xact_commit delta 333

@@ -1,0 +1,26 @@
+#!/bin/bash
+# Lands the files of fix round A in the tree in one step: every file is first copied beside its
+# target under a name no tool reads, then all are renamed, the production files in dependency order.
+set -euo pipefail
+W=/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1a
+S=$W/tree/apps/core-server
+T=/Users/gsp-budi/Documents/DEMS/apps/core-server
+ORDER=(src/plugins/logger/error-log.ts src/plugins/logger/logger-options.ts src/plugins/logger/index.ts src/core/errors.ts src/core/unit-statement.ts src/plugins/db/index.ts src/core/unit-of-work.ts src/core/pipeline.ts src/core/types.ts src/core/index.ts src/core/__tests__/support.ts)
+ALL=("${ORDER[@]}")
+while IFS= read -r f; do
+  skip=0
+  for o in "${ORDER[@]}"; do [ "$o" = "$f" ] && skip=1; done
+  [ $skip -eq 1 ] || ALL+=("$f")
+done < "$W/land.list"
+[ "${#ALL[@]}" -eq "$(wc -l < "$W/land.list" | tr -d ' ')" ] || { echo "the order list and the landing list differ"; exit 1; }
+for f in "${ALL[@]}"; do
+  grep -q -x -F "$f" "$W/land.list" || { echo "NOT IN LIST: $f"; exit 1; }
+  cp -p "$S/$f" "$T/$f.cpb1a-new"
+done
+echo "staged ${#ALL[@]} files beside their targets at $(date '+%H:%M:%S')"
+START=$(date '+%H:%M:%S')
+for f in "${ALL[@]}"; do mv -f "$T/$f.cpb1a-new" "$T/$f"; done
+echo "renamed ${#ALL[@]} files between $START and $(date '+%H:%M:%S')"
+echo "temporary files left: $(find "$T" -name '*.cpb1a-new' | wc -l | tr -d ' ')"
+while IFS= read -r f; do cmp -s "$S/$f" "$T/$f" || echo "DIFFERS AFTER LANDING: $f"; done < "$W/land.list"
+echo "the tree equals the scratch copy for the ${#ALL[@]} files"

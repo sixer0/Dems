@@ -1,0 +1,35 @@
+PASS src/features/devices/devices-live-static.test.ts
+    ✓ reads the folder: every production file, sub-folders included (1 ms)
+    ✓ no production file calls the simulator's action hook (1 ms)
+    ✓ no production file reads `.actions` of a `Sim`: every `.actions` left is a style (1 ms)
+    ✓ the detail's four calls: `useCoreActions`, each through `settle`; a Live rejection goes to the presenter first
+    ✓ the folder names no network API, no Core server address, no storage package, no Live source module, no timer (1 ms)
+    ✓ the LIVE wording is picked from `useCoreLink().source` in one file, never from a preference or the data-mode hook
+    ✓ the text LIVE mode adds says nothing about a simulation; the texts it replaces did (1 ms)
+    ✓ no `SIM-GAP` marker was added: the folder keeps the 17 markers of `acaff20` (KI-07 stays 13 IDs / 62 markers)
+    ✓ the copy of Simulated mode is as it was at `acaff20`: 44 texts, one digest
+PASS src/features/devices/live-devices-sites.test.tsx
+    ✓ success: the success toast only after the Core's 204 (AC-C-63); busy at once, spinner late (LB-1); one request; the Core's words (340 ms)
+    ✓ answer first, delta later: the toast waits for the revision the answer named (CL-16) (143 ms)
+    ✓ refusal: a 403 NOT_PERMITTED of the Core's guard → the denied toast naming the role; no success toast; the dialog closes (125 ms)
+    ✓ 409 COMMAND_UNSUPPORTED (the contract's example) → "MIC 2 does not accept this command."; no success toast (103 ms)
+    ✓ outage: "Core server unreachable. Nothing was changed."; no success toast; a second try sends again (141 ms)
+    ✓ a 429 is a limit, not an outage (LB-10): the limit toast with the seconds, no offline wording (96 ms)
+    ✓ success as the TECHNICIAN: the toast after the Core's 204, the Core's audit row, the Core's words (118 ms)
+    ✓ refusal: 403 (the contract's example `notPermitted`) → the denied toast naming the Technician role; no success toast (150 ms)
+    ✓ 409 RECORDING_ACTIVE (the contract's example: a recording started on the Core) → "Not available while recording" (121 ms)
+    ✓ 409 COMMAND_UNSUPPORTED (the contract's example) → "Camera 2 does not accept this command." (100 ms)
+    ✓ outage: "Core server unreachable"; no success toast (89 ms)
+    ✓ S5-4: the hint reads the replicated role — the INVESTIGATOR sees Restart disabled with "Requires the Technician role"; Test signal stays open (100 ms)
+    ✓ S5-4: while the Core records, the TECHNICIAN sees Restart disabled with "Not available while recording" (78 ms)
+    ✓ success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve (134 ms)
+    ✓ Run again: one more run on the Core; marked busy until the Core accepted it (142 ms)
+    ✓ refusal: a 403 NOT_PERMITTED of the Core's guard → the denied toast; the sheet stays closed; the button is idle (123 ms)
+    ✓ outage: "Core server unreachable. Nothing was changed."; the sheet stays closed; a second press sends again and opens it (168 ms)
+    ✓ success: the Core clears the latch and the replica shows it (91 ms)
+    ✓ outage: "Core server unreachable" instead of an unhandled rejection; the latch stays (86 ms)
+    ✓ the health caption and the Overview of a camera say nothing about a simulation (73 ms)
+    ✓ the list and three details mount (effects twice) and send nothing; one press then sends exactly ONE request (334 ms)
+    ✓ the dialog body, the success toast, the Log and the diagnostics subtitle still say "simulated" (87 ms)
+Test Suites: 2 passed, 2 total
+Tests:       31 passed, 31 total

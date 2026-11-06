@@ -1,0 +1,49 @@
+# DEMS Core address helper: one instance per connection (decision C19; host profile item HOST-44).
+# Installed by the user as /etc/systemd/system/dems-core-netalias@.service, owner root, mode 0644.
+# Every value is a constant; this file is covered by SHA256SUMS.
+#
+# The helper is started WITHOUT ARGUMENTS: the request is the one line it reads from the
+# connection. Its one line per call on standard error goes to the journal.
+# It stays in the host's network namespace: it has to, to change an address of the camera port.
+
+[Unit]
+Description=DEMS Core address helper (one request)
+CollectMode=inactive-or-failed
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -I -S -B /usr/local/sbin/dems-core-netalias
+User=root
+Group=root
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+SyslogIdentifier=dems-core-netalias
+RuntimeMaxSec=30
+UMask=0022
+
+# The marks of what the helper added. Kept between instances; gone at reboot, as the addresses are.
+RuntimeDirectory=dems-core-netalias/marks
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+
+# What the root side may do: change addresses (the ip tool) and send the conflict probe (arping).
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_PACKET AF_INET
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native

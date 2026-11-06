@@ -1,0 +1,103 @@
+
+== 23:09:25 0. before (no reset): ports free?; dems_lane_1 as it is
+   audit_log                116
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 23:09:26 1. start the lane backend (demo flag off)
+npm PID 91706, listener PID 91755
+   "port":4421,"database":"dems_lane_1","demoControls":false
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T16:09:26.959Z","uptimeMs":225,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 23:09:26 2. device session: phone, Metro 8083, device tcp:4420 -> host tcp:4421
+[device-session phone 23:09:26] lock held; hard cap 540 s, until 23:18:26 (watchdog PID 91799)
+[device-session phone 23:09:26] session serial: emulator-5554 (dems2_phone)
+[device-session phone 23:09:27] emulator-5554: screen awake, no keyguard
+[device-session phone 23:09:27] Metro PID 91835 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session phone 23:09:29] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 23:09:29] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 23:09:29] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), lane port 4421, run w66230925
+-- lock: isKeyguardShowing=false; fps "count":1
+-- before: prefs {"coreLinkSource":"SIMULATED"}; simulator auth 
+== L1. LIVE: cold start on the paired phone → /login ==
+-- am start -W -d 'demsdemo:///?core=LIVE'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 5 s for: runtime.live.ready
+-- waited 1 s for: DEMS-LIVE\] GET /api/v1/pairing/device 200
+-- screencap: 66_phone_login_live.png (1721804 bytes), focus: mCurrentFocus=Window{5f8d932 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+== L2. LIVE: scripted sign-in with the seeded operator ==
+-- typed the operator username (andi.pratama, role SUPERVISOR)
+-- typed the demo password (not shown)
+-- pressed the keypad's go key
+-- the app's sign-in request: status 200, request ID fa78ff78-9325-4cc4-adbc-6843f2d4a78d
+-- credential/token lines: device JS log 0; backend log 0
+-- sign-in step exit: 0 (0 = Core answered 200 and no credential leaked)
+-- screencap: 66_phone_home_live_offer_check.png (385999 bytes), focus: mCurrentFocus=Window{5f8d932 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- the app's biometric offer: declined (Not now)
+-- screencap: 66_phone_home_live.png (436367 bytes), focus: mCurrentFocus=Window{5f8d932 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+== L3. LIVE: More (top, then the footer) ==
+-- am start -W -d 'demsdemo:///more'
+   Status: ok
+   LaunchState: UNKNOWN (0)
+   TotalTime: 0
+-- screencap: 66_phone_more_live_top.png (247365 bytes), focus: mCurrentFocus=Window{5f8d932 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- screencap: 66_phone_more_live_footer.png (245393 bytes), focus: mCurrentFocus=Window{5f8d932 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- Core request lines in LIVE:
+      1 DEMS-LIVE] POST /api/v1/auth/touch 200
+      1 DEMS-LIVE] POST /api/v1/auth/sign-in 200
+      1 DEMS-LIVE] GET /api/v1/pairing/device 200
+      1 DEMS-LIVE] GET /api/v1/auth/status 200
+      1 DEMS-LIVE] GET /api/v1/auth/session 401
+-- live.misuse (must be 0): 0; credential/token lines (must be 0): 0
+== S1. SIMULATED: launch with core=SIMULATED (stored) ==
+-- am start -W -d 'demsdemo:///?core=SIMULATED'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 2 s for runtime.sim.hydrated
+-- simulator auth at the start: 
+-- screencap: 66_phone_simulated_start.png (1686131 bytes), focus: mCurrentFocus=Window{45c15b0 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- typed the operator username (andi.pratama, role SUPERVISOR)
+-- typed the demo password (not shown)
+-- pressed the keypad's go key
+-- simulated sign-in step exit: 0
+-- screencap: 66_phone_home_simulated_offer_check.png (368971 bytes), focus: mCurrentFocus=Window{45c15b0 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- the app's biometric offer: declined (Not now)
+-- screencap: 66_phone_home_simulated.png (402070 bytes), focus: mCurrentFocus=Window{45c15b0 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- Core requests after the SIMULATED launch (must be 0): 0
+== S2. SIMULATED: sign out again from More (the app was at its Login screen) ==
+-- am start -W -d 'demsdemo:///more'
+   Status: ok
+   LaunchState: UNKNOWN (0)
+   TotalTime: 0
+-- screencap: 66_phone_more_simulated_top.png (246550 bytes), focus: mCurrentFocus=Window{45c15b0 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- tapped More's Sign out at 781 586
+-- screencap: 66_phone_simulated_after_sign_out.png (1674544 bytes), focus: mCurrentFocus=Window{45c15b0 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- after: prefs {"coreLinkSource":"SIMULATED"}; simulator auth 
+-- lock at end: isKeyguardShowing=false; fps "count":1
+[device-session phone 23:11:28] Metro 91835 stopped
+[device-session phone 23:11:28] session ended with status 0
+device session exit=0
+
+== 23:11:28 3. backend request log during the session
+      1 GET /api/v1/auth/session 401 principal=device
+      1 GET /api/v1/auth/status 200 principal=device
+      1 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/device 200 principal=device
+      1 POST /api/v1/auth/sign-in 200 principal=device
+      1 POST /api/v1/auth/touch 200 principal=operator
+-- socket lines: 2 opened, 2 closed
+-- bearer/cookie/credential lines in the server log this run (must be 0): 0
+
+== 23:11:28 4. stop the backend and check nothing is left
+   {"level":30,"time":1791216688995,"pid":91755,"hostname":"GSP-Budis-MacBook-Air.local","msg":"shutdown complete"}
+lsof exit 1 (1 = none)
+   audit_log                119
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 23:11:29 end of run w66230925
+run exit=0

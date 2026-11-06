@@ -1,0 +1,43 @@
+# Pinned calls of the capture worker (blueprint row 61; decisions D84 R-6, D85 R-8; pair-58 F-10).
+# file<TAB>function<TAB>call|mention<TAB>the canonical argument text of the call | the number of mentions that are not calls
+# EVERY use of a function that creates, truncates, renames, links or removes a file, sets a mux option or commands the
+# filter graph stands here. A new call, of any spelling, and a pinned call that changed are refused by check.sh (rule
+# R-6 / F-10, test/static/pinned_calls.py). A new row is a DECISION about an evidence file, not a habit: regenerate
+# with `python3 test/static/pinned_calls.py --print src`, read the difference, and say in the commit why it is safe.
+# For av_dict_set the text is `"key" = value` (value `*` when it is computed); `*` alone: pinned by count and place.
+audio.c	fopen	call	path, "w"
+audio.c	open	call	plan->path, O_RDONLY|O_NONBLOCK|O_CLOEXEC
+audio.c	open	call	s->tap_path, O_WRONLY|O_CREAT|O_EXCL|O_APPEND|O_CLOEXEC, 0600
+audio.c	open	call	s->tap_path, O_WRONLY|O_NONBLOCK|O_CLOEXEC
+audio.c	open	call	s->tap_path, O_WRONLY|O_NONBLOCK|O_CLOEXEC
+# D61 (2026-11-04): the channel files of the microphone plane (audio.c, mic_rec_open): one muxer and one option set
+# per recorded channel - the same pinned forms as the camera files; the encoder count moved from one to one-per-file
+# (check.sh H-4 updated with the decision).
+audio.c	av_dict_set	call	"flush_packets" = "1"
+audio.c	av_dict_set	call	"movflags" = MUX_MOVFLAGS
+audio.c	av_dict_set_int	call	"min_frag_duration" = *
+audio.c	avformat_alloc_output_context2	call	&m->out, NULL, "mp4", NULL
+audio.c	avformat_write_header	call	*
+capture_worker.c	open	call	"/dev/null", fd==0?O_RDONLY:O_WRONLY
+ingest.c	av_dict_parse_string	call	&o, g_mux_extra, "=", ":", 0
+ingest.c	av_dict_set	call	"flush_packets" = "1"
+ingest.c	av_dict_set	call	"movflags" = MUX_MOVFLAGS
+ingest.c	av_dict_set	call	"protocol_whitelist" = "tcp"
+ingest.c	av_dict_set	call	"rtsp_flags" = "listen"
+ingest.c	av_dict_set_int	call	"listen_timeout" = g_listen_timeout_s
+ingest.c	av_dict_set_int	call	"min_frag_duration" = *
+ingest.c	avformat_alloc_output_context2	call	&c->out, NULL, "mp4", NULL
+ingest.c	avformat_open_input	call	*
+ingest.c	avformat_write_header	call	*
+ipc.c	fopen	call	path, "a"
+ipc.c	rename	call	path, old
+sink.c	ftruncate	call	s->fd, good
+sink.c	link	call	s->part, s->path
+sink.c	open	call	dir, O_RDONLY|O_DIRECTORY|O_CLOEXEC
+sink.c	open	call	s->part, O_WRONLY|O_CREAT|O_EXCL|O_APPEND|O_CLOEXEC, 0600
+sink.c	unlink	call	s->part
+sink.c	unlink	call	s->part
+capture_worker.c	g_mux_extra	mention	2
+ingest.c	g_mux_extra	mention	2
+ipc.c	link	mention	3
+worker.h	g_mux_extra	mention	1

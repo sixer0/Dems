@@ -1,0 +1,22 @@
+// Closing-fix round C2, rule M15: a load-time transform of apps/core-web/src/main.tsx. The file on
+// disk is never changed; the mutation exists only in the module Vite serves to the test.
+import { mergeConfig } from 'vite'
+import base from '/Users/gsp-budi/Documents/DEMS/apps/core-web/vite.config.ts'
+
+const from = Buffer.from(process.env.MUT_FROM_B64 ?? '', 'base64').toString('utf8')
+const to = Buffer.from(process.env.MUT_TO_B64 ?? '', 'base64').toString('utf8')
+
+export default (env) =>
+  mergeConfig(typeof base === 'function' ? base(env) : base, {
+    plugins: [
+      {
+        name: 'c2-mutate',
+        enforce: 'pre',
+        transform(code, id) {
+          if (!id.split('?')[0].endsWith('/apps/core-web/src/main.tsx') || from === '') return null
+          if (code.split(from).length !== 2) throw new Error(`mutation anchor found ${code.split(from).length - 1} times`)
+          return code.replace(from, to)
+        },
+      },
+    ],
+  })

@@ -1,0 +1,607 @@
+{
+  "tag": "net_ctx_b",
+  "started": "09:13:08.044 (epoch 1791339188.044)",
+  "stopped": "09:39:44.152 (epoch 1791340784.152)",
+  "originCounts": {
+    "http://127.0.0.1:5173": 523,
+    "ws://127.0.0.1:5173": 4
+  },
+  "apiCounts": {
+    "GET /api/v1/auth/session 401": 2,
+    "GET /api/v1/auth/status 200": 2,
+    "GET /api/v1/health 200": 70,
+    "POST /api/v1/auth/sign-in 200": 1,
+    "POST /api/v1/session 403": 2,
+    "POST /api/v1/auth/sign-out 401": 1
+  },
+  "sockets": [
+    {
+      "url": "ws://127.0.0.1:5173/?…",
+      "status": 101,
+      "frames": 1,
+      "types": [
+        "connected"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/ws",
+      "status": 101,
+      "frames": 5,
+      "types": [
+        "heartbeat",
+        "hello"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/ws",
+      "status": 101,
+      "frames": 4000,
+      "types": [
+        "delta",
+        "heartbeat",
+        "hello",
+        "meters",
+        "session.updated",
+        "snapshot"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/ws",
+      "status": 101,
+      "frames": 691,
+      "types": [
+        "heartbeat",
+        "hello"
+      ]
+    }
+  ],
+  "api": [
+    {
+      "sent": "09:13:10.563 (epoch 1791339190.563)",
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "status": 401,
+      "done": "09:13:10.570 (epoch 1791339190.570)"
+    },
+    {
+      "sent": "09:13:10.569 (epoch 1791339190.569)",
+      "method": "GET",
+      "path": "/api/v1/auth/status",
+      "status": 200,
+      "done": "09:13:10.574 (epoch 1791339190.574)"
+    },
+    {
+      "sent": "09:13:10.764 (epoch 1791339190.764)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:13:10.821 (epoch 1791339190.821)"
+    },
+    {
+      "sent": "09:13:13.919 (epoch 1791339193.919)",
+      "method": "POST",
+      "path": "/api/v1/auth/sign-in",
+      "status": 200,
+      "done": "09:13:13.955 (epoch 1791339193.955)"
+    },
+    {
+      "sent": "09:16:03.372 (epoch 1791339363.372)",
+      "method": "POST",
+      "path": "/api/v1/session",
+      "status": 403,
+      "done": "09:16:03.378 (epoch 1791339363.378)"
+    },
+    {
+      "sent": "09:19:49.139 (epoch 1791339589.139)",
+      "method": "POST",
+      "path": "/api/v1/session",
+      "status": 403,
+      "done": "09:19:49.147 (epoch 1791339589.147)"
+    },
+    {
+      "sent": "09:28:13.968 (epoch 1791340093.968)",
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "status": 401,
+      "done": "09:28:13.989 (epoch 1791340093.989)"
+    },
+    {
+      "sent": "09:28:14.275 (epoch 1791340094.275)",
+      "method": "GET",
+      "path": "/api/v1/auth/status",
+      "status": 200,
+      "done": "09:28:14.285 (epoch 1791340094.285)"
+    },
+    {
+      "sent": "09:28:14.585 (epoch 1791340094.585)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:28:14.613 (epoch 1791340094.613)"
+    },
+    {
+      "sent": "09:28:24.650 (epoch 1791340104.650)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:28:24.657 (epoch 1791340104.657)"
+    },
+    {
+      "sent": "09:28:34.660 (epoch 1791340114.660)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:28:34.666 (epoch 1791340114.666)"
+    },
+    {
+      "sent": "09:28:44.669 (epoch 1791340124.669)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:28:44.682 (epoch 1791340124.682)"
+    },
+    {
+      "sent": "09:28:54.685 (epoch 1791340134.685)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:28:54.691 (epoch 1791340134.691)"
+    },
+    {
+      "sent": "09:29:04.693 (epoch 1791340144.693)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:29:04.697 (epoch 1791340144.697)"
+    },
+    {
+      "sent": "09:29:14.698 (epoch 1791340154.698)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:29:14.710 (epoch 1791340154.710)"
+    },
+    {
+      "sent": "09:29:24.714 (epoch 1791340164.714)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:29:24.740 (epoch 1791340164.740)"
+    },
+    {
+      "sent": "09:29:34.742 (epoch 1791340174.742)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:29:34.750 (epoch 1791340174.750)"
+    },
+    {
+      "sent": "09:29:44.753 (epoch 1791340184.753)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:29:44.758 (epoch 1791340184.758)"
+    },
+    {
+      "sent": "09:29:54.761 (epoch 1791340194.761)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:29:54.766 (epoch 1791340194.766)"
+    },
+    {
+      "sent": "09:30:04.769 (epoch 1791340204.769)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:30:04.773 (epoch 1791340204.773)"
+    },
+    {
+      "sent": "09:30:14.775 (epoch 1791340214.775)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:30:14.786 (epoch 1791340214.786)"
+    },
+    {
+      "sent": "09:30:24.789 (epoch 1791340224.789)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:30:24.800 (epoch 1791340224.800)"
+    },
+    {
+      "sent": "09:30:34.802 (epoch 1791340234.802)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:30:34.808 (epoch 1791340234.808)"
+    },
+    {
+      "sent": "09:30:44.811 (epoch 1791340244.811)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:30:44.814 (epoch 1791340244.814)"
+    },
+    {
+      "sent": "09:30:54.815 (epoch 1791340254.815)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:30:54.819 (epoch 1791340254.819)"
+    },
+    {
+      "sent": "09:31:04.820 (epoch 1791340264.820)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:31:04.824 (epoch 1791340264.824)"
+    },
+    {
+      "sent": "09:31:14.827 (epoch 1791340274.827)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:31:14.838 (epoch 1791340274.838)"
+    },
+    {
+      "sent": "09:31:24.841 (epoch 1791340284.841)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:31:24.857 (epoch 1791340284.857)"
+    },
+    {
+      "sent": "09:31:34.859 (epoch 1791340294.859)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:31:34.863 (epoch 1791340294.863)"
+    },
+    {
+      "sent": "09:31:44.866 (epoch 1791340304.866)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:31:44.869 (epoch 1791340304.869)"
+    },
+    {
+      "sent": "09:31:54.870 (epoch 1791340314.870)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:31:54.874 (epoch 1791340314.874)"
+    },
+    {
+      "sent": "09:32:04.876 (epoch 1791340324.876)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:32:04.878 (epoch 1791340324.878)"
+    },
+    {
+      "sent": "09:32:14.880 (epoch 1791340334.880)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:32:14.884 (epoch 1791340334.884)"
+    },
+    {
+      "sent": "09:32:24.885 (epoch 1791340344.885)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:32:24.888 (epoch 1791340344.888)"
+    },
+    {
+      "sent": "09:32:34.890 (epoch 1791340354.890)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:32:34.893 (epoch 1791340354.893)"
+    },
+    {
+      "sent": "09:32:44.894 (epoch 1791340364.894)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:32:44.897 (epoch 1791340364.897)"
+    },
+    {
+      "sent": "09:32:54.898 (epoch 1791340374.898)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:32:54.901 (epoch 1791340374.901)"
+    },
+    {
+      "sent": "09:33:04.904 (epoch 1791340384.904)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:33:04.906 (epoch 1791340384.906)"
+    },
+    {
+      "sent": "09:33:14.907 (epoch 1791340394.907)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:33:14.910 (epoch 1791340394.910)"
+    },
+    {
+      "sent": "09:33:24.912 (epoch 1791340404.912)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:33:24.914 (epoch 1791340404.914)"
+    },
+    {
+      "sent": "09:33:34.916 (epoch 1791340414.916)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:33:34.921 (epoch 1791340414.921)"
+    },
+    {
+      "sent": "09:33:44.924 (epoch 1791340424.924)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:33:44.931 (epoch 1791340424.931)"
+    },
+    {
+      "sent": "09:33:54.934 (epoch 1791340434.934)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:33:54.938 (epoch 1791340434.938)"
+    },
+    {
+      "sent": "09:34:04.942 (epoch 1791340444.942)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:34:04.946 (epoch 1791340444.946)"
+    },
+    {
+      "sent": "09:34:14.947 (epoch 1791340454.947)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:34:14.951 (epoch 1791340454.951)"
+    },
+    {
+      "sent": "09:34:24.953 (epoch 1791340464.953)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:34:24.956 (epoch 1791340464.956)"
+    },
+    {
+      "sent": "09:34:34.958 (epoch 1791340474.958)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:34:34.962 (epoch 1791340474.962)"
+    },
+    {
+      "sent": "09:34:44.964 (epoch 1791340484.964)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:34:44.967 (epoch 1791340484.967)"
+    },
+    {
+      "sent": "09:34:54.968 (epoch 1791340494.968)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:34:54.972 (epoch 1791340494.972)"
+    },
+    {
+      "sent": "09:35:04.974 (epoch 1791340504.974)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:35:04.977 (epoch 1791340504.977)"
+    },
+    {
+      "sent": "09:35:14.979 (epoch 1791340514.979)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:35:14.981 (epoch 1791340514.981)"
+    },
+    {
+      "sent": "09:35:24.983 (epoch 1791340524.983)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:35:24.987 (epoch 1791340524.987)"
+    },
+    {
+      "sent": "09:35:34.988 (epoch 1791340534.988)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:35:34.992 (epoch 1791340534.992)"
+    },
+    {
+      "sent": "09:35:44.994 (epoch 1791340544.994)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:35:45.000 (epoch 1791340545.000)"
+    },
+    {
+      "sent": "09:35:55.001 (epoch 1791340555.001)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:35:55.005 (epoch 1791340555.005)"
+    },
+    {
+      "sent": "09:36:05.008 (epoch 1791340565.008)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:36:05.012 (epoch 1791340565.012)"
+    },
+    {
+      "sent": "09:36:15.014 (epoch 1791340575.014)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:36:15.016 (epoch 1791340575.016)"
+    },
+    {
+      "sent": "09:36:25.019 (epoch 1791340585.019)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:36:25.025 (epoch 1791340585.025)"
+    },
+    {
+      "sent": "09:36:35.026 (epoch 1791340595.026)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:36:35.032 (epoch 1791340595.032)"
+    },
+    {
+      "sent": "09:36:45.033 (epoch 1791340605.033)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:36:45.038 (epoch 1791340605.038)"
+    },
+    {
+      "sent": "09:36:55.039 (epoch 1791340615.039)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:36:55.042 (epoch 1791340615.042)"
+    },
+    {
+      "sent": "09:37:05.043 (epoch 1791340625.043)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:37:05.048 (epoch 1791340625.048)"
+    },
+    {
+      "sent": "09:37:15.050 (epoch 1791340635.050)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:37:15.052 (epoch 1791340635.052)"
+    },
+    {
+      "sent": "09:37:25.055 (epoch 1791340645.055)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:37:25.060 (epoch 1791340645.060)"
+    },
+    {
+      "sent": "09:37:35.068 (epoch 1791340655.068)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:37:35.072 (epoch 1791340655.072)"
+    },
+    {
+      "sent": "09:37:45.083 (epoch 1791340665.083)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:37:45.091 (epoch 1791340665.091)"
+    },
+    {
+      "sent": "09:37:55.106 (epoch 1791340675.106)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:37:55.112 (epoch 1791340675.112)"
+    },
+    {
+      "sent": "09:38:05.121 (epoch 1791340685.121)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:38:05.126 (epoch 1791340685.126)"
+    },
+    {
+      "sent": "09:38:15.132 (epoch 1791340695.132)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:38:15.135 (epoch 1791340695.135)"
+    },
+    {
+      "sent": "09:38:25.144 (epoch 1791340705.144)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:38:25.147 (epoch 1791340705.147)"
+    },
+    {
+      "sent": "09:38:35.160 (epoch 1791340715.160)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:38:35.163 (epoch 1791340715.163)"
+    },
+    {
+      "sent": "09:38:45.190 (epoch 1791340725.190)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:38:45.195 (epoch 1791340725.195)"
+    },
+    {
+      "sent": "09:38:55.196 (epoch 1791340735.196)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:38:55.199 (epoch 1791340735.199)"
+    },
+    {
+      "sent": "09:39:05.214 (epoch 1791340745.214)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:39:05.218 (epoch 1791340745.218)"
+    },
+    {
+      "sent": "09:39:15.223 (epoch 1791340755.223)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:39:15.243 (epoch 1791340755.243)"
+    },
+    {
+      "sent": "09:39:23.455 (epoch 1791340763.455)",
+      "method": "POST",
+      "path": "/api/v1/auth/sign-out",
+      "status": 401,
+      "done": "09:39:23.461 (epoch 1791340763.461)"
+    },
+    {
+      "sent": "09:39:25.243 (epoch 1791340765.243)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:39:25.246 (epoch 1791340765.246)"
+    },
+    {
+      "sent": "09:39:35.249 (epoch 1791340775.249)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:39:35.255 (epoch 1791340775.255)"
+    }
+  ],
+  "console": []
+}

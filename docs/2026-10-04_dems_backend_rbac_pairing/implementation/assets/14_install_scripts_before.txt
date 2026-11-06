@@ -1,0 +1,11 @@
+7 packages have install scripts not yet covered by allowScripts:
+  esbuild@0.28.2 (postinstall: node install.js)
+  unrs-resolver@1.12.2 (postinstall: node postinstall.js)
+  vue-demi@0.14.10 (postinstall: node -e "try{require('./scripts/postinstall.js')}catch(e){}")
+  esbuild@0.25.12 (postinstall: node install.js)
+  esbuild@0.18.20 (postinstall: node install.js)
+  vue-demi@0.14.10 (postinstall: node -e "try{require('./scripts/postinstall.js')}catch(e){}")
+  vue-demi@0.14.10 (postinstall: node -e "try{require('./scripts/postinstall.js')}catch(e){}")
+
+Run `npm install-scripts approve <pkg>` to allow, or `npm install-scripts deny <pkg>` to deny.
+exit=0

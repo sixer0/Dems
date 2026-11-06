@@ -1,0 +1,23 @@
+21:50:07.383 batch start; device time 10-06 21:50:06.000; host load 6.67
+21:50:07.454 mark idle at 21:50:07.454
+21:50:07.538 declared screen summary
+21:50:07.606 screencap i00_phone_idle_start_on_summary.png 21:50:07.606..21:50:09.376
+21:50:09.491 slept 772866 ms
+22:03:02.672 host load 8.15 8.98 8.76
+22:03:02.777 mCurrentFocus=Window{71668f0 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+22:03:02.940 declared screen login
+22:03:03.021 screencap i01_after_idle_expiry_50s.png 22:03:03.021..22:03:08.091
+22:03:08.253 slept 60000 ms
+22:04:08.409 screencap i02_after_idle_expiry_2min.png 22:04:08.409..22:04:09.936
+22:04:10.221 slept 120000 ms
+22:06:10.339 screencap i03_after_idle_expiry_4min.png 22:06:10.339..22:06:14.187
+22:06:14.555 jsall (2): 22:02:11.423   source: 'auth.sessionEnd', | 22:02:11.423      reason: 'IDLE_EXPIRED',
+22:06:14.979 serverlog since idle (8):
+    22:02:11.782 GET /api/v1/auth/session 401 NOT_SIGNED_IN
+    22:02:11.785 [socket closed]
+    22:02:12.094 GET /api/v1/auth/session 401 NOT_SIGNED_IN
+    22:02:12.096 [socket closed]
+    22:02:12.136 [socket opened]
+    22:02:12.153 GET /api/v1/auth/status 200
+    22:02:15.165 [socket opened]
+    22:02:15.411 GET /api/v1/auth/status 200

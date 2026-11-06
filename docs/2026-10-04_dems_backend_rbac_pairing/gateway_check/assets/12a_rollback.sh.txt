@@ -1,0 +1,11 @@
+#!/bin/bash
+# rollback.sh <repo-relative path>...: copies each file (before its first edit) into .cache/rollback/CF-M1 with a sha256 line.
+R=/Users/gsp-budi/Documents/DEMS
+D=$R/.cache/rollback/CF-M1
+for f in "$@"; do
+  if [ -e "$D/$f" ]; then echo "kept $f"; continue; fi
+  if [ ! -e "$R/$f" ]; then echo "new $f (no copy)" ; echo "NEW  $f" >> $D/SHA256SUMS.txt; continue; fi
+  mkdir -p "$(dirname "$D/$f")"; cp -p "$R/$f" "$D/$f"
+  (cd $R && shasum -a 256 "$f") >> $D/SHA256SUMS.txt
+  echo "copied $f"
+done

@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""W55 mutation check (rule M15: no file of the workspace tree is changed).
+
+Each mutation is ONE text replacement in ONE module, applied in memory by the transform plugin of
+vitest.mutation.config.mts. A mutation is DETECTED when the tests of the row fail while the
+mutation was really applied (the plugin leaves a marker file). Run from the workspace root:
+
+    python3 .cache/w55/mut/run_mutations.py check      # only verifies that every text occurs exactly once
+    python3 .cache/w55/mut/run_mutations.py run [ids]  # baseline, then every mutation (or the named ones)
+"""
+import json, os, subprocess, sys, time
+
+ROOT = os.getcwd()
+HERE = os.path.join(ROOT, '.cache/w55/mut')
+CONFIG = '.cache/w55/mut/vitest.mutation.config.mts'
+# Markers are written and removed under TMPDIR only.
+APPLIED = os.path.join(os.environ['TMPDIR'], 'w55-mut-applied')
+os.makedirs(APPLIED, exist_ok=True)
+
+L = 'apps/core-web/src/features/login/'
+T_SIGNIN = 'src/test/live-login-signin.test.tsx'
+T_PAGE = 'src/test/live-login-page.test.tsx'
+T_MODEL = 'src/test/live-login-model.test.tsx'
+T_SIM_PAGE = 'src/features/login/__tests__/login-page.test.tsx'
+T_SIM_MODEL = 'src/features/login/__tests__/login-model.test.tsx'
+T_PRESENTATION = 'src/test/live-login-presentation.test.tsx'
+ALL = [T_SIGNIN, T_PAGE, T_MODEL, T_PRESENTATION, T_SIM_PAGE, T_SIM_MODEL]
+
+M = []
+def m(id, file, what, find, replace, tests=None):
+    M.append({'id': id, 'file': L + file if not file.startswith('apps/') else file, 'what': what, 'find': find, 'replace': replace, 'tests': tests or ALL})
+
+# ── The controller ───────────────────────────────────────────────────────────────────────
+F = 'use-login-controller.ts'
+m('C01', F, 'Live: the password state is not cleared when the request is handed over',
+  "      // The request is handed over: the password state does not outlive that (§14.8; AC-C-44).\n      setPassword('')", "      // (mutated)")
+m('C02', F, 'a 429 does not put the password back', "        if (typedPassword !== null) setPassword(typedPassword)\n", "")
+m('C03', F, 'a session the page did not submit is not handed off', "          acceptFoundSession()\n          return", "          return")
+m('C04', F, 'a found session is handed off while a submit of the page is out', "if (!isLive || pendingRef.current !== null) return", "if (!isLive) return")
+m('C05', F, 'Live: the arrival notice is not read from the Live source', "      ? liveArrivalNoticeFor(live.lastSessionEnd)", "      ? null")
+m('C06', F, 'Live: the demo operators come from the replica', "const operators = isLive ? OPERATORS : simOperators", "const operators = simOperators")
+m('C08', F, 'Live: Retry does not ask for a new socket', "        live.reconnect('RETRY')\n", "")
+m('C09', F, 'a starting Core does not block sign-in', "const coreStarting = isLive && !coreUnreachable && !health.isError && isCoreStarting(health.data)", "const coreStarting = false")
+m('C10', F, 'Live: the submit takes the simulator path', "    if (isLive) {\n      // WS-1", "    if (isLive && false) {\n      // WS-1")
+m('C11', F, 'a hand-off starts although the session is over', "      if (isLive && !selectIsSignedIn(state)) return\n", "")
+m('C12', F, 'the mode the page reports is swapped', "mode: isLive ? CoreMode.LIVE : CoreMode.SIMULATED", "mode: isLive ? CoreMode.SIMULATED : CoreMode.LIVE")
+m('C13', F, 'a limit is handled as any other rejection', "      if (view.kind === 'limit') {\n        presentCoreError(error)", "      if (view.kind === 'limit' && false) {\n        presentCoreError(error)")
+m('C14', F, 'the record of an unexpected rejection is not written', "      if (view.report) {", "      if (view.report && false) {")
+m('C15', F, 'Simulated: the password outlives the attempt',
+  "      // The password never outlives the attempt (§14.8), whatever the outcome.\n      setPassword('')", "      // (mutated)")
+m('C16', F, 'a rejected input does not flag the fields', "      if (view.outcome.kind === 'input-rejected') {", "      if (false) {")
+# C17 ("Retry in Live does not ask for the health answer") survived twice: the call it removed was redundant
+# beside the query bridge, which asks for the health answer when the socket is back. The call was removed from the code.
+
+# ── The Live rules ───────────────────────────────────────────────────────────────────────
+F = 'login-live-model.ts'
+m('L01', F, 'a Lock reads as a sign-out', "if (end.signOut === 'LOCK') return 'console-locked'", "if (end.signOut === 'LOCK') return 'signed-out'")
+m('L02', F, 'an end while nobody was signed in shows a notice', " || !end.wasSignedIn) return null", ") return null")
+m('L03', F, 'an idle expiry reads as the absolute one', "    case 'IDLE_EXPIRED':\n      return 'expired'", "    case 'IDLE_EXPIRED':\n      return 'expired-absolute'")
+m('L04', F, 'the absolute expiry reads as the idle one', "      return 'expired-absolute'\n    case 'USER_DISABLED'", "      return 'expired'\n    case 'USER_DISABLED'")
+m('L05', F, 'a disabled account reads as a sign-out', "    case 'USER_DISABLED':\n      return 'disabled'", "    case 'USER_DISABLED':\n      return 'signed-out'")
+m('L06', F, 'a 429 is shown as an outage', "      return { kind: 'limit' }", "      return { kind: 'alert', outcome: { kind: 'core-offline' }, present: false, report: false }")
+m('L07', F, 'a time-out is not an outage', "    case CoreErrorNoticeKind.OFFLINE:\n    case CoreErrorNoticeKind.TIMED_OUT:", "    case CoreErrorNoticeKind.OFFLINE:")
+m('L08', F, 'a starting Core reads as unreachable', "outcome: { kind: 'core-starting' }", "outcome: { kind: 'core-offline' }")
+m('L09', F, 'a snapshot time-out is "unexpected"', "    case CoreErrorNoticeKind.SNAPSHOT_TIMEOUT:\n", "")
+m('L10', F, 'ORIGIN_NOT_ALLOWED is not handed to the presenter', "present: true, report: false", "present: false, report: false")
+m('L11', F, 'a 422 is "unexpected"', "error.code === SimErrorCode.INVALID_INPUT", "false")
+m('L12', F, 'an unexpected rejection is not reported', "present: false, report: true", "present: false, report: false")
+m('L13', F, '"starting" needs both members not ready', "!(health.ready.database && health.ready.engine)", "!(health.ready.database || health.ready.engine)")
+m('L14', F, 'readiness is inverted', "value ? 'ready' : 'not-ready'", "value ? 'not-ready' : 'ready'")
+m('L15', F, 'the record holds the text of the error', "errorName: typeof candidate.name === 'string' ? candidate.name : typeof error", "errorName: error instanceof Error ? error.message : typeof error")
+m('L16', F, 'a stopped source shows a toast', "      return { kind: 'stopped' }", "      return { kind: 'toast' }")
+m('L17', F, 'a sign-out elsewhere shows nothing', "    case 'SIGNED_OUT':\n    case 'ROTATED':\n      return 'signed-out'", "    case 'ROTATED':\n      return 'signed-out'")
+
+# ── The view model (the new kinds) ───────────────────────────────────────────────────────
+F = 'login-model.ts'
+m('M01', F, 'a starting Core is worded as unreachable', "coreStarting ? { kind: 'core-starting' } : { kind: 'core-offline' }", "{ kind: 'core-offline' }")
+m('M02', F, 'the 8-hour notice is a danger', "    case 'expired':\n    case 'expired-absolute':\n      return 'accent'", "    case 'expired':\n      return 'accent'")
+m('M03', F, 'a starting Core is not the offline state', "notice?.kind === 'core-offline' || notice?.kind === 'core-starting'", "notice?.kind === 'core-offline'")
+m('M04', F, 'a rejected input is not the error state', " || notice?.kind === 'input-rejected') return 'error'", ") return 'error'")
+m('M05', F, 'the disabled notice is not an arrival notice', "    case 'expired-absolute':\n    case 'disabled':\n      return true", "    case 'expired-absolute':\n      return true")
+
+# ── The card ─────────────────────────────────────────────────────────────────────────────
+F = 'auth-card.tsx'
+m('A01', F, 'Live: the security key is rendered', "{isLive ? null : (\n                  <>", "{isLive && false ? null : (\n                  <>")
+m('A02', F, 'Live: the role chips are rendered', "{live ? null : (\n                    <Chip", "{live && false ? null : (\n                    <Chip")
+m('A03', F, 'Live: no plain sentence in the disclosure', "{live ? (\n            <p className=\"dems-login-demo-notice\"", "{live && false ? (\n            <p className=\"dems-login-demo-notice\"")
+m('A04', F, 'Live: the trust line of the simulator', "{isLive ? <LiveTrustLine", "{isLive && false ? <LiveTrustLine")
+m('A05', F, '"Use Simulated mode" is offered in a build without the choice', "isLive && modeSwitch.selectable ? () =>", "isLive ? () =>")
+m('A06', F, 'the trust line never says "unreachable"', "const reachable = coreLink !== 'offline'", "const reachable = true")
+m('A07', F, '"Use Simulated mode" is offered on the simulator', "isLive && modeSwitch.selectable ? () =>", "modeSwitch.selectable ? () =>")
+m('A08', F, 'the Live rows carry the role chip of the constant', "<DemoOperators operators={operators} disabled={formDisabled} onPick={fill} live={isLive} />", "<DemoOperators operators={operators} disabled={formDisabled} onPick={fill} live={false} />")
+
+# ── The Alert ────────────────────────────────────────────────────────────────────────────
+F = 'login-alert.tsx'
+m('N01', F, 'a starting Core has the title of an unreachable one', "notice.kind === 'core-starting' ? t('common.coreLink.starting') : t('login.errors.coreOfflineTitle')", "t('login.errors.coreOfflineTitle')")
+m('N02', F, 'the 8-hour notice has another text', "? t('login.live.notices.absoluteExpired')", "? t('login.notices.signedOut')")
+m('N03', F, 'the disabled notice has another text', "? t('login.live.notices.userDisabled')", "? t('login.notices.signedOut')")
+m('N04', F, '"Use Simulated mode" does nothing', "onPress={onUseSimulated} data-testid=\"login-use-simulated\"", "onPress={() => undefined} data-testid=\"login-use-simulated\"")
+m('N05', F, 'the rejected input has the generic text', "<Alert.Title>{t('login.live.errors.inputRejected')}</Alert.Title>", "<Alert.Title>{t('common.errors.generic')}</Alert.Title>")
+
+# ── The strip ────────────────────────────────────────────────────────────────────────────
+F = 'device-strip.tsx'
+m('D01', F, 'Live: the cells of the simulator', "{live ? <LiveCells coreLink={coreLink} /> : <SimulatedCells coreLink={coreLink} />}", "{live && false ? <LiveCells coreLink={coreLink} /> : <SimulatedCells coreLink={coreLink} />}")
+m('D03', F, 'the database cell shows the engine', "const database = readinessOf(answer?.ready?.database)", "const database = readinessOf(answer?.ready?.engine)")
+m('D04', F, 'Live: the label of the simulator strip', "t(live ? 'login.live.deviceStrip.label' : 'login.deviceStrip.label')", "t('login.deviceStrip.label')")
+m('D05', F, 'the service cell shows no version', "`${answer.service} ${answer.version}`", "`${answer.service}`")
+
+# ── The adapters ─────────────────────────────────────────────────────────────────────────
+F = 'live-adapter.ts'
+m('V01', F, 'the health answer is asked for on the simulator', "    enabled,\n", "    enabled: true,\n")
+m('V02', F, 'the flag follows the replica while nobody is signed in', "(selectIsSignedIn(state) ? selectPresentationMode(state) : null)", "selectPresentationMode(state)")
+m('V03', F, 'the flag is written although it equals the setting', "if (enabled !== null && enabled !== getPresentationMode()) setPresentationMode(enabled)", "if (enabled !== null) setPresentationMode(enabled)")
+m('V04', F, 'the setting is not copied at the installation (a page load that starts signed in)', "    { fireImmediately: true },\n  )\n}", "    { fireImmediately: false },\n  )\n}")
+m('V05', F, 'the follow-up cannot be ended: no clean-up is returned', "  return live.store.subscribe(\n    selectServerPresentation,", "  live.store.subscribe(\n    selectServerPresentation,", )
+m('V06', F, 'the follow-up is installed twice by one call', "  return live.store.subscribe(\n    selectServerPresentation,", "  live.store.subscribe(selectServerPresentation, (enabled) => { if (enabled !== null) setPresentationMode(enabled) })\n  return live.store.subscribe(\n    selectServerPresentation,")
+# ── The root route's one line (decision D128; a file of W50, changed by this row with the controller's grant) ──
+m('G01', 'apps/core-web/src/routes/__root.tsx', 'the root route does not install the presentation follow-up', "(live ? followServerPresentationMode(live) : undefined), [live])", "(undefined), [live])")
+m('G02', 'apps/core-web/src/routes/__root.tsx', 'the root route installs the follow-up and drops its clean-up', "useEffect(() => (live ? followServerPresentationMode(live) : undefined), [live])", "useEffect(() => { if (live) followServerPresentationMode(live) }, [live])")
+
+# ── The mode switch ──────────────────────────────────────────────────────────────────────
+F = 'use-mode-switch.tsx'
+m('W01', F, 'the mode is switched without the confirmation', "if (selectable && next !== mode) setTarget(next)", "if (selectable && next !== mode) void control?.switchTo(next)")
+m('W02', F, 'a choice that could not be stored is silent', "        if (!switched) failed()", "        if (!switched) setSwitching(false)")
+m('W03', F, 'a build without the choice opens the dialog', "const selectable = control?.selectable === true", "const selectable = control !== null")
+m('W04', F, 'Cancel does not close the dialog', "onPress={() => setTarget(null)} data-testid=\"mode-switch-cancel\"", "onPress={() => undefined} data-testid=\"mode-switch-cancel\"")
+F = 'mode-selector.tsx'
+m('X01', F, 'the selector is rendered in a build without the choice', "if (!selectable || mode === null) return null", "if (mode === null) return null")
+m('X02', F, 'the selected segment is not the mode of the page load', "selectedKeys={new Set<Key>([mode])}", "selectedKeys={new Set<Key>([])}")
+
+# ── The page ─────────────────────────────────────────────────────────────────────────────
+F = 'index.tsx'
+# I02 (the Login page's own installation of the presentation follow-up) is gone with that code: the root route installs it (G01, decision D128).
+m('I03', F, 'a starting Core leaves the ring ready', "coreLink: controller.coreStarting ? 'offline' : controller.coreLink", "coreLink: controller.coreLink")
+m('I05', F, 'the page does not say which data source it runs on', "      data-core-mode={controller.mode}\n", "")
+F = 'report.ts'
+m('R01', F, 'the page record loses its correlation ID', "context: { ...context, correlationId }", "context")
+F = 'sim-adapter.ts'
+m('S02', F, 'Simulated: the simulator setting is not read', "useSim(live ? NOT_READ : selectPresentationMode)", "useSim(NOT_READ)")
+
+# ── Not a mutation: the one assertion of W50's test that the page's hand-off changes (section 13) ──
+RELAX = {'id': 'RELAX-W50', 'file': 'apps/core-web/src/test/live-runtime-startup.test.tsx', 'what': 'the whole-storage comparison allows the shell\'s own marker',
+         # The line is in the file now (decision D128, granted): this entry replaces it by itself, so the 'relax' mode has nothing left to show.
+         'find': "    expect({ ...window.sessionStorage }).toEqual({ ...before.session, 'dems.shell.intro': '1' })\n",
+         'replace': "    expect({ ...window.sessionStorage }).toEqual({ ...before.session, 'dems.shell.intro': '1' })\n",
+         'tests': ['src/test/live-runtime-startup.test.tsx']}
+
+# The test files that hold the rule each mutation breaks (a narrower run per mutation; the first
+# fifteen, C01 to C16, ran against all five files: run_part1.log).
+BY_PREFIX = {
+    'C': [T_SIGNIN, T_PAGE, T_SIM_PAGE],
+    # The pure rules: each row of the two tables has its own assertion in the model test.
+    'L': [T_MODEL],
+    'M': [T_MODEL, T_SIM_MODEL],
+    'A': [T_PAGE, T_MODEL],
+    'N': [T_PAGE, T_SIGNIN],
+    'D': [T_PAGE],
+    'V': [T_PAGE, T_PRESENTATION],
+    'G': [T_PRESENTATION, T_PAGE, T_MODEL],
+    'W': [T_PAGE],
+    'X': [T_PAGE],
+    'I': [T_PAGE, T_SIGNIN],
+    'R': [T_SIGNIN],
+    'S': [T_SIM_PAGE, T_PAGE],
+}
+for mu in M:
+    mu['tests'] = BY_PREFIX[mu['id'][0]]
+
+def check():
+    bad = 0
+    for mu in M + [RELAX]:
+        with open(os.path.join(ROOT, mu['file']), encoding='utf8') as handle:
+            text = handle.read()
+        count = text.count(mu['find'])
+        if count != 1:
+            bad += 1
+            print(f"{mu['id']}: the text occurs {count} times in {mu['file']}")
+    ids = [mu['id'] for mu in M]
+    assert len(ids) == len(set(ids)), 'duplicate id'
+    print(f"{len(M)} mutations and 1 relaxation; texts that do not occur exactly once: {bad}")
+    return bad
+
+def vitest(mid, tests):
+    env = dict(os.environ)
+    env['W55_APPLIED_DIR'] = APPLIED
+    if mid:
+        env['W55_MUT'] = mid
+    else:
+        env.pop('W55_MUT', None)
+    started = time.time()
+    done = subprocess.run(['npx', 'vitest', 'run', '--config', CONFIG, '--maxWorkers=2', *tests], cwd=ROOT, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    summary = ' | '.join(line.strip() for line in out.splitlines() if line.strip().startswith(('Test Files', 'Tests ')))
+    first = next((line.strip() for line in out.splitlines() if line.strip().startswith(('×', 'FAIL'))), '')
+    return done.returncode, summary, first[:230], time.time() - started
+
+def stamp():
+    return time.strftime('%Y-%m-%d %H:%M:%S WIB')
+
+def run(ids):
+    json.dump(M + [RELAX], open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+    if check():
+        sys.exit(2)
+    code, summary, _first, took = vitest('', ALL)
+    print(f"## {stamp()} baseline: the six test files of the row, no mutation\nbaseline exit={code} {summary} ({took:.1f} s)", flush=True)
+    if code != 0:
+        sys.exit(3)
+    chosen = [mu for mu in M if not ids or mu['id'] in ids]
+    survived, not_applied = [], []
+    for mu in chosen:
+        marker = os.path.join(APPLIED, mu['id'])
+        if os.path.exists(marker):
+            os.remove(marker)
+        code, summary, first, took = vitest(mu['id'], mu['tests'])
+        applied = os.path.exists(marker)
+        if not applied:
+            not_applied.append(mu['id'])
+            verdict = 'NOT APPLIED'
+        elif code != 0:
+            verdict = 'DETECTED   '
+        else:
+            verdict = 'SURVIVED   '
+            survived.append(mu['id'])
+        print(f"{mu['id']} {verdict} exit={code} {mu['file'].split('/')[-1]}: {mu['what']} [{summary}] first: {first}", flush=True)
+    print(f"## {stamp()} {len(chosen)} mutations: {len(chosen) - len(survived) - len(not_applied)} detected, {len(survived)} survived {survived}, {len(not_applied)} not applied {not_applied}", flush=True)
+
+def relax():
+    json.dump(M + [RELAX], open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+    marker = os.path.join(APPLIED, RELAX['id'])
+    if os.path.exists(marker):
+        os.remove(marker)
+    code, summary, first, took = vitest('', RELAX['tests'])
+    print(f"## {stamp()} W50's start-up test file as it is on disk: exit={code} {summary} first: {first}", flush=True)
+    code, summary, first, took = vitest(RELAX['id'], RELAX['tests'])
+    print(f"## {stamp()} the same file with line 398 relaxed IN MEMORY (applied: {os.path.exists(marker)}): exit={code} {summary} first: {first}", flush=True)
+
+if __name__ == '__main__':
+    mode = sys.argv[1] if len(sys.argv) > 1 else 'check'
+    if mode == 'check':
+        json.dump(M + [RELAX], open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+        sys.exit(1 if check() else 0)
+    elif mode == 'relax':
+        relax()
+    else:
+        run(sys.argv[2:])

@@ -1,0 +1,25 @@
+12:55:15.689 declared screen settings
+12:55:15.731 tapid settings-row-network-time at 540,1839 "Network &amp; Time"
+12:55:18.437 slept 2500 ms
+12:55:20.983 declared screen x-network
+12:55:21.011 screencap 43_settings_network_time_row.png 12:55:21.011..12:55:21.221
+12:55:21.303 ids(1): screen-network-time@540,1102
+12:55:23.660 key 4
+12:55:23.793 slept 2500 ms
+12:55:26.339 declared screen x-after-back
+12:55:26.379 ids(1): screen-settings@540,1102
+12:55:28.811 tapid settings-row-devices at 540,1512 "Device Settings"
+12:55:31.337 slept 2500 ms
+12:55:33.872 declared screen x-devices
+12:55:33.899 screencap 44_settings_device_settings_row_repro.png 12:55:33.899..12:55:34.083
+12:55:34.152 ids(1): screen-devices@540,1102
+12:55:36.284 key 4
+12:55:36.410 slept 2500 ms
+12:55:38.963 declared screen x-after-back1
+12:55:39.009 screencap 44b_back_1_from_device_settings.png 12:55:39.009..12:55:39.355
+12:55:39.454 ids(1): screen-settings@540,1102
+12:55:41.814 key 4
+12:55:41.933 slept 2500 ms
+12:55:44.543 declared screen x-after-back2
+12:55:44.616 screencap 44c_back_2_from_device_settings.png 12:55:44.616..12:55:45.111
+12:55:45.281 ids(1): screen-more@540,1102

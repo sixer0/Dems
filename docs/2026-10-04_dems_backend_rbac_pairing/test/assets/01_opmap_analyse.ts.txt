@@ -1,0 +1,63 @@
+// W87 scratch analysis: maps the probe's answers to the 75 operations of the registry.
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { listCoreApiOperations, matchCoreApiOperation } from '@dems/shared/api';
+
+const R = '/Users/gsp-budi/Documents/DEMS';
+const OUT = `${R}/.cache/w87/opmap/out`;
+const SPEC = readFileSync(`${R}/docs/2026-10-04_dems_backend_rbac_pairing/masterplan/01_specs.md`, 'utf8');
+const specNo = new Map<string, number>();
+for (const m of SPEC.matchAll(/^\| (\d+) \| `(\w+)` \|/gm)) if (!specNo.has(m[2]!)) specNo.set(m[2]!, Number(m[1]));
+
+type Rec = { t: string | null; n: string | null; m: string; u: string; s: number; c: string | null };
+const recs: Rec[] = [];
+for (const f of readdirSync(OUT)) for (const line of readFileSync(`${OUT}/${f}`, 'utf8').split('\n')) if (line) recs.push(JSON.parse(line));
+
+const ops = listCoreApiOperations('all');
+type Cell = Map<string, Set<string>>; // file -> test names
+const blank = () => ({ success: new Map() as Cell, denial: new Map() as Cell, validation: new Map() as Cell, other: new Map<string, number>() });
+const table = new Map(ops.map((op) => [op.operationId, blank()]));
+let unmatched = 0;
+const add = (cell: Cell, file: string, name: string) => { if (!cell.has(file)) cell.set(file, new Set()); cell.get(file)!.add(name); };
+for (const r of recs) {
+  const path = r.u.split('?')[0]!;
+  const match = matchCoreApiOperation(r.m, path);
+  if (!match) { unmatched += 1; continue; }
+  const op = match.operation;
+  const entry = table.get(op.operationId)!;
+  const file = (r.t ?? '(no test path)').replace(`${R}/apps/core-server/`, '');
+  const name = r.n ?? '(no test name)';
+  const key = `${r.s}${r.c ? ' ' + r.c : ''}`;
+  entry.other.set(key, (entry.other.get(key) ?? 0) + 1);
+  if (r.s >= 200 && r.s < 300) add(entry.success, file, name);
+  if (r.s === 403 && (r.c === 'NOT_PERMITTED' || r.c === 'FORBIDDEN')) add(entry.denial, file, name);
+  const pathOk = !op.pathParam || op.pathParam.pattern.test(match.params.id ?? '');
+  if (op.requestBody && pathOk && ((r.s === 400 && r.c === 'INVALID_JSON') || r.s === 413 || (r.s === 422 && (r.c === 'INVALID_INPUT' || r.c === 'INVALID_REASON')))) add(entry.validation, file, name);
+}
+const access = (op: (typeof ops)[number]) => {
+  const a = op.access!;
+  const base = a.kind === 'PERMISSION' ? a.permission : a.kind === 'ANY_OF' ? `ANY-OF(${a.permissions.join(', ')})` : a.kind;
+  return a.conditions?.length ? `${base} + ${a.conditions.join(', ')}` : base;
+};
+const hasPermission = (op: (typeof ops)[number]) => op.access!.kind === 'PERMISSION' || op.access!.kind === 'ANY_OF';
+const rows = ops.map((op) => ({ op, no: specNo.get(op.operationId) ?? 0, e: table.get(op.operationId)! })).sort((a, b) => a.no - b.no);
+const proj = (f: string) => (/\.db\.test\.ts$|^test\/acceptance\//.test(f) ? 'db' : 'unit');
+const summary = rows.map(({ op, no, e }) => ({
+  no, operationId: op.operationId, method: op.method.toUpperCase(), path: op.path, access: access(op), permission: hasPermission(op), body: Boolean(op.requestBody),
+  success: [...e.success].map(([f, n]) => ({ file: f, project: proj(f), tests: [...n] })),
+  denial: [...e.denial].map(([f, n]) => ({ file: f, project: proj(f), tests: [...n] })),
+  validation: [...e.validation].map(([f, n]) => ({ file: f, project: proj(f), tests: [...n] })),
+  statuses: Object.fromEntries([...e.other].sort()),
+}));
+writeFileSync(`${R}/.cache/w87/opmap/summary.json`, JSON.stringify({ records: recs.length, unmatched, rows: summary }, null, 1));
+console.log(`records ${recs.length}; matched ${recs.length - unmatched}; unmatched ${unmatched}; operations ${ops.length}; spec numbers ${specNo.size}`);
+let gaps = 0;
+for (const s of summary) {
+  const need: string[] = [];
+  if (s.success.length === 0) need.push('SUCCESS');
+  if (s.permission && s.denial.length === 0) need.push('DENIAL');
+  if (s.body && s.validation.length === 0) need.push('VALIDATION');
+  if (need.length) gaps += 1;
+  const fmt = (c: typeof s.success) => `${c.length}f/${c.reduce((x, y) => x + y.tests.length, 0)}t`;
+  console.log(`${String(s.no).padStart(2)} ${s.operationId.padEnd(28)} ${s.access.padEnd(40)} body=${s.body ? 'Y' : '-'} S=${fmt(s.success)} D=${s.permission ? fmt(s.denial) : 'n/a'} V=${s.body ? fmt(s.validation) : 'n/a'} ${need.length ? 'GAP ' + need.join(',') : ''}`);
+}
+console.log(`operations with a gap: ${gaps}`);

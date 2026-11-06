@@ -1,0 +1,3829 @@
+[
+ {
+  "label": "01 login: open",
+  "start": "2026-10-06T02:44:01.509Z",
+  "coreRequests": [
+   "GET /api/v1/auth/session -> 401",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/auth/session -> 401",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [
+   "error/network: Failed to load resource: the server responded with a status of 401 (Unauthorized) /api/v1/auth/session"
+  ],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/?token=***",
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "02 login: wrong password",
+  "start": "2026-10-06T02:44:18.750Z",
+  "coreRequests": [
+   "POST /api/v1/auth/sign-in -> 401",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/sign-in -> 401",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [
+   "error/network: Failed to load resource: the server responded with a status of 401 (Unauthorized) /api/v1/auth/sign-in"
+  ],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "03 login: data mode selector -> Simulated -> cancel",
+  "start": "2026-10-06T02:44:29.767Z",
+  "coreRequests": [
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "04 login: sign in as SUPERVISOR through the form",
+  "start": "2026-10-06T02:44:38.739Z",
+  "coreRequests": [
+   "POST /api/v1/auth/sign-in -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/sign-in -> 200",
+   "GET /api/v1/audit?order=DESC&limit=6 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "05 stack-check: open",
+  "start": "2026-10-06T02:45:01.033Z",
+  "coreRequests": [
+   "GET /api/v1/auth/session -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/auth/session -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/?token=***",
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "06 stack-check: Show test toast",
+  "start": "2026-10-06T02:45:18.172Z",
+  "coreRequests": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "07 dashboard: open via sidebar",
+  "start": "2026-10-06T02:45:38.009Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "08 dashboard: Camera 1 actions menu",
+  "start": "2026-10-06T02:45:58.265Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "09a dashboard: MIC 1 actions menu",
+  "start": "2026-10-06T02:46:25.340Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "09b dashboard: More start options",
+  "start": "2026-10-06T02:46:27.634Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "09c dashboard: notifications bell",
+  "start": "2026-10-06T02:46:29.942Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "09d dashboard: secure pill (ATTENTION)",
+  "start": "2026-10-06T02:46:32.819Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "10a dashboard: device ID button",
+  "start": "2026-10-06T02:46:48.291Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "10a dashboard: device ID button (rerun)",
+  "start": "2026-10-06T02:47:01.255Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "10b dashboard: LIVE mode indicator -> dialog -> cancel",
+  "start": "2026-10-06T02:47:04.287Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "10c dashboard: security tile TPM",
+  "start": "2026-10-06T02:47:07.799Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "11a dashboard: hover TPM tile",
+  "start": "2026-10-06T02:47:41.803Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "11b dashboard: hover Device ID",
+  "start": "2026-10-06T02:47:43.513Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "12 dashboard: Open Evidence Queue",
+  "start": "2026-10-06T02:48:00.452Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "null"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "12 dashboard: strip GNSS / Time",
+  "start": "2026-10-06T02:48:06.233Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "12 dashboard: View All Events",
+  "start": "2026-10-06T02:48:12.048Z",
+  "coreRequests": [
+   "GET /api/v1/rbac/matrix -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/rbac/matrix -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "12 dashboard: quick action Run Diagnostics",
+  "start": "2026-10-06T02:48:17.868Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "12 dashboard: Sealed evidence View All",
+  "start": "2026-10-06T02:48:23.701Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "13a dashboard: narrow 390x844",
+  "start": "2026-10-06T02:48:44.116Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "13b dashboard: reload of the deep link /devices while signed in",
+  "start": "2026-10-06T02:48:50.701Z",
+  "coreRequests": [
+   "GET /api/v1/auth/session -> 200",
+   "GET /api/v1/auth/session -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/auth/session -> 200",
+   "GET /api/v1/auth/session -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/?token=***",
+   "ws://127.0.0.1:5178/ws",
+   "ws://127.0.0.1:5178/?token=***",
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "14 session-new: open from the Dashboard button",
+  "start": "2026-10-06T02:50:05.442Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "15a session-new: invalid case number (client bound)",
+  "start": "2026-10-06T02:50:33.345Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "15b session-new: Fill in the next case number (scan)",
+  "start": "2026-10-06T02:50:34.529Z",
+  "coreRequests": [
+   "POST /api/v1/session/case-number -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/session/case-number -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "15c session-new: subject type Saksi, name, investigator suggestions",
+  "start": "2026-10-06T02:50:37.122Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "15d session-new: room and profile selects",
+  "start": "2026-10-06T02:50:41.724Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "16a session-new: Next (create + precheck)",
+  "start": "2026-10-06T02:51:08.276Z",
+  "coreRequests": [
+   "POST /api/v1/session -> 201",
+   "POST /api/v1/session/:id/precheck -> 202",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/session -> 201",
+   "POST /api/v1/session/SES-20261006-0024/precheck -> 202",
+   "GET /api/v1/audit?order=DESC&limit=5 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "17a session-new: Re-run checks",
+  "start": "2026-10-06T02:51:48.976Z",
+  "coreRequests": [
+   "POST /api/v1/session/:id/precheck/retry -> 202"
+  ],
+  "pageApi": [
+   "POST /api/v1/session/SES-20261006-0024/precheck/retry -> 202"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "17b session-new: Back to step 1",
+  "start": "2026-10-06T02:51:56.560Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "17c session-new: Cancel -> dialog",
+  "start": "2026-10-06T02:51:59.325Z",
+  "coreRequests": [
+   "POST /api/v1/session/:id/cancel -> 204",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/session/SES-20261006-0024/cancel -> 204",
+   "GET /api/v1/audit?order=DESC&limit=4 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "18 session-monitor: open (idle, no recording)",
+  "start": "2026-10-06T02:52:19.526Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "19a session-monitor: switch to Camera 2",
+  "start": "2026-10-06T02:52:34.557Z",
+  "coreRequests": [
+   "POST /api/v1/video/active-camera -> 204",
+   "POST /api/v1/video/active-camera -> 204"
+  ],
+  "pageApi": [
+   "POST /api/v1/video/active-camera -> 204",
+   "POST /api/v1/video/active-camera -> 204"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "19b session-monitor: Re-verify",
+  "start": "2026-10-06T02:52:38.171Z",
+  "coreRequests": [
+   "GET /api/v1/audit/chain -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/audit/chain -> 200",
+   "GET /api/v1/audit?order=DESC&limit=3 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "19c session-monitor: Re-verify (read the chain result)",
+  "start": "2026-10-06T02:53:13.525Z",
+  "coreRequests": [
+   "GET /api/v1/audit/chain -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/audit/chain -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "20 evidence: open via sidebar",
+  "start": "2026-10-06T02:53:38.585Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "null"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21a evidence: search \"Indah\"",
+  "start": "2026-10-06T02:54:00.338Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21b evidence: clear search",
+  "start": "2026-10-06T02:54:02.396Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21c evidence: status filter Sealed",
+  "start": "2026-10-06T02:54:03.940Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21d evidence: status filter Under Review",
+  "start": "2026-10-06T02:54:06.433Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21r evidence: status filter Sealed",
+  "start": "2026-10-06T02:54:45.142Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21r evidence: status filter Under Review",
+  "start": "2026-10-06T02:54:47.373Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21r evidence: status filter Recorded",
+  "start": "2026-10-06T02:54:49.630Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21r evidence: status filter All",
+  "start": "2026-10-06T02:54:51.895Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21s evidence: status filter Sealed",
+  "start": "2026-10-06T02:55:14.727Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21s evidence: status filter Under Review",
+  "start": "2026-10-06T02:55:17.401Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21s evidence: status filter Recorded",
+  "start": "2026-10-06T02:55:19.983Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21s evidence: status filter Archived",
+  "start": "2026-10-06T02:55:22.465Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "21s evidence: status filter All",
+  "start": "2026-10-06T02:55:24.799Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "22a evidence: subject filter Saksi",
+  "start": "2026-10-06T02:55:41.801Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "22b evidence: investigator filter AKP Andi Pratama",
+  "start": "2026-10-06T02:55:45.852Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "22c evidence: Clear filters",
+  "start": "2026-10-06T02:55:50.367Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "22d evidence: date range from 06/10/2026",
+  "start": "2026-10-06T02:55:52.700Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "22e evidence: date range from 06/10/2026 to 06/10/2026 (keystrokes)",
+  "start": "2026-10-06T02:56:11.231Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "22f evidence: date from 2026-10-06 (native setter + input event)",
+  "start": "2026-10-06T02:56:48.449Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "22g evidence: date to 2026-10-05 (before from)",
+  "start": "2026-10-06T02:56:50.365Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "22h evidence: date to 2026-10-06",
+  "start": "2026-10-06T02:56:52.152Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "23a evidence: sort by Subject (1st press)",
+  "start": "2026-10-06T02:57:15.959Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "23b evidence: sort by Subject (2nd press)",
+  "start": "2026-10-06T02:57:18.728Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "23c evidence: sort by Duration",
+  "start": "2026-10-06T02:57:21.278Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "23d evidence: sort by Evidence ID (back to default)",
+  "start": "2026-10-06T02:57:23.819Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "23e evidence: page 2",
+  "start": "2026-10-06T02:57:28.273Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "23f evidence: previous page",
+  "start": "2026-10-06T02:57:30.695Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "23g evidence: next page",
+  "start": "2026-10-06T02:57:33.563Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "24a evidence: row menu of EV-20261006-0012",
+  "start": "2026-10-06T02:57:53.997Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "24b evidence: select one row -> bulk bar",
+  "start": "2026-10-06T02:57:56.393Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "24c evidence: bulk export -> wizard (opened, then cancelled)",
+  "start": "2026-10-06T02:57:58.388Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "25a evidence: row menu Verify (EV-20261006-0012)",
+  "start": "2026-10-06T02:58:21.903Z",
+  "coreRequests": [
+   "GET /api/v1/evidence/:id -> 200",
+   "POST /api/v1/evidence/:id/verify -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/evidence/EV-20261006-0012 -> 200",
+   "POST /api/v1/evidence/EV-20261006-0012/verify -> 200",
+   "GET /api/v1/audit?order=DESC&limit=3 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "25b evidence: row menu View (EV-20261006-0012)",
+  "start": "2026-10-06T02:58:29.773Z",
+  "coreRequests": [
+   "GET /api/v1/evidence/:id -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/evidence/EV-20261006-0012 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "26a evidence-detail: Media tab, Play",
+  "start": "2026-10-06T02:58:51.473Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "26b evidence-detail: Camera 2, MIC 2",
+  "start": "2026-10-06T02:58:56.912Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "26c evidence-detail: pause, track AUDIO-02",
+  "start": "2026-10-06T02:59:00.825Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "27a evidence-detail: Metadata tab",
+  "start": "2026-10-06T02:59:18.523Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "27b evidence-detail: Metadata, open a package document",
+  "start": "2026-10-06T02:59:20.951Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "27c evidence-detail: Hash & Integrity tab",
+  "start": "2026-10-06T02:59:23.084Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "27d evidence-detail: Verify again",
+  "start": "2026-10-06T02:59:26.527Z",
+  "coreRequests": [
+   "POST /api/v1/evidence/:id/verify -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/evidence/EV-20261006-0012/verify -> 200",
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "27e evidence-detail: read the Core record of EV-20261006-0012 (page request)",
+  "start": "2026-10-06T03:00:26.410Z",
+  "coreRequests": [
+   "GET /api/v1/evidence/:id -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/evidence/EV-20261006-0012 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "27f evidence: verification shown after a reload of the detail and in the list preview",
+  "start": "2026-10-06T03:00:39.385Z",
+  "coreRequests": [
+   "GET /api/v1/evidence/:id -> 200",
+   "GET /api/v1/auth/session -> 200",
+   "GET /api/v1/evidence/:id -> 200",
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/evidence/:id -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/evidence/EV-20261006-0012 -> 200",
+   "GET /api/v1/auth/session -> 200",
+   "GET /api/v1/evidence/EV-20261006-0012 -> 200",
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/evidence/EV-20261006-0012 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178",
+   "null"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/?token=***",
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "28a evidence-detail: More menu",
+  "start": "2026-10-06T03:01:44.014Z",
+  "coreRequests": [
+   "GET /api/v1/auth/session -> 200",
+   "GET /api/v1/evidence/:id -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/auth/session -> 200",
+   "GET /api/v1/evidence/EV-20261006-0012 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/?token=***",
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "29a evidence-detail: More > Copy ID",
+  "start": "2026-10-06T03:02:03.730Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "29b evidence-detail: More > Download manifest",
+  "start": "2026-10-06T03:02:07.057Z",
+  "coreRequests": [
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/audit?order=DESC&limit=3 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "30a evidence-detail: Export wizard, reason step",
+  "start": "2026-10-06T03:02:22.996Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "30b evidence-detail: Export wizard, Next -> authorise step",
+  "start": "2026-10-06T03:02:28.429Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "31a evidence-detail: Export wizard Back, Next with a 3-character reason",
+  "start": "2026-10-06T03:02:43.149Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "31b evidence-detail: Export wizard, valid reason, Next",
+  "start": "2026-10-06T03:02:47.384Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "32a evidence-detail: Export wizard, Request authorisation",
+  "start": "2026-10-06T03:03:03.285Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "32b evidence-detail: Export wizard press export-next",
+  "start": "2026-10-06T03:03:06.633Z",
+  "coreRequests": [
+   "POST /api/v1/evidence/:id/verify -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/evidence/EV-20261006-0012/verify -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "32b evidence-detail: Export wizard press export-next",
+  "start": "2026-10-06T03:03:10.780Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "32b evidence-detail: Export wizard press export-submit",
+  "start": "2026-10-06T03:03:14.943Z",
+  "coreRequests": [
+   "POST /api/v1/evidence/:id/export -> 202"
+  ],
+  "pageApi": [
+   "POST /api/v1/evidence/EV-20261006-0012/export -> 202"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "32c evidence-detail: Export wizard download",
+  "start": "2026-10-06T03:03:19.524Z",
+  "coreRequests": [
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/audit?order=DESC&limit=4 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "33a evidence-detail: Close wizard, Back to Evidence",
+  "start": "2026-10-06T03:03:52.698Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "null"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "33b evidence: row menu Archive (EV-20261004-0001)",
+  "start": "2026-10-06T03:03:56.815Z",
+  "coreRequests": [
+   "POST /api/v1/evidence/:id/archive -> 204",
+   "GET /api/v1/audit -> 200",
+   "GET /api/v1/evidence/:id -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/evidence/EV-20261004-0001/archive -> 204",
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200",
+   "GET /api/v1/evidence/EV-20261004-0001 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "34 devices: open via sidebar",
+  "start": "2026-10-06T03:04:27.464Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "35a devices: Camera 1 device menu",
+  "start": "2026-10-06T03:04:54.287Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "35b devices: Camera 1 menu > Details",
+  "start": "2026-10-06T03:04:56.005Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "35c devices: drawer Health tab",
+  "start": "2026-10-06T03:04:58.961Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "35d devices: drawer Log tab",
+  "start": "2026-10-06T03:05:01.432Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "36a devices: Camera 1 > Test signal",
+  "start": "2026-10-06T03:05:34.904Z",
+  "coreRequests": [
+   "POST /api/v1/device/:id/test-signal -> 204"
+  ],
+  "pageApi": [
+   "POST /api/v1/device/CAM-01/test-signal -> 204"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "36b devices: Camera 1 > Identify (blink)",
+  "start": "2026-10-06T03:05:41.021Z",
+  "coreRequests": [
+   "POST /api/v1/device/:id/identify -> 204",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/device/CAM-01/identify -> 204",
+   "GET /api/v1/audit?order=DESC&limit=3 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "36c devices: MIC 1 device menu",
+  "start": "2026-10-06T03:05:45.364Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "37a devices: camera tile Camera 2 (set active camera)",
+  "start": "2026-10-06T03:06:23.485Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "37b devices: audio input MIC 1 (press)",
+  "start": "2026-10-06T03:06:26.603Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "37c devices: front panel LCD keys DOWN, ENTER, BACK",
+  "start": "2026-10-06T03:06:29.203Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "37c devices: front panel LCD keys DOWN, ENTER, BACK, UP",
+  "start": "2026-10-06T03:06:47.025Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "37d devices: port MGMT LAN",
+  "start": "2026-10-06T03:06:52.100Z",
+  "coreRequests": [
+   "GET /api/v1/pairing/devices -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/pairing/devices -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "37e devices: other device Tablet Control",
+  "start": "2026-10-06T03:06:54.776Z",
+  "coreRequests": [
+   "GET /api/v1/pairing/devices -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/pairing/devices -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "37a devices: camera tile Camera 2 (rerun)",
+  "start": "2026-10-06T03:07:15.654Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "37b devices: audio input MIC 1 (rerun)",
+  "start": "2026-10-06T03:07:18.893Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "37g devices: hover LED FAULT",
+  "start": "2026-10-06T03:07:21.602Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "38 storage: open via sidebar",
+  "start": "2026-10-06T03:07:48.280Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "39a storage: calculator Increase video Mbps, Decrease retention",
+  "start": "2026-10-06T03:08:03.818Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "39b storage: calculator Reset to book example",
+  "start": "2026-10-06T03:08:05.593Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "39c storage: Manage Storage drawer",
+  "start": "2026-10-06T03:08:06.792Z",
+  "coreRequests": [
+   "GET /api/v1/storage/status -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/storage/status -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "40a storage: policy 1 year + auto-archive off",
+  "start": "2026-10-06T03:08:25.903Z",
+  "coreRequests": [
+   "POST /api/v1/storage/policy -> 200",
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/storage/policy -> 200",
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "40b storage: restore policy 90 days + auto-archive on",
+  "start": "2026-10-06T03:08:32.244Z",
+  "coreRequests": [
+   "POST /api/v1/storage/policy -> 200",
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit -> 200",
+   "GET /api/v1/storage/status -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/storage/policy -> 200",
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200",
+   "GET /api/v1/storage/status -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "41a storage: auto-archive off + apply",
+  "start": "2026-10-06T03:08:59.302Z",
+  "coreRequests": [
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "41b storage: auto-archive back on + apply",
+  "start": "2026-10-06T03:09:05.401Z",
+  "coreRequests": [
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "41c storage: calculator Increase video Mbps x2, Decrease retention days",
+  "start": "2026-10-06T03:09:11.433Z",
+  "coreRequests": [
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit -> 200",
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=3 -> 200",
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "41a storage: auto-archive off (label) + apply",
+  "start": "2026-10-06T03:09:49.386Z",
+  "coreRequests": [
+   "POST /api/v1/storage/policy -> 200",
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/storage/policy -> 200",
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "41b storage: auto-archive back on + apply",
+  "start": "2026-10-06T03:09:53.320Z",
+  "coreRequests": [
+   "POST /api/v1/storage/policy -> 200",
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/storage/policy -> 200",
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "41c storage: calculator Increase video Mbps x2, Decrease retention days",
+  "start": "2026-10-06T03:10:10.872Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "41d storage: calculator Reset to book example",
+  "start": "2026-10-06T03:10:12.096Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "41e storage: View sealed link",
+  "start": "2026-10-06T03:10:13.300Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "41c storage: calculator Increase video Mbps x2, Decrease retention days x1 (scoped)",
+  "start": "2026-10-06T03:10:49.602Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "41d storage: calculator Reset to book example (scoped)",
+  "start": "2026-10-06T03:10:52.828Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "42 network-time: open via sidebar",
+  "start": "2026-10-06T03:11:04.078Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "43 network-time: live values over 4 s",
+  "start": "2026-10-06T03:11:26.248Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "44 security-audit: open via sidebar",
+  "start": "2026-10-06T03:11:40.139Z",
+  "coreRequests": [
+   "GET /api/v1/rbac/matrix -> 200",
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/rbac/matrix -> 200",
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "45a security-audit: Verify chain",
+  "start": "2026-10-06T03:12:03.315Z",
+  "coreRequests": [
+   "GET /api/v1/audit/chain -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/audit/chain -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "45b security-audit: Show in log",
+  "start": "2026-10-06T03:12:08.391Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "45c security-audit: search \"Storage\"",
+  "start": "2026-10-06T03:12:10.601Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "45d security-audit: type filter Authentication",
+  "start": "2026-10-06T03:12:13.526Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "45e security-audit: severity filter Warning",
+  "start": "2026-10-06T03:12:16.900Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "45f security-audit: operator filter AKP Andi Pratama (type+severity reset first)",
+  "start": "2026-10-06T03:12:20.128Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "46a security-audit: Earlier chains",
+  "start": "2026-10-06T03:12:59.332Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "46b security-audit: Live switch off, then on",
+  "start": "2026-10-06T03:13:02.252Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "46c security-audit: Export audit dialog",
+  "start": "2026-10-06T03:13:04.949Z",
+  "coreRequests": [
+   "POST /api/v1/audit/export -> 202",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/audit/export -> 202",
+   "GET /api/v1/audit?limit=200 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "46d security-audit: Export audit download",
+  "start": "2026-10-06T03:13:13.549Z",
+  "coreRequests": [
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "46d security-audit: Download again",
+  "start": "2026-10-06T03:13:31.862Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "46e security-audit: Live switch back on",
+  "start": "2026-10-06T03:13:37.495Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "47 system: open via sidebar",
+  "start": "2026-10-06T03:14:14.932Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/demo/status -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/demo/status -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "48a system: Run Diagnostics (maintenance panel)",
+  "start": "2026-10-06T03:14:36.171Z",
+  "coreRequests": [
+   "POST /api/v1/system/diagnostics -> 202",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/system/diagnostics -> 202",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "48b system: Diagnostics Run again",
+  "start": "2026-10-06T03:14:42.882Z",
+  "coreRequests": [
+   "POST /api/v1/system/diagnostics -> 202",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/system/diagnostics -> 202",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "49a system: diagnostics modal close",
+  "start": "2026-10-06T03:15:05.139Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "49b system: hover locked Install update and disabled Restart services",
+  "start": "2026-10-06T03:15:06.774Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "49c system: Export logs dialog",
+  "start": "2026-10-06T03:15:10.058Z",
+  "coreRequests": [
+   "POST /api/v1/logs/export -> 202",
+   "GET /api/v1/audit -> 200",
+   "GET /api/v1/events -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/logs/export -> 202",
+   "GET /api/v1/audit?limit=200 -> 200",
+   "GET /api/v1/events?limit=200 -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "50 system: Export logs again (automatic downloads granted)",
+  "start": "2026-10-06T03:15:49.828Z",
+  "coreRequests": [
+   "POST /api/v1/logs/export -> 202",
+   "GET /api/v1/audit -> 200",
+   "GET /api/v1/events -> 200",
+   "GET /api/v1/audit -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/logs/export -> 202",
+   "GET /api/v1/audit?limit=200 -> 200",
+   "GET /api/v1/events?limit=200 -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200",
+   "GET /api/v1/audit?order=DESC&limit=3 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "51a system: settings Account",
+  "start": "2026-10-06T03:16:49.959Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "51b system: settings App Preferences: presentation mode on, then off",
+  "start": "2026-10-06T03:16:50.806Z",
+  "coreRequests": [
+   "POST /api/v1/settings -> 200",
+   "POST /api/v1/settings -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/settings -> 200",
+   "POST /api/v1/settings -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "51c system: settings App Preferences: reduce motion toggle and back",
+  "start": "2026-10-06T03:16:54.011Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "51d system: settings App Preferences: clock 12 h and back to 24 h",
+  "start": "2026-10-06T03:16:56.725Z",
+  "coreRequests": [
+   "POST /api/v1/settings -> 200",
+   "POST /api/v1/settings -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/settings -> 200",
+   "POST /api/v1/settings -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "52a system: settings Notifications: first switch off, then on",
+  "start": "2026-10-06T03:17:45.859Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "52b system: settings Device Settings: active camera VIDEO-02, then VIDEO-01",
+  "start": "2026-10-06T03:17:48.184Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "52c system: settings System Maintenance and About",
+  "start": "2026-10-06T03:17:54.513Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "52a system: settings Notifications: first switch off, then on (rerun)",
+  "start": "2026-10-06T03:18:21.694Z",
+  "coreRequests": [
+   "POST /api/v1/settings -> 200",
+   "POST /api/v1/settings -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/settings -> 200",
+   "POST /api/v1/settings -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "52b system: settings Device Settings: active camera VIDEO-02, then VIDEO-01 (rerun)",
+  "start": "2026-10-06T03:18:26.054Z",
+  "coreRequests": [
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "52c system: settings System Maintenance, Security & Privacy, Account, About (rerun)",
+  "start": "2026-10-06T03:18:33.269Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "53a system: Device Settings active camera -> Camera 2",
+  "start": "2026-10-06T03:18:54.401Z",
+  "coreRequests": [
+   "GET /api/v1/device -> 404",
+   "POST /api/v1/video/active-camera -> 204",
+   "GET /api/v1/device -> 404"
+  ],
+  "pageApi": [
+   "GET /api/v1/device -> 404",
+   "POST /api/v1/video/active-camera -> 204",
+   "GET /api/v1/device -> 404"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [
+   "error/network: Failed to load resource: the server responded with a status of 404 (Not Found) /api/v1/device",
+   "error/network: Failed to load resource: the server responded with a status of 404 (Not Found) /api/v1/device"
+  ],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "53b system: Device Settings active camera -> Camera 1",
+  "start": "2026-10-06T03:18:57.948Z",
+  "coreRequests": [
+   "POST /api/v1/video/active-camera -> 204",
+   "GET /api/v1/device -> 404"
+  ],
+  "pageApi": [
+   "POST /api/v1/video/active-camera -> 204",
+   "GET /api/v1/device -> 404"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [
+   "error/network: Failed to load resource: the server responded with a status of 404 (Not Found) /api/v1/device"
+  ],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "54 system: Demo Control panel",
+  "start": "2026-10-06T03:19:14.851Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "55a demo: inject MIC_NO_SIGNAL",
+  "start": "2026-10-06T03:19:44.146Z",
+  "coreRequests": [
+   "POST /api/v1/demo/faults -> 204",
+   "GET /api/v1/demo/status -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/demo/faults -> 204",
+   "GET /api/v1/demo/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "55b demo: Devices page while MIC 1 has no signal",
+  "start": "2026-10-06T03:19:46.889Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "55c demo: clear MIC_NO_SIGNAL (press again)",
+  "start": "2026-10-06T03:19:53.271Z",
+  "coreRequests": [
+   "POST /api/v1/demo/faults/clear -> 204",
+   "GET /api/v1/demo/status -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/demo/faults/clear -> 204",
+   "GET /api/v1/demo/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "55d demo: time source NTP fallback",
+  "start": "2026-10-06T03:19:55.990Z",
+  "coreRequests": [
+   "POST /api/v1/demo/faults -> 204",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/demo/faults -> 204",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "55e demo: time source back to GNSS lock",
+  "start": "2026-10-06T03:19:58.717Z",
+  "coreRequests": [
+   "POST /api/v1/demo/faults/clear -> 204",
+   "GET /api/v1/audit -> 200",
+   "GET /api/v1/demo/status -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/demo/faults/clear -> 204",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200",
+   "GET /api/v1/demo/status -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "57a demo: inject CAMERA_LOSS and FAN_STALL",
+  "start": "2026-10-06T03:20:43.671Z",
+  "coreRequests": [
+   "POST /api/v1/demo/faults -> 204",
+   "POST /api/v1/demo/faults -> 204",
+   "GET /api/v1/demo/status -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/demo/faults -> 204",
+   "POST /api/v1/demo/faults -> 204",
+   "GET /api/v1/demo/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "57b demo: Dashboard while two faults are active",
+  "start": "2026-10-06T03:20:48.506Z",
+  "coreRequests": [
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "57c demo: Clear all faults",
+  "start": "2026-10-06T03:20:54.803Z",
+  "coreRequests": [
+   "POST /api/v1/demo/faults/clear -> 204",
+   "POST /api/v1/demo/faults/clear -> 204",
+   "POST /api/v1/audio/clip/reset -> 204",
+   "POST /api/v1/audio/clip/reset -> 204",
+   "GET /api/v1/demo/status -> 200",
+   "GET /api/v1/audit -> 200",
+   "GET /api/v1/demo/status -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/demo/faults/clear -> 204",
+   "POST /api/v1/demo/faults/clear -> 204",
+   "POST /api/v1/audio/clip/reset -> 204",
+   "POST /api/v1/audio/clip/reset -> 204",
+   "GET /api/v1/demo/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=3 -> 200",
+   "GET /api/v1/demo/status -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "58a demo: choose scenario Recording",
+  "start": "2026-10-06T03:21:11.653Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "58b demo: Load scenario -> confirmation",
+  "start": "2026-10-06T03:21:13.957Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "58c demo: confirm Load scenario Recording (LANE 3 ONLY)",
+  "start": "2026-10-06T03:21:15.643Z",
+  "coreRequests": [
+   "POST /api/v1/demo/scenario -> 200",
+   "GET /api/v1/demo/status -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/demo/scenario -> 200",
+   "GET /api/v1/demo/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=3 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "59a session-monitor: open during the Recording scenario",
+  "start": "2026-10-06T03:21:41.806Z",
+  "coreRequests": [
+   "GET /api/v1/session/current -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/session/current -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "60a session-monitor: Add Marker",
+  "start": "2026-10-06T03:22:01.958Z",
+  "coreRequests": [
+   "POST /api/v1/session/:id/markers -> 204",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/session/SES-20261006-0024/markers -> 204",
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "60b session-monitor: Session Note",
+  "start": "2026-10-06T03:22:06.609Z",
+  "coreRequests": [
+   "POST /api/v1/session/:id/notes -> 204",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/session/SES-20261006-0024/notes -> 204",
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "61a session-monitor: Pause Monitoring",
+  "start": "2026-10-06T03:22:27.333Z",
+  "coreRequests": [
+   "GET /api/v1/session/current -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/session/current -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "61b session-monitor: Resume Monitoring",
+  "start": "2026-10-06T03:22:32.135Z",
+  "coreRequests": [
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/audit?order=DESC&limit=3 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "61c session-monitor: Snapshot",
+  "start": "2026-10-06T03:22:34.244Z",
+  "coreRequests": [
+   "POST /api/v1/session/:id/snapshots -> 204",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/session/SES-20261006-0024/snapshots -> 204",
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "null"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "61d session-monitor: Camera 2 while recording",
+  "start": "2026-10-06T03:22:36.835Z",
+  "coreRequests": [
+   "POST /api/v1/video/active-camera -> 204",
+   "POST /api/v1/video/active-camera -> 204"
+  ],
+  "pageApi": [
+   "POST /api/v1/video/active-camera -> 204",
+   "POST /api/v1/video/active-camera -> 204"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "61e session-monitor: Fullscreen",
+  "start": "2026-10-06T03:22:39.808Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "62a session-monitor: End Session (press and hold)",
+  "start": "2026-10-06T03:23:15.771Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "62b session-monitor: End Session confirm",
+  "start": "2026-10-06T03:23:20.060Z",
+  "coreRequests": [
+   "POST /api/v1/session/:id/stop -> 202",
+   "GET /api/v1/session/current -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/session/SES-20261006-0024/stop -> 202",
+   "GET /api/v1/session/current -> 200",
+   "GET /api/v1/audit?order=DESC&limit=6 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [
+   "warning: [core-web] camera feed fallback {level: warn, source: CameraFeed, message: video timeout; showing the procedural feed, context: Object}"
+  ],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "63a session-monitor: View evidence from the finalization modal",
+  "start": "2026-10-06T03:23:39.148Z",
+  "coreRequests": [
+   "GET /api/v1/evidence/:id -> 200",
+   "GET /api/v1/evidence/:id -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/evidence/EV-20261006-0014 -> 200",
+   "GET /api/v1/evidence/EV-20261006-0014 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "63b session-monitor: back to Session Monitor after sealing",
+  "start": "2026-10-06T03:23:44.399Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "63c evidence: custody actor of RECORDING_STOPPED in the Core record",
+  "start": "2026-10-06T03:23:59.733Z",
+  "coreRequests": [
+   "GET /api/v1/evidence/:id -> 200",
+   "GET /api/v1/audit -> 200",
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/demo/status -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/evidence/EV-20261006-0014 -> 200",
+   "GET /api/v1/audit?order=DESC&limit=5&type=RECORDING_STOPPED -> 200",
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/demo/status -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "64a demo: Reset demo -> confirmation",
+  "start": "2026-10-06T03:24:42.948Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "64b demo: confirm Reset demo (LANE 3 ONLY)",
+  "start": "2026-10-06T03:24:44.599Z",
+  "coreRequests": [
+   "POST /api/v1/demo/reset -> 200",
+   "GET /api/v1/demo/status -> 200",
+   "GET /api/v1/audit -> 200",
+   "GET /api/v1/evidence -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/demo/reset -> 200",
+   "GET /api/v1/demo/status -> 200",
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200",
+   "GET /api/v1/evidence?limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "65 users-roles: open via sidebar",
+  "start": "2026-10-06T03:25:02.575Z",
+  "coreRequests": [
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/rbac/matrix -> 200",
+   "GET /api/v1/admin/users -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/rbac/matrix -> 200",
+   "GET /api/v1/admin/users -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "66a users-roles: own row menu and role dialog (last-administrator hint)",
+  "start": "2026-10-06T03:25:24.636Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "66b users-roles: OPR-003 TECHNICIAN -> INVESTIGATOR",
+  "start": "2026-10-06T03:25:28.694Z",
+  "coreRequests": [
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "66c users-roles: OPR-003 back to TECHNICIAN",
+  "start": "2026-10-06T03:25:36.315Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "66b users-roles: OPR-003 TECHNICIAN -> INVESTIGATOR (radio control)",
+  "start": "2026-10-06T03:26:19.218Z",
+  "coreRequests": [
+   "POST /api/v1/admin/users/:id/role -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/admin/users/OPR-003/role -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "66c users-roles: OPR-003 back to TECHNICIAN (radio control)",
+  "start": "2026-10-06T03:26:23.108Z",
+  "coreRequests": [
+   "GET /api/v1/audit -> 200",
+   "POST /api/v1/admin/users/:id/role -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/admin/users/OPR-003/role -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "67a users-roles: Disable OPR-001 -> dialog",
+  "start": "2026-10-06T03:26:45.629Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "67b users-roles: Disable OPR-001 confirm",
+  "start": "2026-10-06T03:26:48.644Z",
+  "coreRequests": [
+   "POST /api/v1/admin/users/:id/disable -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/admin/users/OPR-001/disable -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "67c users-roles: Enable OPR-001 -> dialog -> confirm",
+  "start": "2026-10-06T03:26:50.968Z",
+  "coreRequests": [
+   "POST /api/v1/admin/users/:id/enable -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/admin/users/OPR-001/enable -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/admin/users -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "68a shell: user menu (before the controller-ordered browser relaunch)",
+  "start": "2026-10-06T03:27:25.154Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "68b shell: user menu > Sign out",
+  "start": "2026-10-06T03:27:26.680Z",
+  "coreRequests": [
+   "POST /api/v1/auth/sign-out -> 204",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/sign-out -> 204",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "69 relaunch: fresh browser on an OS-assigned port (controller instruction after IN-1); sign in again through the form",
+  "start": "2026-10-06T03:28:17.182Z",
+  "coreRequests": [
+   "GET /api/v1/auth/session -> 401",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200",
+   "POST /api/v1/auth/sign-in -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/auth/session -> 401",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200",
+   "POST /api/v1/auth/sign-in -> 200",
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [
+   "error/network: Failed to load resource: the server responded with a status of 401 (Unauthorized) /api/v1/auth/session"
+  ],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/?token=***",
+   "ws://127.0.0.1:5178/ws",
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "70 paired-devices: open via sidebar",
+  "start": "2026-10-06T03:28:43.446Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/pairing/devices -> 200",
+   "GET /api/v1/pairing/devices -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/pairing/devices -> 200",
+   "GET /api/v1/pairing/devices -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "71a paired-devices: Issue pairing code (masked before capture)",
+  "start": "2026-10-06T03:29:02.125Z",
+  "coreRequests": [
+   "POST /api/v1/pairing/code -> 201",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/pairing/code -> 201",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "71b paired-devices: Cancel code",
+  "start": "2026-10-06T03:29:04.383Z",
+  "coreRequests": [
+   "POST /api/v1/pairing/code/cancel -> 204",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/pairing/code/cancel -> 204",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "72 paired-devices: issue a second code and leave it to expire (5 min)",
+  "start": "2026-10-06T03:29:26.209Z",
+  "coreRequests": [
+   "POST /api/v1/pairing/code -> 201",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/pairing/code -> 201",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "73 paired-devices: waiting on the page for the second code to expire",
+  "start": "2026-10-06T03:31:09.952Z",
+  "coreRequests": [
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/audit -> 200",
+   "GET /api/v1/pairing/code -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/pairing/code -> 200",
+   "GET /api/v1/audit?order=DESC&limit=2 -> 200",
+   "GET /api/v1/pairing/code -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "74a paired-devices: audit row of the expiry (sweep)",
+  "start": "2026-10-06T03:35:48.426Z",
+  "coreRequests": [
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/audit?order=DESC&limit=2&category=PAIRING -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "74b api-reference: open via sidebar",
+  "start": "2026-10-06T03:35:48.439Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "75a api-reference: open GET /api/v1/health",
+  "start": "2026-10-06T03:36:10.048Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "75b api-reference: Test Request (open the client)",
+  "start": "2026-10-06T03:36:12.827Z",
+  "coreRequests": [
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "76 api-reference: Send GET /api/v1/health from the client",
+  "start": "2026-10-06T03:36:25.251Z",
+  "coreRequests": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "77a api-reference: open #tag/storage/GET/api/v1/storage/status",
+  "start": "2026-10-06T03:36:45.978Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "77b api-reference: Test Request + Send (authenticated read)",
+  "start": "2026-10-06T03:36:48.730Z",
+  "coreRequests": [
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "77c api-reference: realtime panel connect",
+  "start": "2026-10-06T03:36:55.389Z",
+  "coreRequests": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "78a api-reference: storage status operation, Test Request, Send (authenticated read)",
+  "start": "2026-10-06T03:37:23.230Z",
+  "coreRequests": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "79a api-reference: Test Request (get /api/v1/storage/status), longer wait",
+  "start": "2026-10-06T03:37:45.310Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "80a api-reference: Test Request (storage status) by geometry",
+  "start": "2026-10-06T03:38:19.580Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "80b api-reference: Send GET /api/v1/storage/status (authenticated read)",
+  "start": "2026-10-06T03:38:20.616Z",
+  "coreRequests": [
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/storage/status -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [
+   "warning: We're trying to add a Cookie header, but browsers often omit them for cross-origin requests for various security reasons. If it's not working, that's probably why. Here are the requirements for it to work:\n\n        - The browser URL must be on the same domain as the server URL.\n        - The connection must be made over HTTPS.\n        "
+  ],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "81a api-reference: Copy base URL",
+  "start": "2026-10-06T03:38:52.863Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "81b api-reference: Download openapi.json",
+  "start": "2026-10-06T03:38:54.489Z",
+  "coreRequests": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "82a api-reference: close the Try it client (x)",
+  "start": "2026-10-06T03:39:13.339Z",
+  "coreRequests": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "83a api-reference: Copy base URL",
+  "start": "2026-10-06T03:39:43.446Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "83b api-reference: Download openapi.json",
+  "start": "2026-10-06T03:39:45.124Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "84a shell: user menu > Lock console",
+  "start": "2026-10-06T03:40:10.952Z",
+  "coreRequests": [
+   "POST /api/v1/auth/sign-out -> 204",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/audit -> 401"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/sign-out -> 204",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 401"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "84b login: sign in again after the lock",
+  "start": "2026-10-06T03:40:15.911Z",
+  "coreRequests": [
+   "POST /api/v1/auth/sign-in -> 200",
+   "GET /api/v1/audit -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/sign-in -> 200",
+   "GET /api/v1/audit?order=DESC&limit=1 -> 200",
+   "GET /api/v1/audit?order=DESC&limit=3&category=AUTH -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [
+   "error/network: Failed to load resource: the server responded with a status of 401 (Unauthorized) /api/v1/audit?order=DESC&limit=1"
+  ],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "85a shell: final Sign out (user menu)",
+  "start": "2026-10-06T03:40:33.917Z",
+  "coreRequests": [
+   "POST /api/v1/auth/sign-out -> 204",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/sign-out -> 204",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "85b login: deep link /evidence/EV-20261006-0012 while signed out",
+  "start": "2026-10-06T03:40:38.319Z",
+  "coreRequests": [
+   "GET /api/v1/auth/session -> 401",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/auth/session -> 401",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [
+   "error/network: Failed to load resource: the server responded with a status of 401 (Unauthorized) /api/v1/auth/session"
+  ],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/?token=***",
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "86a login: password visibility toggle with a non-secret test string",
+  "start": "2026-10-06T03:41:17.284Z",
+  "coreRequests": [
+   "GET /api/v1/auth/session -> 401",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/auth/session -> 401",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [
+   "error/network: Failed to load resource: the server responded with a status of 401 (Unauthorized) /api/v1/auth/session"
+  ],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/?token=***",
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "86b login: sign in for the extra round",
+  "start": "2026-10-06T03:41:23.686Z",
+  "coreRequests": [
+   "POST /api/v1/auth/sign-in -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/sign-in -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "86c dashboard: More start options > Start with last profile",
+  "start": "2026-10-06T03:41:28.053Z",
+  "coreRequests": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/touch -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "86d dashboard: More start options > Start from template",
+  "start": "2026-10-06T03:41:36.157Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "86e system: quick action Software Update",
+  "start": "2026-10-06T03:41:42.761Z",
+  "coreRequests": [],
+  "pageApi": [],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ },
+ {
+  "label": "86f evidence-detail: header Play",
+  "start": "2026-10-06T03:41:47.604Z",
+  "coreRequests": [
+   "GET /api/v1/auth/session -> 200",
+   "GET /api/v1/evidence/:id -> 200",
+   "GET /api/v1/audit -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/auth/session -> 200",
+   "GET /api/v1/evidence/EV-20261006-0012 -> 200",
+   "GET /api/v1/audit?order=DESC&limit=4 -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/?token=***",
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "87 shell: final Sign out through the user menu (end of walk)",
+  "start": "2026-10-06T03:42:27.525Z",
+  "coreRequests": [
+   "POST /api/v1/auth/sign-out -> 204",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "POST /api/v1/auth/sign-out -> 204",
+   "GET /api/v1/auth/status -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178",
+   "ws://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": [
+   "ws://127.0.0.1:5178/ws"
+  ]
+ },
+ {
+  "label": "99 end of walk",
+  "start": "2026-10-06T03:42:31.352Z",
+  "coreRequests": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "pageApi": [
+   "GET /api/v1/health -> 200",
+   "GET /api/v1/health -> 200"
+  ],
+  "origins": [
+   "http://127.0.0.1:5178"
+  ],
+  "console": [],
+  "log": [],
+  "failed": [],
+  "socketsOpened": []
+ }
+]

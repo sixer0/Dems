@@ -1,0 +1,2 @@
+profile /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T/e2e_t_chrome_profile
+Google Chrome for Testing 153.0.8010.12

@@ -1,0 +1,18 @@
+# Per-frame signature of a 540x1212 phone recording: device time (from frame 2's overlay + pts), the red End Session
+# bar (rows 1110-1150), the Recording dot row, and the frame's overall std (an empty frame is near-uniform).
+#   python3 sig.py <mp4> <frames dir> <t(f=1) HH:MM:SS.mmm> <host-offset ms>
+import subprocess, sys, os
+from datetime import datetime, timedelta
+from PIL import Image, ImageStat
+mp4, fdir, t1, off = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+pts = [float(x) for x in subprocess.run(['ffprobe','-loglevel','error','-select_streams','v:0','-show_entries','frame=pts_time','-of','csv=p=0',mp4],capture_output=True,text=True).stdout.split()]
+files = sorted(os.listdir(fdir))
+base = datetime.strptime(t1, '%H:%M:%S.%f')
+for i, n in enumerate(files[1:], start=1):
+    im = Image.open(f'{fdir}/{n}').convert('RGB')
+    w, h = im.size
+    bar = ImageStat.Stat(im.crop((40, int(h*0.915), w-40, int(h*0.945)))).mean
+    body = ImageStat.Stat(im.crop((0, 60, w, h))).stddev
+    dev = base + timedelta(seconds=pts[i]-pts[1])
+    host = dev - timedelta(milliseconds=off)
+    print(f'{n} f={i-1} dev {dev.strftime("%H:%M:%S.%f")[:-3]} host {host.strftime("%H:%M:%S.%f")[:-3]} bar_rgb {bar[0]:.0f},{bar[1]:.0f},{bar[2]:.0f} body_std {sum(body)/3:.1f}')

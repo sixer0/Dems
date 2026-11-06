@@ -1,0 +1,88 @@
+## 05:37 unit project through the probe configuration
+ Test Files  154 passed (154)
+      Tests  3916 passed (3916)
+   Start at  05:37:43
+   Duration  26.50s (import 58%, tests 37%, transform 4%, setup 1%, worker 1%)
+## 05:38 db project through the probe configuration
+ Test Files  122 passed (122)
+      Tests  1740 passed (1740)
+   Duration  114.78s (tests 84%, import 15%, transform 1%)
+[test:db] teardown: dropped 8 database(s) in 293 ms; 0 remain with the run prefix dems_test_step_109_tmghjsnp_
+## analysis
+records 18235; matched 12447; unmatched 5788; operations 75; spec numbers 157
+ 1 getServiceHealth             PUBLIC                                   body=- S=20f/71t D=n/a V=n/a 
+ 2 signIn                       PUBLIC + CONSOLE_IDENTITY                body=Y S=75f/350t D=n/a V=5f/15t 
+ 3 getSignInStatus              PUBLIC                                   body=- S=20f/71t D=n/a V=n/a 
+ 4 getAuthSession               AUTHENTICATED                            body=- S=32f/111t D=n/a V=n/a 
+ 5 signOut                      AUTHENTICATED                            body=Y S=18f/27t D=n/a V=4f/14t 
+ 6 touchSession                 AUTHENTICATED                            body=- S=13f/45t D=n/a V=n/a 
+ 7 setBiometricEnrollment       AUTHENTICATED + DEVICE_SESSION           body=Y S=12f/79t D=n/a V=5f/7t 
+ 8 signInWithBiometric          DEVICE + DEVICE_CREDENTIAL               body=Y S=11f/47t D=n/a V=6f/10t 
+ 9 reportBiometricFailure       DEVICE                                   body=Y S=8f/23t D=n/a V=5f/8t 
+10 getRoleMatrix                AUTHENTICATED                            body=- S=5f/26t D=n/a V=n/a 
+11 listUsers                    USER_ADMIN                               body=- S=11f/30t D=7f/20t V=n/a 
+12 assignUserRole               USER_ADMIN                               body=Y S=12f/30t D=7f/18t V=6f/16t 
+13 enableUser                   USER_ADMIN                               body=Y S=11f/17t D=4f/11t V=3f/8t 
+14 disableUser                  USER_ADMIN                               body=Y S=13f/24t D=4f/11t V=3f/7t 
+15 issuePairingCode             PAIRING_MANAGE                           body=- S=29f/112t D=4f/11t V=n/a 
+16 getPairingCodeStatus         PAIRING_MANAGE                           body=- S=10f/24t D=4f/11t V=n/a 
+17 cancelPairingCode            PAIRING_MANAGE                           body=- S=9f/15t D=4f/11t V=n/a 
+18 redeemPairingCode            PUBLIC                                   body=Y S=30f/89t D=n/a V=7f/13t 
+19 listPairedDevices            PAIRING_MANAGE                           body=- S=12f/39t D=4f/11t V=n/a 
+20 revokeDevice                 PAIRING_MANAGE                           body=Y S=21f/28t D=4f/11t V=3f/5t 
+21 getDeviceRegistration        DEVICE                                   body=- S=11f/28t D=n/a V=n/a 
+22 unpairDevice                 DEVICE                                   body=- S=8f/11t D=n/a V=n/a 
+23 rotateDeviceCredential       DEVICE + DEVICE_CREDENTIAL               body=- S=9f/11t D=n/a V=n/a 
+24 createSession                SESSION_START                            body=Y S=11f/41t D=4f/10t V=4f/9t 
+25 startSession                 SESSION_START                            body=Y S=11f/31t D=7f/21t V=3f/5t 
+26 stopSession                  SESSION_START                            body=Y S=9f/17t D=5f/9t V=5f/18t 
+27 getCurrentSession            AUTHENTICATED                            body=- S=8f/48t D=n/a V=n/a 
+28 beginPrecheck                SESSION_START                            body=- S=7f/10t D=4f/7t V=n/a 
+29 retryPrecheck                SESSION_START                            body=- S=4f/4t D=4f/7t V=n/a 
+30 acknowledgePrecheckWarnings  SESSION_START                            body=- S=4f/4t D=4f/7t V=n/a 
+31 cancelSession                SESSION_START                            body=- S=7f/12t D=4f/7t V=n/a 
+32 scanCaseNumber               SESSION_START                            body=- S=5f/9t D=4f/7t V=n/a 
+33 recoverSession               SESSION_START                            body=- S=5f/7t D=4f/7t V=n/a 
+34 addSessionMarker             SESSION_NOTE                             body=Y S=8f/13t D=4f/7t V=3f/6t 
+35 addSessionNote               SESSION_NOTE                             body=Y S=6f/8t D=5f/8t V=4f/8t 
+36 takeSessionSnapshot          SESSION_NOTE                             body=- S=5f/5t D=4f/7t V=n/a 
+37 acknowledgeSessionSummary    SESSION_START                            body=- S=8f/15t D=4f/7t V=n/a 
+38 listSessionHistory           AUTHENTICATED                            body=- S=6f/36t D=n/a V=n/a 
+39 listEvidence                 EVIDENCE_VIEW                            body=- S=10f/59t D=4f/4t V=n/a 
+40 getEvidence                  EVIDENCE_VIEW                            body=- S=10f/36t D=3f/3t V=n/a 
+41 verifyEvidence               EVIDENCE_VIEW                            body=- S=10f/33t D=4f/4t V=n/a 
+42 exportEvidence               EVIDENCE_EXPORT                          body=Y S=8f/20t D=6f/18t V=3f/21t 
+43 archiveEvidence              EVIDENCE_REVIEW                          body=- S=7f/17t D=4f/12t V=n/a 
+44 getDeviceHealth              AUTHENTICATED                            body=- S=5f/26t D=n/a V=n/a 
+45 getAudioStatus               AUTHENTICATED                            body=- S=6f/28t D=n/a V=n/a 
+46 getVideoStatus               AUTHENTICATED                            body=- S=5f/26t D=n/a V=n/a 
+47 getDeviceInventory           AUTHENTICATED                            body=- S=5f/26t D=n/a V=n/a 
+48 restartDevice                DEVICE_MANAGE                            body=- S=6f/12t D=4f/12t V=n/a 
+49 testDeviceSignal             DIAGNOSTICS_RUN                          body=- S=6f/18t D=3f/3t V=n/a 
+50 identifyDevice               DIAGNOSTICS_RUN                          body=- S=6f/18t D=3f/3t V=n/a 
+51 setActiveCamera              AUTHENTICATED                            body=Y S=5f/11t D=n/a V=4f/8t 
+52 resetMicClip                 AUTHENTICATED                            body=Y S=6f/12t D=n/a V=4f/8t 
+53 getStorageStatus             AUTHENTICATED                            body=- S=5f/29t D=n/a V=n/a 
+54 getStorageDetail             AUTHENTICATED                            body=- S=6f/35t D=n/a V=n/a 
+55 setStoragePolicy             ANY-OF(EVIDENCE_REVIEW, MAINTENANCE)     body=Y S=11f/33t D=10f/18t V=6f/24t 
+56 getNetworkStatus             AUTHENTICATED                            body=- S=5f/34t D=n/a V=n/a 
+57 getTimeStatus                AUTHENTICATED                            body=- S=5f/32t D=n/a V=n/a 
+58 getSecurityStatus            AUTHENTICATED                            body=- S=8f/34t D=n/a V=n/a 
+59 listAuditRows                AUTHENTICATED                            body=- S=10f/52t D=n/a V=n/a 
+60 verifyAuditChain             AUTHENTICATED                            body=- S=8f/45t D=n/a V=n/a 
+61 exportAudit                  AUDIT_EXPORT                             body=Y S=8f/16t D=6f/15t V=5f/28t 
+62 exportLogs                   AUDIT_EXPORT                             body=Y S=7f/12t D=6f/16t V=4f/27t 
+63 listEvents                   AUTHENTICATED                            body=- S=9f/37t D=n/a V=n/a 
+64 getSystemStatus              AUTHENTICATED                            body=- S=6f/29t D=n/a V=n/a 
+65 runDiagnostics               DIAGNOSTICS_RUN                          body=- S=7f/19t D=4f/4t V=n/a 
+66 restartServices              MAINTENANCE                              body=- S=5f/9t D=5f/11t V=n/a 
+67 startSoftwareUpdate          MAINTENANCE                              body=- S=5f/11t D=5f/11t V=n/a 
+68 updateSettings               AUTHENTICATED                            body=Y S=5f/32t D=n/a V=4f/20t 
+69 listAlerts                   AUTHENTICATED                            body=- S=5f/30t D=n/a V=n/a 
+70 acknowledgeAlert             AUTHENTICATED                            body=- S=5f/29t D=n/a V=n/a 
+71 getDemoStatus                DEMO_CONTROL + DEMO_FLAG                 body=- S=8f/30t D=5f/15t V=n/a 
+72 loadScenario                 DEMO_CONTROL + DEMO_FLAG                 body=Y S=4f/7t D=4f/13t V=3f/7t 
+73 injectFault                  DEMO_CONTROL + DEMO_FLAG                 body=Y S=8f/29t D=4f/13t V=3f/10t 
+74 clearFault                   DEMO_CONTROL + DEMO_FLAG                 body=Y S=7f/21t D=4f/13t V=2f/8t 
+75 resetDemo                    DEMO_CONTROL + DEMO_FLAG                 body=- S=7f/10t D=6f/15t V=n/a 
+operations with a gap: 0

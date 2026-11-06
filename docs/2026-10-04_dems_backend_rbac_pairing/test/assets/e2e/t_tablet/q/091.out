@@ -1,0 +1,6 @@
+tap 1350,1431 at 10:56:13.659
+slept 4000 ms
+tap 179,320 at 10:56:17.712
+slept 5000 ms
+screencap B39_tablet_sessions_hub_after_journey.png (545172 bytes) at 10:56:22.924
+ids: 96 nodes -> q/sessions_after.txt

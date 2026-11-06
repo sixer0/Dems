@@ -1,0 +1,5 @@
+12:51:10.528 declared screen evidence-detail
+12:51:10.588 swipe 540,1900,540,700 600 ms
+12:51:11.429 slept 1200 ms
+12:51:12.682 screencap 26d_evidence_detail_integrity_custody_list.png 12:51:12.682..12:51:13.249
+12:51:13.413 ids(4): evidence-custody@540,1622 ; evidence-custody-0@540,1426 "Sealed, 6 Oct 2026 10:51:27 · System" ; evidence-custody-1@540,1654 "Recording stopped, 6 Oct 2026 10:51:21 · AKP Budi Santoso · Retest end" ; evidence-custody-2@540,1881 "Recording started, 6 Oct 2026 10:49:30 · AKP Budi Santoso"

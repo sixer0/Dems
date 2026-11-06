@@ -1,0 +1,53 @@
+#!/bin/sh
+# W72 device commands (run by device-session.sh, which exports SERIAL, APP_ID, ROOT, AVD_NAME). The phone
+# is paired with lane 1 as DEV-0001 (never unpaired, never reset). LIVE launch on the Login route with the
+# motion switch (never `/` with motion=, D164 DN-7) -> the queue-driven driver (sign-in, Sessions hub,
+# Start Session over the Core, End Session through the app's own monitor, Finalization, the Summary's
+# own Done, the hub again) -> leave SIMULATED (D124). No keyguard, PIN, fingerprint or device setting is
+# touched; the app's own biometric OFFER is declined in the app ("Not now"), never accepted.
+set -u
+OUT=$1; HOSTPORT=$2
+A="adb -s $SERIAL"; H="$ROOT/.cache/w72"
+echo "-- serial $SERIAL ($AVD_NAME), lane port $HOSTPORT"
+unlocked() {
+  KG=$($A shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1)
+  ST=$($A shell dumpsys user 2>/dev/null | grep -m 1 "State:" | tr -d '\r' | sed 's/^ *//')
+  case "$KG/$ST" in isKeyguardShowing=false/*RUNNING_UNLOCKED*) return 0 ;; *) echo "-- LOCKED ($KG; $ST) at: $1 - stop, report."; return 1 ;; esac
+}
+unlocked "the start" || exit 77
+T0=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+js() { $A logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null; }
+wait_for() { i=0; until js | grep -q -- "$1" || [ "$i" -ge "$2" ]; do i=$((i + 1)); sleep 1; done; echo "-- waited $i s for: $1"; }
+launch() { echo "-- am start -W -d '$1'"; $A shell "am start -W -a android.intent.action.VIEW -d '$1' $APP_ID" 2>&1 | tr -d '\r' | grep -E "Status|LaunchState|Error|TotalTime" | sed 's/^/   /'; }
+
+echo "== D1. cold launch in LIVE mode on the PAIRED phone, Login route, motion off =="
+launch 'demsdemo:///login?core=LIVE&motion=off'
+wait_for 'runtime.live.ready' 120
+wait_for 'DEMS-LIVE\] GET /api/v1/pairing/device 200' 40
+sleep 3
+unlocked "the login" || exit 77
+
+echo "== D2. the queue-driven UI driver =="
+node --import tsx "$H/drive_q.mts" "$SERIAL" "$OUT" "$T0"
+DRIVE_EXIT=$?
+echo "-- driver exit: $DRIVE_EXIT"
+echo "-- Core request lines this session (method, path template, status):"
+js | grep -o 'DEMS-LIVE\] .*' | sed -E 's/ [0-9a-f]{8}-[0-9a-f-]{27}$//' | sort | uniq -c | sort -rn | head -n 30 | sed 's/^/   /' | tee "$OUT/device_requests.txt"
+echo "-- live.misuse lines: $(js | grep -c 'live\.misuse'); credential/token lines (must be 0): $(js | grep -c -E 'dvc_|ses_|bio_')"
+echo "-- routeSync lines: $(js | grep -o 'runtime.routeSync[^,]*' | sort | uniq -c | tr '\n' ';')"
+
+echo "== D3. leave the app in SIMULATED mode as found (D124) =="
+$A shell am force-stop "$APP_ID"
+# After an adb transport drop (sitting 1) the session's reverse rules were gone: put the SAME Metro rule
+# back if it is missing, so the SIMULATED launch can load its bundle (device-session.sh removes it at the end).
+$A reverse --list 2>/dev/null | grep -q "tcp:8081 tcp:$METRO_PORT" || { $A reverse tcp:8081 "tcp:$METRO_PORT" >/dev/null 2>&1; echo "-- Metro reverse rule restored for the SIMULATED launch"; }
+T1=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+launch 'demsdemo:///?core=SIMULATED'
+i=0; until $A logcat -d -T "$T1" -s ReactNativeJS:V 2>/dev/null | grep -q 'runtime.sim.hydrated' || [ "$i" -ge 90 ]; do i=$((i + 1)); sleep 1; done
+echo "-- waited $i s for runtime.sim.hydrated; Core requests after (must be 0): $($A logcat -d -T "$T1" -s ReactNativeJS:V 2>/dev/null | grep -c 'DEMS-LIVE')"
+printf '%s' "-- prefs after: "; $A shell "run-as $APP_ID sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" 2>/dev/null | tr -d '\r'; echo
+sleep 3
+$A exec-out screencap -p >"$OUT/72_phone_after_simulated.png"; echo "-- screencap: 72_phone_after_simulated.png"
+echo "-- remove this row's dump file only: /sdcard/w72.xml"; $A shell rm -f /sdcard/w72.xml
+echo "-- lock at end: $($A shell dumpsys window 2>/dev/null|tr -d '\r'|grep -o 'isKeyguardShowing=[a-z]*'|head -n1)"
+exit "$DRIVE_EXIT"

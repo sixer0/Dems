@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""W77 mutation check (rule M15: no file of the workspace tree is changed).
+
+Each mutation is ONE text replacement in ONE module, applied in memory by the transform plugin of
+vitest.mutation.config.mts (W0's / W64's pattern). A mutation is DETECTED when the named tests fail
+while the mutation was really applied (the plugin leaves a marker file under TMPDIR). The SHA-256 of
+every mutated file is taken before and after each batch.
+
+The entry PROBE is no mutation of the row's code: it applies, in memory, the one-line harness change
+that finding F77-1 proposes (`runtime/testing/live-harness.ts` answers `getRoleMatrix`), and is
+"expected green" on W54's test file.
+    python3 /Users/gsp-budi/Documents/DEMS/.cache/w77/mut/run_mutations.py check | run [ids]
+"""
+import hashlib, json, os, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+HERE = os.path.join(ROOT, '.cache/w77/mut')
+CONFIG = '.cache/w77/mut/vitest.mutation.config.mts'
+APPLIED = os.path.join(os.environ['TMPDIR'], 'w77-mut-applied')
+os.makedirs(APPLIED, exist_ok=True)
+SRC = 'apps/core-web/src/'
+
+PAGE = 'src/test/live-users-roles-page.test.tsx'
+CMDS = 'src/test/live-users-roles-commands.test.tsx'
+MODEL = 'src/test/live-users-roles-model.test.tsx'
+ADMIN = 'src/test/live-shell-admin.test.tsx'
+
+M = []
+def m(mid, file, what, find, replace, tests, expect='red'):
+    M.append({'id': mid, 'file': SRC + file, 'what': what, 'find': find, 'replace': replace, 'tests': tests, 'expect': expect})
+
+F = 'features/users-roles/commands.ts'
+m('C01', F, 'the presenter is skipped for a failed command', "const notice = presentCoreError(failure, { permission: Permission.USER_ADMIN })", "const notice = (void presentCoreError, null as ReturnType<typeof presentCoreError>)", [CMDS])
+m('C02', F, 'a 403 keeps the dialog open', "notice.kind === CoreErrorNoticeKind.PERMISSION ? 'closeDialog' : 'kept'", "'kept'", [CMDS])
+m('C03', F, '409 LAST_ADMIN is not recognised', "if (status === 409 && code === ApiErrorCode.LAST_ADMIN) {", "if (false) {", [CMDS])
+m('C04', F, 'a 200 re-creates a removed users entry (PG-6a)', "    if (held === undefined) return undefined\n", "    if (held === undefined) return { users: [user] }\n", [CMDS, MODEL])
+m('C05', F, 'the list is not read again after a 200', "              applyUserToCache(queryClient, user)\n              void queryClient.invalidateQueries({ queryKey: CORE_QUERY_KEYS.users })\n", "              applyUserToCache(queryClient, user)\n", [CMDS])
+m('C06', F, 'the reason is not trimmed', "const trimmed = reason.trim().slice(0, ADMIN_REASON_MAX_LENGTH)", "const trimmed = reason.slice(0, ADMIN_REASON_MAX_LENGTH)", [CMDS, MODEL])
+m('C07', F, 'the control is never released', "            done: release,\n", "            done: () => undefined,\n", [CMDS])
+m('C08', F, 'a 404 does not close the dialog', "                void queryClient.invalidateQueries({ queryKey: CORE_QUERY_KEYS.users })\n                onOutcome({ kind: 'closeDialog' })", "                void queryClient.invalidateQueries({ queryKey: CORE_QUERY_KEYS.users })\n                onOutcome({ kind: 'kept' })", [CMDS])
+F = 'features/users-roles/model.ts'
+m('M01', F, 'the last-administrator hint is off', "return administrators.length === 1 && administrators[0]!.id === target.id", "return false", [PAGE, CMDS, MODEL])
+m('M02', F, 'a disabled holder counts as an administrator', "users.filter((user) => user.enabled && holds(matrix, user.role, Permission.USER_ADMIN))", "users.filter((user) => holds(matrix, user.role, Permission.USER_ADMIN))", [MODEL])
+m('M03', F, '"Gains" and "Loses" swapped', "gains: matrix.permissions.filter((permission) => after.has(permission) && !before.has(permission)),", "gains: matrix.permissions.filter((permission) => before.has(permission) && !after.has(permission)),", [CMDS, MODEL])
+m('M04', F, 'no row is ever highlighted', "      return earlier === undefined || SHOWN.some((member) => earlier[member] !== user[member])", "      return earlier === undefined && false", [PAGE, CMDS, MODEL])
+m('M05', F, 'a cached array of another shape is taken as rows', "  if (!Array.isArray(users)) return []\n", "  if (!Array.isArray(users)) return Array.isArray(data) ? (data as AdminUser[]) : []\n", [MODEL])
+F = 'features/users-roles/queries.ts'
+m('Q01', F, 'a 403 read is not the Forbidden state', "  return error instanceof AdminReadError && error.status === 403", "  return false", [PAGE])
+m('Q02', F, 'the users list is kept under a key outside CORE_QUERY_KEYS', "    queryKey: CORE_QUERY_KEYS.users,", "    queryKey: ['admin-users'],", [PAGE, MODEL])
+m('Q03', F, 'the read presenter is skipped', "      if (presentCoreError(answer, { permission: Permission.USER_ADMIN }) === null) {", "      if (true) {", [PAGE])
+F = 'features/users-roles/users-panel.tsx'
+m('U01', F, '"You" on every row', "{user.id === selfId ? (", "{true ? (", [PAGE])
+m('U02', F, 'the row menu stays enabled while the link is down', "        isDisabled={!linkUp}\n        data-testid={`ur-actions-${user.id}`}", "        isDisabled={false}\n        data-testid={`ur-actions-${user.id}`}", [PAGE])
+m('U03', F, 'the hint does not disable "Disable user…"', "disabledKeys={lastAdministrator ? ['disable'] : []}", "disabledKeys={[]}", [PAGE])
+F = 'features/users-roles/role-dialog.tsx'
+m('R01', F, 'the confirm is enabled with the role unchanged', "isDisabled={!changed || !linkUp}", "isDisabled={!linkUp}", [CMDS])
+m('R02', F, 'the busy mark is not attached to the confirm', "<Button ref={ref} variant=\"primary\" onPress={confirm}", "<Button variant=\"primary\" onPress={confirm}", [CMDS])
+m('R03', F, 'the own-row warning is missing', "        {selfId === target.id ? (\n          <Alert status=\"warning\" data-testid=\"ur-role-own\">", "        {false ? (\n          <Alert status=\"warning\" data-testid=\"ur-role-own\">", [CMDS])
+F = 'features/users-roles/status-dialogs.tsx'
+m('S01', F, 'disabling the own account does not warn', "        {selfId === target.id ? (", "        {false ? (", [CMDS])
+m('S02', F, 'enable sends the disable operation', "send(control, { kind: 'enable', target }", "send(control, { kind: 'disable', target, reason: '' }", [CMDS])
+F = 'features/users-roles/index.tsx'
+m('I01', F, 'the "Live mode only" state is not wrapped in the page grid (F76-12)', "          <div className=\"ur-state-wrap\">\n            <LiveOnlyState", "          <div>\n            <LiveOnlyState", [PAGE])
+F = 'runtime/testing/live-harness.ts'
+m('PROBE', F, 'F77-1 proposal, applied in memory: the harness answers getRoleMatrix (EXPECTED GREEN on W54\'s file)',
+  "  answered('listUsers', () => (core.alive() ? fake.example('listUsers', 200, 'seeded') : fake.example('listUsers', 401, 'notSignedIn')))\n",
+  "  answered('listUsers', () => (core.alive() ? fake.example('listUsers', 200, 'seeded') : fake.example('listUsers', 401, 'notSignedIn')))\n  answered('getRoleMatrix', () => (core.alive() ? fake.example('getRoleMatrix', 200, 'seeded') : fake.example('getRoleMatrix', 401, 'notSignedIn')))\n",
+  [ADMIN], expect='green')
+
+
+m('PROBE2', F, 'F77-1 proposal widened to the reads of BOTH administration pages (getRoleMatrix; W81\'s listPairedDevices and getPairingCodeStatus), applied in memory (EXPECTED GREEN on W54\'s whole file)',
+  "  answered('listUsers', () => (core.alive() ? fake.example('listUsers', 200, 'seeded') : fake.example('listUsers', 401, 'notSignedIn')))\n",
+  "  answered('listUsers', () => (core.alive() ? fake.example('listUsers', 200, 'seeded') : fake.example('listUsers', 401, 'notSignedIn')))\n  answered('getRoleMatrix', () => (core.alive() ? fake.example('getRoleMatrix', 200, 'seeded') : fake.example('getRoleMatrix', 401, 'notSignedIn')))\n  answered('listPairedDevices', () => (core.alive() ? fake.example('listPairedDevices') : fake.example('listPairedDevices', 401, 'notSignedIn')))\n  answered('getPairingCodeStatus', () => (core.alive() ? fake.example('getPairingCodeStatus') : fake.example('getPairingCodeStatus', 401, 'notSignedIn')))\n",
+  [ADMIN], expect='green')
+
+
+PENDING = 'src/test/live-pending-control.test.tsx'
+m('PROBE3', 'test/live-pending-control.test.tsx', 'F77-2 proposal, applied in memory: the caller list is a floor (`arrayContaining`), the import rule still holds for every caller (EXPECTED GREEN)',
+  "      'storage/manage-drawer.tsx',\n    ])\n",
+  "      'storage/manage-drawer.tsx',\n    ].filter((file) => file !== '') && callers)\n    expect(callers).toEqual(expect.arrayContaining(['dashboard/devices-panel.tsx', 'devices/audio-input-card.tsx', 'devices/device-menu.tsx', 'evidence/export-wizard.tsx', 'evidence/use-archive.ts', 'session-monitor/action-bar.tsx', 'session-monitor/index.tsx', 'session-monitor/live-feed-panel.tsx', 'session-new/index.tsx', 'storage/manage-drawer.tsx', 'users-roles/role-dialog.tsx', 'users-roles/status-dialogs.tsx']))\n",
+  [PENDING], expect='green')
+
+
+m('BASELINE-STUB', 'features/users-roles/index.tsx', 'attribution: W54\'s stub body in place of this row\'s Live body, in memory (what W54\'s file shows WITHOUT W77; red = the other rows\' share)',
+  "        <UsersRolesLive />\n",
+  "        <Card className=\"dems-live-only-card rounded-xl\"><EmptyState className=\"dems-live-only\" data-testid=\"ur-stub\">{t('common.states.empty')}</EmptyState></Card>\n",
+  [ADMIN], expect='green')
+
+
+def sha(path):
+    with open(os.path.join(ROOT, path), 'rb') as handle:
+        return hashlib.sha256(handle.read()).hexdigest()
+
+
+def run_tests(mid, tests):
+    env = dict(os.environ, W77_MUT=mid, W77_APPLIED_DIR=APPLIED)
+    files = [test.split('::')[0] for test in tests]
+    cmd = ['npx', 'vitest', 'run', '--config', os.path.join(ROOT, CONFIG), '--maxWorkers=2', *files]
+    started = time.time()
+    proc = subprocess.run(cmd, cwd=os.path.join(ROOT, 'apps/core-web'), env=env, capture_output=True, text=True)
+    out = proc.stdout + proc.stderr
+    summary = [line.strip() for line in out.splitlines() if line.strip().startswith(('Test Files', 'Tests '))]
+    return proc.returncode, summary, round(time.time() - started), out
+
+
+def main():
+    mode = sys.argv[1] if len(sys.argv) > 1 else 'check'
+    ids = sys.argv[2:]
+    with open(os.path.join(HERE, 'mutations.json'), 'w') as handle:
+        json.dump(M, handle, indent=1)
+    chosen = [entry for entry in M if not ids or entry['id'] in ids]
+    if mode == 'check':
+        for entry in chosen:
+            text = open(os.path.join(ROOT, entry['file'])).read()
+            count = text.count(entry['find'])
+            print(f"{entry['id']}: occurs {count}x in {entry['file']}" + ('' if count == 1 else '  <-- FIX'))
+        return
+    files = sorted({entry['file'] for entry in chosen})
+    before = {path: sha(path) for path in files}
+    results = []
+    for entry in chosen:
+        marker = os.path.join(APPLIED, entry['id'])
+        if os.path.exists(marker):
+            os.remove(marker)
+        code, summary, secs, out = run_tests(entry['id'], entry['tests'])
+        applied = os.path.exists(marker)
+        failed = code != 0
+        if not applied:
+            verdict = 'NOT APPLIED'
+        elif entry['expect'] == 'green':
+            verdict = 'GREEN (as expected)' if not failed else 'RED (unexpected)'
+        else:
+            verdict = 'DETECTED' if failed else 'SURVIVED'
+        results.append((entry['id'], verdict))
+        print(f"{entry['id']} [{verdict}] {entry['what']} :: {' | '.join(summary)} ({secs}s)", flush=True)
+        if entry['expect'] == 'green' and failed:
+            print('\n'.join(line for line in out.splitlines() if 'FAIL' in line or 'Error' in line)[:3000])
+    after = {path: sha(path) for path in files}
+    print('files unchanged by the batch:', 'identical' if before == after else 'CHANGED ' + str([p for p in files if before[p] != after[p]]))
+    stamp = time.strftime('%Y-%m-%d %H:%M:%S WIB')
+    detected = [mid for mid, verdict in results if verdict == 'DETECTED']
+    survived = [mid for mid, verdict in results if verdict == 'SURVIVED']
+    print(f"## {stamp} {len(results)} entries: {len(detected)} detected, {len(survived)} survived {survived}, others {[r for r in results if r[1] not in ('DETECTED', 'SURVIVED')]}")
+
+
+if __name__ == '__main__':
+    main()

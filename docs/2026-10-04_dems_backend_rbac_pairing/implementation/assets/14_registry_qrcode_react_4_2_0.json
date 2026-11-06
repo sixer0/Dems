@@ -1,0 +1,32 @@
+{
+  "name": "qrcode.react",
+  "version": "4.2.0",
+  "license": "ISC",
+  "peerDependencies": {
+    "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0"
+  },
+  "scripts": {
+    "build": "pnpm run build:code && pnpm run build:examples",
+    "build:code": "tsup src/index.tsx -d lib --format esm,cjs --dts --legacy-output --target=es2017 --platform=browser",
+    "build:examples": "tsup examples/demo.tsx -d examples --format iife --env.NODE_ENV production --minify --target=es2017 --legacy-output",
+    "build:examples:dev": "tsup examples/demo.tsx -d examples --format iife --env.NODE_ENV development --target=es2017 --legacy-output",
+    "lint": "eslint .",
+    "pretty": "prettier --write '{*,.*}.{mjs,js,json}' '**/*.{js,json}'",
+    "prepack": "make clean && make all && pnpm run typecheck",
+    "prepublish-docs": "make clean && make all",
+    "publish-docs": "gh-pages --dist=examples --src='{index.html,iife/demo.js}'",
+    "test": "jest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dist.integrity": "sha512-QpgqWi8rD9DsS9EP3z7BT+5lY5SFhsqGjpgW5DY/i3mK4M9DTBNz3ErMi8BWYEfI3L0d8GIbGmcdFAS1uIRGjA==",
+  "dist.tarball": "https://registry.npmjs.org/qrcode.react/-/qrcode.react-4.2.0.tgz",
+  "dist.signatures": [
+    {
+      "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+      "sig": "MEQCICJy84A7vTT4OpUPydLYWM71IX3+3SLIeYlh0g+qBg5lAiBw8VCLRGfmONf1k8m4m66qP0V8hESe7oy2sXa9B3WshA=="
+    }
+  ],
+  "dist-tags": {
+    "latest": "4.2.0"
+  }
+}

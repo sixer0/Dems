@@ -1,0 +1,5663 @@
+{
+  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts; task 4 schema set A, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md sections 2.1 to 2.3 with 04_design_addendum.md sections 1.4 and 7.2; delta module contract-v7-delta.ts; task 4 schema set B, the same document sections 2.4 and 2.5; delta module contract-v8-delta.ts; task 4 package X-C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/05_design_x1_x2.md section 3.6; delta module contract-v9-delta.ts; task 4 requirement AD-06 (4), docs/2026-10-12_input_av_core_adapter_plan/verification/04_security_addendum.md; delta module contract-v10-delta.ts; task 4 schema set C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md section 2.6; delta module contract-v11-delta.ts; task 4 honest removal reasons of a temporary host address, docs/2026-10-12_input_av_core_adapter_plan/decisions/decisions.md C74 D-2 and D-3; delta module contract-v12-delta.ts; task 4 further removal reason ADD_UNCONFIRMED, docs/2026-10-12_input_av_core_adapter_plan/verification/119_commissioning_security.md caution R119-05 answer (d) with decisions/decisions.md C94 (d); delta module contract-v13-delta.ts; task 4 allowed ONVIF ports of the network settings and the widened form of an interface name, docs/2026-10-12_input_av_core_adapter_plan/verification/120_m10_review.md finding F-4 and 120b_m10_review_second_pass.md finding S2-02 with decisions/decisions.md C114 and C116; delta module contract-v14-delta.ts; task 4 retiring a capture device, docs/2026-10-12_input_av_core_adapter_plan/masterplan/07_design_retire_readopt.md section 4.1 with decisions/decisions.md C147; delta module contract-v15-delta.ts; D60 of 2026-11-04, four simultaneous video tracks, docs/2026-10-21_bare_metal_bench/decisions/decisions.md D60 with migration 0039_four_video_tracks and the five widened track CHECKs; delta module contract-v16-delta.ts; D61 of 2026-11-04, four simultaneous microphone channels, docs/2026-10-21_bare_metal_bench/decisions/decisions.md D61 with migration 0040_four_audio_channels, the renamed role columns, the pairwise mic rule and the widened slot, pairing, track and tamper CHECKs; delta module contract-v17-delta.ts; D28 of 2026-11-05, the microphone channel files under fragment-hash protection, docs/2026-11-05_team_update_audit/decisions/decisions.md D28 with migration 0044_recording_fragments_audio_tracks and the widened fragment track CHECK; delta module contract-v18-delta.ts)",
+  "valueSets": {
+    "ROLE": [
+      "INVESTIGATOR",
+      "SUPERVISOR",
+      "TECHNICIAN"
+    ],
+    "SEVERITY": [
+      "INFO",
+      "SUCCESS",
+      "WARNING",
+      "CRITICAL"
+    ],
+    "AUDIT_CATEGORY": [
+      "AUTH",
+      "SESSION",
+      "EVIDENCE",
+      "DEVICE",
+      "SECURITY",
+      "STORAGE",
+      "PAIRING",
+      "SYSTEM"
+    ],
+    "EVENT_CATEGORY": [
+      "AUTH",
+      "SESSION",
+      "EVIDENCE",
+      "EXPORT",
+      "STORAGE",
+      "TIME",
+      "NETWORK",
+      "DEVICE",
+      "SECURITY",
+      "SYSTEM"
+    ],
+    "SESSION_STATE": [
+      "CREATE",
+      "PRECHECK",
+      "ARMED",
+      "RECORDING",
+      "STOPPING",
+      "FINALIZING",
+      "SEALED",
+      "FAULT",
+      "RECOVERY"
+    ],
+    "SESSION_OUTCOME": [
+      "SEALED",
+      "INCOMPLETE"
+    ],
+    "SUBJECT_TYPE": [
+      "TERSANGKA",
+      "SAKSI",
+      "LAINNYA"
+    ],
+    "PROFILE": [
+      "STANDARD_1080P25"
+    ],
+    "TIME_SOURCE": [
+      "GNSS",
+      "NTP",
+      "RTC"
+    ],
+    "TRACK_ID": [
+      "VIDEO-01",
+      "VIDEO-02",
+      "VIDEO-03",
+      "VIDEO-04",
+      "AUDIO-01",
+      "AUDIO-02",
+      "AUDIO-03",
+      "AUDIO-04"
+    ],
+    "VIDEO_TRACK_ID": [
+      "VIDEO-01",
+      "VIDEO-02",
+      "VIDEO-03",
+      "VIDEO-04"
+    ],
+    "FAULT_KIND": [
+      "CAMERA_LOSS",
+      "MIC_NO_SIGNAL",
+      "MIC_CLIP",
+      "STORAGE_LOW",
+      "STORAGE_FULL",
+      "GNSS_LOSS",
+      "TAMPER",
+      "FAN_STALL",
+      "POWER_FAIL",
+      "TPM_FAILURE",
+      "SECURITY_FAULT",
+      "AUDIT_TAMPER",
+      "MIC_SILENT",
+      "CAPTURE_FAULT"
+    ],
+    "EVIDENCE_STATUS": [
+      "RECORDED",
+      "SEALED",
+      "EXPORTED",
+      "UNDER_REVIEW",
+      "ARCHIVED"
+    ],
+    "LIFECYCLE_STAGE": [
+      "CAPTURE",
+      "RECORDING",
+      "FINALIZING",
+      "HASH",
+      "MANIFEST",
+      "ENCRYPT",
+      "SIGN",
+      "SEALED_LOCAL_EVIDENCE",
+      "AUTHORIZED_REVIEW",
+      "AUTHORIZED_EXPORT_TRANSFER",
+      "DESTINATION_VERIFICATION",
+      "RETENTION_ARCHIVE_DISPOSITION"
+    ],
+    "VERIFICATION": [
+      "NOT_RUN",
+      "PASS",
+      "FAIL"
+    ],
+    "INTEGRITY_SOURCE": [
+      "DEMO_PACKAGE",
+      "SIMULATED",
+      "REAL"
+    ],
+    "RETENTION": [
+      "DAYS_30",
+      "DAYS_90",
+      "YEAR_1",
+      "CASE_CLOSURE"
+    ],
+    "SCENARIO": [
+      "idle",
+      "recording",
+      "finalizing",
+      "fault-demo"
+    ],
+    "STORAGE_STATE": [
+      "READY",
+      "LOW",
+      "FULL"
+    ],
+    "SECURITY_STATE": [
+      "READY",
+      "FAULT"
+    ],
+    "AUTH_METHOD": [
+      "PASSWORD",
+      "BIOMETRIC"
+    ],
+    "SESSION_END_REASON": [
+      "SIGNED_OUT",
+      "IDLE_EXPIRED",
+      "ABSOLUTE_EXPIRED",
+      "ROTATED",
+      "USER_DISABLED",
+      "DEVICE_REVOKED",
+      "DEVICE_UNPAIRED",
+      "TOKEN_REUSE",
+      "CREDENTIAL_REPLACED"
+    ],
+    "DEVICE_STATE": [
+      "PAIRED",
+      "REVOKED",
+      "UNPAIRED"
+    ],
+    "CODE_STATE": [
+      "ACTIVE",
+      "REDEEMED",
+      "CANCELLED",
+      "EXPIRED",
+      "EXHAUSTED"
+    ],
+    "BIO_REVOKE_REASON": [
+      "DISABLED",
+      "REENROLLED",
+      "TOKEN_REUSE",
+      "DEVICE_REVOKED",
+      "DEVICE_UNPAIRED",
+      "USER_DISABLED",
+      "CREDENTIAL_REPLACED"
+    ],
+    "EXPORT_SCOPE": [
+      "EVIDENCE",
+      "AUDIT",
+      "LOGS"
+    ],
+    "SNAPSHOT_CAUSE": [
+      "INTERVAL",
+      "FAULT_RAISED",
+      "FAULT_CLEARED"
+    ],
+    "CHAIN_DISCARD_REASON": [
+      "RESET",
+      "SCENARIO_LOAD"
+    ],
+    "CAPTURE_DEVICE_KIND": [
+      "CAMERA",
+      "MIC",
+      "POE"
+    ],
+    "MIC_ROLE": [
+      "PRIMARY",
+      "STANDBY"
+    ],
+    "TRACK_KIND": [
+      "FILE"
+    ],
+    "LABELS_STATUS": [
+      "LABELLED",
+      "UNAVAILABLE"
+    ],
+    "SEALING_JOB_STATUS": [
+      "RUNNING",
+      "DONE",
+      "FAILED"
+    ],
+    "TRANSCRIPT_CHUNK_STATUS": [
+      "PENDING",
+      "RUNNING",
+      "DONE",
+      "FAILED"
+    ],
+    "SIGNATURE_ALGORITHM": [
+      "SIMULATED-SHA256",
+      "Ed25519",
+      "ECDSA-P256-SHA256"
+    ],
+    "TRANSCRIPT_SIGNATURE_ALGORITHM": [
+      "Ed25519",
+      "SIMULATED-SHA256"
+    ],
+    "STT_BACKEND": [
+      "omlx-server",
+      "cpu-local"
+    ],
+    "STT_CREDENTIAL_KIND": [
+      "REFERENCE",
+      "ENCRYPTED"
+    ],
+    "AUDIO_INTERVAL_REASON": [
+      "START",
+      "MANUAL",
+      "STOP"
+    ],
+    "TIME_FORMAT": [
+      "24",
+      "12"
+    ],
+    "ENGINE_COUNTER": [
+      "event",
+      "session",
+      "caseNumber",
+      "evidence",
+      "item",
+      "export"
+    ],
+    "REGISTRY_COUNTER": [
+      "device",
+      "pairingCode"
+    ],
+    "CAPTURE_ADAPTER_KIND": [
+      "ONVIF_RTSP",
+      "USB_AUDIO",
+      "SNMP_POE",
+      "FAKE",
+      "LOCAL_DEVICE"
+    ],
+    "CAPTURE_SOURCE_SLOT": [
+      "VIDEO-01",
+      "VIDEO-02",
+      "VIDEO-03",
+      "VIDEO-04",
+      "MIC-01",
+      "MIC-02",
+      "MIC-03",
+      "MIC-04"
+    ],
+    "CAPTURE_STREAM_ROLE": [
+      "MAIN",
+      "SUB"
+    ],
+    "CAPTURE_STREAM_CODEC": [
+      "H264",
+      "HEVC",
+      "OTHER"
+    ],
+    "HOST_ALIAS_REASON": [
+      "FACTORY_SCAN",
+      "SET_CAMERA_ADDRESS"
+    ],
+    "HOST_ALIAS_REMOVE_REASON": [
+      "EXPIRED",
+      "MANUAL",
+      "JOB_DONE",
+      "BOOT_SWEEP",
+      "SHUTDOWN",
+      "NOT_ADDED",
+      "ADD_UNCONFIRMED"
+    ]
+  },
+  "formats": {
+    "HEX64": "c ~ '^[0-9a-f]{64}$'",
+    "CODE": "c ~ '^[A-Z][A-Z0-9_]{0,63}$'",
+    "FLAT": "public.dems_jsonb_is_flat(c)",
+    "NO_SECRET_KEYS": "NOT (c ?| ARRAY['password','passwordHash','salt','token','tokenHash','sessionToken','deviceCredential','credential','credentialHash','biometricToken','code','codeHash','pairingCode','qrPayload','username','cookie','authorization','secret','secretCiphertext','ciphertext','nonce','keyRef','onvifUuid','signedUrl','mediaUrl','credentialRef','credentialValue','apiKey'])",
+    "SESSION_ID": "c ~ '^SES-[0-9]{8}-[0-9]{4}$'",
+    "EVIDENCE_ID": "c ~ '^EV-[0-9]{8}-[0-9]{4}$'",
+    "OPERATOR_ID": "c ~ '^OPR-[0-9]{3}$'",
+    "EXPORT_ID": "c ~ '^EXP-[0-9]{6}$'",
+    "CASE_NUMBER": "c ~ '^LP/[0-9]{4}/[0-9]{4}-[0-9]{4}$'"
+  },
+  "tables": [
+    {
+      "id": "T-01",
+      "name": "roles",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "sort_order",
+          "type": "smallint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "roles_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "roles_id_check",
+          "kind": "CHECK",
+          "definition": "id IN ('INVESTIGATOR', 'SUPERVISOR', 'TECHNICIAN')"
+        },
+        {
+          "name": "roles_sort_order_key",
+          "kind": "UNIQUE",
+          "definition": "(sort_order)"
+        }
+      ]
+    },
+    {
+      "id": "T-02",
+      "name": "permissions",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "sort_order",
+          "type": "smallint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "permissions_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "permissions_id_check",
+          "kind": "CHECK",
+          "definition": "(id ~ '^[A-Z][A-Z0-9_]{0,63}$')"
+        },
+        {
+          "name": "permissions_sort_order_key",
+          "kind": "UNIQUE",
+          "definition": "(sort_order)"
+        }
+      ]
+    },
+    {
+      "id": "T-03",
+      "name": "role_permissions",
+      "columns": [
+        {
+          "name": "role_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "permission_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "role_permissions_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(role_id, permission_id)"
+        },
+        {
+          "name": "role_permissions_role_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(role_id) REFERENCES roles (id)"
+        },
+        {
+          "name": "role_permissions_permission_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(permission_id) REFERENCES permissions (id)"
+        },
+        {
+          "name": "role_permissions_permission_id_idx",
+          "kind": "INDEX",
+          "definition": "(permission_id)"
+        }
+      ]
+    },
+    {
+      "id": "T-04",
+      "name": "operators",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "username",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "rank",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "display_name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "initials",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "role_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "last_sign_in_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "role_changed_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "operators_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "operators_username_key",
+          "kind": "UNIQUE",
+          "definition": "(username)"
+        },
+        {
+          "name": "operators_role_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(role_id) REFERENCES roles (id)"
+        },
+        {
+          "name": "operators_role_id_idx",
+          "kind": "INDEX",
+          "definition": "(role_id)"
+        },
+        {
+          "name": "operators_id_check",
+          "kind": "CHECK",
+          "definition": "(id ~ '^OPR-[0-9]{3}$')"
+        },
+        {
+          "name": "operators_username_check",
+          "kind": "CHECK",
+          "definition": "username ~ '^[a-z0-9][a-z0-9._-]{0,63}$'"
+        },
+        {
+          "name": "operators_name_check",
+          "kind": "CHECK",
+          "definition": "char_length(name) BETWEEN 1 AND 120 AND char_length(initials) BETWEEN 1 AND 4"
+        }
+      ]
+    },
+    {
+      "id": "T-05",
+      "name": "operator_credentials",
+      "columns": [
+        {
+          "name": "operator_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "algorithm",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "memory_kib",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "passes",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "parallelism",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "salt",
+          "type": "bytea",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "hash",
+          "type": "bytea",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "hashed_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "operator_credentials_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(operator_id)"
+        },
+        {
+          "name": "operator_credentials_operator_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(operator_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "operator_credentials_algorithm_check",
+          "kind": "CHECK",
+          "definition": "algorithm = 'argon2id'"
+        },
+        {
+          "name": "operator_credentials_params_check",
+          "kind": "CHECK",
+          "definition": "memory_kib >= 19456 AND passes >= 2 AND parallelism >= 1"
+        },
+        {
+          "name": "operator_credentials_lengths_check",
+          "kind": "CHECK",
+          "definition": "octet_length(salt) >= 16 AND octet_length(hash) = 32"
+        }
+      ]
+    },
+    {
+      "id": "T-06",
+      "name": "auth_sessions",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "token_hash",
+          "type": "bytea",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "operator_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "method",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "issued_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "last_seen_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "absolute_expires_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "ended_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "end_reason",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "auth_sessions_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "auth_sessions_token_hash_key",
+          "kind": "UNIQUE",
+          "definition": "(token_hash)"
+        },
+        {
+          "name": "auth_sessions_operator_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(operator_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "auth_sessions_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(device_id) REFERENCES paired_devices (id)"
+        },
+        {
+          "name": "auth_sessions_active_operator_idx",
+          "kind": "INDEX",
+          "definition": "(operator_id) WHERE ended_at IS NULL"
+        },
+        {
+          "name": "auth_sessions_active_device_idx",
+          "kind": "INDEX",
+          "definition": "(device_id) WHERE ended_at IS NULL AND device_id IS NOT NULL"
+        },
+        {
+          "name": "auth_sessions_active_last_seen_idx",
+          "kind": "INDEX",
+          "definition": "(last_seen_at) WHERE ended_at IS NULL"
+        },
+        {
+          "name": "auth_sessions_token_hash_check",
+          "kind": "CHECK",
+          "definition": "octet_length(token_hash) = 32"
+        },
+        {
+          "name": "auth_sessions_method_check",
+          "kind": "CHECK",
+          "definition": "method IN ('PASSWORD', 'BIOMETRIC')"
+        },
+        {
+          "name": "auth_sessions_biometric_device_check",
+          "kind": "CHECK",
+          "definition": "method <> 'BIOMETRIC' OR device_id IS NOT NULL"
+        },
+        {
+          "name": "auth_sessions_times_check",
+          "kind": "CHECK",
+          "definition": "last_seen_at >= issued_at AND absolute_expires_at > issued_at AND (ended_at IS NULL OR ended_at >= issued_at)"
+        },
+        {
+          "name": "auth_sessions_end_check",
+          "kind": "CHECK",
+          "definition": "(ended_at IS NULL) = (end_reason IS NULL)"
+        },
+        {
+          "name": "auth_sessions_token_reuse_check",
+          "kind": "CHECK",
+          "definition": "end_reason IS DISTINCT FROM 'TOKEN_REUSE' OR method = 'BIOMETRIC'"
+        },
+        {
+          "name": "auth_sessions_end_reason_check",
+          "kind": "CHECK",
+          "definition": "\"auth_sessions\".\"end_reason\" IS NULL OR \"auth_sessions\".\"end_reason\" IN ('SIGNED_OUT', 'IDLE_EXPIRED', 'ABSOLUTE_EXPIRED', 'ROTATED', 'USER_DISABLED', 'DEVICE_REVOKED', 'DEVICE_UNPAIRED', 'TOKEN_REUSE', 'CREDENTIAL_REPLACED')"
+        }
+      ]
+    },
+    {
+      "id": "T-07",
+      "name": "pairing_codes",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "code_hash",
+          "type": "bytea",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "issued_by_operator_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "issued_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "expires_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "failed_attempts",
+          "type": "smallint",
+          "notNull": true,
+          "default": "0"
+        },
+        {
+          "name": "closed_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "closed_by_operator_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "pairing_codes_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "pairing_codes_one_active_key",
+          "kind": "UNIQUE INDEX",
+          "definition": "(state) WHERE state = 'ACTIVE'"
+        },
+        {
+          "name": "pairing_codes_issued_by_operator_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(issued_by_operator_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "pairing_codes_closed_by_operator_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(closed_by_operator_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "pairing_codes_id_check",
+          "kind": "CHECK",
+          "definition": "id ~ '^PCD-[0-9]{6,}$'"
+        },
+        {
+          "name": "pairing_codes_code_hash_check",
+          "kind": "CHECK",
+          "definition": "octet_length(code_hash) = 32"
+        },
+        {
+          "name": "pairing_codes_state_check",
+          "kind": "CHECK",
+          "definition": "state IN ('ACTIVE', 'REDEEMED', 'CANCELLED', 'EXPIRED', 'EXHAUSTED')"
+        },
+        {
+          "name": "pairing_codes_times_check",
+          "kind": "CHECK",
+          "definition": "expires_at > issued_at AND (closed_at IS NULL OR closed_at >= issued_at)"
+        },
+        {
+          "name": "pairing_codes_attempts_check",
+          "kind": "CHECK",
+          "definition": "failed_attempts BETWEEN 0 AND 5"
+        },
+        {
+          "name": "pairing_codes_closed_check",
+          "kind": "CHECK",
+          "definition": "(state = 'ACTIVE') = (closed_at IS NULL) AND (closed_by_operator_id IS NULL OR state = 'CANCELLED')"
+        }
+      ]
+    },
+    {
+      "id": "T-08",
+      "name": "paired_devices",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "platform",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "app_version",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "paired_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "paired_with_code_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "last_seen_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "revoked_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "revoked_by_operator_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "revoke_reason",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "unpaired_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "paired_devices_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "paired_devices_paired_with_code_id_key",
+          "kind": "UNIQUE",
+          "definition": "(paired_with_code_id)"
+        },
+        {
+          "name": "paired_devices_paired_with_code_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(paired_with_code_id) REFERENCES pairing_codes (id)"
+        },
+        {
+          "name": "paired_devices_revoked_by_operator_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(revoked_by_operator_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "paired_devices_id_check",
+          "kind": "CHECK",
+          "definition": "id ~ '^DEV-[0-9]{4,}$'"
+        },
+        {
+          "name": "paired_devices_text_check",
+          "kind": "CHECK",
+          "definition": "char_length(name) BETWEEN 1 AND 60 AND char_length(platform) BETWEEN 1 AND 32 AND char_length(app_version) BETWEEN 1 AND 32"
+        },
+        {
+          "name": "paired_devices_state_check",
+          "kind": "CHECK",
+          "definition": "state IN ('PAIRED', 'REVOKED', 'UNPAIRED')"
+        },
+        {
+          "name": "paired_devices_lifecycle_check",
+          "kind": "CHECK",
+          "definition": "(state = 'PAIRED' AND revoked_at IS NULL AND revoked_by_operator_id IS NULL AND revoke_reason IS NULL AND unpaired_at IS NULL) OR (state = 'REVOKED' AND revoked_at IS NOT NULL AND revoked_by_operator_id IS NOT NULL AND char_length(revoke_reason) BETWEEN 5 AND 500 AND unpaired_at IS NULL) OR (state = 'UNPAIRED' AND unpaired_at IS NOT NULL AND revoked_at IS NULL AND revoked_by_operator_id IS NULL AND revoke_reason IS NULL)"
+        }
+      ]
+    },
+    {
+      "id": "T-09",
+      "name": "device_credentials",
+      "columns": [
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "current_hash",
+          "type": "bytea",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "next_hash",
+          "type": "bytea",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "rotated_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "device_credentials_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(device_id)"
+        },
+        {
+          "name": "device_credentials_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(device_id) REFERENCES paired_devices (id)"
+        },
+        {
+          "name": "device_credentials_current_hash_key",
+          "kind": "UNIQUE",
+          "definition": "(current_hash)"
+        },
+        {
+          "name": "device_credentials_next_hash_key",
+          "kind": "UNIQUE",
+          "definition": "(next_hash)"
+        },
+        {
+          "name": "device_credentials_lengths_check",
+          "kind": "CHECK",
+          "definition": "octet_length(current_hash) = 32 AND (next_hash IS NULL OR (octet_length(next_hash) = 32 AND next_hash <> current_hash))"
+        }
+      ]
+    },
+    {
+      "id": "T-10",
+      "name": "biometric_tokens",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "token_hash",
+          "type": "bytea",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "family_id",
+          "type": "uuid",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "operator_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "issued_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "expires_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "used_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "revoked_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "revoke_reason",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "biometric_tokens_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "biometric_tokens_token_hash_key",
+          "kind": "UNIQUE",
+          "definition": "(token_hash)"
+        },
+        {
+          "name": "biometric_tokens_one_live_key",
+          "kind": "UNIQUE INDEX",
+          "definition": "(device_id, operator_id) WHERE used_at IS NULL AND revoked_at IS NULL"
+        },
+        {
+          "name": "biometric_tokens_family_id_idx",
+          "kind": "INDEX",
+          "definition": "(family_id)"
+        },
+        {
+          "name": "biometric_tokens_live_operator_idx",
+          "kind": "INDEX",
+          "definition": "(operator_id) WHERE used_at IS NULL AND revoked_at IS NULL"
+        },
+        {
+          "name": "biometric_tokens_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(device_id) REFERENCES paired_devices (id)"
+        },
+        {
+          "name": "biometric_tokens_operator_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(operator_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "biometric_tokens_token_hash_check",
+          "kind": "CHECK",
+          "definition": "octet_length(token_hash) = 32"
+        },
+        {
+          "name": "biometric_tokens_times_check",
+          "kind": "CHECK",
+          "definition": "expires_at > issued_at AND (used_at IS NULL OR used_at >= issued_at)"
+        },
+        {
+          "name": "biometric_tokens_revoke_check",
+          "kind": "CHECK",
+          "definition": "(\"biometric_tokens\".\"revoked_at\" IS NULL) = (\"biometric_tokens\".\"revoke_reason\" IS NULL) AND (\"biometric_tokens\".\"revoke_reason\" IS NULL OR \"biometric_tokens\".\"revoke_reason\" IN ('DISABLED', 'REENROLLED', 'TOKEN_REUSE', 'DEVICE_REVOKED', 'DEVICE_UNPAIRED', 'USER_DISABLED', 'CREDENTIAL_REPLACED'))"
+        }
+      ]
+    },
+    {
+      "id": "T-11",
+      "name": "registry_counters",
+      "columns": [
+        {
+          "name": "name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "next_value",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "registry_counters_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(name)"
+        },
+        {
+          "name": "registry_counters_name_check",
+          "kind": "CHECK",
+          "definition": "name IN ('device', 'pairingCode')"
+        },
+        {
+          "name": "registry_counters_value_check",
+          "kind": "CHECK",
+          "definition": "next_value >= 1"
+        }
+      ]
+    },
+    {
+      "id": "T-12",
+      "name": "audit_log",
+      "columns": [
+        {
+          "name": "seq",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "severity",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "actor_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "evidence_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "details",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'{}'"
+        },
+        {
+          "name": "prev_hash",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "hash",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "audit_log_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(seq)"
+        },
+        {
+          "name": "audit_log_id_key",
+          "kind": "UNIQUE",
+          "definition": "(id)"
+        },
+        {
+          "name": "audit_log_prev_hash_key",
+          "kind": "UNIQUE",
+          "definition": "(prev_hash)"
+        },
+        {
+          "name": "audit_log_hash_key",
+          "kind": "UNIQUE",
+          "definition": "(hash)"
+        },
+        {
+          "name": "audit_log_actor_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(actor_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "audit_log_category_seq_idx",
+          "kind": "INDEX",
+          "definition": "(category, seq)"
+        },
+        {
+          "name": "audit_log_type_seq_idx",
+          "kind": "INDEX",
+          "definition": "(type, seq)"
+        },
+        {
+          "name": "audit_log_actor_id_seq_idx",
+          "kind": "INDEX",
+          "definition": "(actor_id, seq) WHERE actor_id IS NOT NULL"
+        },
+        {
+          "name": "audit_log_session_id_seq_idx",
+          "kind": "INDEX",
+          "definition": "(session_id, seq) WHERE session_id IS NOT NULL"
+        },
+        {
+          "name": "audit_log_evidence_id_seq_idx",
+          "kind": "INDEX",
+          "definition": "(evidence_id, seq) WHERE evidence_id IS NOT NULL"
+        },
+        {
+          "name": "audit_log_seq_check",
+          "kind": "CHECK",
+          "definition": "seq >= 1"
+        },
+        {
+          "name": "audit_log_id_check",
+          "kind": "CHECK",
+          "definition": "id = 'AUD-' || lpad(seq::text, greatest(6, length(seq::text)), '0')"
+        },
+        {
+          "name": "audit_log_type_check",
+          "kind": "CHECK",
+          "definition": "(type ~ '^[A-Z][A-Z0-9_]{0,63}$')"
+        },
+        {
+          "name": "audit_log_category_check",
+          "kind": "CHECK",
+          "definition": "category IN ('AUTH', 'SESSION', 'EVIDENCE', 'DEVICE', 'SECURITY', 'STORAGE', 'PAIRING', 'SYSTEM')"
+        },
+        {
+          "name": "audit_log_severity_check",
+          "kind": "CHECK",
+          "definition": "severity IN ('INFO', 'SUCCESS', 'WARNING', 'CRITICAL')"
+        },
+        {
+          "name": "audit_log_hashes_check",
+          "kind": "CHECK",
+          "definition": "(prev_hash ~ '^[0-9a-f]{64}$') AND (hash ~ '^[0-9a-f]{64}$') AND prev_hash <> hash"
+        },
+        {
+          "name": "audit_log_details_flat_check",
+          "kind": "CHECK",
+          "definition": "(public.dems_jsonb_is_flat(details))"
+        },
+        {
+          "name": "audit_log_details_no_secret_keys_check",
+          "kind": "CHECK",
+          "definition": "NOT (\"audit_log\".\"details\" ?| ARRAY['password','passwordHash','salt','token','tokenHash','sessionToken','deviceCredential','credential','credentialHash','biometricToken','code','codeHash','pairingCode','qrPayload','username','cookie','authorization','secret','secretCiphertext','ciphertext','nonce','keyRef','onvifUuid','signedUrl','mediaUrl','credentialRef','credentialValue','apiKey'])"
+        }
+      ]
+    },
+    {
+      "id": "T-13",
+      "name": "audit_chain_head",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "seq",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "hash",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "audit_chain_head_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "audit_chain_head_singleton_check",
+          "kind": "CHECK",
+          "definition": "singleton"
+        },
+        {
+          "name": "audit_chain_head_values_check",
+          "kind": "CHECK",
+          "definition": "seq >= 0 AND (hash ~ '^[0-9a-f]{64}$')"
+        }
+      ]
+    },
+    {
+      "id": "T-14",
+      "name": "events",
+      "columns": [
+        {
+          "name": "seq",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "severity",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "params",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'{}'"
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "events_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(seq)"
+        },
+        {
+          "name": "events_id_key",
+          "kind": "UNIQUE",
+          "definition": "(id)"
+        },
+        {
+          "name": "events_category_seq_idx",
+          "kind": "INDEX",
+          "definition": "(category, seq)"
+        },
+        {
+          "name": "events_type_seq_idx",
+          "kind": "INDEX",
+          "definition": "(type, seq)"
+        },
+        {
+          "name": "events_severity_seq_idx",
+          "kind": "INDEX",
+          "definition": "(severity, seq)"
+        },
+        {
+          "name": "events_seq_check",
+          "kind": "CHECK",
+          "definition": "seq >= 1"
+        },
+        {
+          "name": "events_id_check",
+          "kind": "CHECK",
+          "definition": "id = 'LOG-' || lpad(seq::text, greatest(6, length(seq::text)), '0')"
+        },
+        {
+          "name": "events_type_check",
+          "kind": "CHECK",
+          "definition": "(type ~ '^[A-Z][A-Z0-9_]{0,63}$')"
+        },
+        {
+          "name": "events_category_check",
+          "kind": "CHECK",
+          "definition": "category IN ('AUTH', 'SESSION', 'EVIDENCE', 'EXPORT', 'STORAGE', 'TIME', 'NETWORK', 'DEVICE', 'SECURITY', 'SYSTEM')"
+        },
+        {
+          "name": "events_severity_check",
+          "kind": "CHECK",
+          "definition": "severity IN ('INFO', 'SUCCESS', 'WARNING', 'CRITICAL')"
+        },
+        {
+          "name": "events_params_flat_check",
+          "kind": "CHECK",
+          "definition": "(public.dems_jsonb_is_flat(params))"
+        },
+        {
+          "name": "events_params_no_secret_keys_check",
+          "kind": "CHECK",
+          "definition": "NOT (\"events\".\"params\" ?| ARRAY['password','passwordHash','salt','token','tokenHash','sessionToken','deviceCredential','credential','credentialHash','biometricToken','code','codeHash','pairingCode','qrPayload','username','cookie','authorization','secret','secretCiphertext','ciphertext','nonce','keyRef','onvifUuid','signedUrl','mediaUrl','credentialRef','credentialValue','apiKey'])"
+        }
+      ]
+    },
+    {
+      "id": "T-15",
+      "name": "active_session",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "case_number",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "subject_type",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "subject_name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "investigator_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "room",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "profile_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "input_notes",
+          "type": "text",
+          "notNull": true,
+          "default": "''"
+        },
+        {
+          "name": "created_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "created_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "armed_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "started_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "stopped_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "stop_reason",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "sealed_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "marker_count",
+          "type": "integer",
+          "notNull": true,
+          "default": "0"
+        },
+        {
+          "name": "snapshot_count",
+          "type": "integer",
+          "notNull": true,
+          "default": "0"
+        },
+        {
+          "name": "bytes_written",
+          "type": "bigint",
+          "notNull": true,
+          "default": "0"
+        },
+        {
+          "name": "evidence_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "start_time_source",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "stop_time_source",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "precheck",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "finalization",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "timeline",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'[]'"
+        },
+        {
+          "name": "notes",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'[]'"
+        },
+        {
+          "name": "fault",
+          "type": "jsonb",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "recovery",
+          "type": "jsonb",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "started_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "stopped_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "capture_config",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'{}'"
+        },
+        {
+          "name": "audio_source",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'{}'"
+        },
+        {
+          "name": "transcript_status",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'{}'"
+        }
+      ],
+      "constraints": [
+        {
+          "name": "active_session_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "active_session_singleton_check",
+          "kind": "CHECK",
+          "definition": "singleton"
+        },
+        {
+          "name": "active_session_investigator_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(investigator_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "active_session_created_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(created_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "active_session_id_check",
+          "kind": "CHECK",
+          "definition": "(id ~ '^SES-[0-9]{8}-[0-9]{4}$') AND (case_number ~ '^LP/[0-9]{4}/[0-9]{4}-[0-9]{4}$')"
+        },
+        {
+          "name": "active_session_state_check",
+          "kind": "CHECK",
+          "definition": "state IN ('CREATE', 'PRECHECK', 'ARMED', 'RECORDING', 'STOPPING', 'FINALIZING', 'SEALED', 'FAULT', 'RECOVERY')"
+        },
+        {
+          "name": "active_session_input_check",
+          "kind": "CHECK",
+          "definition": "subject_type IN ('TERSANGKA', 'SAKSI', 'LAINNYA') AND profile_id IN ('STANDARD_1080P25')"
+        },
+        {
+          "name": "active_session_time_source_check",
+          "kind": "CHECK",
+          "definition": "(start_time_source IS NULL OR start_time_source IN ('GNSS', 'NTP', 'RTC')) AND (stop_time_source IS NULL OR stop_time_source IN ('GNSS', 'NTP', 'RTC'))"
+        },
+        {
+          "name": "active_session_counts_check",
+          "kind": "CHECK",
+          "definition": "marker_count >= 0 AND snapshot_count >= 0 AND bytes_written >= 0"
+        },
+        {
+          "name": "active_session_json_check",
+          "kind": "CHECK",
+          "definition": "jsonb_typeof(\"active_session\".\"precheck\") = 'object' AND jsonb_typeof(\"active_session\".\"finalization\") = 'object' AND jsonb_typeof(\"active_session\".\"timeline\") = 'array' AND jsonb_array_length(\"active_session\".\"timeline\") <= 200 AND jsonb_typeof(\"active_session\".\"notes\") = 'array' AND (\"active_session\".\"fault\" IS NULL OR jsonb_typeof(\"active_session\".\"fault\") = 'object') AND (\"active_session\".\"recovery\" IS NULL OR jsonb_typeof(\"active_session\".\"recovery\") = 'object') AND jsonb_typeof(\"active_session\".\"capture_config\") = 'object' AND jsonb_typeof(\"active_session\".\"audio_source\") = 'object' AND jsonb_typeof(\"active_session\".\"transcript_status\") = 'object'"
+        },
+        {
+          "name": "active_session_started_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(started_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "active_session_stopped_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(stopped_by) REFERENCES operators (id)"
+        }
+      ]
+    },
+    {
+      "id": "T-16",
+      "name": "session_history",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "outcome",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "case_number",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "subject_name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "subject_type",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "investigator_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "room",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "profile_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "started_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "ended_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "duration_ms",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "size_bytes",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "fault_kind",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "start_time_source",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "end_time_source",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "session_history_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "session_history_ended_at_idx",
+          "kind": "INDEX",
+          "definition": "(ended_at DESC, id DESC)"
+        },
+        {
+          "name": "session_history_investigator_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(investigator_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "session_history_id_check",
+          "kind": "CHECK",
+          "definition": "(id ~ '^SES-[0-9]{8}-[0-9]{4}$') AND (case_number ~ '^LP/[0-9]{4}/[0-9]{4}-[0-9]{4}$')"
+        },
+        {
+          "name": "session_history_input_check",
+          "kind": "CHECK",
+          "definition": "subject_type IN ('TERSANGKA', 'SAKSI', 'LAINNYA') AND profile_id IN ('STANDARD_1080P25')"
+        },
+        {
+          "name": "session_history_values_check",
+          "kind": "CHECK",
+          "definition": "duration_ms >= 0 AND size_bytes >= 0 AND ended_at >= created_at"
+        },
+        {
+          "name": "session_history_time_source_check",
+          "kind": "CHECK",
+          "definition": "(start_time_source IS NULL OR start_time_source IN ('GNSS', 'NTP', 'RTC')) AND (end_time_source IS NULL OR end_time_source IN ('GNSS', 'NTP', 'RTC'))"
+        },
+        {
+          "name": "session_history_outcome_check",
+          "kind": "CHECK",
+          "definition": "\"session_history\".\"outcome\" IN ('SEALED', 'INCOMPLETE') AND (\"session_history\".\"fault_kind\" IS NULL OR (\"session_history\".\"outcome\" = 'INCOMPLETE' AND \"session_history\".\"fault_kind\" IN ('CAMERA_LOSS', 'MIC_NO_SIGNAL', 'MIC_CLIP', 'STORAGE_LOW', 'STORAGE_FULL', 'GNSS_LOSS', 'TAMPER', 'FAN_STALL', 'POWER_FAIL', 'TPM_FAILURE', 'SECURITY_FAULT', 'AUDIT_TAMPER', 'MIC_SILENT', 'CAPTURE_FAULT')))"
+        }
+      ]
+    },
+    {
+      "id": "T-17",
+      "name": "evidence_items",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "case_number",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "subject_name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "subject_type",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "investigator_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "room",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "profile_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "recorded_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "ended_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "sealed_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "duration_ms",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "size_bytes",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "lifecycle_stage",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "manifest_hash",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "signature_value",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "signature_key_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "signature_algorithm",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "signature_simulated",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "verification_status",
+          "type": "text",
+          "notNull": true,
+          "default": "'NOT_RUN'"
+        },
+        {
+          "name": "verification_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "tampered",
+          "type": "boolean",
+          "notNull": true,
+          "default": "false"
+        },
+        {
+          "name": "tampered_track_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "case_type",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "markers",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'[]'"
+        },
+        {
+          "name": "notes",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'[]'"
+        },
+        {
+          "name": "integrity_source",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "start_time_source",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "end_time_source",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "manifest_version",
+          "type": "smallint",
+          "notNull": true,
+          "default": "1"
+        },
+        {
+          "name": "transcript_sha256",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "labels_status",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "development_sources",
+          "type": "boolean",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "evidence_items_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "evidence_items_session_id_key",
+          "kind": "UNIQUE",
+          "definition": "(session_id)"
+        },
+        {
+          "name": "evidence_items_session_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(session_id) REFERENCES session_history (id)"
+        },
+        {
+          "name": "evidence_items_investigator_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(investigator_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "evidence_items_recorded_at_idx",
+          "kind": "INDEX",
+          "definition": "(recorded_at DESC, id DESC)"
+        },
+        {
+          "name": "evidence_items_status_recorded_at_idx",
+          "kind": "INDEX",
+          "definition": "(status, recorded_at DESC, id DESC)"
+        },
+        {
+          "name": "evidence_items_case_type_recorded_at_idx",
+          "kind": "INDEX",
+          "definition": "(case_type, recorded_at DESC, id DESC)"
+        },
+        {
+          "name": "evidence_items_id_check",
+          "kind": "CHECK",
+          "definition": "(id ~ '^EV-[0-9]{8}-[0-9]{4}$') AND (case_number ~ '^LP/[0-9]{4}/[0-9]{4}-[0-9]{4}$')"
+        },
+        {
+          "name": "evidence_items_status_check",
+          "kind": "CHECK",
+          "definition": "status IN ('RECORDED', 'SEALED', 'EXPORTED', 'UNDER_REVIEW', 'ARCHIVED') AND lifecycle_stage IN ('CAPTURE', 'RECORDING', 'FINALIZING', 'HASH', 'MANIFEST', 'ENCRYPT', 'SIGN', 'SEALED_LOCAL_EVIDENCE', 'AUTHORIZED_REVIEW', 'AUTHORIZED_EXPORT_TRANSFER', 'DESTINATION_VERIFICATION', 'RETENTION_ARCHIVE_DISPOSITION')"
+        },
+        {
+          "name": "evidence_items_input_check",
+          "kind": "CHECK",
+          "definition": "subject_type IN ('TERSANGKA', 'SAKSI', 'LAINNYA') AND profile_id IN ('STANDARD_1080P25') AND (case_type IS NULL OR case_type IN ('TERSANGKA', 'SAKSI', 'LAINNYA'))"
+        },
+        {
+          "name": "evidence_items_verification_check",
+          "kind": "CHECK",
+          "definition": "verification_status IN ('NOT_RUN', 'PASS', 'FAIL') AND ((verification_status = 'NOT_RUN') = (verification_at IS NULL))"
+        },
+        {
+          "name": "evidence_items_values_check",
+          "kind": "CHECK",
+          "definition": "duration_ms >= 0 AND size_bytes >= 0 AND ended_at >= recorded_at AND (sealed_at IS NULL OR sealed_at >= ended_at)"
+        },
+        {
+          "name": "evidence_items_json_check",
+          "kind": "CHECK",
+          "definition": "jsonb_typeof(markers) = 'array' AND jsonb_typeof(notes) = 'array'"
+        },
+        {
+          "name": "evidence_items_signature_value_check",
+          "kind": "CHECK",
+          "definition": "(\"evidence_items\".\"signature_algorithm\" = 'SIMULATED-SHA256' AND \"evidence_items\".\"signature_value\" ~ '^([0-9a-f]{2}){32}$') OR (\"evidence_items\".\"signature_algorithm\" = 'Ed25519' AND \"evidence_items\".\"signature_value\" ~ '^([0-9a-f]{2}){64}$') OR (\"evidence_items\".\"signature_algorithm\" = 'ECDSA-P256-SHA256' AND \"evidence_items\".\"signature_value\" ~ '^([0-9a-f]{2}){64,72}$')"
+        },
+        {
+          "name": "evidence_items_manifest_version_check",
+          "kind": "CHECK",
+          "definition": "\"evidence_items\".\"manifest_version\" IN (1, 2)"
+        },
+        {
+          "name": "evidence_items_labels_check",
+          "kind": "CHECK",
+          "definition": "\"evidence_items\".\"labels_status\" IS NULL OR \"evidence_items\".\"labels_status\" IN ('LABELLED', 'UNAVAILABLE')"
+        },
+        {
+          "name": "evidence_items_hashes_check",
+          "kind": "CHECK",
+          "definition": "\"evidence_items\".\"manifest_hash\" ~ '^[0-9a-f]{64}$' AND (\"evidence_items\".\"transcript_sha256\" IS NULL OR \"evidence_items\".\"transcript_sha256\" ~ '^[0-9a-f]{64}$')"
+        },
+        {
+          "name": "evidence_items_signature_check",
+          "kind": "CHECK",
+          "definition": "\"evidence_items\".\"signature_algorithm\" IN ('SIMULATED-SHA256', 'Ed25519', 'ECDSA-P256-SHA256') AND ((\"evidence_items\".\"signature_algorithm\" = 'SIMULATED-SHA256' AND \"evidence_items\".\"signature_simulated\") OR (\"evidence_items\".\"signature_algorithm\" IN ('Ed25519', 'ECDSA-P256-SHA256') AND NOT \"evidence_items\".\"signature_simulated\"))"
+        },
+        {
+          "name": "evidence_items_sources_check",
+          "kind": "CHECK",
+          "definition": "(\"evidence_items\".\"integrity_source\" IS NULL OR \"evidence_items\".\"integrity_source\" IN ('DEMO_PACKAGE', 'SIMULATED', 'REAL')) AND (\"evidence_items\".\"start_time_source\" IS NULL OR \"evidence_items\".\"start_time_source\" IN ('GNSS', 'NTP', 'RTC')) AND (\"evidence_items\".\"end_time_source\" IS NULL OR \"evidence_items\".\"end_time_source\" IN ('GNSS', 'NTP', 'RTC'))"
+        },
+        {
+          "name": "evidence_items_tamper_check",
+          "kind": "CHECK",
+          "definition": "\\\"evidence_items\\\".\\\"tampered_track_id\\\" IS NULL OR \\\"evidence_items\\\".\\\"tampered_track_id\\\" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04')"
+        }
+      ]
+    },
+    {
+      "id": "T-18",
+      "name": "evidence_tracks",
+      "columns": [
+        {
+          "name": "evidence_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "track_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "position",
+          "type": "smallint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "size_bytes",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "sha256",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notNull": true,
+          "default": "'FILE'"
+        },
+        {
+          "name": "contains_audio",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "codec",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "duration_ms",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "fragment_count",
+          "type": "integer",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "fragment_chain_head",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "sha256_plain",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "evidence_tracks_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(evidence_id, track_id)"
+        },
+        {
+          "name": "evidence_tracks_evidence_id_position_key",
+          "kind": "UNIQUE",
+          "definition": "(evidence_id, position)"
+        },
+        {
+          "name": "evidence_tracks_evidence_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(evidence_id) REFERENCES evidence_items (id)"
+        },
+        {
+          "name": "evidence_tracks_kind_check",
+          "kind": "CHECK",
+          "definition": "\"evidence_tracks\".\"kind\" IN ('FILE')"
+        },
+        {
+          "name": "evidence_tracks_audio_check",
+          "kind": "CHECK",
+          "definition": "\"evidence_tracks\".\"contains_audio\""
+        },
+        {
+          "name": "evidence_tracks_values_check",
+          "kind": "CHECK",
+          "definition": "\"evidence_tracks\".\"size_bytes\" >= 0 AND \"evidence_tracks\".\"sha256\" ~ '^[0-9a-f]{64}$' AND (\"evidence_tracks\".\"codec\" IS NULL OR \"evidence_tracks\".\"codec\" ~ '^[A-Z][A-Z0-9_]{0,63}$') AND (\"evidence_tracks\".\"duration_ms\" IS NULL OR \"evidence_tracks\".\"duration_ms\" >= 0) AND (\"evidence_tracks\".\"fragment_count\" IS NULL OR \"evidence_tracks\".\"fragment_count\" >= 0) AND (\"evidence_tracks\".\"fragment_chain_head\" IS NULL OR \"evidence_tracks\".\"fragment_chain_head\" ~ '^[0-9a-f]{64}$') AND (\"evidence_tracks\".\"sha256_plain\" IS NULL OR \"evidence_tracks\".\"sha256_plain\" ~ '^[0-9a-f]{64}$')"
+        },
+        {
+          "name": "evidence_tracks_track_check",
+          "kind": "CHECK",
+          "definition": "track_id IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04') AND position BETWEEN 1 AND 8"
+        }
+      ]
+    },
+    {
+      "id": "T-19",
+      "name": "evidence_custody",
+      "columns": [
+        {
+          "name": "evidence_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "seq",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "actor_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "detail",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "evidence_custody_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(evidence_id, seq)"
+        },
+        {
+          "name": "evidence_custody_evidence_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(evidence_id) REFERENCES evidence_items (id)"
+        },
+        {
+          "name": "evidence_custody_actor_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(actor_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "evidence_custody_values_check",
+          "kind": "CHECK",
+          "definition": "seq >= 1 AND (action ~ '^[A-Z][A-Z0-9_]{0,63}$')"
+        }
+      ]
+    },
+    {
+      "id": "T-20",
+      "name": "exports",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "scope",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "evidence_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "operator_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "destination",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "exports_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "exports_evidence_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(evidence_id) REFERENCES evidence_items (id)"
+        },
+        {
+          "name": "exports_operator_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(operator_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "exports_evidence_id_idx",
+          "kind": "INDEX",
+          "definition": "(evidence_id) WHERE evidence_id IS NOT NULL"
+        },
+        {
+          "name": "exports_id_check",
+          "kind": "CHECK",
+          "definition": "(id ~ '^EXP-[0-9]{6}$')"
+        },
+        {
+          "name": "exports_scope_check",
+          "kind": "CHECK",
+          "definition": "scope IN ('EVIDENCE', 'AUDIT', 'LOGS') AND ((scope = 'EVIDENCE') = (evidence_id IS NOT NULL))"
+        },
+        {
+          "name": "exports_text_check",
+          "kind": "CHECK",
+          "definition": "char_length(btrim(reason)) >= 5 AND char_length(destination) BETWEEN 1 AND 120"
+        }
+      ]
+    },
+    {
+      "id": "T-21",
+      "name": "alerts",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "severity",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "acknowledged",
+          "type": "boolean",
+          "notNull": true,
+          "default": "false"
+        },
+        {
+          "name": "resolved_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "target",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "params",
+          "type": "jsonb",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "alerts_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "alerts_at_idx",
+          "kind": "INDEX",
+          "definition": "(at DESC, id DESC)"
+        },
+        {
+          "name": "alerts_id_check",
+          "kind": "CHECK",
+          "definition": "id ~ '^ALR-[0-9]{6,}$'"
+        },
+        {
+          "name": "alerts_params_check",
+          "kind": "CHECK",
+          "definition": "params IS NULL OR (public.dems_jsonb_is_flat(params))"
+        },
+        {
+          "name": "alerts_kind_check",
+          "kind": "CHECK",
+          "definition": "\"alerts\".\"severity\" IN ('INFO', 'SUCCESS', 'WARNING', 'CRITICAL') AND (\"alerts\".\"kind\" = 'SYSTEM' OR \"alerts\".\"kind\" IN ('CAMERA_LOSS', 'MIC_NO_SIGNAL', 'MIC_CLIP', 'STORAGE_LOW', 'STORAGE_FULL', 'GNSS_LOSS', 'TAMPER', 'FAN_STALL', 'POWER_FAIL', 'TPM_FAILURE', 'SECURITY_FAULT', 'AUDIT_TAMPER', 'MIC_SILENT', 'CAPTURE_FAULT'))"
+        },
+        {
+          "name": "alerts_reason_check",
+          "kind": "CHECK",
+          "definition": "\"alerts\".\"reason\" IS NULL OR \"alerts\".\"reason\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        }
+      ]
+    },
+    {
+      "id": "T-22",
+      "name": "storage_policy",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "retention_policy",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "retention_days",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "auto_archive",
+          "type": "boolean",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "storage_policy_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "storage_policy_singleton_check",
+          "kind": "CHECK",
+          "definition": "singleton"
+        },
+        {
+          "name": "storage_policy_values_check",
+          "kind": "CHECK",
+          "definition": "retention_policy IN ('DAYS_30', 'DAYS_90', 'YEAR_1', 'CASE_CLOSURE') AND retention_days BETWEEN 1 AND 3650"
+        }
+      ]
+    },
+    {
+      "id": "T-23",
+      "name": "console_settings",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "presentation_mode",
+          "type": "boolean",
+          "notNull": true,
+          "default": "false"
+        },
+        {
+          "name": "time_format",
+          "type": "text",
+          "notNull": true,
+          "default": "'24'"
+        },
+        {
+          "name": "notify_warnings",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "notify_sound",
+          "type": "boolean",
+          "notNull": true,
+          "default": "false"
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "console_settings_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "console_settings_singleton_check",
+          "kind": "CHECK",
+          "definition": "singleton"
+        },
+        {
+          "name": "console_settings_time_format_check",
+          "kind": "CHECK",
+          "definition": "time_format IN ('24', '12')"
+        }
+      ]
+    },
+    {
+      "id": "T-24",
+      "name": "engine_counters",
+      "columns": [
+        {
+          "name": "name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "next_value",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "engine_counters_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(name)"
+        },
+        {
+          "name": "engine_counters_name_check",
+          "kind": "CHECK",
+          "definition": "name IN ('event', 'session', 'caseNumber', 'evidence', 'item', 'export')"
+        },
+        {
+          "name": "engine_counters_value_check",
+          "kind": "CHECK",
+          "definition": "next_value >= 1"
+        }
+      ]
+    },
+    {
+      "id": "T-25",
+      "name": "core_device",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "room",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "product_name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "software_version",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "certificate_fingerprint",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "serial_number",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "hardware_uuid",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "chassis_revision",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "som_part_revision",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "audio_board_revision",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "poe_board_revision",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "power_board_revision",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "bsp_version",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "core_software_version",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "tablet_app_version",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "tpm_model_firmware",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "camera_model_firmware",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "provisioning_record_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "device_certificate_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "core_device_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "core_device_singleton_check",
+          "kind": "CHECK",
+          "definition": "singleton"
+        }
+      ]
+    },
+    {
+      "id": "T-26",
+      "name": "core_state",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "seed",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "sim_schema_version",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "scenario",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "epoch",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "seeded_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "last_reset_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "last_sealed_session_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "last_sealed_acknowledged",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "core_state_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "core_state_singleton_check",
+          "kind": "CHECK",
+          "definition": "singleton"
+        },
+        {
+          "name": "core_state_values_check",
+          "kind": "CHECK",
+          "definition": "scenario IN ('idle', 'recording', 'finalizing', 'fault-demo') AND epoch >= 0 AND sim_schema_version >= 1"
+        }
+      ]
+    },
+    {
+      "id": "T-27",
+      "name": "hardware_snapshot",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "sim_schema_version",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "tablet_link",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "active_camera_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "cameras",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "mics",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "storage",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "time_status",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "network",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "security",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "services",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "health",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "other_devices",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "ports",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "faults",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "diagnostics",
+          "type": "jsonb",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "software_update",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "written_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "hardware_snapshot_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "hardware_snapshot_singleton_check",
+          "kind": "CHECK",
+          "definition": "singleton"
+        },
+        {
+          "name": "hardware_snapshot_shapes_check",
+          "kind": "CHECK",
+          "definition": "jsonb_typeof(cameras) = 'array' AND jsonb_typeof(mics) = 'array' AND jsonb_typeof(services) = 'array' AND jsonb_typeof(other_devices) = 'array' AND jsonb_typeof(ports) = 'array' AND jsonb_typeof(tablet_link) = 'object' AND jsonb_typeof(storage) = 'object' AND jsonb_typeof(time_status) = 'object' AND jsonb_typeof(network) = 'object' AND jsonb_typeof(security) = 'object' AND jsonb_typeof(health) = 'object' AND jsonb_typeof(faults) = 'object' AND jsonb_typeof(software_update) = 'object' AND (diagnostics IS NULL OR jsonb_typeof(diagnostics) = 'object')"
+        },
+        {
+          "name": "hardware_snapshot_camera_check",
+          "kind": "CHECK",
+          "definition": "active_camera_id IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04')"
+        }
+      ]
+    },
+    {
+      "id": "T-28",
+      "name": "health_snapshots",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "cause",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "fault_kind",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "cpu_percent",
+          "type": "double precision",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "cpu_temp_c",
+          "type": "double precision",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "storage_temp_c",
+          "type": "double precision",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "ambient_temp_c",
+          "type": "double precision",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "fan_rpm",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "fan_ok",
+          "type": "boolean",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "storage_state",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "evidence_used_bytes",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "time_source",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "time_offset_ms",
+          "type": "double precision",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "security_state",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "session_state",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "active_faults",
+          "type": "smallint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "health_snapshots_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "health_snapshots_at_idx",
+          "kind": "INDEX",
+          "definition": "(at)"
+        },
+        {
+          "name": "health_snapshots_states_check",
+          "kind": "CHECK",
+          "definition": "storage_state IN ('READY', 'LOW', 'FULL') AND time_source IN ('GNSS', 'NTP', 'RTC') AND security_state IN ('READY', 'FAULT') AND (session_state IS NULL OR session_state IN ('CREATE', 'PRECHECK', 'ARMED', 'RECORDING', 'STOPPING', 'FINALIZING', 'SEALED', 'FAULT', 'RECOVERY')) AND active_faults >= 0"
+        },
+        {
+          "name": "health_snapshots_cause_check",
+          "kind": "CHECK",
+          "definition": "\"health_snapshots\".\"cause\" IN ('INTERVAL', 'FAULT_RAISED', 'FAULT_CLEARED') AND ((\"health_snapshots\".\"cause\" = 'INTERVAL') = (\"health_snapshots\".\"fault_kind\" IS NULL)) AND (\"health_snapshots\".\"fault_kind\" IS NULL OR \"health_snapshots\".\"fault_kind\" IN ('CAMERA_LOSS', 'MIC_NO_SIGNAL', 'MIC_CLIP', 'STORAGE_LOW', 'STORAGE_FULL', 'GNSS_LOSS', 'TAMPER', 'FAN_STALL', 'POWER_FAIL', 'TPM_FAILURE', 'SECURITY_FAULT', 'AUDIT_TAMPER', 'MIC_SILENT', 'CAPTURE_FAULT'))"
+        }
+      ]
+    },
+    {
+      "id": "T-29",
+      "name": "schema_meta",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "schema_version",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "contract_revision",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "schema_meta_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "schema_meta_singleton_check",
+          "kind": "CHECK",
+          "definition": "singleton AND schema_version >= 1"
+        }
+      ]
+    },
+    {
+      "id": "T-30",
+      "name": "audit_chain_history",
+      "columns": [
+        {
+          "name": "reset_no",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "epoch",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "head_hash",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "row_count",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "first_seq",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "last_seq",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "reset_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "actor_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "scenario",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "audit_chain_history_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(reset_no)"
+        },
+        {
+          "name": "audit_chain_history_epoch_key",
+          "kind": "UNIQUE",
+          "definition": "(epoch)"
+        },
+        {
+          "name": "audit_chain_history_actor_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(actor_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "audit_chain_history_numbers_check",
+          "kind": "CHECK",
+          "definition": "reset_no >= 1 AND epoch >= 0"
+        },
+        {
+          "name": "audit_chain_history_head_hash_check",
+          "kind": "CHECK",
+          "definition": "(head_hash ~ '^[0-9a-f]{64}$')"
+        },
+        {
+          "name": "audit_chain_history_values_check",
+          "kind": "CHECK",
+          "definition": "row_count >= 1 AND first_seq >= 1 AND last_seq >= first_seq"
+        },
+        {
+          "name": "audit_chain_history_reason_check",
+          "kind": "CHECK",
+          "definition": "reason IN ('RESET', 'SCENARIO_LOAD') AND scenario IN ('idle', 'recording', 'finalizing', 'fault-demo')"
+        }
+      ]
+    },
+    {
+      "id": "T-32",
+      "name": "capture_devices",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "transport",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "firmware",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "mac",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "onvif_uuid",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "profiles",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'[]'"
+        },
+        {
+          "name": "poe_port",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "last_seen_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "adapter_kind",
+          "type": "text",
+          "notNull": true,
+          "default": "'FAKE'"
+        },
+        {
+          "name": "retired_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "retired_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "capture_devices_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "capture_devices_id_check",
+          "kind": "CHECK",
+          "definition": "(\"capture_devices\".\"kind\" = 'CAMERA' AND \"capture_devices\".\"id\" ~ '^CAM-[0-9]{2,}$') OR (\"capture_devices\".\"kind\" = 'MIC' AND \"capture_devices\".\"id\" ~ '^MIC-[0-9]{2,}$') OR (\"capture_devices\".\"kind\" = 'POE' AND \"capture_devices\".\"id\" ~ '^POE-[A-Z0-9_]{2,}$')"
+        },
+        {
+          "name": "capture_devices_kind_check",
+          "kind": "CHECK",
+          "definition": "\"capture_devices\".\"kind\" IN ('CAMERA', 'MIC', 'POE')"
+        },
+        {
+          "name": "capture_devices_transport_check",
+          "kind": "CHECK",
+          "definition": "\"capture_devices\".\"transport\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        },
+        {
+          "name": "capture_devices_text_check",
+          "kind": "CHECK",
+          "definition": "(\"capture_devices\".\"model\" IS NULL OR char_length(\"capture_devices\".\"model\") BETWEEN 1 AND 120) AND (\"capture_devices\".\"firmware\" IS NULL OR char_length(\"capture_devices\".\"firmware\") BETWEEN 1 AND 120) AND (\"capture_devices\".\"address\" IS NULL OR char_length(\"capture_devices\".\"address\") BETWEEN 1 AND 120) AND (\"capture_devices\".\"onvif_uuid\" IS NULL OR char_length(\"capture_devices\".\"onvif_uuid\") BETWEEN 1 AND 120) AND (\"capture_devices\".\"mac\" IS NULL OR \"capture_devices\".\"mac\" ~ '^[0-9A-F:]{17}$')"
+        },
+        {
+          "name": "capture_devices_profiles_check",
+          "kind": "CHECK",
+          "definition": "jsonb_typeof(\"capture_devices\".\"profiles\") = 'array'"
+        },
+        {
+          "name": "capture_devices_poe_port_check",
+          "kind": "CHECK",
+          "definition": "\"capture_devices\".\"poe_port\" IS NULL OR \"capture_devices\".\"poe_port\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        },
+        {
+          "name": "capture_devices_kind_idx",
+          "kind": "INDEX",
+          "definition": "(kind)"
+        },
+        {
+          "name": "capture_devices_adapter_kind_check",
+          "kind": "CHECK",
+          "definition": "\"capture_devices\".\"adapter_kind\" IN ('ONVIF_RTSP', 'USB_AUDIO', 'SNMP_POE', 'FAKE', 'LOCAL_DEVICE')"
+        },
+        {
+          "name": "capture_devices_adapter_pairing_check",
+          "kind": "CHECK",
+          "definition": "(\"capture_devices\".\"kind\" = 'CAMERA' AND \"capture_devices\".\"adapter_kind\" IN ('ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE')) OR (\"capture_devices\".\"kind\" = 'MIC' AND \"capture_devices\".\"adapter_kind\" IN ('USB_AUDIO', 'FAKE', 'LOCAL_DEVICE')) OR (\"capture_devices\".\"kind\" = 'POE' AND \"capture_devices\".\"adapter_kind\" IN ('SNMP_POE', 'FAKE'))"
+        },
+        {
+          "name": "capture_devices_profiles_code_check",
+          "kind": "CHECK",
+          "definition": "CASE WHEN jsonb_typeof(\"capture_devices\".\"profiles\") = 'array' THEN NOT jsonb_path_exists(\"capture_devices\".\"profiles\", 'strict $[*]?(@.type() != \"string\" || !(@ like_regex \"^[A-Z][A-Z0-9_]{0,63}$\"))') ELSE false END"
+        },
+        {
+          "name": "capture_devices_onvif_uuid_key",
+          "kind": "UNIQUE INDEX",
+          "definition": "(onvif_uuid) WHERE onvif_uuid IS NOT NULL AND retired_at IS NULL"
+        },
+        {
+          "name": "capture_devices_retired_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(retired_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "capture_devices_retired_check",
+          "kind": "CHECK",
+          "definition": "(\"capture_devices\".\"retired_at\" IS NULL) = (\"capture_devices\".\"retired_by\" IS NULL)"
+        },
+        {
+          "name": "capture_devices_retired_kind_check",
+          "kind": "CHECK",
+          "definition": "\"capture_devices\".\"retired_at\" IS NULL OR \"capture_devices\".\"kind\" <> 'POE'"
+        }
+      ]
+    },
+    {
+      "id": "T-31",
+      "name": "capture_config",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "video_01_device_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "video_01_profile",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "video_02_device_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "video_02_profile",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "mic_01_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "mic_02_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "revision",
+          "type": "bigint",
+          "notNull": true,
+          "default": "1"
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "video_03_device_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "video_03_profile",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "video_04_device_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "video_04_profile",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "mic_03_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "mic_04_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "capture_config_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "capture_config_singleton_check",
+          "kind": "CHECK",
+          "definition": "\"capture_config\".\"singleton\""
+        },
+        {
+          "name": "capture_config_profile_check",
+          "kind": "CHECK",
+          "definition": "\"capture_config\".\"video_01_profile\" ~ '^[A-Z][A-Z0-9_]{0,63}$' AND \"capture_config\".\"video_02_profile\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        },
+        {
+          "name": "capture_config_revision_check",
+          "kind": "CHECK",
+          "definition": "\"capture_config\".\"revision\" >= 1"
+        },
+        {
+          "name": "capture_config_video_01_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(video_01_device_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_config_video_02_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(video_02_device_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_config_updated_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(updated_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "capture_config_video_03_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(video_03_device_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_config_video_04_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(video_04_device_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_config_profile_34_check",
+          "kind": "CHECK",
+          "definition": "\"capture_config\".\"video_03_profile\" ~ '^[A-Z][A-Z0-9_]{0,63}$' AND \"capture_config\".\"video_04_profile\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        },
+        {
+          "name": "capture_config_selector_check",
+          "kind": "CHECK",
+          "definition": "((\"capture_config\".\"video_01_device_id\" <> \"capture_config\".\"video_02_device_id\") OR (\"capture_config\".\"video_01_profile\" <> \"capture_config\".\"video_02_profile\")) AND ((\"capture_config\".\"video_01_device_id\" <> \"capture_config\".\"video_03_device_id\") OR (\"capture_config\".\"video_01_profile\" <> \"capture_config\".\"video_03_profile\")) AND ((\"capture_config\".\"video_01_device_id\" <> \"capture_config\".\"video_04_device_id\") OR (\"capture_config\".\"video_01_profile\" <> \"capture_config\".\"video_04_profile\")) AND ((\"capture_config\".\"video_02_device_id\" <> \"capture_config\".\"video_03_device_id\") OR (\"capture_config\".\"video_02_profile\" <> \"capture_config\".\"video_03_profile\")) AND ((\"capture_config\".\"video_02_device_id\" <> \"capture_config\".\"video_04_device_id\") OR (\"capture_config\".\"video_02_profile\" <> \"capture_config\".\"video_04_profile\")) AND ((\"capture_config\".\"video_03_device_id\" <> \"capture_config\".\"video_04_device_id\") OR (\"capture_config\".\"video_03_profile\" <> \"capture_config\".\"video_04_profile\"))"
+        },
+        {
+          "name": "capture_config_slot_pair_check",
+          "kind": "CHECK",
+          "definition": "((\"capture_config\".\"video_01_device_id\" IS NULL) = (\"capture_config\".\"video_01_profile\" IS NULL)) AND ((\"capture_config\".\"video_02_device_id\" IS NULL) = (\"capture_config\".\"video_02_profile\" IS NULL)) AND ((\"capture_config\".\"video_03_device_id\" IS NULL) = (\"capture_config\".\"video_03_profile\" IS NULL)) AND ((\"capture_config\".\"video_04_device_id\" IS NULL) = (\"capture_config\".\"video_04_profile\" IS NULL))"
+        },
+        {
+          "name": "capture_config_mic_01_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(mic_01_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_config_mic_02_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(mic_02_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_config_mic_03_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(mic_03_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_config_mic_04_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(mic_04_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_config_mic_check",
+          "kind": "CHECK",
+          "definition": "((\\\"capture_config\\\".\\\"mic_01_id\\\" <> \\\"capture_config\\\".\\\"mic_02_id\\\") AND (\\\"capture_config\\\".\\\"mic_01_id\\\" <> \\\"capture_config\\\".\\\"mic_03_id\\\")) AND ((\\\"capture_config\\\".\\\"mic_01_id\\\" <> \\\"capture_config\\\".\\\"mic_04_id\\\") AND (\\\"capture_config\\\".\\\"mic_02_id\\\" <> \\\"capture_config\\\".\\\"mic_03_id\\\")) AND ((\\\"capture_config\\\".\\\"mic_02_id\\\" <> \\\"capture_config\\\".\\\"mic_04_id\\\") AND (\\\"capture_config\\\".\\\"mic_03_id\\\" <> \\\"capture_config\\\".\\\"mic_04_id\\\"))"
+        }
+      ]
+    },
+    {
+      "id": "T-33",
+      "name": "capture_device_credentials",
+      "columns": [
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "username",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "encryption",
+          "type": "text",
+          "notNull": true,
+          "default": "'AES-256-GCM'"
+        },
+        {
+          "name": "secret_ciphertext",
+          "type": "bytea",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "nonce",
+          "type": "bytea",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "key_ref",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "rotated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "capture_device_credentials_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(device_id)"
+        },
+        {
+          "name": "capture_device_credentials_username_check",
+          "kind": "CHECK",
+          "definition": "char_length(\"capture_device_credentials\".\"username\") BETWEEN 1 AND 120"
+        },
+        {
+          "name": "capture_device_credentials_encryption_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_credentials\".\"encryption\" = 'AES-256-GCM'"
+        },
+        {
+          "name": "capture_device_credentials_secret_check",
+          "kind": "CHECK",
+          "definition": "octet_length(\"capture_device_credentials\".\"secret_ciphertext\") >= 33"
+        },
+        {
+          "name": "capture_device_credentials_nonce_check",
+          "kind": "CHECK",
+          "definition": "octet_length(\"capture_device_credentials\".\"nonce\") = 12"
+        },
+        {
+          "name": "capture_device_credentials_key_ref_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_credentials\".\"key_ref\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        },
+        {
+          "name": "capture_device_credentials_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(device_id) REFERENCES capture_devices (id)"
+        }
+      ]
+    },
+    {
+      "id": "T-34",
+      "name": "session_audio_intervals",
+      "columns": [
+        {
+          "name": "session_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "seq",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "mic_device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "from_media_ms",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "to_media_ms",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "from_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "to_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "switched_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "session_audio_intervals_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(session_id, seq)"
+        },
+        {
+          "name": "session_audio_intervals_session_check",
+          "kind": "CHECK",
+          "definition": "\"session_audio_intervals\".\"session_id\" ~ '^SES-[0-9]{8}-[0-9]{4}$'"
+        },
+        {
+          "name": "session_audio_intervals_seq_check",
+          "kind": "CHECK",
+          "definition": "\"session_audio_intervals\".\"seq\" >= 1"
+        },
+        {
+          "name": "session_audio_intervals_role_check",
+          "kind": "CHECK",
+          "definition": "\"session_audio_intervals\".\"role\" IN ('PRIMARY', 'STANDBY')"
+        },
+        {
+          "name": "session_audio_intervals_reason_check",
+          "kind": "CHECK",
+          "definition": "\"session_audio_intervals\".\"reason\" IN ('START', 'MANUAL', 'STOP')"
+        },
+        {
+          "name": "session_audio_intervals_media_check",
+          "kind": "CHECK",
+          "definition": "\"session_audio_intervals\".\"from_media_ms\" >= 0 AND (\"session_audio_intervals\".\"to_media_ms\" IS NULL OR \"session_audio_intervals\".\"to_media_ms\" >= \"session_audio_intervals\".\"from_media_ms\")"
+        },
+        {
+          "name": "session_audio_intervals_open_check",
+          "kind": "CHECK",
+          "definition": "(\"session_audio_intervals\".\"to_media_ms\" IS NULL) = (\"session_audio_intervals\".\"to_at\" IS NULL)"
+        },
+        {
+          "name": "session_audio_intervals_mic_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(mic_device_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "session_audio_intervals_switched_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(switched_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "session_audio_intervals_one_open_key",
+          "kind": "UNIQUE INDEX",
+          "definition": "(session_id) WHERE to_media_ms IS NULL"
+        }
+      ]
+    },
+    {
+      "id": "T-35",
+      "name": "recording_fragments",
+      "columns": [
+        {
+          "name": "session_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "track_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "seq",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "byte_offset",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "byte_length",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "media_start_ms",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "media_duration_ms",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "sha256",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "chain_hash",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "durable_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "recording_fragments_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(session_id, track_id, seq)"
+        },
+        {
+          "name": "recording_fragments_session_check",
+          "kind": "CHECK",
+          "definition": "\"recording_fragments\".\"session_id\" ~ '^SES-[0-9]{8}-[0-9]{4}$'"
+        },
+        {
+          "name": "recording_fragments_seq_check",
+          "kind": "CHECK",
+          "definition": "\"recording_fragments\".\"seq\" >= 1"
+        },
+        {
+          "name": "recording_fragments_bytes_check",
+          "kind": "CHECK",
+          "definition": "\"recording_fragments\".\"byte_offset\" >= 0 AND \"recording_fragments\".\"byte_length\" >= 1"
+        },
+        {
+          "name": "recording_fragments_media_check",
+          "kind": "CHECK",
+          "definition": "\"recording_fragments\".\"media_start_ms\" >= 0 AND \"recording_fragments\".\"media_duration_ms\" >= 1"
+        },
+        {
+          "name": "recording_fragments_hashes_check",
+          "kind": "CHECK",
+          "definition": "\"recording_fragments\".\"sha256\" ~ '^[0-9a-f]{64}$' AND \"recording_fragments\".\"chain_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        {
+          "name": "recording_fragments_track_check",
+          "kind": "CHECK",
+          "definition": "\"recording_fragments\".\"track_id\" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04')"
+        }
+      ]
+    },
+    {
+      "id": "T-36",
+      "name": "transcript_chunks",
+      "columns": [
+        {
+          "name": "session_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "seq",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "audio_from_ms",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "audio_to_ms",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notNull": true,
+          "default": "'PENDING'"
+        },
+        {
+          "name": "segments",
+          "type": "jsonb",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "embedding_ref",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "model_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "computed_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "transcript_chunks_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(session_id, seq)"
+        },
+        {
+          "name": "transcript_chunks_session_check",
+          "kind": "CHECK",
+          "definition": "\"transcript_chunks\".\"session_id\" ~ '^SES-[0-9]{8}-[0-9]{4}$'"
+        },
+        {
+          "name": "transcript_chunks_seq_check",
+          "kind": "CHECK",
+          "definition": "\"transcript_chunks\".\"seq\" >= 1"
+        },
+        {
+          "name": "transcript_chunks_audio_check",
+          "kind": "CHECK",
+          "definition": "\"transcript_chunks\".\"audio_from_ms\" >= 0 AND \"transcript_chunks\".\"audio_to_ms\" > \"transcript_chunks\".\"audio_from_ms\""
+        },
+        {
+          "name": "transcript_chunks_status_check",
+          "kind": "CHECK",
+          "definition": "\"transcript_chunks\".\"status\" IN ('PENDING', 'RUNNING', 'DONE', 'FAILED')"
+        },
+        {
+          "name": "transcript_chunks_segments_check",
+          "kind": "CHECK",
+          "definition": "\"transcript_chunks\".\"segments\" IS NULL OR jsonb_typeof(\"transcript_chunks\".\"segments\") = 'array'"
+        },
+        {
+          "name": "transcript_chunks_done_check",
+          "kind": "CHECK",
+          "definition": "(\"transcript_chunks\".\"status\" <> 'DONE') OR (\"transcript_chunks\".\"segments\" IS NOT NULL AND \"transcript_chunks\".\"computed_at\" IS NOT NULL)"
+        },
+        {
+          "name": "transcript_chunks_ref_check",
+          "kind": "CHECK",
+          "definition": "(\"transcript_chunks\".\"embedding_ref\" IS NULL OR \"transcript_chunks\".\"embedding_ref\" ~ '^[A-Z][A-Z0-9_]{0,63}$') AND (\"transcript_chunks\".\"model_id\" IS NULL OR \"transcript_chunks\".\"model_id\" ~ '^[A-Z][A-Z0-9_]{0,63}$')"
+        }
+      ]
+    },
+    {
+      "id": "T-37",
+      "name": "transcripts",
+      "columns": [
+        {
+          "name": "evidence_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "json_sha256",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "srt_sha256",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "vtt_sha256",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "model",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "diarization",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "labels_status",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "transcripts_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(evidence_id)"
+        },
+        {
+          "name": "transcripts_hashes_check",
+          "kind": "CHECK",
+          "definition": "\"transcripts\".\"json_sha256\" ~ '^[0-9a-f]{64}$' AND \"transcripts\".\"srt_sha256\" ~ '^[0-9a-f]{64}$' AND \"transcripts\".\"vtt_sha256\" ~ '^[0-9a-f]{64}$'"
+        },
+        {
+          "name": "transcripts_json_check",
+          "kind": "CHECK",
+          "definition": "jsonb_typeof(\"transcripts\".\"model\") = 'object' AND jsonb_typeof(\"transcripts\".\"diarization\") = 'object'"
+        },
+        {
+          "name": "transcripts_labels_check",
+          "kind": "CHECK",
+          "definition": "\"transcripts\".\"labels_status\" IN ('LABELLED', 'UNAVAILABLE')"
+        },
+        {
+          "name": "transcripts_evidence_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(evidence_id) REFERENCES evidence_items (id)"
+        }
+      ]
+    },
+    {
+      "id": "T-38",
+      "name": "transcript_revisions",
+      "columns": [
+        {
+          "name": "evidence_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "revision_no",
+          "type": "integer",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "parent_sha256",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "sha256",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "author_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "signature_value",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "signature_key_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "signature_algorithm",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "signature_simulated",
+          "type": "boolean",
+          "notNull": true,
+          "default": "false"
+        },
+        {
+          "name": "signature_certificate_sha256",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "transcript_revisions_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(evidence_id, revision_no)"
+        },
+        {
+          "name": "transcript_revisions_revision_no_check",
+          "kind": "CHECK",
+          "definition": "\"transcript_revisions\".\"revision_no\" >= 1"
+        },
+        {
+          "name": "transcript_revisions_hashes_check",
+          "kind": "CHECK",
+          "definition": "\"transcript_revisions\".\"parent_sha256\" ~ '^[0-9a-f]{64}$' AND \"transcript_revisions\".\"sha256\" ~ '^[0-9a-f]{64}$'"
+        },
+        {
+          "name": "transcript_revisions_reason_check",
+          "kind": "CHECK",
+          "definition": "char_length(\"transcript_revisions\".\"reason\") BETWEEN 5 AND 500"
+        },
+        {
+          "name": "transcript_revisions_certificate_check",
+          "kind": "CHECK",
+          "definition": "\"transcript_revisions\".\"signature_certificate_sha256\" IS NULL OR \"transcript_revisions\".\"signature_certificate_sha256\" ~ '^[0-9a-f]{64}$'"
+        },
+        {
+          "name": "transcript_revisions_signature_check",
+          "kind": "CHECK",
+          "definition": "\"transcript_revisions\".\"signature_algorithm\" IN ('Ed25519', 'SIMULATED-SHA256') AND ((\"transcript_revisions\".\"signature_algorithm\" = 'SIMULATED-SHA256' AND \"transcript_revisions\".\"signature_simulated\") OR (\"transcript_revisions\".\"signature_algorithm\" IN ('Ed25519') AND NOT \"transcript_revisions\".\"signature_simulated\"))"
+        },
+        {
+          "name": "transcript_revisions_signature_value_check",
+          "kind": "CHECK",
+          "definition": "(\"transcript_revisions\".\"signature_algorithm\" = 'Ed25519' AND \"transcript_revisions\".\"signature_value\" ~ '^([0-9a-f]{2}){64}$') OR (\"transcript_revisions\".\"signature_algorithm\" = 'SIMULATED-SHA256' AND \"transcript_revisions\".\"signature_value\" ~ '^([0-9a-f]{2}){32}$')"
+        },
+        {
+          "name": "transcript_revisions_evidence_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(evidence_id) REFERENCES evidence_items (id)"
+        },
+        {
+          "name": "transcript_revisions_author_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(author_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "transcript_revisions_key_id_check",
+          "kind": "CHECK",
+          "definition": "\"transcript_revisions\".\"signature_key_id\" ~ '^[A-Z0-9][A-Z0-9_-]{0,63}$'"
+        }
+      ]
+    },
+    {
+      "id": "T-39",
+      "name": "sealing_jobs",
+      "columns": [
+        {
+          "name": "session_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "step",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "progress",
+          "type": "integer",
+          "notNull": true,
+          "default": "0"
+        },
+        {
+          "name": "eta_ms",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "attempt",
+          "type": "integer",
+          "notNull": true,
+          "default": "1"
+        },
+        {
+          "name": "checkpoint",
+          "type": "jsonb",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "error_code",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "started_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sealing_jobs_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(session_id, step)"
+        },
+        {
+          "name": "sealing_jobs_session_check",
+          "kind": "CHECK",
+          "definition": "\"sealing_jobs\".\"session_id\" ~ '^SES-[0-9]{8}-[0-9]{4}$'"
+        },
+        {
+          "name": "sealing_jobs_step_check",
+          "kind": "CHECK",
+          "definition": "\"sealing_jobs\".\"step\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        },
+        {
+          "name": "sealing_jobs_status_check",
+          "kind": "CHECK",
+          "definition": "\"sealing_jobs\".\"status\" IN ('RUNNING', 'DONE', 'FAILED')"
+        },
+        {
+          "name": "sealing_jobs_progress_check",
+          "kind": "CHECK",
+          "definition": "\"sealing_jobs\".\"progress\" BETWEEN 0 AND 100"
+        },
+        {
+          "name": "sealing_jobs_eta_check",
+          "kind": "CHECK",
+          "definition": "\"sealing_jobs\".\"eta_ms\" IS NULL OR \"sealing_jobs\".\"eta_ms\" >= 0"
+        },
+        {
+          "name": "sealing_jobs_attempt_check",
+          "kind": "CHECK",
+          "definition": "\"sealing_jobs\".\"attempt\" >= 1"
+        },
+        {
+          "name": "sealing_jobs_checkpoint_check",
+          "kind": "CHECK",
+          "definition": "\"sealing_jobs\".\"checkpoint\" IS NULL OR jsonb_typeof(\"sealing_jobs\".\"checkpoint\") = 'object'"
+        },
+        {
+          "name": "sealing_jobs_error_code_check",
+          "kind": "CHECK",
+          "definition": "\"sealing_jobs\".\"error_code\" IS NULL OR \"sealing_jobs\".\"error_code\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        }
+      ]
+    },
+    {
+      "id": "T-40",
+      "name": "stt_config",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "backend",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "endpoint",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "language",
+          "type": "text",
+          "notNull": true,
+          "default": "'id'"
+        },
+        {
+          "name": "diarization",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "credential_kind",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "credential_ref",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "secret_ciphertext",
+          "type": "bytea",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "nonce",
+          "type": "bytea",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "revision",
+          "type": "bigint",
+          "notNull": true,
+          "default": "1"
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "stt_config_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "stt_config_singleton_check",
+          "kind": "CHECK",
+          "definition": "\"stt_config\".\"singleton\""
+        },
+        {
+          "name": "stt_config_backend_check",
+          "kind": "CHECK",
+          "definition": "\"stt_config\".\"backend\" IN ('omlx-server', 'cpu-local')"
+        },
+        {
+          "name": "stt_config_endpoint_required_check",
+          "kind": "CHECK",
+          "definition": "\"stt_config\".\"backend\" <> 'omlx-server' OR \"stt_config\".\"endpoint\" IS NOT NULL"
+        },
+        {
+          "name": "stt_config_endpoint_loopback_check",
+          "kind": "CHECK",
+          "definition": "\"stt_config\".\"endpoint\" IS NULL OR \"stt_config\".\"endpoint\" ~ '^http://(127\\.0\\.0\\.1|localhost)(:[0-9]{1,5})?(/.*)?$'"
+        },
+        {
+          "name": "stt_config_language_check",
+          "kind": "CHECK",
+          "definition": "\"stt_config\".\"language\" = 'id'"
+        },
+        {
+          "name": "stt_config_credential_kind_check",
+          "kind": "CHECK",
+          "definition": "\"stt_config\".\"credential_kind\" IS NULL OR \"stt_config\".\"credential_kind\" IN ('REFERENCE', 'ENCRYPTED')"
+        },
+        {
+          "name": "stt_config_secret_check",
+          "kind": "CHECK",
+          "definition": "\"stt_config\".\"secret_ciphertext\" IS NULL OR octet_length(\"stt_config\".\"secret_ciphertext\") >= 17"
+        },
+        {
+          "name": "stt_config_nonce_check",
+          "kind": "CHECK",
+          "definition": "\"stt_config\".\"nonce\" IS NULL OR octet_length(\"stt_config\".\"nonce\") = 12"
+        },
+        {
+          "name": "stt_config_credential_check",
+          "kind": "CHECK",
+          "definition": "(\"stt_config\".\"credential_kind\" IS NULL AND \"stt_config\".\"credential_ref\" IS NULL AND \"stt_config\".\"secret_ciphertext\" IS NULL AND \"stt_config\".\"nonce\" IS NULL) OR (\"stt_config\".\"credential_kind\" = 'REFERENCE' AND \"stt_config\".\"credential_ref\" IS NOT NULL AND \"stt_config\".\"secret_ciphertext\" IS NULL AND \"stt_config\".\"nonce\" IS NULL) OR (\"stt_config\".\"credential_kind\" = 'ENCRYPTED' AND \"stt_config\".\"credential_ref\" IS NOT NULL AND \"stt_config\".\"secret_ciphertext\" IS NOT NULL AND \"stt_config\".\"nonce\" IS NOT NULL)"
+        },
+        {
+          "name": "stt_config_revision_check",
+          "kind": "CHECK",
+          "definition": "\"stt_config\".\"revision\" >= 1"
+        },
+        {
+          "name": "stt_config_updated_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(updated_by) REFERENCES operators (id)"
+        }
+      ]
+    },
+    {
+      "id": "T-41",
+      "name": "session_capture_sources",
+      "columns": [
+        {
+          "name": "session_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "slot",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "adapter_kind",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "recorded_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "source_facts",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'{}'"
+        }
+      ],
+      "constraints": [
+        {
+          "name": "session_capture_sources_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(session_id, slot)"
+        },
+        {
+          "name": "session_capture_sources_session_check",
+          "kind": "CHECK",
+          "definition": "\"session_capture_sources\".\"session_id\" ~ '^SES-[0-9]{8}-[0-9]{4}$'"
+        },
+        {
+          "name": "session_capture_sources_adapter_kind_check",
+          "kind": "CHECK",
+          "definition": "\"session_capture_sources\".\"adapter_kind\" IN ('ONVIF_RTSP', 'USB_AUDIO', 'SNMP_POE', 'FAKE', 'LOCAL_DEVICE')"
+        },
+        {
+          "name": "session_capture_sources_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(device_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "session_capture_sources_source_facts_flat_check",
+          "kind": "CHECK",
+          "definition": "public.dems_jsonb_is_flat(\"session_capture_sources\".\"source_facts\")"
+        },
+        {
+          "name": "session_capture_sources_source_facts_no_secret_keys_check",
+          "kind": "CHECK",
+          "definition": "NOT (\"session_capture_sources\".\"source_facts\" ?| ARRAY['password','passwordHash','salt','token','tokenHash','sessionToken','deviceCredential','credential','credentialHash','biometricToken','code','codeHash','pairingCode','qrPayload','username','cookie','authorization','secret','secretCiphertext','ciphertext','nonce','keyRef','onvifUuid','signedUrl','mediaUrl','credentialRef','credentialValue','apiKey'])"
+        },
+        {
+          "name": "session_capture_sources_source_facts_bound_check",
+          "kind": "CHECK",
+          "definition": "octet_length(\"session_capture_sources\".\"source_facts\"::text) <= 2048 AND NOT jsonb_path_exists(\"session_capture_sources\".\"source_facts\", '$.*?(@.type() == \"string\" && !(@ like_regex \"^[^[:cntrl:]]{0,120}$\"))')"
+        },
+        {
+          "name": "session_capture_sources_slot_check",
+          "kind": "CHECK",
+          "definition": "\\\"session_capture_sources\\\".\\\"slot\\\" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04')"
+        },
+        {
+          "name": "session_capture_sources_pairing_check",
+          "kind": "CHECK",
+          "definition": "(\\\"session_capture_sources\\\".\\\"slot\\\" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04') AND \\\"session_capture_sources\\\".\\\"adapter_kind\\\" IN ('ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE')) OR (\\\"session_capture_sources\\\".\\\"slot\\\" IN ('MIC-01', 'MIC-02', 'MIC-03', 'MIC-04') AND \\\"session_capture_sources\\\".\\\"adapter_kind\\\" IN ('USB_AUDIO', 'FAKE', 'LOCAL_DEVICE'))"
+        }
+      ]
+    },
+    {
+      "id": "T-42",
+      "name": "session_stt_config",
+      "columns": [
+        {
+          "name": "session_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "backend",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "endpoint",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "language",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "diarization",
+          "type": "boolean",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "credential_kind",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "config_revision",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "taken_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "session_stt_config_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(session_id)"
+        },
+        {
+          "name": "session_stt_config_session_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"session_id\" ~ '^SES-[0-9]{8}-[0-9]{4}$'"
+        },
+        {
+          "name": "session_stt_config_backend_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"backend\" IN ('omlx-server', 'cpu-local')"
+        },
+        {
+          "name": "session_stt_config_endpoint_required_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"backend\" <> 'omlx-server' OR \"session_stt_config\".\"endpoint\" IS NOT NULL"
+        },
+        {
+          "name": "session_stt_config_endpoint_loopback_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"endpoint\" IS NULL OR \"session_stt_config\".\"endpoint\" ~ '^http://(127\\.0\\.0\\.1|localhost)(:[0-9]{1,5})?(/.*)?$'"
+        },
+        {
+          "name": "session_stt_config_language_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"language\" = 'id'"
+        },
+        {
+          "name": "session_stt_config_credential_kind_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"credential_kind\" IS NULL OR \"session_stt_config\".\"credential_kind\" IN ('REFERENCE', 'ENCRYPTED')"
+        },
+        {
+          "name": "session_stt_config_revision_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"config_revision\" >= 1"
+        }
+      ]
+    },
+    {
+      "id": "T-43",
+      "name": "core_media_store",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "media_root",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "recorded_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "core_media_store_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "core_media_store_singleton_check",
+          "kind": "CHECK",
+          "definition": "\"core_media_store\".\"singleton\""
+        },
+        {
+          "name": "core_media_store_root_check",
+          "kind": "CHECK",
+          "definition": "char_length(\"core_media_store\".\"media_root\") BETWEEN 1 AND 1024 AND \"core_media_store\".\"media_root\" ~ '^/[^[:cntrl:]]*$' AND position('://' in \"core_media_store\".\"media_root\") = 0"
+        }
+      ]
+    },
+    {
+      "id": "T-44",
+      "name": "capture_device_streams",
+      "columns": [
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "profile",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "onvif_profile_token",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "video_source_token",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "lens",
+          "type": "smallint",
+          "notNull": true,
+          "default": "1"
+        },
+        {
+          "name": "stream_role",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "codec",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "width",
+          "type": "integer",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "height",
+          "type": "integer",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "read_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "capture_device_streams_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(device_id, profile)"
+        },
+        {
+          "name": "capture_device_streams_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(device_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_device_streams_device_lens_role_idx",
+          "kind": "INDEX",
+          "definition": "(device_id, lens, stream_role)"
+        },
+        {
+          "name": "capture_device_streams_device_id_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_streams\".\"device_id\" ~ '^CAM-[0-9]{2,}$'"
+        },
+        {
+          "name": "capture_device_streams_profile_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_streams\".\"profile\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        },
+        {
+          "name": "capture_device_streams_token_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_streams\".\"onvif_profile_token\" ~ '^[A-Za-z0-9_.:-]{1,64}$' AND (\"capture_device_streams\".\"video_source_token\" IS NULL OR \"capture_device_streams\".\"video_source_token\" ~ '^[A-Za-z0-9_.:-]{1,64}$')"
+        },
+        {
+          "name": "capture_device_streams_lens_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_streams\".\"lens\" BETWEEN 1 AND 4"
+        },
+        {
+          "name": "capture_device_streams_stream_role_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_streams\".\"stream_role\" IN ('MAIN', 'SUB')"
+        },
+        {
+          "name": "capture_device_streams_codec_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_streams\".\"codec\" IS NULL OR \"capture_device_streams\".\"codec\" IN ('H264', 'HEVC', 'OTHER')"
+        },
+        {
+          "name": "capture_device_streams_size_check",
+          "kind": "CHECK",
+          "definition": "(\"capture_device_streams\".\"width\" IS NULL AND \"capture_device_streams\".\"height\" IS NULL) OR (\"capture_device_streams\".\"width\" IS NOT NULL AND \"capture_device_streams\".\"height\" IS NOT NULL AND \"capture_device_streams\".\"width\" BETWEEN 1 AND 16384 AND \"capture_device_streams\".\"height\" BETWEEN 1 AND 16384)"
+        }
+      ]
+    },
+    {
+      "id": "T-45",
+      "name": "capture_audio_inputs",
+      "columns": [
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "usb_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "card_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "card_device",
+          "type": "smallint",
+          "notNull": true,
+          "default": "0"
+        },
+        {
+          "name": "input_number",
+          "type": "smallint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "native_channels",
+          "type": "smallint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "sample_rate",
+          "type": "integer",
+          "notNull": true,
+          "default": "48000"
+        },
+        {
+          "name": "sample_bits",
+          "type": "smallint",
+          "notNull": true,
+          "default": "24"
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "usb_serial",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "usb_port",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "retired_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "capture_audio_inputs_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(device_id)"
+        },
+        {
+          "name": "capture_audio_inputs_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(device_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_audio_inputs_updated_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(updated_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "capture_audio_inputs_device_id_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"device_id\" ~ '^MIC-[0-9]{2,}$'"
+        },
+        {
+          "name": "capture_audio_inputs_usb_id_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"usb_id\" IS NULL OR \"capture_audio_inputs\".\"usb_id\" ~ '^[0-9a-f]{4}:[0-9a-f]{4}$'"
+        },
+        {
+          "name": "capture_audio_inputs_card_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"card_id\" ~ '^[A-Za-z0-9_]{1,32}$' AND \"capture_audio_inputs\".\"card_device\" BETWEEN 0 AND 31"
+        },
+        {
+          "name": "capture_audio_inputs_input_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"input_number\" BETWEEN 1 AND 64 AND \"capture_audio_inputs\".\"native_channels\" BETWEEN 1 AND 64 AND \"capture_audio_inputs\".\"input_number\" <= \"capture_audio_inputs\".\"native_channels\""
+        },
+        {
+          "name": "capture_audio_inputs_sample_rate_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"sample_rate\" = 48000"
+        },
+        {
+          "name": "capture_audio_inputs_sample_bits_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"sample_bits\" IN (16, 24, 32)"
+        },
+        {
+          "name": "capture_audio_inputs_usb_serial_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"usb_serial\" IS NULL OR \"capture_audio_inputs\".\"usb_serial\" ~ '^[A-Za-z0-9:._-]{1,64}$'"
+        },
+        {
+          "name": "capture_audio_inputs_usb_port_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"usb_port\" IS NULL OR \"capture_audio_inputs\".\"usb_port\" ~ '^[A-Za-z0-9:._-]{1,64}$'"
+        },
+        {
+          "name": "capture_audio_inputs_card_input_key",
+          "kind": "UNIQUE INDEX",
+          "definition": "(card_id, card_device, input_number) WHERE retired_at IS NULL"
+        }
+      ]
+    },
+    {
+      "id": "T-46",
+      "name": "capture_network_config",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "interface_name",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "camera_subnet",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "factory_addresses",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'[\"192.168.1.64\", \"192.168.1.108\", \"192.168.0.90\", \"192.168.1.13\"]'"
+        },
+        {
+          "name": "alias_host",
+          "type": "smallint",
+          "notNull": true,
+          "default": "253"
+        },
+        {
+          "name": "alias_minutes",
+          "type": "smallint",
+          "notNull": true,
+          "default": "30"
+        },
+        {
+          "name": "camera_ip_start",
+          "type": "smallint",
+          "notNull": true,
+          "default": "101"
+        },
+        {
+          "name": "revision",
+          "type": "bigint",
+          "notNull": true,
+          "default": "1"
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "onvif_ports",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'[80]'"
+        }
+      ],
+      "constraints": [
+        {
+          "name": "capture_network_config_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "capture_network_config_updated_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(updated_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "capture_network_config_singleton_check",
+          "kind": "CHECK",
+          "definition": "\"capture_network_config\".\"singleton\""
+        },
+        {
+          "name": "capture_network_config_camera_subnet_check",
+          "kind": "CHECK",
+          "definition": "\"capture_network_config\".\"camera_subnet\" IS NULL OR \"capture_network_config\".\"camera_subnet\" ~ '^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])([.](25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}/(1[6-9]|2[0-9]|30)$'"
+        },
+        {
+          "name": "capture_network_config_factory_addresses_check",
+          "kind": "CHECK",
+          "definition": "CASE WHEN jsonb_typeof(\"capture_network_config\".\"factory_addresses\") = 'array' THEN jsonb_array_length(\"capture_network_config\".\"factory_addresses\") <= 32 AND NOT jsonb_path_exists(\"capture_network_config\".\"factory_addresses\", 'strict $[*]?(@.type() != \"string\" || !(@ like_regex \"^[0-9]{1,3}([.][0-9]{1,3}){3}$\"))') ELSE false END"
+        },
+        {
+          "name": "capture_network_config_alias_host_check",
+          "kind": "CHECK",
+          "definition": "\"capture_network_config\".\"alias_host\" BETWEEN 2 AND 254"
+        },
+        {
+          "name": "capture_network_config_alias_minutes_check",
+          "kind": "CHECK",
+          "definition": "\"capture_network_config\".\"alias_minutes\" BETWEEN 5 AND 480"
+        },
+        {
+          "name": "capture_network_config_camera_ip_start_check",
+          "kind": "CHECK",
+          "definition": "\"capture_network_config\".\"camera_ip_start\" BETWEEN 2 AND 250"
+        },
+        {
+          "name": "capture_network_config_revision_check",
+          "kind": "CHECK",
+          "definition": "\"capture_network_config\".\"revision\" >= 1"
+        },
+        {
+          "name": "capture_network_config_interface_name_check",
+          "kind": "CHECK",
+          "definition": "\"capture_network_config\".\"interface_name\" IS NULL OR \"capture_network_config\".\"interface_name\" ~ '^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$'"
+        },
+        {
+          "name": "capture_network_config_onvif_ports_check",
+          "kind": "CHECK",
+          "definition": "CASE WHEN jsonb_typeof(\"capture_network_config\".\"onvif_ports\") = 'array' THEN jsonb_array_length(\"capture_network_config\".\"onvif_ports\") BETWEEN 1 AND 8 AND NOT jsonb_path_exists(\"capture_network_config\".\"onvif_ports\", 'strict $[*]?(@.type() != \"number\")') AND NOT jsonb_path_exists(\"capture_network_config\".\"onvif_ports\", 'strict $[*]?(@ < 1 || @ > 65535)') AND NOT jsonb_path_exists(\"capture_network_config\".\"onvif_ports\", 'strict $[*]?(@ != @.floor())') ELSE false END"
+        },
+        {
+          "name": "capture_network_config_onvif_ports_distinct_check",
+          "kind": "CHECK",
+          "definition": "CASE WHEN jsonb_typeof(\"capture_network_config\".\"onvif_ports\") = 'array' THEN NOT ((\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 1) OR (\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 2) OR (\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 3) OR (\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 4) OR (\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 5) OR (\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 6) OR (\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 7) OR (\"capture_network_config\".\"onvif_ports\" -> 1) = (\"capture_network_config\".\"onvif_ports\" -> 2) OR (\"capture_network_config\".\"onvif_ports\" -> 1) = (\"capture_network_config\".\"onvif_ports\" -> 3) OR (\"capture_network_config\".\"onvif_ports\" -> 1) = (\"capture_network_config\".\"onvif_ports\" -> 4) OR (\"capture_network_config\".\"onvif_ports\" -> 1) = (\"capture_network_config\".\"onvif_ports\" -> 5) OR (\"capture_network_config\".\"onvif_ports\" -> 1) = (\"capture_network_config\".\"onvif_ports\" -> 6) OR (\"capture_network_config\".\"onvif_ports\" -> 1) = (\"capture_network_config\".\"onvif_ports\" -> 7) OR (\"capture_network_config\".\"onvif_ports\" -> 2) = (\"capture_network_config\".\"onvif_ports\" -> 3) OR (\"capture_network_config\".\"onvif_ports\" -> 2) = (\"capture_network_config\".\"onvif_ports\" -> 4) OR (\"capture_network_config\".\"onvif_ports\" -> 2) = (\"capture_network_config\".\"onvif_ports\" -> 5) OR (\"capture_network_config\".\"onvif_ports\" -> 2) = (\"capture_network_config\".\"onvif_ports\" -> 6) OR (\"capture_network_config\".\"onvif_ports\" -> 2) = (\"capture_network_config\".\"onvif_ports\" -> 7) OR (\"capture_network_config\".\"onvif_ports\" -> 3) = (\"capture_network_config\".\"onvif_ports\" -> 4) OR (\"capture_network_config\".\"onvif_ports\" -> 3) = (\"capture_network_config\".\"onvif_ports\" -> 5) OR (\"capture_network_config\".\"onvif_ports\" -> 3) = (\"capture_network_config\".\"onvif_ports\" -> 6) OR (\"capture_network_config\".\"onvif_ports\" -> 3) = (\"capture_network_config\".\"onvif_ports\" -> 7) OR (\"capture_network_config\".\"onvif_ports\" -> 4) = (\"capture_network_config\".\"onvif_ports\" -> 5) OR (\"capture_network_config\".\"onvif_ports\" -> 4) = (\"capture_network_config\".\"onvif_ports\" -> 6) OR (\"capture_network_config\".\"onvif_ports\" -> 4) = (\"capture_network_config\".\"onvif_ports\" -> 7) OR (\"capture_network_config\".\"onvif_ports\" -> 5) = (\"capture_network_config\".\"onvif_ports\" -> 6) OR (\"capture_network_config\".\"onvif_ports\" -> 5) = (\"capture_network_config\".\"onvif_ports\" -> 7) OR (\"capture_network_config\".\"onvif_ports\" -> 6) = (\"capture_network_config\".\"onvif_ports\" -> 7)) ELSE false END"
+        }
+      ]
+    },
+    {
+      "id": "T-47",
+      "name": "host_network_aliases",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "interface_name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "added_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "added_by",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "expires_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "removed_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "remove_reason",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "removed_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "remove_error",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "host_network_aliases_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "host_network_aliases_added_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(added_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "host_network_aliases_removed_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(removed_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "host_network_aliases_open_address_key",
+          "kind": "UNIQUE INDEX",
+          "definition": "(interface_name, address) WHERE removed_at IS NULL"
+        },
+        {
+          "name": "host_network_aliases_one_open_key",
+          "kind": "UNIQUE INDEX",
+          "definition": "((removed_at IS NULL)) WHERE removed_at IS NULL"
+        },
+        {
+          "name": "host_network_aliases_address_check",
+          "kind": "CHECK",
+          "definition": "\"host_network_aliases\".\"address\" ~ '^(10[.](25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.](25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])|172[.](1[6-9]|2[0-9]|3[01])[.](25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])|192[.]168[.](25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))[.](25[0-4]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?)/24$'"
+        },
+        {
+          "name": "host_network_aliases_reason_check",
+          "kind": "CHECK",
+          "definition": "\"host_network_aliases\".\"reason\" IN ('FACTORY_SCAN', 'SET_CAMERA_ADDRESS')"
+        },
+        {
+          "name": "host_network_aliases_expires_at_check",
+          "kind": "CHECK",
+          "definition": "\"host_network_aliases\".\"expires_at\" > \"host_network_aliases\".\"added_at\""
+        },
+        {
+          "name": "host_network_aliases_removed_at_check",
+          "kind": "CHECK",
+          "definition": "\"host_network_aliases\".\"removed_at\" IS NULL OR \"host_network_aliases\".\"removed_at\" >= \"host_network_aliases\".\"added_at\""
+        },
+        {
+          "name": "host_network_aliases_removed_by_check",
+          "kind": "CHECK",
+          "definition": "\"host_network_aliases\".\"removed_by\" IS NULL OR \"host_network_aliases\".\"removed_at\" IS NOT NULL"
+        },
+        {
+          "name": "host_network_aliases_remove_error_check",
+          "kind": "CHECK",
+          "definition": "\"host_network_aliases\".\"remove_error\" IS NULL OR \"host_network_aliases\".\"remove_error\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        },
+        {
+          "name": "host_network_aliases_remove_reason_check",
+          "kind": "CHECK",
+          "definition": "((\"host_network_aliases\".\"remove_reason\" IS NULL) = (\"host_network_aliases\".\"removed_at\" IS NULL)) AND (\"host_network_aliases\".\"remove_reason\" IS NULL OR \"host_network_aliases\".\"remove_reason\" IN ('EXPIRED', 'MANUAL', 'JOB_DONE', 'BOOT_SWEEP', 'SHUTDOWN', 'NOT_ADDED', 'ADD_UNCONFIRMED'))"
+        },
+        {
+          "name": "host_network_aliases_interface_name_check",
+          "kind": "CHECK",
+          "definition": "\"host_network_aliases\".\"interface_name\" ~ '^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$'"
+        }
+      ]
+    },
+    {
+      "id": "T-48",
+      "name": "installation_acceptances",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "accepted_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "accepted_by",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "software_version",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "core_device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "site_name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "room",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "site_address",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "steps",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "diagnostics",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "revoked_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "revoked_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "revoke_reason",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "installation_acceptances_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "installation_acceptances_accepted_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(accepted_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "installation_acceptances_revoked_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(revoked_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "installation_acceptances_in_force_key",
+          "kind": "UNIQUE INDEX",
+          "definition": "((revoked_at IS NULL)) WHERE revoked_at IS NULL"
+        },
+        {
+          "name": "installation_acceptances_software_version_check",
+          "kind": "CHECK",
+          "definition": "\"installation_acceptances\".\"software_version\" ~ '^[^[:cntrl:]]{1,64}$'"
+        },
+        {
+          "name": "installation_acceptances_site_check",
+          "kind": "CHECK",
+          "definition": "\"installation_acceptances\".\"core_device_id\" ~ '^[^[:cntrl:]]{1,200}$' AND \"installation_acceptances\".\"site_name\" ~ '^[^[:cntrl:]]{1,200}$' AND \"installation_acceptances\".\"room\" ~ '^[^[:cntrl:]]{1,200}$'"
+        },
+        {
+          "name": "installation_acceptances_site_address_check",
+          "kind": "CHECK",
+          "definition": "\"installation_acceptances\".\"site_address\" IS NULL OR char_length(\"installation_acceptances\".\"site_address\") BETWEEN 1 AND 500"
+        },
+        {
+          "name": "installation_acceptances_steps_check",
+          "kind": "CHECK",
+          "definition": "CASE WHEN jsonb_typeof(\"installation_acceptances\".\"steps\") = 'array' THEN jsonb_array_length(\"installation_acceptances\".\"steps\") <= 32 AND NOT jsonb_path_exists(\"installation_acceptances\".\"steps\", 'strict $[*]?(@.type() != \"object\")') AND NOT jsonb_path_exists(\"installation_acceptances\".\"steps\", 'strict $.**{3 to last}') ELSE false END"
+        },
+        {
+          "name": "installation_acceptances_steps_no_secret_keys_check",
+          "kind": "CHECK",
+          "definition": "NOT jsonb_path_exists(\"installation_acceptances\".\"steps\", 'strict $.**?(@.type() == \"object\").keyvalue()?(@.\"key\" like_regex \"^(password|passwordHash|salt|token|tokenHash|sessionToken|deviceCredential|credential|credentialHash|biometricToken|code|codeHash|pairingCode|qrPayload|username|cookie|authorization|secret|secretCiphertext|ciphertext|nonce|keyRef|onvifUuid|signedUrl|mediaUrl|credentialRef|credentialValue|apiKey)$\")')"
+        },
+        {
+          "name": "installation_acceptances_steps_bound_check",
+          "kind": "CHECK",
+          "definition": "octet_length(\"installation_acceptances\".\"steps\"::text) <= 8192 AND NOT jsonb_path_exists(\"installation_acceptances\".\"steps\", 'strict $.**?(@.type() == \"string\" && !(@ like_regex \"^[^[:cntrl:]]{0,200}$\"))')"
+        },
+        {
+          "name": "installation_acceptances_diagnostics_check",
+          "kind": "CHECK",
+          "definition": "CASE WHEN jsonb_typeof(\"installation_acceptances\".\"diagnostics\") = 'object' THEN NOT jsonb_path_exists(\"installation_acceptances\".\"diagnostics\", 'strict $.**{5 to last}') ELSE false END"
+        },
+        {
+          "name": "installation_acceptances_diagnostics_no_secret_keys_check",
+          "kind": "CHECK",
+          "definition": "NOT jsonb_path_exists(\"installation_acceptances\".\"diagnostics\", 'strict $.**?(@.type() == \"object\").keyvalue()?(@.\"key\" like_regex \"^(password|passwordHash|salt|token|tokenHash|sessionToken|deviceCredential|credential|credentialHash|biometricToken|code|codeHash|pairingCode|qrPayload|username|cookie|authorization|secret|secretCiphertext|ciphertext|nonce|keyRef|onvifUuid|signedUrl|mediaUrl|credentialRef|credentialValue|apiKey)$\")')"
+        },
+        {
+          "name": "installation_acceptances_diagnostics_bound_check",
+          "kind": "CHECK",
+          "definition": "octet_length(\"installation_acceptances\".\"diagnostics\"::text) <= 16384 AND NOT jsonb_path_exists(\"installation_acceptances\".\"diagnostics\", 'strict $.**?(@.type() == \"string\" && !(@ like_regex \"^[^[:cntrl:]]{0,200}$\"))')"
+        },
+        {
+          "name": "installation_acceptances_revoked_at_check",
+          "kind": "CHECK",
+          "definition": "\"installation_acceptances\".\"revoked_at\" IS NULL OR \"installation_acceptances\".\"revoked_at\" >= \"installation_acceptances\".\"accepted_at\""
+        },
+        {
+          "name": "installation_acceptances_revoke_check",
+          "kind": "CHECK",
+          "definition": "((\"installation_acceptances\".\"revoked_at\" IS NULL) = (\"installation_acceptances\".\"revoked_by\" IS NULL)) AND ((\"installation_acceptances\".\"revoked_at\" IS NULL) = (\"installation_acceptances\".\"revoke_reason\" IS NULL)) AND (\"installation_acceptances\".\"revoke_reason\" IS NULL OR char_length(\"installation_acceptances\".\"revoke_reason\") BETWEEN 5 AND 500)"
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "tables": 48,
+    "columns": 507,
+    "primaryKeys": 48,
+    "foreignKeys": 53,
+    "uniques": 15,
+    "uniqueIndexes": 8,
+    "indexes": 24,
+    "checks": 234
+  }
+}

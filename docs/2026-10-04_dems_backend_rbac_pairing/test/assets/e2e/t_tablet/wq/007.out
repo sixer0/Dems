@@ -1,0 +1,9 @@
+typed into sm-end-reason: Interview completed (E2E-T web stop by supervisor)
+mark B6 web confirm End Session at 10:41:32.860
+press sm-end-confirm: true at 10:41:32.863
+waitgone sm-end-dialog: true at 10:41:33.178
+wait finalization-modal: true at 10:41:33.178
+watch: truthy at 10:41:39.890 (started 10:41:33.178, 6712 ms): "SEALEDEvidence EV-20261006-0015 sealedSealed 6.9 s after the recording endedLoading package details…"
+slept 1500
+shot B18_web_sealed.png at 10:41:41.606
+api GET /api/v1/session/current -> 200 (1109 bytes, wq/api_1791258101615.json): {"session":{"id":"SES-20261006-0025","state":"SEALED","caseNumber":"LP/2026/1006-0009","subjectType":"TERSANGKA","subjectName":"Siti Rahmawati","investigatorId":"OPR-001","investigatorName":"AKP Budi Santoso","room":"Interview Room 1","profileId":"STANDARD_1080P25","createdAt":"2026-10-06T10:33:22.779+07:00","startedAt":"2026-10-06T10:36:59.107+07:00","stoppedAt":"2026-10-06T10:41:32.875+07:00","sealedAt":"2026-10-06T10:41:39.740+07:00","elapsedMs":273768,"bytesWritten":623582667,"evidenceId":"EV-20261006-0015","precheck":{"outcome":"PASS","items":[{"id":"CORE","status":"PASS","value":"ONLINE","reason":null},{"id":"LENS_1","status":"PASS","value":"READY","reason":null},{"id":"LENS_2","status

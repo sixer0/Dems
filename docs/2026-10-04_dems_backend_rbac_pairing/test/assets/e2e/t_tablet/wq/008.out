@@ -1,0 +1,8 @@
+press nav-evidence: false at 10:42:56.141
+slept 300
+clicktext "Evidence": LI at 10:42:56.444
+wait page-evidence: false at 10:43:06.543
+slept 2500
+shot B22_web_evidence_list.png at 10:43:09.276
+testids evi (0): 
+api GET /api/v1/evidence/EV-20261006-0015 -> 200 (1933 bytes, wq/api_1791258189285.json): {"evidence":{"id":"EV-20261006-0015","sessionId":"SES-20261006-0025","caseNumber":"LP/2026/1006-0009","subjectName":"Siti Rahmawati","subjectType":"TERSANGKA","investigatorId":"OPR-001","room":"Interview Room 1","profileId":"STANDARD_1080P25","recordedAt":1791257819107,"endedAt":1791258092875,"sealedAt":1791258099740,"durationMs":273768,"sizeBytes":623582667,"status":"SEALED","lifecycleStage":"SEALED_LOCAL_EVIDENCE","tracks":[{"trackId":"VIDEO-01","label":"Camera 1","sizeBytes":305555507,"sha256":"3e21bfe8f015ff7dac6a71286a78de084b9dbc1f9504c112236802b6ba7a46cc"},{"trackId":"VIDEO-02","label":"Camera 2","sizeBytes":305555507,"sha256":"435b8f01db8d5af7badfe60579b91cd369f8883556ab82f5cc0340d3c

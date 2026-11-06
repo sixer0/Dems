@@ -1,0 +1,35 @@
+## 2026-10-06 01:53:31 WIB $ npm run test -w @dems/core-web -- --maxWorkers=2 src/test/live-shell-admin.test.tsx
+ Test Files  1 passed (1)
+      Tests  40 passed (40)
+exit=0
+## 01:53:43 $ npm run test -w @dems/core-web -- --maxWorkers=2 src/test/live-pending-control.test.tsx
+ Test Files  1 passed (1)
+      Tests  20 passed (20)
+exit=0
+## 01:53:46 $ npm run test -w @dems/core-web -- --maxWorkers=2 src/test/live-runtime-   (the harness's own tests, W50)
+ Test Files  7 passed (7)
+      Tests  121 passed (121)
+exit=0
+## 01:53:57 $ npm run typecheck -w @dems/core-web
+exit=2
+## 01:54:17 $ npm run lint -w @dems/core-web
+src/test/live-system-demo.test.tsx:408:13: warning eslint(no-unused-vars): Variable 'bed' is declared but never used. Unused variables should start with a '_'. help: Consider removing this declaration.
+exit=0
+## 2026-10-06 01:55:27 WIB  1:55  2 users, load averages: 9.25 7.57 6.60
+## $ npm run test -w @dems/core-web -- --maxWorkers=2
+ Test Files  93 passed (93)
+      Tests  1238 passed (1238)
+   Duration  192.02s (tests 68%, import 16%, environment 10%, setup 4%, transform 2%)
+exit=0
+## 01:59:02 $ npm run test -w @dems/core-web -- --maxWorkers=2 src/test/live-devices-drawer.test.tsx   (not edited; W70's file, last written 22:59:59)
+ Test Files  1 passed (1)
+      Tests  13 passed (13)
+exit=0
+## typecheck exit=2: the one error
+src/test/live-system-demo.test.tsx(408,11): error TS6133: 'bed' is declared but its value is never read.
+## live-system-demo.test.tsx (W76, untracked, last written 01:46:04)
+## files of apps/core-web/src and packages/shared/src changed since the W0c start marker (01:52):
+apps/core-web/src/runtime/testing/live-harness.ts
+apps/core-web/src/test/live-paired-devices-list.test.tsx
+apps/core-web/src/test/live-pending-control.test.tsx
+apps/core-web/src/test/live-system-export.test.tsx

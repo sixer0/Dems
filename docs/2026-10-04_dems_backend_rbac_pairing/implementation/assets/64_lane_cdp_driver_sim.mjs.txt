@@ -1,0 +1,76 @@
+// W64 lane check, follow-up: the Start New Session page in SIMULATED mode on lane 1's dev server.
+// The Simulated Login refuses a sign-in while mock-core (127.0.0.1:4400, not this row's to start) is
+// unreachable, so the simulator's own persisted sign-in record is written instead: `dems.auth` in
+// sessionStorage holds an operator ID and a time, no credential (packages/shared/src/sim/platform.ts).
+// Usage: node --import tsx .cache/w64/lane/cdp-driver-sim.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const ws = new WebSocket(list.find((t) => t.type === 'page').webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+let id = 0
+const pending = new Map()
+let requests = []
+let consoleLines = []
+let loadFired = false
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  if (msg.method === 'Page.loadEventFired') loadFired = true
+  if (msg.method === 'Network.requestWillBeSent') requests.push({ method: p.request.method, url: String(p.request.url).replace(/\?.*$/, '') })
+  if (msg.method === 'Runtime.exceptionThrown') consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+  if (msg.method === 'Runtime.consoleAPICalled' && p.type === 'error') consoleLines.push(`error: ${(p.args ?? []).map((a) => String(a.value ?? a.description ?? a.type)).join(' ').slice(0, 300)}`)
+})
+const send = (method, params = {}) => new Promise((resolve, reject) => { const n = ++id; pending.set(n, { resolve, reject }); ws.send(JSON.stringify({ id: n, method, params })) })
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+const navigate = async (url, settleMs = 3500) => { loadFired = false; await send('Page.navigate', { url }); for (let i = 0; i < 150 && !loadFired; i++) await sleep(100); await sleep(settleMs); return loadFired }
+const waitFor = async (testId, timeoutMs = 15000) => { const until = Date.now() + timeoutMs; while (Date.now() < until) { if (await evaluate(`document.querySelector('[data-testid="${testId}"]') !== null`, testId)) return true; await sleep(150) } return false }
+
+await send('Network.enable'); await send('Page.enable'); await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
+await navigate(`${ORIGIN}/login`, 2500)
+await evaluate(`(() => { localStorage.setItem('dems.core.mode.v1', 'SIMULATED'); sessionStorage.setItem('dems.auth', JSON.stringify({ operatorId: ${JSON.stringify(supervisor.id)}, issuedAt: Date.now() })); return true })()`, 'store')
+requests = []; consoleLines = []
+await navigate(`${ORIGIN}/session/new`)
+const shown = await waitFor('page-session-new')
+await sleep(1500)
+const facts = await evaluate(`(() => {
+  const page = document.querySelector('[data-testid="page-session-new"]')
+  return {
+    href: location.origin + location.pathname,
+    step: page?.getAttribute('data-step') ?? null,
+    sessionState: page?.getAttribute('data-session-state') ?? null,
+    shellCoreMode: document.querySelector('[data-core-mode]')?.getAttribute('data-core-mode') ?? null,
+    scanBusy: document.querySelector('[data-testid="sn-scan"]')?.getAttribute('aria-busy') ?? null,
+    liveLinkHint: document.querySelector('[data-testid="sn-gate-live-link"]') !== null,
+  }
+})()`, 'facts')
+const shot = join(assetsDir, '64_session_new_simulated.png')
+writeFileSync(shot, Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
+const ownOrigin = requests.filter((r) => r.url.startsWith(ORIGIN))
+const result = {
+  shown, facts, screenshot: shot,
+  apiRequestsOfThePage: ownOrigin.filter((r) => r.url.includes('/api/v1/')),
+  otherOrigins: [...new Set(requests.map((r) => { try { return new URL(r.url).origin } catch { return '(other)' } }))].filter((o) => o !== ORIGIN),
+  console: consoleLines,
+}
+await evaluate(`(() => { localStorage.removeItem('dems.core.mode.v1'); sessionStorage.removeItem('dems.auth'); return true })()`, 'clean')
+writeFileSync(outJson, `${JSON.stringify(result, null, 2)}\n`)
+console.log(JSON.stringify(result, null, 2))
+ws.close()

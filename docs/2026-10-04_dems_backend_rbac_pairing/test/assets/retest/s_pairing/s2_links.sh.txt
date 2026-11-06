@@ -1,0 +1,56 @@
+#!/bin/sh
+# R-S step 2 (E2E-S-4): while UNPAIRED, warm deep links to guarded screens must open Pair, from Pair and from
+# Stack Check (round 1: they left the app on the public screen it was on). Then step 3's history: Stack Check,
+# then Pair. Device emulator-5558 ONLY; deep links, screencaps, UI dumps (only Pair / Stack Check can show
+# while unpaired: Login, Home and Summary are behind the pairing gate). No setting, lock or PIN is touched.
+#   sh s2_links.sh
+set -u
+OUT=/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/test/assets/retest/s_pairing
+S=emulator-5558
+APP=com.dems.demo.tablet
+a() { adb -s "$S" "$@"; }
+now() { python3 -c 'import time; t=time.time(); print(time.strftime("%H:%M:%S", time.localtime(t)) + ".%03d" % int((t % 1) * 1000))'; }
+kg() { a shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1; }
+shot() { a exec-out screencap -p >"$OUT/$1"; echo "   screencap $1 ($(wc -c <"$OUT/$1" | tr -d ' ') bytes) at host $(now); $(kg)"; }
+dump() {
+  a shell uiautomator dump /sdcard/rs_ui.xml >/dev/null 2>&1; a shell cat /sdcard/rs_ui.xml >"$OUT/$1" 2>/dev/null; a shell rm -f /sdcard/rs_ui.xml
+  echo "   UI dump $1 ($(wc -c <"$OUT/$1" | tr -d ' ') bytes): screen ids [$(grep -o 'resource-id="screen-[a-z-]*"' "$OUT/$1" | sed 's/resource-id=//; s/"//g' | sort -u | tr '\n' ' ')]"
+}
+link() { echo "-- host $(now) warm link '$1'"; a shell "am start -W -a android.intent.action.VIEW -d '$1' $APP" 2>&1 | tr -d '\r' | grep -E "Status|LaunchState|Warning|Error" | sed 's/^/   /'; }
+T0=$(a shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+echo "== R-S step 2 — device T0 $T0; host $(now); $(kg); uptime: $(uptime | sed 's/.*load/load/')"
+echo "-- secure-store entry NAMES (values never read): '$(a shell "run-as $APP sh -c 'grep -o \"name=\\\"[^\\\"]*\\\"\" shared_prefs/SecureStore.xml'" | tr -d '\r' | tr '\n' ' ')' (empty = no device credential)"
+echo
+echo "== 2a. on Pair (after the revoke): demsdemo:///home"
+dump 02a_ui_before.xml
+link 'demsdemo:///home'; sleep 6
+shot 02a_from_pair_home.png; dump 02a_ui_after_home.xml
+echo
+echo "== 2b. Stack Check first, then demsdemo:///home"
+link 'demsdemo:///stack-check'; sleep 6
+shot 02b_stack_check.png; dump 02b_ui_stack_check.xml
+link 'demsdemo:///home'; sleep 6
+shot 02b_from_stack_home.png; dump 02b_ui_after_home.xml
+echo
+echo "== 2c. Stack Check again, then demsdemo:///login (round 1: stayed on Stack Check)"
+link 'demsdemo:///stack-check'; sleep 6
+dump 02c_ui_stack_check.xml
+link 'demsdemo:///login'; sleep 6
+shot 02c_from_stack_login.png; dump 02c_ui_after_login.xml
+echo
+echo "== 2d. Stack Check again, then demsdemo:///sessions (round 1: stayed on Stack Check)"
+link 'demsdemo:///stack-check'; sleep 6
+dump 02d_ui_stack_check.xml
+link 'demsdemo:///sessions'; sleep 6
+shot 02d_from_stack_sessions.png; dump 02d_ui_after_sessions.xml
+echo
+echo "== 2e. last guarded link from Stack Check: demsdemo:///home again (so the pending href is /home)"
+link 'demsdemo:///stack-check'; sleep 6
+dump 02e_ui_stack_check.xml
+link 'demsdemo:///home'; sleep 6
+shot 02e_from_stack_home_again.png; dump 02e_ui_after_home.xml
+echo
+echo "-- the app's navigation / gate records since T0 (no URL is logged by the app):"
+a logcat -d -v epoch -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -E "source: '|DEMS-LIVE" | sed -E 's/^ *([0-9.]+) .*ReactNativeJS: /   \1 /' | sed -E 's/ [0-9a-f]{8}-[0-9a-f-]{27}$//' | cut -c1-200 | sort | uniq -c | head -30
+echo "-- credential/token lines in the device JS log (must be 0): $(a logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -c -E 'dvc_|ses_|bio_')"
+echo "-- end host $(now); $(kg)"

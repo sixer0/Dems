@@ -1,0 +1,429 @@
+{
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "steps": {
+    "live": {
+      "loaded": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/login?…",
+        "title": "DEMS Edge Client · Core Console",
+        "documentCookie": "",
+        "localStorage": {},
+        "sessionStorage": {},
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false,
+        "anyStoredValueStartsWithSes": false,
+        "pageTestIds": [
+          "page-login",
+          "login-submit",
+          "login-trust-line"
+        ],
+        "loginAlertKind": null,
+        "signInDisabled": false,
+        "trustLine": "Console:  • not paired (simulated)",
+        "refusalCause": null,
+        "refusalLink": null,
+        "heading": "Sign in",
+        "demoDisclosureExpanded": "false"
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/50_console_live.png",
+      "network": {
+        "api": [
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/status",
+            "status": 200
+          }
+        ],
+        "otherOrigins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/?…",
+            "status": 101,
+            "sentOrigin": "http://127.0.0.1:5178",
+            "cookieSent": "no",
+            "closed": false,
+            "frameCount": 1,
+            "firstTypes": [
+              "connected"
+            ],
+            "distinctTypes": [
+              "connected"
+            ]
+          },
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "sentOrigin": "http://127.0.0.1:5178",
+            "cookieSent": "no",
+            "closed": false,
+            "frameCount": 5,
+            "firstTypes": [
+              "hello",
+              "heartbeat",
+              "heartbeat",
+              "heartbeat",
+              "heartbeat"
+            ],
+            "distinctTypes": [
+              "heartbeat",
+              "hello"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "hmr": {
+      "touched": "apps/core-web/src/routes/__root.tsx (mtime only)",
+      "network": {
+        "api": [],
+        "otherOrigins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "signedIn": {
+      "signIn": {
+        "status": 200,
+        "setCookieReadableByScript": null,
+        "accessControlAllowOrigin": null,
+        "epochHeader": "1",
+        "bodyMembers": [
+          "session"
+        ],
+        "sessionMembers": [
+          "absoluteExpiresAt",
+          "demoControls",
+          "deviceId",
+          "idleExpiresAt",
+          "issuedAt",
+          "lastActivityAt",
+          "method",
+          "operator",
+          "permissions",
+          "serverTime"
+        ],
+        "role": "SUPERVISOR",
+        "anyMemberNamedToken": false,
+        "errorCode": null
+      },
+      "cookies": [
+        {
+          "name": "dems_session_4423",
+          "value": "(47 chars, not recorded)",
+          "domain": "127.0.0.1",
+          "path": "/",
+          "httpOnly": true,
+          "sameSite": "Strict",
+          "secure": false,
+          "session": true
+        }
+      ],
+      "documentCookieAfterSignIn": "",
+      "loaded": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/dashboard",
+        "title": "DEMS Edge Client · Core Console",
+        "documentCookie": "",
+        "localStorage": {},
+        "sessionStorage": {
+          "dems.shell.intro": "1 chars"
+        },
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false,
+        "anyStoredValueStartsWithSes": false,
+        "pageTestIds": [
+          "page-dashboard"
+        ],
+        "loginAlertKind": null,
+        "signInDisabled": null,
+        "trustLine": null,
+        "refusalCause": null,
+        "refusalLink": null,
+        "heading": "Dashboard",
+        "demoDisclosureExpanded": null
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/50_console_live_signed_in.png",
+      "network": {
+        "api": [
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 200
+          }
+        ],
+        "otherOrigins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/?…",
+            "status": 101,
+            "sentOrigin": "http://127.0.0.1:5178",
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 1,
+            "firstTypes": [
+              "connected"
+            ],
+            "distinctTypes": [
+              "connected"
+            ]
+          },
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "sentOrigin": "http://127.0.0.1:5178",
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 111,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters",
+              "meters",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "signedOut": {
+      "signOut": {
+        "status": 204
+      },
+      "facts": {
+        "href": "http://127.0.0.1:5178/login",
+        "title": "DEMS Edge Client · Core Console",
+        "documentCookie": "",
+        "localStorage": {},
+        "sessionStorage": {
+          "dems.shell.intro": "1 chars"
+        },
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false,
+        "anyStoredValueStartsWithSes": false,
+        "pageTestIds": [
+          "page-login",
+          "login-alert",
+          "login-submit",
+          "login-trust-line"
+        ],
+        "loginAlertKind": "signed-out",
+        "signInDisabled": false,
+        "trustLine": "Console:  • not paired (simulated)",
+        "refusalCause": null,
+        "refusalLink": null,
+        "heading": "Sign in",
+        "demoDisclosureExpanded": "false"
+      },
+      "cookieNamesLeft": [],
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-out",
+            "status": 204
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/status",
+            "status": 200
+          }
+        ],
+        "otherOrigins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "sentOrigin": "http://127.0.0.1:5178",
+            "cookieSent": "no",
+            "closed": false,
+            "frameCount": 6,
+            "firstTypes": [
+              "hello",
+              "heartbeat",
+              "heartbeat",
+              "heartbeat",
+              "heartbeat",
+              "heartbeat"
+            ],
+            "distinctTypes": [
+              "heartbeat",
+              "hello"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "simulated": {
+      "loaded": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/login?…",
+        "title": "DEMS Edge Client · Core Console",
+        "documentCookie": "",
+        "localStorage": {
+          "dems.core.mode.v1": "9 chars"
+        },
+        "sessionStorage": {
+          "dems.sim.v1": "119850 chars",
+          "dems.shell.intro": "1 chars"
+        },
+        "coreModeKey": "SIMULATED",
+        "owedSignOutKeyPresent": false,
+        "anyStoredValueStartsWithSes": false,
+        "pageTestIds": [
+          "page-login",
+          "login-alert",
+          "login-core-retry",
+          "login-submit",
+          "login-trust-line"
+        ],
+        "loginAlertKind": "core-offline",
+        "signInDisabled": true,
+        "trustLine": "Console: DEMS-IR-01 • paired (simulated)",
+        "refusalCause": null,
+        "refusalLink": null,
+        "heading": "Sign in",
+        "demoDisclosureExpanded": "false"
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/50_console_simulated.png",
+      "network": {
+        "api": [],
+        "otherOrigins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/?…",
+            "status": 101,
+            "sentOrigin": "http://127.0.0.1:5178",
+            "cookieSent": "no",
+            "closed": false,
+            "frameCount": 1,
+            "firstTypes": [
+              "connected"
+            ],
+            "distinctTypes": [
+              "connected"
+            ]
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "sentOrigin": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "sentOrigin": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "sentOrigin": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "sentOrigin": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          }
+        ],
+        "console": []
+      }
+    },
+    "localhost": {
+      "loaded": true,
+      "facts": {
+        "href": "http://localhost:5178/login",
+        "title": "DEMS Edge Client · Core Console",
+        "documentCookie": "",
+        "localStorage": {},
+        "sessionStorage": {},
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false,
+        "anyStoredValueStartsWithSes": false,
+        "pageTestIds": [
+          "live-host-refusal",
+          "live-host-refusal-cause",
+          "live-host-refusal-open",
+          "live-host-refusal-simulated"
+        ],
+        "loginAlertKind": null,
+        "signInDisabled": null,
+        "trustLine": null,
+        "refusalCause": "This page was opened at http://localhost:5178. The Core server accepts the web console only from http://127.0.0.1:5178, so a sign-in from here would be refused.",
+        "refusalLink": "http://127.0.0.1:5178/login",
+        "heading": null,
+        "demoDisclosureExpanded": null
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/50_console_live_localhost_refused.png",
+      "network": {
+        "api": [],
+        "otherOrigins": [
+          "http://localhost:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://localhost:5178/?…",
+            "status": 101,
+            "sentOrigin": "http://localhost:5178",
+            "cookieSent": "no",
+            "closed": false,
+            "frameCount": 1,
+            "firstTypes": [
+              "connected"
+            ],
+            "distinctTypes": [
+              "connected"
+            ]
+          }
+        ],
+        "console": [
+          "error: [core-web] live {level: error, source: runtime.liveHost, message: Live mode was not started: the console was opened …LLOWED. Open http://127.0.0.1:5178/login instead., context: Object, at: 1791114800316}"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,146 @@
+# FX-M2 targeted run, 2026-10-06 12:05:24: CI=1 npx jest --maxWorkers=2 --verbose <the 6 new and 3 adjusted test files>
+    An update to SessionNewScreen inside a test was not wrapped in act(...).
+    When testing, code that causes React state updates should be wrapped into act(...):
+    act(() => {
+      /* fire events that update state */
+    /* assert on the output */
+    This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+PASS src/features/devices/devices-states.test.tsx (7.735 s)
+  E2E-T-2: Devices always shows loading, data or an error with a Retry
+    ✓ loading: before the runtime has hydrated, the header and the skeleton (the pane is never empty) (84 ms)
+    ✓ data: the three sections at once from the store; no request is involved (194 ms)
+    ✓ error in the list: the panel card with Retry, logged; a Retry that fails again is rate-limited (3 s countdown); one that works brings the data back (3389 ms)
+    ✓ error in the tablet detail pane: the list stays; the pane shows the card with Retry (272 ms)
+PASS src/features/session-new/session-new-screen.test.tsx (8.395 s)
+  step 1: Session Information (MB 3, D62)
+    ✓ shows the MB 3 regions in order, with the investigator defaulting to the signed-in operator (381 ms)
+    ✓ validates with the shared schema: a wrong case format shows its message; Next stays disabled until valid (288 ms)
+    ✓ the investigator Select (bottom sheet with search on phones) picks another investigator for the session (407 ms)
+    ✓ long-pressing a subject type shows its English gloss (D28/Q3) (118 ms)
+    ✓ Next creates the session (normalised input) and starts the checks: CREATE → PRECHECK, step 2 (264 ms)
+    ✓ R2 (E-fix FX-M2, E2E-P-5): a TECHNICIAN is not shown the wizard: the route goes Home and nothing is created (29 ms)
+    ✓ a role without SESSION_START at Next (the signed-in operator changed while the wizard was open): the create error is shown and nothing is created (145 ms)
+    ✓ a deep link that opens Start Session first with a stale ?step=3 shows step 1 and corrects the param (60 ms)
+    ✓ resumes a CREATE session left by a relaunch with its details prefilled (102 ms)
+  step 3 and the hand-off to the live monitor (MA-29 steps 1–3)
+    ✓ Ready shows the ARMED summary; Start Recording (no countdown) lands on /session/live with the session RECORDING (529 ms)
+    ✓ with the 3-2-1 countdown on, recording starts after three one-second digits; Cancel stops it (992 ms)
+    ✓ control: opening Start Session while RECORDING is refused by the route with its toast (the hand-off above had none) (41 ms)
+  leaving the flow (§3.6)
+    ✓ Back during the checks asks "Cancel this session?"; Cancel session cancels it and returns Home (499 ms)
+    ✓ step 1 with typed details asks "Discard this session?" before leaving; nothing was created (141 ms)
+    ✓ when Start Session is the only screen, hardware Back asks first instead of closing the app (118 ms)
+  tablet layouts (§2.4)
+    ✓ tablet landscape: vertical stepper | step content | live device column with the eight live checks (191 ms)
+    ✓ tablet portrait: vertical stepper | step content, no device column; step 2 previews sit in the content (296 ms)
+PASS src/features/session-live/live-stop-handover.test.tsx
+  E2E-P-4 / E2E-T-4: a stop made on another console hands the monitor over to Finalizing without an empty frame
+    ✓ phonePortrait: every commit after the pushed stop draws the monitor or Finalizing; the first one without the monitor draws the Finalizing card (588 ms)
+    ✓ tabletLandscape: every commit after the pushed stop draws the monitor or Finalizing; the first one without the monitor draws the Finalizing card (361 ms)
+    ✓ the in-place screen is the Finalizing card in its stopping state, with no enter motion (it is visible in that very commit) (277 ms)
+  the hand-over mark (pure)
+    ✓ matches only the session that was handed over; a deep link into Finalizing still enters with motion
+PASS src/features/evidence/live-evidence-metadata-record.test.tsx
+  E2E-T-6: the Metadata tab of a Core-only item shows the Core record (web parity)
+    ✓ media NONE (a session recorded on the Core): "Core record" with the item's values; no claim of simulation (617 ms)
+    ✓ the Core did not answer operation 40: the record still shows, and the line says the reference is unavailable (no claim that no package exists) (403 ms)
+    ✓ a DEMO_PACKAGE item keeps the bundled manifest (unchanged), on the phone as well (393 ms)
+  evidenceRecordJson (pure): the web's record keys, the mode's label
+    ✓ Simulated mode says it is the simulator's record; Live mode never says so (230 ms)
+    findNodeHandle is deprecated in StrictMode. findNodeHandle was passed an instance of View which is inside StrictMode. Instead, add a ref directly to the element you want to reference. Learn more about using refs safely here: https://react.dev/link/strict-mode-find-node
+    findNodeHandle is deprecated in StrictMode. findNodeHandle was passed an instance of Text which is inside StrictMode. Instead, add a ref directly to the element you want to reference. Learn more about using refs safely here: https://react.dev/link/strict-mode-find-node
+PASS src/features/rbac/role-gate-r2.test.tsx
+  roleGateFor (pure): the permission, the role the sentence names, and an unknown role
+    ✓ SESSION_START: INVESTIGATOR and SUPERVISOR hold it, TECHNICIAN is locked; the sentence names the Investigator role
+    ✓ MAINTENANCE: only the TECHNICIAN holds it (the Core refuses startSoftwareUpdate to the others) (4 ms)
+    ✓ no signed-in role yet: not allowed, but not "locked" (no sentence, and a route guard does not leave) (1 ms)
+  Home quick action: Start Session needs SESSION_START (E2E-P-5)
+    ✓ TECHNICIAN: the primary action is disabled with "Requires the Investigator role"; a press opens nothing (81 ms)
+    ✓ INVESTIGATOR: enabled, no sentence; a press opens the wizard (59 ms)
+    ✓ the ways back to an active session are not gated (they open no session): a TECHNICIAN keeps "Return to live session" (46 ms)
+  Sessions hub: Start New Session needs SESSION_START (E2E-P-5)
+    ✓ TECHNICIAN: disabled with "Requires the Investigator role"; a press opens nothing (283 ms)
+    ✓ SUPERVISOR: enabled (SESSION_START is part of the role), no sentence (174 ms)
+  /session/new by any other way: the route refuses a role without SESSION_START
+    ✓ TECHNICIAN, a deep link: Home, ONE toast "Not permitted" / "Requires the Investigator role", the wizard never renders (39 ms)
+    ✓ INVESTIGATOR, the same link: the wizard (78 ms)
+    ✓ TECHNICIAN after a later push of the link (the guard decides per visit) (70 ms)
+  System Maintenance: Install update needs MAINTENANCE (O-2)
+    ✓ INVESTIGATOR: disabled with "Requires the Technician role"; a press starts nothing (80 ms)
+    ✓ SUPERVISOR: disabled as well (the Core refuses the update to the role) (47 ms)
+    ✓ TECHNICIAN: enabled, no sentence; a press starts the update (89 ms)
+PASS src/features/settings/live-settings-sites.test.tsx (7.284 s)
+  S2-7: Run diagnostics (operation 65)
+    ✓ success: the sheet opens only after the Core accepted the run; busy at once, spinner late (LB-1); one request; the Core's words (484 ms)
+    ✓ refusal: a 403 NOT_PERMITTED is the denied toast; the sheet stays closed and the button is released (342 ms)
+    ✓ outage: "Core server unreachable" with "Nothing was changed."; the sheet stays closed; no automatic retry (LB-6) (320 ms)
+    ✓ a limit (429) is worded as a limit, never as an outage (LB-10) (365 ms)
+  S2-7: Install update (operation 67)
+    ✓ success (TECHNICIAN, MAINTENANCE): the started toast only after the Core's 202; DEMO chip and the Core's words (260 ms)
+    ✓ R2 (E-fix FX-M2, O-2): a SUPERVISOR lacks MAINTENANCE: Install update is disabled with "Requires the Technician role" and a press sends nothing (125 ms)
+    ✓ refusal: the Core's 403 (its `notPermitted` example, a role lost on the Core before the push) is still the denied toast naming the Technician role (116 ms)
+    ✓ a session is open: the Core's 409 is the warning the simulator's refusal shows (186 ms)
+    ✓ outage: the offline toast; nothing changes (227 ms)
+  S2-7: the Demo controls (operations 73, 74, 52, 72, 33)
+    ✓ inject and clear MIC 2 clip: the toast after the 204; the clear sends the latch reset as the NEXT command; the Core's words (406 ms)
+    ✓ load a scenario (answer first): the chip and the toast only once the snapshot of the new epoch is in (CL-18); Reset loads idle (393 ms)
+    ✓ recover a session in FAULT (operation 33): the toast after the 202 (402 ms)
+    ✓ DEMO_DISABLED: the flag was turned off after the sign-in — the 403 says so truthfully, and the button is released (238 ms)
+    ✓ refusal: the Core's 403 NOT_PERMITTED (its `notPermitted` example) is the denied toast (287 ms)
+    ✓ outage: the offline toast; nothing is injected (320 ms)
+  AC-C-52: the Demo controls show in LIVE mode only with DEMO_CONTROL and the Core's demo flag
+    ✓ SUPERVISOR with the flag on: the panel (174 ms)
+    ✓ INVESTIGATOR (no DEMO_CONTROL): no panel, one true line; no demo request can be sent (112 ms)
+    ✓ SUPERVISOR, the Core server without its demo flag: no panel, the flag line (93 ms)
+    ✓ a role change the Core pushes takes the panel away (`session.updated`, §6.3) (131 ms)
+  S5-7: the role's permissions in the Profile sheet
+    ✓ SUPERVISOR: the shared table's ten grants (W16's three included), labelled, under the Core's words; a pushed role change re-lists them (225 ms)
+    ✓ the link down: the list is a display hint and stays; no toast, no request (272 ms)
+  StrictMode (D158, F69-1): nothing of Settings starts on mount; one press is one request
+    ✓ maintenance under StrictMode sends no command at mount (313 ms)
+    ✓ security under StrictMode sends no command at mount (233 ms)
+    ✓ preferences under StrictMode sends no command at mount (427 ms)
+    ✓ Run diagnostics under StrictMode: one press, one request (282 ms)
+PASS src/features/home/stack-proof-source.test.tsx
+  Stack Check names the data source the app really uses (E2E-P-2)
+    ✓ LIVE: the card says Live and the Core server; it no longer claims the local mock-core (45 ms)
+    ✓ HEARTBEAT: the card names the mock-core heartbeat over adb reverse (21 ms)
+    ✓ SIMULATED (also the value outside the runtime provider): the card says the Core runs inside the app (17 ms)
+    ✓ the three lines differ, and none claims a source it is not (the LIVE line never says Simulated) (1 ms)
+PASS src/features/devices/devices-live-static.test.ts
+  Devices takes the Core through the light Live API (CLG c, AC-C-53)
+    ✓ reads the folder: every production file, sub-folders included (1 ms)
+    ✓ no production file calls the simulator's action hook
+    ✓ no production file reads `.actions` of a `Sim`: every `.actions` left is a style (2 ms)
+    ✓ the detail's four calls: `useCoreActions`, each through `settle`; a Live rejection goes to the presenter first (2 ms)
+  what belongs to the runtime stays there (rules 3, 4 and 7)
+    ✓ the folder names no network API, no Core server address, no storage package, no Live source module, no timer (1 ms)
+  one LIVE idiom (rule 5)
+    ✓ the LIVE wording is picked from `useCoreLink().source` in one file, never from a preference or the data-mode hook (1 ms)
+  the copy (rule 8; §3.2)
+    ✓ the text LIVE mode adds says nothing about a simulation; the texts it replaces did
+    ✓ no `SIM-GAP` marker was added: the folder keeps the 17 markers of `acaff20` (KI-07 stays 13 IDs / 62 markers) (1 ms)
+    ✓ the copy of Simulated mode is as it was at `acaff20`: 44 texts, one digest
+PASS src/features/rbac/live-role-gate-r2.test.tsx
+  R2 in LIVE mode: a role change pushed by the Core re-gates the controls in place, without a sign-in
+    ✓ INVESTIGATOR -> TECHNICIAN -> INVESTIGATOR: Start locks and unlocks; Install update unlocks and locks; one sign-in only (289 ms)
+PASS src/features/session-summary/summary-live-static.test.ts
+  the three folders take the Core through the light Live API (CLG c, AC-C-53)
+    ✓ reads all three folders: every production file, sub-folders included (1 ms)
+    ✓ no production file calls the simulator's action hook
+    ✓ no production file reads `.actions` of a `Sim`: every `.actions` left is a style (3 ms)
+    ✓ the one Core call: `useCoreActions`, through `settle`, its rejection handed to the presenter first in LIVE (1 ms)
+  what belongs to the runtime stays there (rules 3, 4 and 9)
+    ✓ the folders name no network API, no Core server address, no storage package and no Live source module; the runtime only through its barrel (1 ms)
+  one LIVE idiom, one pending control, one link notice (rule 5; 09b §8)
+    ✓ the mode is read from `useCoreLink().source` only; the link notice is `useCoreLinkNotice()`; no own link rule (1 ms)
+    ✓ every control that sends the acknowledgement is a `usePendingPress()` of the runtime, with `busyState` and the kit's spinner; no copy of the hook (1 ms)
+  nothing starts a Core command from an effect (decision D158, F69-1)
+    ✓ the acknowledgement is called from the three press handlers only, never inside an effect
+  the copy (rule 8)
+    ✓ the Summary's LIVE text says nothing about a simulation; the Simulated copy is the step-80 copy (1 ms)
+    ✓ no `SIM-GAP` marker was added: the three folders hold the one step-80 marker only
+Test Suites: 10 passed, 10 total
+Tests:       92 passed, 92 total
+Time:        16.66 s
+(the exit status was not captured through the pipe; the summary above shows 0 failed suites and 0 failed tests)

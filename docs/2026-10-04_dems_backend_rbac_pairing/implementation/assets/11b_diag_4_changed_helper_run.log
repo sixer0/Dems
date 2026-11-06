@@ -1,0 +1,7 @@
+[12:23:26.398] run (the changed helper) {"prefix":"dems_test_step_33b_tmdaz29d_","server":{"role":"dems_owner","address":"127.0.0.1","port":4432,"version":"18.4"}}
+[12:25:35.684] fix_av_a: database.drop() while a backend without a role (pid 62950) was on it {"ms":1777,"threw":null,"dropped":true,"databaseExists":false,"retriedDropsOfTheFileRun":[{"name":"dems_test_step_33b_tmdaz29d_f01_fix_av_a","refusals":7}]}
+[12:25:41.981] fix_av_b: database.drop() while a backend without a role (pid 63003) was on it {"ms":2069,"threw":null,"dropped":true,"databaseExists":false,"retriedDropsOfTheFileRun":[{"name":"dems_test_step_33b_tmdaz29d_f01_fix_av_a","refusals":7},{"name":"dems_test_step_33b_tmdaz29d_f02_fix_av_b","refusals":8}]}
+[12:25:42.010] teardown report of the owner {"dropped":["dems_test_step_33b_tmdaz29d_tpl_x_diag"],"remaining":[],"failed":[],"retriedDrops":[{"name":"dems_test_step_33b_tmdaz29d_f01_fix_av_a","refusals":7},{"name":"dems_test_step_33b_tmdaz29d_f02_fix_av_b","refusals":8}]}
+[12:25:42.011] the line of the global setup: forced drops that needed a retry: 2 (15 refusal(s) with SQLSTATE 42501 while a backend that the owner role may not end, such as an autovacuum worker, was on the database; each drop then went through)
+[12:25:42.014] databases with the prefix dems_test_step_33b_ now []
+exit=0

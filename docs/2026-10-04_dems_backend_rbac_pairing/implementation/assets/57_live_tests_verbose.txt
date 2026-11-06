@@ -1,0 +1,169 @@
+## W57 CLG (b): verbose run of the four new Live test files. Fresh run 2026-10-05 11:36:24 to 11:36:38 WIB by coder-execution-local (step-79 evidence repair). Node v26.8.2, npm 11.19.1, --maxWorkers=2 --verbose.
+## Files: pairing-live.test.tsx (27), pairing-live-model.test.ts (12), pairing-live-static.test.ts (10), stack-check-service-name.test.tsx (2) = 4 suites / 51 tests / exit 0. ANSI colour codes stripped. Scanned for secrets: 0 password / 0 pairing-code / 0 credential-prefix / 0 bearer / 0 cookie. No marker code appears (it is assembled in-file and never printed).
+
+
+> @dems/mobile@0.1.0 test
+> jest src/features/pairing/pairing-live.test.tsx src/features/pairing/pairing-live-model.test.ts src/features/pairing/pairing-live-static.test.ts src/features/pairing/stack-check-service-name.test.tsx --maxWorkers=2 --verbose
+
+  console.warn
+    Uniwind - We couldn't find your variable --theme. Make sure it's used at least once in your className, or define it in a static theme as described in the docs: https://docs.uniwind.dev/api/use-css-variable
+
+      88 |     if (created === null) throw new Error('jest is a debug build: a Live source is built');
+      89 |     mobile = created;
+    > 90 |     const { unmount } = render(
+         |                               ^
+      91 |       <AppProviders sim={created.sim} queryClient={queryClient()} safeAreaMetrics={METRICS} heartbeatSocketFactory={() => new MockCoreSocket()}>
+      92 |         <StackCheckRoute motion={undefined} />
+      93 |       </AppProviders>,
+
+      at Logger.warn (../../node_modules/uniwind/src/core/logger.ts:11:17)
+      at warn (../../node_modules/uniwind/src/hooks/useCSSVariable/useCSSVariable.ts:20:12)
+      at logDevError (../../node_modules/uniwind/src/hooks/useCSSVariable/useCSSVariable.ts:33:17)
+          at Array.forEach (<anonymous>)
+      at forEach (../../node_modules/uniwind/src/hooks/useCSSVariable/useCSSVariable.ts:31:15)
+      at getCSSVariable (../../node_modules/uniwind/src/hooks/useCSSVariable/useCSSVariable.ts:79:34)
+      at mountReducer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:5136:28)
+      at Object.useReducer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15997:18)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.useReducer (../../node_modules/react/cjs/react.development.js:1257:34)
+      at useCSSVariable (../../node_modules/uniwind/src/hooks/useCSSVariable/useCSSVariable.ts:96:44)
+      at useLibraryTheme (../../node_modules/heroui-native/src/helpers/internal/hooks/use-library-theme.ts:22:33)
+      at useHasDefaultThemeBackground (../../node_modules/heroui-native/src/components/theme-background/theme-background.tsx:33:32)
+      at HeroUINative.Surface.Root (../../node_modules/heroui-native/src/components/surface/surface.tsx:84:67)
+      at Object.react_stack_bottom_frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15670:20)
+      at renderWithHooks (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4863:22)
+      at updateForwardRef (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:6707:19)
+      at beginWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8611:18)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2315:13)
+      at performUnitOfWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13224:22)
+      at workLoopSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13068:41)
+      at renderRootSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13049:11)
+      at performWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12181:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2908:7)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:884:10)
+      at actImplementation (../../node_modules/@testing-library/react-native/src/act.ts:30:25)
+      at renderWithAct (../../node_modules/@testing-library/react-native/src/render-act.ts:13:11)
+      at renderInternal (../../node_modules/@testing-library/react-native/src/render.tsx:69:33)
+      at renderInternal (../../node_modules/@testing-library/react-native/src/render.tsx:44:10)
+      at Object.<anonymous> (src/features/pairing/stack-check-service-name.test.tsx:90:31)
+      at asyncGeneratorStep (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+      at ../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:22:7
+      at Object.<anonymous> (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:14:12)
+
+  console.info
+    HeroUI Native Styling Principles
+    • className: this is your go-to styling solution. Use Tailwind CSS classes via className prop on all components.
+    • StyleSheet precedence: The style prop (StyleSheet API) has precedence over className when both are provided. This allows you to override Tailwind classes when needed.
+    • Animated styles: Some style properties are animated using react-native-reanimated and have precedence over className. To identify which styles are animated:
+      - Hover over className in your IDE - TypeScript definitions show which properties are occupied by animated styles
+      - Check component documentation - Each component page includes a link to the component's style source
+    • If styles are occupied by animation, modify them via the animation prop on components that support it.
+    • To deactivate animated style completely and apply your own styles, use isAnimatedStyleActive prop.
+    💡 To disable this message, set config.devInfo.stylingPrinciples to false
+
+      at info (../../node_modules/heroui-native/src/helpers/internal/hooks/use-dev-info.ts:25:15)
+
+  console.info
+    HeroUI Native Styling Principles
+    • className: this is your go-to styling solution. Use Tailwind CSS classes via className prop on all components.
+    • StyleSheet precedence: The style prop (StyleSheet API) has precedence over className when both are provided. This allows you to override Tailwind classes when needed.
+    • Animated styles: Some style properties are animated using react-native-reanimated and have precedence over className. To identify which styles are animated:
+      - Hover over className in your IDE - TypeScript definitions show which properties are occupied by animated styles
+      - Check component documentation - Each component page includes a link to the component's style source
+    • If styles are occupied by animation, modify them via the animation prop on components that support it.
+    • To deactivate animated style completely and apply your own styles, use isAnimatedStyleActive prop.
+    💡 To disable this message, set config.devInfo.stylingPrinciples to false
+
+      at info (../../node_modules/heroui-native/src/helpers/internal/hooks/use-dev-info.ts:25:15)
+
+(node:47474) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS src/features/pairing/stack-check-service-name.test.tsx
+  Stack Check prints the name of the service that answered
+    ✓ LIVE mode: the Core server, with its own version (167 ms)
+    ✓ SIMULATED mode: mock-core, the line as it was (86 ms)
+
+PASS src/features/pairing/pairing-live-model.test.ts
+  the Live link as the screen words it
+    ✓ OFFLINE and STALE show the notice, ONLINE hides it, and the transients keep what is shown (1 ms)
+    ✓ a dead link that keeps retrying never flickers the notice: OFFLINE, CONNECTING, OFFLINE …
+    ✓ `online` only when a redeem would be sent; `offline` while the notice shows; else `connecting`
+  outcomes of a redeem
+    ✓ an answered redeem: as the simulator's, and the hand-off counts from the moment the answer landed (1 ms)
+    ✓ a 429 is a limit, never a wrong code: no count of attempts, and the wait is at least `retry-after` (decision D116) (1 ms)
+    ✓ no judgement of the code: the reason says whether the code may be used up (1 ms)
+    ✓ a stopped Live source shows nothing: the screen that sent the code is gone
+    ✓ Retry is paced 3 s, 6 s, 12 s, and withdrawn after the third attempt in a row
+    ✓ which outcomes the Core judged, which keep the typed code, and when the next attempt may start
+  the connection pane in LIVE mode
+    ✓ Discover is in error and the ring critical while the Core is unreachable; an attempt in flight and a paired tablet keep their view
+    ✓ the status line: what is in flight, then the pairing, then the link, then the last outcome (1 ms)
+    ✓ the notices of the gate: a refusal of the Core is danger, an unpair that was asked for is information
+
+PASS src/features/pairing/pairing-live-static.test.ts
+  the pairing folder takes the Core through the light Live API (CLG c, AC-C-53)
+    ✓ reads the whole folder (1 ms)
+    ✓ the matchers find what they look for, and nothing else
+    ✓ no production file calls the simulator's action hook
+    ✓ no production file reads `.actions` of a `Sim`: the only `.actions` in the folder is a style of two cards (1 ms)
+    ✓ the flow hook takes the actions from `useCoreActions` and consumes them through `settle`
+  what belongs to the runtime stays there
+    ✓ the folder names no network API, no Core server address, no storage package and no Live source module (1 ms)
+  the copy (§3.2, decision D124)
+    ✓ LIVE mode never says "simulated", "demo" or "mock"; the one control that names the simulator is the switch to it
+    ✓ LIVE mode names no Core by a fixed name and shows no code: an identity comes from the Core, a code from a supervisor (4 ms)
+    ✓ a refused code is never explained (SR-29): no text of LIVE mode says expired, used, cancelled or closed
+    ✓ the copy of Simulated mode is as it was at `acaff20`: 51 texts, every key and every text (one digest) (1 ms)
+
+(node:47473) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS src/features/pairing/pairing-live.test.tsx (13.195 s)
+  LIVE mode, unpaired: the screen says what is true (decision D124, item a; §3.2, §9.4)
+    ✓ reads LIVE and never "simulated"; shows no Core identity, because the tablet has none; offers no way back while the gate holds (268 ms)
+    ✓ tablet landscape: both panes side by side, the step descriptions name no empty Core (76 ms)
+    ✓ "Use Simulated mode" stores the simulator as the source and goes to the boot router (84 ms)
+  a correct code (AC-C-75, MP-5, MP-6)
+    ✓ stores the credential, opens the gate and hands off; the marker code is in no storage and no log (SD-23) (225 ms)
+    ✓ with a screen underneath (opened from sign-in), the hand-off goes back to it (145 ms)
+  the credential is written before the action settles (MP-6)
+    ✓ at the moment anything says "paired", secure storage already holds the credential (144 ms)
+    ✓ the app dies between the answer and the settle: the only copy of the credential is in storage, and the next start is PAIRED (447 ms)
+    ✓ a credential that cannot be stored: "not available", the code is cleared, and the runtime removes the registration with one unpair (214 ms)
+  a refused code (AC-C-76, SR-29)
+    ✓ a wrong code: "Code not accepted" with the lock's count, the slots cleared; never why (268 ms)
+    ✓ 423: the countdown to the Core's `lockedUntil` on the Live clock; the slots are disabled; the text blames nobody (1362 ms)
+  a 429 on redeem is a limit, never a wrong code (decision D116, finding F76)
+    ✓ says "wait", counts no attempt, keeps the code, and Retry opens after `retry-after` (1278 ms)
+  no judgement of the code: the error form (§9.4 "failed, error form")
+    ✓ a 500: "Pairing is not available right now." with a paced Retry (3 s, 6 s, 12 s), then no Retry (1404 ms)
+    ✓ after an answer that judges the code, and the code typed again, the pacing starts anew (766 ms)
+    ✓ a request that left and got no answer: the screen says the code may be used up (145 ms)
+    ✓ the link drops between Pair and `commitAt`: nothing is sent, and the offline notice says why (296 ms)
+  Cancel (AC-C-77)
+    ✓ before `commitAt` sends no request; while the gate holds it ends the attempt and stays on the screen (177 ms)
+    ✓ is disabled once the request is out: the answer decides (199 ms)
+  the Core server unreachable (§3.5, §9.4 "offline")
+    ✓ slots disabled, a danger Alert with a paced Retry that reconnects, and no flicker while the socket retries (335 ms)
+  unpair on the device (AC-C-80, MP-7)
+    ✓ calls operation 22, deletes the three items and stays on the screen with the notice (648 ms)
+    ✓ while the link is down it is refused: no request, nothing deleted, the tablet stays PAIRED (571 ms)
+  re-pairing after a reinstall (AC-C-81, MP-8, E7)
+    ✓ with an empty secure store the tablet is unpaired again, and a new pairing shows a NEW device ID (301 ms)
+  the notices of the gate (§9.4, §6.6)
+    ✓ `unknown`: a stored credential the Core does not know; the notice goes with the next attempt (192 ms)
+    ✓ `revoked`: the Core revoked this tablet while the screen was open (119 ms)
+  `revoked` while a recording ran (§6.6)
+    ✓ the notice adds that the recording continues on the Core (190 ms)
+  the controller itself (`usePairingFlow`)
+    ✓ `cancel()` does nothing once the request is out, whatever calls it (11 ms)
+  SIMULATED mode, where the existing tests do not reach: a simulator that throws
+    ✓ `pair` throws: the screen's own generic Alert, and the slots are cleared (146 ms)
+    ✓ `unpair` throws: "Could not unpair. Please try again.", the dialog closes, the tablet stays paired (490 ms)
+
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+Test Suites: 4 passed, 4 total
+Tests:       51 passed, 51 total
+Snapshots:   0 total
+Time:        13.901 s, estimated 14 s
+Ran all test suites matching /src\/features\/pairing\/pairing-live.test.tsx|src\/features\/pairing\/pairing-live-model.test.ts|src\/features\/pairing\/pairing-live-static.test.ts|src\/features\/pairing\/stack-check-service-name.test.tsx/i.

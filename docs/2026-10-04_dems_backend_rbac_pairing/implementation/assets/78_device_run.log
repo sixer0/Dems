@@ -1,0 +1,318 @@
+
+== 23:53:10 0. before (no reset): ports free?; dems_lane_1 as it is
+   audit_log                152
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 23:53:10 1. start the lane backend (demo flag off)
+npm PID 25830, listener PID 25886
+   "port":4421,"database":"dems_lane_1","demoControls":false
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T16:53:11.468Z","uptimeMs":241,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 23:53:11 2. device session: phone, Metro 8083, device tcp:4420 -> host tcp:4421
+[device-session phone 23:53:11] lock held; hard cap 600 s, until 00:03:11 (watchdog PID 25945)
+[device-session phone 23:53:11] session serial: emulator-5554 (dems2_phone)
+[device-session phone 23:53:11] emulator-5554: screen awake, no keyguard
+[device-session phone 23:53:11] Metro PID 25981 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session phone 23:53:14] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 23:53:14] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 23:53:14] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), lane port 4421, run w78235310
+-- lock: isKeyguardShowing=false; fps "count":1
+-- before: prefs {"coreLinkSource":"SIMULATED"}; simulator auth 
+== L1. LIVE: cold start on the paired phone -> /login ==
+-- am start -W -d 'demsdemo:///?core=LIVE'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 4 s for: runtime.live.ready
+-- waited 2 s for: DEMS-LIVE\] GET /api/v1/pairing/device 200
+-- screencap: 78_phone_login_live.png (1722475 bytes), focus: mCurrentFocus=Window{8ee5d06 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+== L2. LIVE: scripted sign-in with the seeded SUPERVISOR ==
+-- typed the operator username (andi.pratama, role SUPERVISOR)
+-- typed the demo password (not shown)
+-- pressed the keypad's go key
+-- the app's sign-in request: status 200, request ID 3beb3f8b-c7a3-4e9f-9256-c9af6cb84bcb
+-- credential/token lines: device JS log 0; backend log 0
+-- sign-in step exit: 0 (0 = Core answered 200 and no credential leaked)
+-- screencap: 78_phone_after_sign_in.png (225320 bytes), focus: mCurrentFocus=Window{8ee5d06 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+== STEPS: supervised loop on /Users/gsp-budi/Documents/DEMS/.cache/w78/out/cmd.txt (lines '<n> <verb> <args>') ==
+-- [23:54:20] step 1: tap 540 1443
+   tapped 540 1443
+-- [23:54:20] step 1 finished
+-- [23:54:20] step 2: wait 2
+-- [23:54:23] step 2 finished
+-- [23:54:23] step 3: link demsdemo:///devices/POE-SWITCH
+-- am start -W -d 'demsdemo:///devices/POE-SWITCH'
+   Status: ok
+   LaunchState: UNKNOWN (0)
+   TotalTime: 0
+-- [23:54:23] step 3 finished
+-- [23:54:23] step 4: wait 4
+-- [23:54:27] step 4 finished
+-- [23:54:27] step 5: shot devices_detail_live_try
+-- screencap: 78_phone_devices_detail_live_try.png (175832 bytes), focus: mCurrentFocus=Window{8ee5d06 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- [23:54:27] step 5 finished
+-- [23:54:40] step 6: shot detail_live
+-- screencap: 78_phone_detail_live.png (175832 bytes), focus: mCurrentFocus=Window{8ee5d06 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- [23:54:40] step 6 finished
+-- [23:54:40] step 7: tap 534 2067
+   tapped 534 2067
+-- [23:54:40] step 7 finished
+-- [23:54:40] step 8: wait 2
+-- [23:54:42] step 8 finished
+-- [23:54:42] step 9: shot dialog_live
+-- screencap: 78_phone_dialog_live.png (233158 bytes), focus: mCurrentFocus=Window{8ee5d06 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- [23:54:42] step 9 finished
+-- [23:54:43] step 10: dump 
+   content-desc="Back to Devices" bounds="[32,74][158,200]"
+   text="PoE Switch" content-desc="" bounds="[178,99][1048,173]"
+   text="Active" content-desc="" bounds="[484,420][596,473]"
+   content-desc="Active" bounds="[42,568][264,642]"
+   text="Active" content-desc="" bounds="[120,578][232,631]"
+   text="POE-SWITCH" content-desc="" bounds="[846,584][1038,626]"
+   content-desc="Device details" bounds="[42,684][666,794]"
+   content-desc="Overview" bounds="[50,692][304,787]"
+   text="Overview" content-desc="" bounds="[81,707][272,770]"
+   content-desc="Health" bounds="[314,692][508,787]"
+   text="Health" content-desc="" bounds="[345,707][476,770]"
+   content-desc="Log" bounds="[519,692][658,787]"
+   text="Log" content-desc="" bounds="[550,707][626,770]"
+   content-desc="Status, Active" bounds="[42,857][1038,994]"
+   text="Status" content-desc="" bounds="[84,899][863,952]"
+   text="Active" content-desc="" bounds="[894,899][996,952]"
+   content-desc="Ports, 1 active · 1 spare" bounds="[42,995][1038,1132]"
+   text="Ports" content-desc="" bounds="[84,1037][686,1090]"
+   text="1 active · 1 spare" content-desc="" bounds="[717,1037][996,1090]"
+   content-desc="PoE CAM 1, Link up" bounds="[42,1133][1038,1270]"
+   text="PoE CAM 1" content-desc="" bounds="[84,1175][847,1228]"
+   text="Link up" content-desc="" bounds="[878,1175][996,1228]"
+   content-desc="PoE CAM 2/AUX, Spare" bounds="[42,1271][1038,1408]"
+   text="PoE CAM 2/AUX" content-desc="" bounds="[84,1313][869,1366]"
+   text="Spare" content-desc="" bounds="[900,1313][996,1366]"
+   content-desc="Power draw, 18.6 W" bounds="[42,1409][1038,1546]"
+   text="Power draw" content-desc="" bounds="[84,1451][850,1504]"
+   text="18.6 W" content-desc="" bounds="[881,1451][996,1504]"
+   content-desc="Budget, 60 W" bounds="[42,1547][1038,1684]"
+   text="Budget" content-desc="" bounds="[84,1589][881,1642]"
+   text="60 W" content-desc="" bounds="[912,1589][996,1642]"
+   content-desc="Run diagnostics" bounds="[42,2016][357,2121]"
+   text="Diagnostics" content-desc="" bounds="[126,2042][334,2095]"
+   content-desc="Test signal" bounds="[378,2016][697,2121]"
+   text="Test signal" content-desc="" bounds="[473,2042][664,2095]"
+   content-desc="Restart" bounds="[718,2016][1038,2121]"
+   text="Restart" content-desc="" bounds="[845,2042][972,2095]"
+   text="Requires the Technician role" content-desc="" bounds="[0,2141][1080,2204]"
+   content-desc="Main navigation" bounds="[0,2204][1080,2424]"
+   content-desc="Home" bounds="[0,2205][216,2361]"
+   text="Home" content-desc="" bounds="[62,2299][153,2341]"
+   content-desc="Sessions" bounds="[216,2205][432,2361]"
+   text="Sessions" content-desc="" bounds="[255,2299][393,2341]"
+   content-desc="Evidence" bounds="[432,2205][648,2361]"
+   text="Evidence" content-desc="" bounds="[469,2299][610,2341]"
+   content-desc="Devices" bounds="[648,2205][864,2361]"
+   text="Devices" content-desc="" bounds="[694,2299][817,2341]"
+   content-desc="More" bounds="[864,2205][1080,2361]"
+   text="More" content-desc="" bounds="[932,2299][1012,2341]"
+   content-desc="Send a test signal to PoE Switch?, A short test tone or pattern is sent and the Core writes the command to its audit log." bounds="[53,976][1028,1449]"
+   text="Send a test signal to PoE Switch?" content-desc="" bounds="[105,1028][975,1102]"
+   text="A short test tone or pattern is sent and the Core writes the command to its audit log." content-desc="" bounds="[105,1102][975,1228]"
+   content-desc="Cancel" bounds="[479,1271][708,1397]"
+   text="Cancel" content-desc="" bounds="[523,1302][663,1365]"
+   content-desc="Confirm" bounds="[729,1271][976,1397]"
+   text="Confirm" content-desc="" bounds="[771,1302][934,1365]"
+-- [23:54:45] step 10 finished
+-- [23:54:54] step 11: tap 852 1334
+   tapped 852 1334
+-- [23:54:54] step 11 finished
+-- [23:54:54] step 12: wait 1
+-- [23:54:55] step 12 finished
+-- [23:54:55] step 13: shot test_signal_toast_live
+-- screencap: 78_phone_test_signal_toast_live.png (201362 bytes), focus: mCurrentFocus=Window{8ee5d06 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- [23:54:56] step 13 finished
+-- [23:54:56] step 14: live 
+   DEMS-LIVE] GET /api/v1/auth/session 401
+   DEMS-LIVE] GET /api/v1/pairing/device 200
+   DEMS-LIVE] GET /api/v1/auth/status 200
+   DEMS-LIVE] POST /api/v1/auth/sign-in 200
+   DEMS-LIVE] POST /api/v1/auth/touch 200
+   DEMS-LIVE] POST /api/v1/device/{id}/test-signal 204
+-- [23:54:56] step 14 finished
+-- [23:54:56] step 15: wait 3
+-- [23:54:59] step 15 finished
+-- [23:54:59] step 16: tap 585 738
+   tapped 585 738
+-- [23:54:59] step 16 finished
+-- [23:54:59] step 17: wait 2
+-- [23:55:01] step 17 finished
+-- [23:55:01] step 18: shot log_live
+-- screencap: 78_phone_log_live.png (146660 bytes), focus: mCurrentFocus=Window{8ee5d06 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- [23:55:01] step 18 finished
+-- [23:55:14] step 19: simstart 
+   live.misuse (must be 0): 0; credential/token lines (must be 0): 0
+-- am start -W -d 'demsdemo:///?core=SIMULATED'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+   waited 2 s for runtime.sim.hydrated; prefs {"coreLinkSource":"SIMULATED"}; simulator auth 
+-- [23:55:29] step 19 finished
+-- [23:55:29] step 20: wait 4
+-- [23:55:33] step 20 finished
+-- [23:55:33] step 21: shot simulated_start
+-- screencap: 78_phone_simulated_start.png (1737198 bytes), focus: mCurrentFocus=Window{627207 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- [23:55:37] step 21 finished
+-- [23:55:37] step 22: simsignin 
+-- typed the operator username (andi.pratama, role SUPERVISOR)
+-- typed the demo password (not shown)
+-- pressed the keypad's go key
+   simulated sign-in exit: 0
+-- [23:55:48] step 22 finished
+-- [23:55:48] step 23: wait 3
+-- [23:55:51] step 23 finished
+-- [23:55:51] step 24: shot simulated_after_sign_in
+-- screencap: 78_phone_simulated_after_sign_in.png (369065 bytes), focus: mCurrentFocus=Window{627207 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- [23:55:52] step 24 finished
+-- [23:56:05] step 25: tap 540 1410
+   tapped 540 1410
+-- [23:56:05] step 25 finished
+-- [23:56:05] step 26: wait 2
+-- [23:56:08] step 26 finished
+-- [23:56:08] step 27: link demsdemo:///devices/POE-SWITCH
+-- am start -W -d 'demsdemo:///devices/POE-SWITCH'
+   Status: ok
+   LaunchState: UNKNOWN (0)
+   TotalTime: 0
+-- [23:56:08] step 27 finished
+-- [23:56:08] step 28: wait 4
+-- [23:56:12] step 28 finished
+-- [23:56:12] step 29: shot detail_simulated
+-- screencap: 78_phone_detail_simulated.png (176222 bytes), focus: mCurrentFocus=Window{627207 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- [23:56:12] step 29 finished
+-- [23:56:12] step 30: tap 534 2067
+   tapped 534 2067
+-- [23:56:12] step 30 finished
+-- [23:56:12] step 31: wait 2
+-- [23:56:14] step 31 finished
+-- [23:56:14] step 32: shot dialog_simulated
+-- screencap: 78_phone_dialog_simulated.png (231668 bytes), focus: mCurrentFocus=Window{627207 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- [23:56:15] step 32 finished
+-- [23:56:15] step 33: dump 
+   content-desc="Back to Devices" bounds="[32,74][158,200]"
+   text="PoE Switch" content-desc="" bounds="[178,99][1048,173]"
+   text="Active" content-desc="" bounds="[484,420][596,473]"
+   content-desc="Active" bounds="[42,568][264,642]"
+   text="Active" content-desc="" bounds="[120,578][232,631]"
+   text="POE-SWITCH" content-desc="" bounds="[846,584][1038,626]"
+   content-desc="Device details" bounds="[42,684][666,794]"
+   content-desc="Overview" bounds="[50,692][304,787]"
+   text="Overview" content-desc="" bounds="[81,707][272,770]"
+   content-desc="Health" bounds="[314,692][508,787]"
+   text="Health" content-desc="" bounds="[345,707][476,770]"
+   content-desc="Log" bounds="[519,692][658,787]"
+   text="Log" content-desc="" bounds="[550,707][626,770]"
+   content-desc="Status, Active" bounds="[42,857][1038,994]"
+   text="Status" content-desc="" bounds="[84,899][863,952]"
+   text="Active" content-desc="" bounds="[894,899][996,952]"
+   content-desc="Ports, 1 active · 1 spare" bounds="[42,995][1038,1132]"
+   text="Ports" content-desc="" bounds="[84,1037][686,1090]"
+   text="1 active · 1 spare" content-desc="" bounds="[717,1037][996,1090]"
+   content-desc="PoE CAM 1, Link up" bounds="[42,1133][1038,1270]"
+   text="PoE CAM 1" content-desc="" bounds="[84,1175][847,1228]"
+   text="Link up" content-desc="" bounds="[878,1175][996,1228]"
+   content-desc="PoE CAM 2/AUX, Spare" bounds="[42,1271][1038,1408]"
+   text="PoE CAM 2/AUX" content-desc="" bounds="[84,1313][869,1366]"
+   text="Spare" content-desc="" bounds="[900,1313][996,1366]"
+   content-desc="Power draw, 18.6 W" bounds="[42,1409][1038,1546]"
+   text="Power draw" content-desc="" bounds="[84,1451][850,1504]"
+   text="18.6 W" content-desc="" bounds="[881,1451][996,1504]"
+   content-desc="Budget, 60 W" bounds="[42,1547][1038,1684]"
+   text="Budget" content-desc="" bounds="[84,1589][881,1642]"
+   text="60 W" content-desc="" bounds="[912,1589][996,1642]"
+   content-desc="Run diagnostics" bounds="[42,2016][357,2121]"
+   text="Diagnostics" content-desc="" bounds="[126,2042][334,2095]"
+   content-desc="Test signal" bounds="[378,2016][697,2121]"
+   text="Test signal" content-desc="" bounds="[473,2042][664,2095]"
+   content-desc="Restart" bounds="[718,2016][1038,2121]"
+   text="Restart" content-desc="" bounds="[845,2042][972,2095]"
+   text="Requires the Technician role" content-desc="" bounds="[0,2141][1080,2204]"
+   content-desc="Main navigation" bounds="[0,2204][1080,2424]"
+   content-desc="Home" bounds="[0,2205][216,2361]"
+   text="Home" content-desc="" bounds="[62,2299][153,2341]"
+   content-desc="Sessions" bounds="[216,2205][432,2361]"
+   text="Sessions" content-desc="" bounds="[255,2299][393,2341]"
+   content-desc="Evidence" bounds="[432,2205][648,2361]"
+   text="Evidence" content-desc="" bounds="[469,2299][610,2341]"
+   content-desc="Devices" bounds="[648,2205][864,2361]"
+   text="Devices" content-desc="" bounds="[694,2299][817,2341]"
+   content-desc="More" bounds="[864,2205][1080,2361]"
+   text="More" content-desc="" bounds="[932,2299][1012,2341]"
+   content-desc="Send a test signal to PoE Switch?, Simulated. A short test tone or pattern is sent and the command is written to the audit log." bounds="[53,944][1028,1480]"
+   text="Send a test signal to PoE Switch?" content-desc="" bounds="[105,996][975,1070]"
+   text="Simulated. A short test tone or pattern is sent and the command is written to the audit log." content-desc="" bounds="[105,1070][975,1259]"
+   content-desc="Cancel" bounds="[479,1302][708,1428]"
+   text="Cancel" content-desc="" bounds="[523,1333][663,1396]"
+   content-desc="Confirm" bounds="[729,1302][976,1428]"
+   text="Confirm" content-desc="" bounds="[771,1333][934,1396]"
+-- [23:56:17] step 33 finished
+-- [23:56:25] step 34: tap 852 1365
+   tapped 852 1365
+-- [23:56:25] step 34 finished
+-- [23:56:25] step 35: wait 1
+-- [23:56:26] step 35 finished
+-- [23:56:26] step 36: shot test_signal_toast_simulated
+-- screencap: 78_phone_test_signal_toast_simulated.png (204999 bytes), focus: mCurrentFocus=Window{627207 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- [23:56:26] step 36 finished
+-- [23:56:26] step 37: simreq 
+   Core requests after the SIMULATED launch (must be 0): 0
+-- [23:56:26] step 37 finished
+-- [23:56:26] step 38: link demsdemo:///more
+-- am start -W -d 'demsdemo:///more'
+   Status: ok
+   LaunchState: UNKNOWN (0)
+   TotalTime: 0
+-- [23:56:26] step 38 finished
+-- [23:56:27] step 39: wait 5
+-- [23:56:32] step 39 finished
+-- [23:56:32] step 40: shot more_simulated_top
+-- screencap: 78_phone_more_simulated_top.png (248676 bytes), focus: mCurrentFocus=Window{627207 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- [23:56:32] step 40 finished
+-- [23:56:45] step 41: tap 781 586
+   tapped 781 586
+-- [23:56:46] step 41 finished
+-- [23:56:46] step 42: wait 4
+-- [23:56:50] step 42 finished
+-- [23:56:50] step 43: shot simulated_after_sign_out
+-- screencap: 78_phone_simulated_after_sign_out.png (1634518 bytes), focus: mCurrentFocus=Window{627207 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- [23:56:50] step 43 finished
+-- [23:56:50] step 44: prefs 
+   prefs {"coreLinkSource":"SIMULATED"}; simulator auth 
+-- [23:56:50] step 44 finished
+-- [23:56:50] step 45: done 
+-- after: prefs {"coreLinkSource":"SIMULATED"}; simulator auth 
+-- lock at end: isKeyguardShowing=false; fps "count":1
+[device-session phone 23:56:51] Metro 25981 stopped
+[device-session phone 23:56:51] session ended with status 0
+device session exit=0
+
+== 23:56:51 3. backend request log during the session
+      1 GET /api/v1/auth/session 401 principal=device
+      1 GET /api/v1/auth/status 200 principal=device
+      1 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/device 200 principal=device
+      1 POST /api/v1/auth/sign-in 200 principal=device
+      1 POST /api/v1/auth/touch 200 principal=operator
+      1 POST /api/v1/device/:id/test-signal 204 principal=operator
+-- socket lines: 2 opened, 2 closed
+-- bearer/cookie/credential lines in the server log this run (must be 0): 0
+
+== 23:56:51 4. stop the backend and check nothing is left
+   {"level":30,"time":1791219411740,"pid":25886,"hostname":"GSP-Budis-MacBook-Air.local","msg":"shutdown complete"}
+lsof exit 1 (1 = none)
+   reverse: 
+   (no reverse line above = no rule left)
+   audit_log                158
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 23:56:52 end of run w78235310
+run exit=0

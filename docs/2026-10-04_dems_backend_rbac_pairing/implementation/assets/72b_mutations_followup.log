@@ -1,0 +1,22 @@
+# W72 mutation check (follow-up D169 adds H1-H4 and the Simulated hub test), 2026-10-06 01:25:06; 5 test files per run; the tree is not edited
+control (no mutation): exit=0 Tests:       50 passed, 50 total (11 s)
+X1  detected       9s  S4-5: the refresh stamp on the wall clock instead of the Live clock  | Tests:       5 failed, 45 passed, 50 total  | live-sessions.test.tsx, sessions-screen.test.tsx
+      e.g. Sessions hub › pull-to-refresh runs on the simulator clock and stamps "Updated"
+      e.g. S4-5: the refresh stamp reads the Live clock (no change) › success: pull-to-refresh lasts REFRESH_MS on the Live clock, stamps that time, and sends nothing
+H1  detected       8s  the stamp is recorded while the link is down (the skip dropped)  | Tests:       1 failed, 49 passed, 50 total  | live-sessions.test.tsx
+      e.g. S4-5: the refresh stamp reads the Live clock (no change) › outage (D169): with the link down a refresh records no "Updated" time (the stamp from before the outage stays); the rows keep the last replica; the Core's newer session arrives with the link, without a refresh; nothing is sent
+H2  detected       7s  the stamp is never recorded  | Tests:       5 failed, 45 passed, 50 total  | live-sessions.test.tsx, sessions-screen.test.tsx
+      e.g. Sessions hub › pull-to-refresh runs on the simulator clock and stamps "Updated"
+      e.g. S4-5: the refresh stamp reads the Live clock (no change) › success: pull-to-refresh lasts REFRESH_MS on the Live clock, stamps that time, and sends nothing
+H3  detected       7s  the link notice never shows  | Tests:       1 failed, 49 passed, 50 total  | live-sessions.test.tsx
+      e.g. S4-5: the refresh stamp reads the Live clock (no change) › the link notice (D169): above the rows while the Core link is down, through the reconnect attempts; gone at the first heartbeat; a refresh then stamps again
+H4  detected       9s  the link notice always shows (also online and in Simulated mode)  | Tests:       4 failed, 46 passed, 50 total  | live-sessions.test.tsx
+      e.g. the hub in LIVE mode lists the Core's sessions › phonePortrait: the Core's history newest first, the Core-only session on top with "Summary pending"; no simulation wording; nothing sent
+      e.g. the hub in LIVE mode lists the Core's sessions › tabletLandscape: the Core's history newest first, the Core-only session on top with "Summary pending"; no simulation wording; nothing sent
+## 5 detected, 0 not detected, 0 not applied, of 5
+## the mutated files in the tree, before and after: identical
+   96a65de742fbbc2d  src/features/session-finalizing/session-finalizing-screen.tsx
+   622463989c24dc49  src/features/session-summary/session-summary-screen.tsx
+   da1bda0facd076fe  src/features/session-summary/use-summary.ts
+   b96dfa9447e3a239  src/features/sessions/sessions-screen.tsx
+# finished 01:25:57

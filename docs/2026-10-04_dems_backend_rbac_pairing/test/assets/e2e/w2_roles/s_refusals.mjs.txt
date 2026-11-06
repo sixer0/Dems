@@ -1,0 +1,42 @@
+// Part A2: operations the role may NOT call, issued from the page context (same origin, the page's own
+// httpOnly cookie, the browser's own Origin header). Only reads and harmless commands are used, so a
+// defect that let a call through would change nothing that matters to the concurrent row (E2E-S):
+// no role, user, pairing, revoke, reset, scenario or fault call is ever sent.
+export default async (c, lib) => {
+  const role = process.env.W2_ROLE
+  const OPS = {
+    INVESTIGATOR: [
+      ['listUsers', 'GET', '/api/v1/admin/users', undefined, 'USER_ADMIN'],
+      ['listPairedDevices', 'GET', '/api/v1/pairing/devices', undefined, 'PAIRING_MANAGE'],
+      ['restartDevice', 'POST', '/api/v1/device/CAM-01/restart', {}, 'DEVICE_MANAGE'],
+      ['getDemoStatus', 'GET', '/api/v1/demo/status', undefined, 'DEMO_CONTROL'],
+    ],
+    TECHNICIAN: [
+      ['listUsers', 'GET', '/api/v1/admin/users', undefined, 'USER_ADMIN'],
+      ['listPairedDevices', 'GET', '/api/v1/pairing/devices', undefined, 'PAIRING_MANAGE'],
+      ['scanCaseNumber', 'POST', '/api/v1/session/case-number', {}, 'SESSION_START'],
+      ['addSessionNote', 'POST', '/api/v1/session/SES-99999999-9999/notes', { text: 'E2E-W2 refusal probe' }, 'SESSION_NOTE'],
+      ['getDemoStatus', 'GET', '/api/v1/demo/status', undefined, 'DEMO_CONTROL'],
+    ],
+  }[role]
+  await c.navigate(lib.ORIGIN + '/dashboard', 3000)
+  const who = await c.pageFetch('GET', '/api/v1/auth/session')
+  const out = { role, operator: who.body?.operator?.id, operatorRole: who.body?.operator?.role, page: await c.evaluate('location.href'), calls: [] }
+  for (const [op, method, path, body, permission] of OPS) {
+    const r = await c.pageFetch(method, path, body)
+    out.calls.push({
+      operation: op,
+      method,
+      path,
+      expectedPermission: permission,
+      at: new Date(r.at).toISOString(),
+      status: r.status,
+      code: r.body?.error?.code ?? null,
+      details: r.body?.error?.details ?? null,
+      message: r.body?.error?.message?.slice(0, 160) ?? null,
+      requestId: r.requestId,
+    })
+    await lib.sleep(400)
+  }
+  return out
+}

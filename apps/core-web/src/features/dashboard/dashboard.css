@@ -1,0 +1,977 @@
+/*
+ * Dashboard layout and surfaces (step 42; 01_specs §14.5.1; research/04 §3.1; D1 mockup).
+ *
+ * Grid (§14.5.1): 3|9, 5|7, 4|5|3, 6|6. At the xl tier (≥ 1600) the rows keep the ratio
+ * 340 : 256 : 180 : 148 and fill the content area exactly, so <main> does not scroll at
+ * 1920×1080 (AC-60: 968 px of rows and gutters → 338 / 255 / 179 / 147, all within ±8 px). The lg
+ * tier (1280–1599) uses 280 : 216 : 156 : 128. Below 1280 the rows size to their content and
+ * the page scrolls. The status strip (C) shares row 1 with the hero (B) and sits on its lower
+ * edge, as drawn.
+ *
+ * Layering: `@layer components`, so Tailwind utilities still override. Motion rules of the house
+ * (03_motion_spec §9.2): only transform and opacity animate here (plus the ProgressCircle
+ * stroke-dashoffset sweep of M-C-03, an SVG under 400 px, and its colour); glow changes are the
+ * opacity of pre-rendered layers, never box-shadow itself. Durations multiply by
+ * --motion-time-scale (proof mode). Reduced motion (html[data-motion='reduced']) stops all of it.
+ */
+
+@layer components {
+  /* ── Grid ──────────────────────────────────────────────────────────────────────────── */
+  .dems-page.dems-dash {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-auto-rows: auto;
+    gap: var(--shell-gutter);
+    min-height: 0;
+  }
+
+  .dems-dash-panel {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .dems-dash-area-a { grid-column: 1 / span 3; grid-row: 1; z-index: 1; }
+  .dems-dash-area-b { grid-column: 4 / span 9; grid-row: 1; }
+  .dems-dash-area-c { grid-column: 4 / span 9; grid-row: 1; align-self: end; z-index: 2; margin: 0 3.5% 0 6.5%; }
+  .dems-dash-area-d { grid-column: 1 / span 5; grid-row: 2; }
+  .dems-dash-area-e { grid-column: 6 / span 7; grid-row: 2; }
+  .dems-dash-area-f { grid-column: 1 / span 4; grid-row: 3; }
+  .dems-dash-area-g { grid-column: 5 / span 5; grid-row: 3; }
+  .dems-dash-area-h { grid-column: 10 / span 3; grid-row: 3; }
+  .dems-dash-area-i { grid-column: 1 / span 6; grid-row: 4; }
+  .dems-dash-area-j { grid-column: 7 / span 6; grid-row: 4; }
+
+  /* xl (≥ 1600): the 1920 rows, filling the viewport (no scroll). */
+  .dems-shell[data-shell-tier='xl'] .dems-page.dems-dash {
+    grid-template-rows: minmax(0, 340fr) minmax(0, 256fr) minmax(0, 180fr) minmax(0, 148fr);
+    height: max(820px, calc(100dvh - var(--shell-topbar-h) - 2 * var(--shell-pad)));
+  }
+
+  /* lg (1280–1599): the 1440 rows. */
+  /* Fix wave J (JW-18, headline 11): at 1440 x 900 and 1280 x 800 the four fixed rows did not hold their content - the
+     ring was clipped, the tiles and the Recent Events list were cut, labels overlapped. The rows keep their 1440 heights
+     as a MINIMUM and grow with their content; <main> scrolls where the page is taller than the window. */
+  .dems-shell[data-shell-tier='lg'] .dems-page.dems-dash {
+    grid-template-rows: minmax(280px, auto) minmax(236px, auto) minmax(176px, auto) minmax(150px, auto);
+    min-height: max(700px, calc(100dvh - var(--shell-topbar-h) - 2 * var(--shell-pad)));
+  }
+
+  /* md (1024–1279, rail): stacked rows that size to content; the page scrolls. */
+  .dems-shell[data-shell-tier='md'] .dems-dash-panel,
+  .dems-shell[data-shell-tier='sm'] .dems-dash-panel,
+  .dems-shell[data-shell-tier='xs'] .dems-dash-panel {
+    grid-row: auto;
+    grid-column: 1 / -1;
+    margin: 0;
+    align-self: stretch;
+  }
+  .dems-shell[data-shell-tier='md'] .dems-dash-area-a { grid-column: 1 / span 4; }
+  .dems-shell[data-shell-tier='md'] .dems-dash-area-b { grid-column: 5 / span 8; }
+  .dems-shell[data-shell-tier='md'] .dems-dash-area-f { grid-column: 1 / span 6; }
+  .dems-shell[data-shell-tier='md'] .dems-dash-area-h { grid-column: 7 / span 6; }
+  .dems-shell:is([data-shell-tier='md'], [data-shell-tier='sm'], [data-shell-tier='xs']) .dems-dash-area-a,
+  .dems-shell:is([data-shell-tier='md'], [data-shell-tier='sm'], [data-shell-tier='xs']) .dems-dash-area-b {
+    min-height: 300px;
+  }
+  .dems-shell:is([data-shell-tier='md'], [data-shell-tier='sm'], [data-shell-tier='xs']) .dems-dash-area-e {
+    min-height: 240px;
+  }
+  .dems-shell:is([data-shell-tier='md'], [data-shell-tier='sm'], [data-shell-tier='xs']) .dems-dash-area-i {
+    min-height: 200px;
+  }
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-dash-tiles,
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-qa-grid,
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-stn-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-strip {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  /*
+   * E2E-W1-6 (E-fix FX-W): the strip's flex items are the `.dems-strip-item` wrappers (the cells'
+   * motion wrappers), so the wrap basis goes on them; on the cells inside it never wrapped and six
+   * cells shared one 390 px row. Three per row below 1024 px, two below 768 px.
+   */
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-strip-item {
+    flex: 1 1 30%;
+  }
+  .dems-shell[data-shell-tier='xs'] .dems-strip-item {
+    flex-basis: 45%;
+  }
+  /*
+   * E2E-W1-6: below 1024 px a value wider than its cell ends in an ellipsis inside the cell (the dot
+   * stays). Wider tiers keep the look they had (there "Synchronized" sits a fraction of a pixel past
+   * its text box, which an ellipsis would cut).
+   */
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-strip-value {
+    max-width: 100%;
+  }
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-strip-value-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-strip-sep {
+    display: none;
+  }
+
+  /* ── Panel card (L2 warm panel with the bronze hairline, research/04 §1.3–§1.4) ───────── */
+  .dems-dash-card {
+    container-type: inline-size;
+    container-name: dash-card;
+    background:
+      linear-gradient(180deg, rgb(255 159 61 / 0.05), transparent 42%),
+      linear-gradient(90deg, rgb(255 200 107 / 0.025), transparent 30%),
+      var(--surface);
+  }
+
+  .dems-dash-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 22px;
+  }
+  .dems-dash-head-icon {
+    flex: none;
+    color: var(--accent);
+    filter: drop-shadow(0 0 5px rgb(255 159 61 / 0.45));
+  }
+  .dems-dash-title {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--foreground);
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .dems-dash-head-action {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .dems-dash-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    color: var(--accent);
+    white-space: nowrap;
+    text-decoration: none;
+  }
+  .dems-dash-link svg {
+    transition: transform calc(var(--dems-dur-fast, 160ms) * var(--motion-time-scale, 1)) cubic-bezier(0.2, 0, 0, 1);
+  }
+  .dems-dash-link:hover svg,
+  .dems-dash-link:focus-visible svg {
+    transform: translateX(2px);
+  }
+  .dems-dash-link:hover {
+    color: #ffe2a6;
+  }
+  /* Narrow panels (H at 1440): the "View all" text becomes screen-reader text, the arrow stays. */
+  @container dash-card (max-width: 330px) {
+    .dems-dash-link-text {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .dems-dash-title {
+      letter-spacing: 0.1em;
+    }
+    /*
+     * H at 1440: the one-line "Items sealed today" (step 45b, F45-08) leaves the hourly chart too
+     * narrow for its 00–20 ticks, so the decorative database ring gives its width to the chart.
+     */
+    .dems-mic-ring.dems-sealed-icon {
+      display: none;
+    }
+  }
+
+  .dems-dash-inset {
+    border: 1px solid rgb(255 159 61 / 0.28);
+    background:
+      linear-gradient(180deg, rgb(255 159 61 / 0.035), transparent 50%),
+      var(--surface-secondary);
+  }
+
+  .dems-dot {
+    display: inline-block;
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+  }
+
+  /* ── A: ring cell ──────────────────────────────────────────────────────────────────── */
+  .dems-dash-ring-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+  /* The ring card's edge curving into the hero (research/04 §3.1 A): a static hairline arc. */
+  .dems-dash-ring-arc {
+    position: absolute;
+    inset: -4% -10% -4% 4%;
+    pointer-events: none;
+    color: var(--color-bronze);
+  }
+  /*
+   * Below 1024 px (sm, xs) panel A spans the full width above the hero, so the arc has no hero
+   * edge to curve into: at 900 px it was 929 px wide and drew across the hero (step 45b, F45-07).
+   */
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-dash-ring-arc {
+    display: none;
+  }
+  .dems-ring-details {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    margin-top: 5px;
+    max-width: 100%;
+  }
+  .dems-ring-status {
+    max-width: 100%;
+    font-size: 0.5625rem;
+    line-height: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: var(--color-foreground-2);
+    text-wrap: balance;
+  }
+  /* The ring narrows towards the bottom: the caption stays inside it (research/04 §3.1 A). */
+  .dems-ring-caption {
+    max-width: 13.5em;
+    font-size: 0.625rem;
+    line-height: 0.85rem;
+    color: rgb(216 206 198 / 0.82);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* ── B: hero ───────────────────────────────────────────────────────────────────────── */
+  .dems-dash-hero {
+    position: relative;
+    height: 100%;
+    min-height: 0;
+    container-type: inline-size;
+  }
+  .dems-shell:is([data-shell-tier='md'], [data-shell-tier='sm'], [data-shell-tier='xs']) .dems-dash-hero {
+    min-height: 300px;
+  }
+  /* The photo bleeds into the content padding up to the top bar and the right edge (D1). */
+  .dems-dash-hero-media {
+    position: absolute;
+    inset: calc(-1 * var(--shell-pad)) calc(-1 * var(--shell-pad)) 0 0;
+    overflow: hidden;
+    border-bottom-left-radius: 18px;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(180deg, #000 58%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 58%, transparent 100%);
+  }
+  .dems-dash-hero-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 62% 45%;
+    transform-origin: 60% 40%;
+    /* D46 dark-warm grade (research/04 §7 "about" brightness .55, sepia .35, saturate .8), pushed
+       warmer to match the D1 amber mood (compared side by side with the mockup). Static. */
+    filter: brightness(0.52) sepia(0.55) saturate(1.2) hue-rotate(-6deg);
+    will-change: transform;
+  }
+  /* Left fade to the canvas, a warm light from the right, and a dark-warm tint (D46 "warm overlay"). */
+  .dems-dash-hero-shade {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(90deg, var(--background) 0%, rgb(11 13 15 / 0.92) 14%, rgb(11 13 15 / 0.6) 36%, rgb(11 13 15 / 0.18) 64%, rgb(11 13 15 / 0.1) 100%),
+      radial-gradient(90% 80% at 80% 28%, rgb(255 159 61 / 0.16), transparent 64%),
+      linear-gradient(180deg, rgb(11 13 15 / 0.4), transparent 32%),
+      linear-gradient(0deg, rgb(58 30 10 / 0.34), rgb(58 30 10 / 0.34));
+  }
+  .dems-dash-hero-copy {
+    position: absolute;
+    left: 7%;
+    top: 12%;
+    right: 26%;
+  }
+  .dems-hero-overline {
+    margin: 0;
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.52em;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .dems-hero-title {
+    margin: 0.55em 0 0;
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(1.25rem, 2.95cqw, 2.5rem);
+    line-height: 1.14;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    /* Orbitron has no italic: synthetic oblique, as the page titles (01_specs §14.4). */
+    transform: skewX(-9deg);
+    transform-origin: left bottom;
+    white-space: nowrap;
+  }
+  /* Each TextEffect line animates on its own layer, so the gradient sits on the line itself. */
+  .dems-hero-title > span {
+    background: linear-gradient(180deg, #ffffff 0%, #fff4e0 55%, #ffd592 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 1px 10px rgb(255 159 61 / 0.22));
+  }
+  .dems-hero-paragraph {
+    margin: 0.9em 0 0;
+    max-width: 34em;
+    font-size: clamp(0.75rem, 1.28cqw, 1rem);
+    line-height: 1.5;
+    color: rgb(200 188 182);
+  }
+  .dems-hero-rule {
+    display: block;
+    width: clamp(90px, 11cqw, 140px);
+    height: 2px;
+    margin-top: clamp(10px, 1.6cqw, 20px);
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent), rgb(255 159 61 / 0.6) 60%, transparent);
+    transform-origin: left center;
+  }
+  .dems-hero-pillars {
+    position: absolute;
+    right: 2.2%;
+    top: 14%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.55em;
+    font-family: var(--font-display);
+    font-size: clamp(0.625rem, 1.1cqw, 0.875rem);
+    font-weight: 500;
+    letter-spacing: 0.3em;
+    color: rgb(255 255 255 / 0.5);
+    /* "Etched on glass": a dark lower edge and a faint warm light. */
+    text-shadow: 0 1px 0 rgb(0 0 0 / 0.65), 0 0 14px rgb(255 200 107 / 0.18);
+    pointer-events: none;
+  }
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-hero-pillars {
+    display: none;
+  }
+
+  /* ── C: status strip ───────────────────────────────────────────────────────────────── */
+  .dems-strip-card {
+    container-type: inline-size;
+    border: 1px solid rgb(255 159 61 / 0.5);
+    background: linear-gradient(180deg, rgb(30 19 10 / 0.94), rgb(17 11 6 / 0.96));
+    box-shadow: 0 0 0 1px rgb(255 200 107 / 0.06) inset, 0 8px 28px rgb(0 0 0 / 0.55), 0 0 18px rgb(255 159 61 / 0.14);
+  }
+  .dems-strip {
+    display: flex;
+    align-items: center;
+    min-height: clamp(58px, 6.6cqw, 78px);
+    padding: 6px clamp(6px, 1.2cqw, 16px);
+  }
+  /*
+   * The strip's flex item (a cell's motion wrapper). Its basis lives here, not in a `flex-1` utility,
+   * so the sm/xs wrap rules above can change it (utilities would win over this layer; E2E-W1-6).
+   */
+  .dems-strip-item {
+    flex: 1 1 0;
+  }
+  .dems-strip-cell {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: clamp(5px, 0.9cqw, 12px);
+    padding: 6px clamp(3px, 0.8cqw, 12px);
+    border-radius: 8px;
+    color: var(--foreground);
+    text-decoration: none;
+    transition: background-color calc(var(--dems-dur-fast, 160ms) * var(--motion-time-scale, 1)) cubic-bezier(0.2, 0, 0, 1);
+  }
+  .dems-strip-cell:hover {
+    background-color: rgb(255 200 107 / 0.06);
+  }
+  .dems-strip-icon {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: clamp(26px, 3.6cqw, 40px);
+    height: clamp(26px, 3.6cqw, 40px);
+    border-radius: 9999px;
+    border: 1.5px solid rgb(255 200 107 / 0.75);
+    background: radial-gradient(circle, rgb(255 200 107 / 0.12), rgb(255 159 61 / 0.03) 70%);
+    box-shadow: 0 0 10px rgb(255 159 61 / 0.35), inset 0 0 6px rgb(255 159 61 / 0.25);
+    color: var(--accent);
+  }
+  .dems-strip-icon svg {
+    width: 52%;
+    height: 52%;
+  }
+  .dems-strip-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .dems-strip-label {
+    font-size: clamp(0.65rem, 1.26cqw, 0.8125rem);
+    line-height: 1.25;
+    color: rgb(249 250 251 / 0.92);
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .dems-strip-value {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: clamp(0.65rem, 1.26cqw, 0.8125rem);
+    line-height: 1.35;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  /* Fix wave L (G89c-08): at 1440 x 900 "Host system clock" ran under the Security icon. A long value takes two lines in its own cell. */
+  .dems-strip-value[data-long='true'] {
+    align-items: flex-start;
+    white-space: normal;
+    line-height: 1.15;
+  }
+  .dems-strip-value[data-long='true'] .dems-dot {
+    margin-top: 0.3em;
+  }
+  /* Fix wave Q (CW-01 sweep): a label breaks between its words; inside a word only when the word is longer than its cell. */
+  .dems-strip-value[data-long='true'] .dems-strip-value-text {
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
+  .dems-strip-sep {
+    flex: none;
+    align-self: stretch;
+    width: 1px;
+    margin: 8px 0;
+    background: linear-gradient(180deg, transparent, rgb(255 159 61 / 0.45), transparent);
+  }
+
+  /* ── D: active session ─────────────────────────────────────────────────────────────── */
+  /* Views fill the stage absolutely (cross-fade without layout shifts). */
+  .dems-session-stage {
+    position: relative;
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
+  }
+  .dems-shell:is([data-shell-tier='md'], [data-shell-tier='sm'], [data-shell-tier='xs']) .dems-session-stage {
+    min-height: 220px;
+  }
+  .dems-session-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: clamp(52px, 4.2vw, 76px);
+    aspect-ratio: 1;
+    border-radius: 9999px;
+    border: 1.5px solid rgb(255 200 107 / 0.7);
+    background: radial-gradient(circle, rgb(255 200 107 / 0.1), rgb(11 13 15 / 0.6) 72%);
+    box-shadow: 0 0 16px rgb(255 159 61 / 0.3), inset 0 0 10px rgb(255 159 61 / 0.2);
+    color: var(--accent);
+  }
+  .dems-cta-wrap {
+    position: relative;
+    border-radius: var(--radius-lg, 8px);
+  }
+  .dems-kv {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 16px;
+    min-width: 0;
+  }
+  .dems-kv dt {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    color: var(--muted);
+  }
+  .dems-kv dd {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.15rem;
+    color: var(--foreground);
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
+  /* ── E: device tiles ───────────────────────────────────────────────────────────────── */
+  .dems-dash-tiles {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    height: 100%;
+    min-height: 0;
+  }
+  .dems-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    min-height: 0;
+    padding: 8px;
+    border-radius: 10px;
+  }
+  /*
+   * Fix wave L (G89c-08): with the "Development source" badge a tile of a Core in real capture is taller than its row at
+   * 1440 x 900 - the preview was cut at "No preview" and the microphone row ran over the card edge. In a Dashboard tile
+   * the badge is one line (the chip and its kind beside each other, both readable), the microphone row wraps, and
+   * nothing of a tile is drawn outside it.
+   */
+  .dems-tile {
+    overflow: hidden;
+  }
+  /* Row W4-1 (L8, D231): the reach-gated live preview draws "Try again" in its action slot, laid over the frame. A
+     Dashboard tile's four lines fill its frame (fix waves L and Q measured it), so the control would cover the state line;
+     the tile says "Not reachable" and the retry stays on Devices & Inputs and the Session Monitor. */
+  .dems-tile [data-testid^='camera-preview-try-again-'] {
+    display: none;
+  }
+  .dems-tile .dev-source-badge {
+    display: flex;
+    /* Fix wave Q (CW-02): `nowrap` left the kind beside the chip no width in a narrow tile - "Test source" stood one
+       letter per line (180 px high). The kind goes under the chip when it does not fit beside it. */
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: none;
+  }
+  .dems-tile .dev-source-badge > :first-child {
+    flex: none;
+    white-space: nowrap;
+  }
+  .dems-tile .dev-source-kind {
+    min-width: min-content;
+    white-space: normal;
+    overflow-wrap: normal;
+  }
+  /* Fix wave Q (CW-02): four tiles in one row need about 150 px each for "Development source" and the lines of the
+     "No preview" frame; a narrower card (1280 x 800: 136 px a tile) draws them two by two and the row grows. */
+  @container dash-card (max-width: 640px) {
+    .dems-dash-tiles {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      /* A row is never lower than a tile's head and a picture that holds its format chip. */
+      grid-auto-rows: minmax(128px, auto);
+    }
+  }
+  /* Fix wave J (JW-18): the role chip, the ring and the meter stood in one row that was wider than the tile - the chips
+     read "rimary" / "andby" and the level "-51 dB" was cut. The row wraps, and below 1600 px the decorative ring goes. */
+  .dems-tile .dems-mic-body {
+    gap: 6px;
+    flex-wrap: wrap;
+    align-content: center;
+  }
+  .dems-shell:not([data-shell-tier='xl']) .dems-tile .dems-mic-ring {
+    display: none;
+  }
+  .dems-ring-demo,
+  .dems-strip-demo {
+    align-self: center;
+    margin-top: 4px;
+  }
+  .dems-dash-demo {
+    flex: none;
+  }
+  /* The ring is decoration (`aria-hidden`); beside a badge the role chip and the meter need its place. */
+  .dems-tile:has(.dev-source-badge) .dems-mic-ring {
+    display: none;
+  }
+  .dems-tile-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+  }
+  .dems-tile-name {
+    font-size: 0.8125rem;
+    line-height: 1.1rem;
+    color: var(--foreground);
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .dems-tile-state {
+    font-size: 0.6875rem;
+    line-height: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .dems-mic-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(8px, 1vw, 16px);
+    border-radius: 8px;
+    background: radial-gradient(120% 90% at 50% 60%, rgb(255 159 61 / 0.05), transparent 70%);
+  }
+  .dems-mic-ring {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: clamp(36px, 2.9vw, 54px);
+    aspect-ratio: 1;
+    border-radius: 9999px;
+    border: 1.5px solid rgb(255 200 107 / 0.55);
+    box-shadow: 0 0 12px rgb(255 159 61 / 0.25), inset 0 0 8px rgb(255 159 61 / 0.18);
+    color: var(--accent);
+  }
+  .dems-mic-ring svg {
+    width: 48%;
+    height: 48%;
+  }
+
+  /* ── F: storage donut (M-C-03 sweep) ───────────────────────────────────────────────── */
+  .dems-dash-donut {
+    position: relative;
+    flex: none;
+    --progress-circle-track-stroke: rgb(255 159 61 / 0.14);
+  }
+  .dems-dash-donut .progress-circle__fill-circle {
+    transition:
+      stroke-dashoffset calc(900ms * var(--motion-time-scale, 1)) cubic-bezier(0.22, 1, 0.36, 1),
+      stroke calc(400ms * var(--motion-time-scale, 1)) cubic-bezier(0.2, 0, 0, 1);
+    filter: drop-shadow(0 0 3px rgb(255 200 107 / 0.55));
+  }
+  :root[data-motion='reduced'] .dems-dash-donut .progress-circle__fill-circle {
+    transition: none;
+  }
+  .dems-storage-free {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+  }
+  @container dash-card (max-width: 420px) {
+    .dems-storage-free {
+      font-size: 1.0625rem;
+      line-height: 1.4rem;
+    }
+    .dems-legend {
+      font-size: 0.6875rem;
+      column-gap: 6px;
+    }
+  }
+  .dems-legend {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 8px;
+    min-width: 0;
+    font-size: 0.75rem;
+    line-height: 1.1rem;
+  }
+  .dems-legend > div {
+    display: contents;
+  }
+  .dems-legend dt,
+  .dems-legend dd {
+    margin: 0;
+    padding: 3px 0;
+    border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  }
+  .dems-legend dd {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--foreground);
+  }
+  .dems-legend > div:last-child dt,
+  .dems-legend > div:last-child dd {
+    border-bottom: 0;
+  }
+
+  /* ── G: security, time & network ───────────────────────────────────────────────────── */
+  .dems-stn-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    height: 100%;
+    min-height: 0;
+    border-radius: 10px;
+  }
+  .dems-stn-col {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 6px 6px;
+    text-align: center;
+    border-radius: 8px;
+  }
+  .dems-stn-col + .dems-stn-col::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 14%;
+    bottom: 14%;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, rgb(255 159 61 / 0.35), transparent);
+  }
+  .dems-stn-title {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    color: var(--foreground);
+    white-space: normal;
+    overflow-wrap: break-word;
+    max-width: 100%;
+  }
+  .dems-stn-line {
+    font-size: 0.6875rem;
+    line-height: 0.95rem;
+    color: rgb(216 206 198 / 0.8);
+    white-space: normal;
+    overflow-wrap: break-word;
+    max-width: 100%;
+  }
+  @container dash-card (max-width: 560px) {
+    .dems-stn-col {
+      gap: 2px;
+      padding: 4px 3px;
+    }
+    .dems-stn-col svg {
+      width: 20px;
+      height: 20px;
+    }
+    .dems-stn-title {
+      font-size: 0.6875rem;
+    }
+    .dems-stn-line {
+      font-size: 0.625rem;
+      line-height: 0.8rem;
+    }
+  }
+  .dems-glint-host {
+    position: relative;
+    overflow: hidden;
+  }
+  .dems-glint {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(100deg, transparent 20%, rgb(255 255 255 / 0.55) 50%, transparent 80%);
+    transform: translateX(-120%);
+  }
+
+  /* ── I: recent events ──────────────────────────────────────────────────────────────── */
+  .dems-events-day {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 2px 0 3px;
+    font-size: 0.625rem;
+    line-height: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(255 200 107 / 0.8);
+    background: var(--surface);
+  }
+  .dems-event-row {
+    display: grid;
+    grid-template-columns: 8px 4.6rem minmax(0, 1.25fr) minmax(0, 1fr);
+    align-items: center;
+    column-gap: 10px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+  .dems-event-row time {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: rgb(216 206 198 / 0.85);
+    font-variant-numeric: tabular-nums;
+  }
+  .dems-event-title {
+    color: var(--foreground);
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .dems-event-detail {
+    color: rgb(216 206 198 / 0.72);
+    white-space: normal;
+    overflow-wrap: break-word;
+    text-align: right;
+  }
+
+  /* ── J: quick actions (M-C-16) ─────────────────────────────────────────────────────── */
+  .dems-qa-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    height: 100%;
+    min-height: 0;
+  }
+  .dems-qa-card {
+    position: relative;
+    display: block;
+    min-width: 0;
+    min-height: 0;
+    padding: 10px 10px 10px 12px;
+    container-type: inline-size;
+    container-name: qa-card;
+    border-radius: 10px;
+    border: 1px solid rgb(255 200 107 / 0.55);
+    background:
+      linear-gradient(160deg, rgb(255 159 61 / 0.09), transparent 55%),
+      var(--surface-secondary);
+    color: var(--foreground);
+    text-decoration: none;
+    overflow: hidden;
+    transition: transform calc(200ms * var(--motion-time-scale, 1)) cubic-bezier(0.2, 0, 0, 1);
+  }
+  /* The e2 glow is a pre-rendered layer whose opacity fades in on hover (§2.2, §9.2). */
+  .dems-qa-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: var(--shadow-glow-2);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity calc(200ms * var(--motion-time-scale, 1)) cubic-bezier(0.2, 0, 0, 1);
+  }
+  .dems-qa-card[data-enabled='true']:hover {
+    transform: translateY(-2px);
+  }
+  .dems-qa-card[data-enabled='true']:hover::after,
+  .dems-qa-card[data-enabled='true']:focus-visible::after {
+    opacity: 1;
+  }
+  .dems-qa-card[data-enabled='true']:active {
+    transform: scale(0.98);
+  }
+  .dems-qa-card[data-enabled='false'] {
+    cursor: not-allowed;
+    opacity: 0.5;
+    border-color: rgb(156 163 175 / 0.35);
+  }
+  .dems-qa-icon {
+    flex: none;
+    display: inline-flex;
+    color: var(--accent);
+    filter: drop-shadow(0 0 6px rgb(255 159 61 / 0.45));
+    transition: transform calc(240ms * var(--motion-time-scale, 1)) cubic-bezier(0.34, 1.3, 0.64, 1);
+  }
+  .dems-qa-card[data-enabled='true']:hover .dems-qa-icon[data-micro='rotate'] {
+    transform: rotate(45deg);
+  }
+  .dems-qa-card[data-enabled='true']:hover .dems-qa-icon[data-micro='rise'] {
+    transform: translateY(-2px);
+  }
+  .dems-qa-card[data-enabled='true']:hover .dems-qa-icon[data-micro='tilt'] {
+    transform: rotate(-6deg);
+  }
+  .dems-qa-card[data-enabled='true']:hover .dems-qa-icon[data-micro='swing'] {
+    animation: dems-qa-swing calc(600ms * var(--motion-time-scale, 1)) cubic-bezier(0.2, 0, 0, 1) 1;
+  }
+  .dems-qa-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 100%;
+    min-width: 0;
+  }
+  .dems-qa-title {
+    font-size: 0.8125rem;
+    line-height: 1.15rem;
+    font-weight: 500;
+    color: var(--foreground);
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .dems-qa-subtitle {
+    font-size: 0.6875rem;
+    line-height: 0.95rem;
+    color: rgb(216 206 198 / 0.75);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .dems-qa-chevron {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    color: rgb(255 200 107 / 0.8);
+  }
+  /* Narrow cards (1440): icon above a wrapping title; the subtitle is hidden. */
+  @container qa-card (max-width: 150px) {
+    .dems-qa-inner {
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 4px;
+    }
+    .dems-qa-icon svg {
+      width: 20px;
+      height: 20px;
+    }
+    .dems-qa-title {
+      padding-right: 12px;
+      white-space: normal;
+      line-height: 1rem;
+    }
+    .dems-qa-subtitle {
+      display: none;
+    }
+  }
+
+  /* ── Reduced motion: every CSS motion of this page stops (03_motion_spec §8) ─────────── */
+  :root[data-motion='reduced'] .dems-dash-link svg,
+  :root[data-motion='reduced'] .dems-qa-card,
+  :root[data-motion='reduced'] .dems-qa-card::after,
+  :root[data-motion='reduced'] .dems-qa-icon {
+    transition: none;
+    animation: none;
+  }
+  :root[data-motion='reduced'] .dems-qa-card[data-enabled='true']:hover,
+  :root[data-motion='reduced'] .dems-qa-card[data-enabled='true']:active,
+  :root[data-motion='reduced'] .dems-qa-card[data-enabled='true']:hover .dems-qa-icon,
+  :root[data-motion='reduced'] .dems-dash-link:hover svg {
+    transform: none;
+  }
+}
+
+/* M-C-16: the stethoscope swings ±8° once on hover (transform only). */
+@keyframes dems-qa-swing {
+  0% { transform: rotate(0deg); }
+  30% { transform: rotate(8deg); }
+  65% { transform: rotate(-8deg); }
+  100% { transform: rotate(0deg); }
+}

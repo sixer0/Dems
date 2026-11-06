@@ -1,0 +1,40 @@
+# Step 66 (W44), fix round after CP-C1 (decision D80): final gate, from /Users/gsp-budi/Documents/DEMS (no cd; every command as written)
+## 2026-10-04 14:14:40 WIB $ npm run test -w @dems/shared -- --maxWorkers=2
+ Test Files  68 passed (68)
+      Tests  1735 passed (1735)
+   Start at  14:14:40
+   Duration  6.92s (tests 55%, import 35%, transform 9%, worker 1%)
+exit=0
+## 14:14:47 the 28 test files that exist at acaff20 (git ls-tree -r acaff20 --name-only packages/shared/test), alone
+ Test Files  28 passed (28)
+      Tests  517 passed (517)
+exit=0
+## 14:14:50 the ten files of this row, alone (every test name is in 44_fix_tests_verbose.log)
+ Test Files  10 passed (10)
+      Tests  311 passed (311)
+exit=0
+## 14:14:52 the light API's test files, alone (the pinned export list grew by one line)
+ Test Files  2 passed (2)
+      Tests  26 passed (26)
+exit=0
+## 14:14:52 $ npm run typecheck -w @dems/shared
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 14:14:55 $ npm run lint -w @dems/shared
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+## 14:14:55 $ npm run typecheck -w @dems/core-web
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+## 14:15:04 $ npm run typecheck -w @dems/mobile
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 14:15:08 done

@@ -1,0 +1,6 @@
+tap 2487,791 at 10:20:21.614
+slept 2000 ms
+mark stack-check at 10:20:23.614
+deep link demsdemo:///stack-check at 10:20:23.651: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 7000 ms
+screencap 19_stack_check.png (113873 bytes) at 10:20:31.282

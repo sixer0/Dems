@@ -1,0 +1,49 @@
+# Step c of plan row W28: this row's tests WITHOUT the evaluation. The three files of the guard (decision.ts, denial.ts, index.ts) were served to Vitest from their pre-images by a load-time transform; the contract is the patched one of the tree. 2026-10-04 19:44:32 to 19:44:42 WIB.
+
+== noeval.unit
+[w28c] no-evaluation: apps/core-server/src/plugins/permission-guard/decision.ts is served from its pre-image
+[w28c] no-evaluation: apps/core-server/src/plugins/permission-guard/denial.ts is served from its pre-image
+[w28c] no-evaluation: apps/core-server/src/plugins/permission-guard/index.ts is served from its pre-image
+⎯⎯⎯⎯⎯⎯ Failed Tests 11 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  3 failed | 6 passed (9)
+      Tests  11 failed | 159 passed (170)
+ FAIL  |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > INVESTIGATOR on a paired device: every operation answers what its access rule and the role matrix say
+ FAIL  |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > SUPERVISOR on a paired device: every operation answers what its access rule and the role matrix say
+ FAIL  |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > TECHNICIAN on a paired device: every operation answers what its access rule and the role matrix say
+ FAIL  |unit| src/plugins/permission-guard/__tests__/decision.test.ts > DEVICE_CREDENTIAL: an operation that needs the device's own credential (finding CPS1-3; decisions D113, D118) > a condition that stage 6 does not evaluate lets nobody through: it throws, and the refusals of the marker still come first
+ FAIL  |unit| src/plugins/permission-guard/__tests__/decision.test.ts > DEVICE_CREDENTIAL: an operation that needs the device's own credential (finding CPS1-3; decisions D113, D118) > decision D118: the evaluation names no operation. Any other DEVICE rule that is given the condition is decided the same way, with no change of the source
+ FAIL  |unit| src/plugins/permission-guard/__tests__/decision.test.ts > DEVICE_CREDENTIAL: an operation that needs the device's own credential (finding CPS1-3; decisions D113, D118) > nothing else is asked: the console identity and the demo flag change no answer
+ FAIL  |unit| src/plugins/permission-guard/__tests__/decision.test.ts > DEVICE_CREDENTIAL: an operation that needs the device's own credential (finding CPS1-3; decisions D113, D118) > the device itself holds it; the session of an operator who is signed in on the device does not, whatever the role and whatever it is granted; the refusal is not audited
+ FAIL  |unit| src/plugins/permission-guard/__tests__/decision.test.ts > the conditions of a rule (spec §7.3 line 7) > a DEVICE operation called by a web console session answers 403 DEVICE_NOT_PAIRED; the device is allowed, and so is an operator on the device unless the rule needs the device's own credential
+ FAIL  |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the answer of a refusal (spec §7.2) > CPS1-3: the device's own credential is needed: 403 DEVICE_NOT_PAIRED with the contract's text and details.reason; no row; a web console session keeps the marker's answer, without the reason
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > CPS1-3: an operation that needs the device's own credential refuses the session of an operator on the device: 403 DEVICE_NOT_PAIRED with its reason, no row, no unit, no place in the budget; the device itself reaches the handler
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > the console rule ID-1 is applied by the stage itself: signIn without a console identity is refused here, with the stage's own line
+
+== noeval.db
+[w28c] no-evaluation: apps/core-server/src/plugins/permission-guard/decision.ts is served from its pre-image
+[w28c] no-evaluation: apps/core-server/src/plugins/permission-guard/denial.ts is served from its pre-image
+[w28c] no-evaluation: apps/core-server/src/plugins/permission-guard/index.ts is served from its pre-image
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  3 failed | 1 passed (4)
+      Tests  8 failed | 113 passed (121)
+ FAIL  |db| src/modules/rbac/__tests__/matrix.db.test.ts > AC-B-16, unit form: the decision for all 75 operations with a principal of each role, against the STORED matrix > INVESTIGATOR (session device DEV-0001): every operation answers what the registry rule and the stored grants say
+ FAIL  |db| src/modules/rbac/__tests__/matrix.db.test.ts > AC-B-16, unit form: the decision for all 75 operations with a principal of each role, against the STORED matrix > SUPERVISOR (session device DEV-0001): every operation answers what the registry rule and the stored grants say
+ FAIL  |db| src/modules/rbac/__tests__/matrix.db.test.ts > AC-B-16, unit form: the decision for all 75 operations with a principal of each role, against the STORED matrix > TECHNICIAN (session device DEV-0001): every operation answers what the registry rule and the stored grants say
+ FAIL  |db| src/plugins/permission-guard/__tests__/device-credential.db.test.ts > finding CPS1-3: operation 23 needs the device's own credential (the real app, stages 3 to 6 as the server has them) > a web console session still gets the refusal of the marker DEVICE: the same code, the old text, no reason, no row, no place
+ FAIL  |db| src/plugins/permission-guard/__tests__/device-credential.db.test.ts > finding CPS1-3: operation 23 needs the device's own credential (the real app, stages 3 to 6 as the server has them) > the device credential rotates: 200 and the one row of the rotation, with an operator signed in on the device or not; the open session is not touched and still cannot rotate
+ FAIL  |db| src/plugins/permission-guard/__tests__/device-credential.db.test.ts > finding CPS1-3: operation 23 needs the device's own credential (the real app, stages 3 to 6 as the server has them) > the refusal is decided before the body is read, on every route the server registered with the condition: the session gets 403, the device passes stage 6 (400 for a body that is no JSON)
+ FAIL  |db| src/plugins/permission-guard/__tests__/device-credential.db.test.ts > finding CPS1-3: operation 23 needs the device's own credential (the real app, stages 3 to 6 as the server has them) > the session token of an operator who is signed in on the device is refused: 403 DEVICE_NOT_PAIRED with the reason; no row, no place in the denial budget, nothing changed
+ FAIL  |db| src/plugins/permission-guard/__tests__/pipeline.db.test.ts > AC-B-73: the decision table for HTTP requests of spec §14.2, through the real stages 3 to 6 > SR-69: signIn with the own origin and no bearer answers 403 DEVICE_NOT_PAIRED before the body is read: no attempt is taken and no row is written
+
+# The demo row's reset-failures.db.test.ts with the guard AND the contract sources served from their pre-images (the server as before the step), 19:44:52 to 19:45:02:
+      Tests  1 failed | 13 passed (14)
+ FAIL  |db| src/modules/demo/__tests__/reset-failures.db.test.ts > finding F-5: an AUDIT_TAMPER fault across a reload of the engine that is no process start > RUN through a failed reset: the stored chain is intact and the server is usable; what the fault list and the view say is printed; clearing the fault leaves both clean
+ Test Files  1 failed (1)
+AssertionError: expected [ …(87) ] to have a length of 86 but got 87
+[w28c] before-step: apps/core-server/src/plugins/permission-guard/decision.ts is served from its pre-image
+[w28c] before-step: apps/core-server/src/plugins/permission-guard/denial.ts is served from its pre-image
+[w28c] before-step: apps/core-server/src/plugins/permission-guard/index.ts is served from its pre-image
+[w28c] before-step: packages/shared/src/api/contract-model.ts is served from its pre-image
+[w28c] before-step: packages/shared/src/api/example-parts.ts is served from its pre-image
+[w28c] before-step: packages/shared/src/api/pairing.ts is served from its pre-image
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯

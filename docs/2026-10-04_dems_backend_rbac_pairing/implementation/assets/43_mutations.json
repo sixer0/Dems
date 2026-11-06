@@ -1,0 +1,583 @@
+[
+ {
+  "id": "C00",
+  "file": "src/modules/demo/reset.ts",
+  "what": "CONTROL: the file is transformed and nothing is changed",
+  "find": "const REQUESTED = 'demo reset requested';",
+  "replace": "const REQUESTED = 'demo reset requested';"
+ },
+ {
+  "id": "R01",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the hold is not taken",
+  "find": "quiesced.release = host.hold();",
+  "replace": "quiesced.release = () => undefined;"
+ },
+ {
+  "id": "R02",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the pipeline is not drained",
+  "find": "            await host.drain();\n",
+  "replace": ""
+ },
+ {
+  "id": "R03",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the engine is not stopped",
+  "find": "            await host.stopEngine();\n",
+  "replace": ""
+ },
+ {
+  "id": "R04",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the pool is not closed",
+  "find": "            await host.closePool();\n",
+  "replace": ""
+ },
+ {
+  "id": "R05",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the pool is closed before the engine is stopped",
+  "find": "            await host.stopEngine();\n            await host.closePool();",
+  "replace": "            await host.closePool();\n            await host.stopEngine();"
+ },
+ {
+  "id": "R06",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the drain comes after the engine stop",
+  "find": "            await host.drain();\n            quiesced.roles = await host.operatorRoles();\n            quiesced.stopped = true;\n            await host.stopEngine();",
+  "replace": "            quiesced.roles = await host.operatorRoles();\n            quiesced.stopped = true;\n            await host.stopEngine();\n            await host.drain();"
+ },
+ {
+  "id": "R07",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the hold is taken after the drain",
+  "find": "            quiesced.release = host.hold();\n            await host.drain();",
+  "replace": "            await host.drain();\n            quiesced.release = host.hold();"
+ },
+ {
+  "id": "R08",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the roles are read after the engine stop",
+  "find": "            quiesced.roles = await host.operatorRoles();\n            quiesced.stopped = true;\n            await host.stopEngine();",
+  "replace": "            quiesced.stopped = true;\n            await host.stopEngine();\n            quiesced.roles = await host.operatorRoles();"
+ },
+ {
+  "id": "R09",
+  "file": "src/modules/demo/reset.ts",
+  "what": "\"must be resumed\" is noted only after the pool is closed",
+  "find": "            quiesced.stopped = true;\n            await host.stopEngine();\n            await host.closePool();",
+  "replace": "            await host.stopEngine();\n            await host.closePool();\n            quiesced.stopped = true;"
+ },
+ {
+  "id": "R10",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the pool is not reopened",
+  "find": "        await host.reopenPool();\n",
+  "replace": ""
+ },
+ {
+  "id": "R11",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the boot checks are not run",
+  "find": "        await host.bootChecks();\n",
+  "replace": ""
+ },
+ {
+  "id": "R12",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the matrix is not reloaded",
+  "find": "        grants = await host.reloadMatrix();\n",
+  "replace": ""
+ },
+ {
+  "id": "R13",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the engine is not reloaded",
+  "find": "        await host.reloadEngine();\n",
+  "replace": ""
+ },
+ {
+  "id": "R14",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the engine is reloaded before the matrix",
+  "find": "        grants = await host.reloadMatrix();\n        step = 'engine.reload';\n        await host.reloadEngine();",
+  "replace": "        await host.reloadEngine();\n        step = 'engine.reload';\n        grants = await host.reloadMatrix();"
+ },
+ {
+  "id": "R15",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the boot checks run before the pool is reopened",
+  "find": "        await host.reopenPool();\n        step = 'boot.checks';\n        await host.bootChecks();",
+  "replace": "        await host.bootChecks();\n        step = 'boot.checks';\n        await host.reopenPool();"
+ },
+ {
+  "id": "R16",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the matrix is reloaded before the boot checks",
+  "find": "        await host.bootChecks();\n        step = 'rbac.matrix';\n        grants = await host.reloadMatrix();",
+  "replace": "        grants = await host.reloadMatrix();\n        step = 'rbac.matrix';\n        await host.bootChecks();"
+ },
+ {
+  "id": "R17",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the hold is released before the resume",
+  "find": "    let grants: readonly GrantRow[] = [];\n    if (quiesced.stopped) {",
+  "replace": "    let grants: readonly GrantRow[] = [];\n    quiesced.release?.();\n    if (quiesced.stopped) {"
+ },
+ {
+  "id": "R18",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the hold is released although the resume failed (decision D95)",
+  "find": "        throw refusal(ResetRefusal.FAILED);\n      }\n    }",
+  "replace": "        quiesced.release?.();\n        throw refusal(ResetRefusal.FAILED);\n      }\n    }"
+ },
+ {
+  "id": "R19",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the hold is never released",
+  "find": "    quiesced.release?.();\n",
+  "replace": ""
+ },
+ {
+  "id": "R20",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the resume runs whenever the hold was taken",
+  "find": "    if (quiesced.stopped) {\n      let step: ResumeStep",
+  "replace": "    if (quiesced.release !== null) {\n      let step: ResumeStep"
+ },
+ {
+  "id": "R21",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the resume runs although nothing was stopped",
+  "find": "    if (quiesced.stopped) {\n      let step: ResumeStep",
+  "replace": "    if (epochBefore >= 0) {\n      let step: ResumeStep"
+ },
+ {
+  "id": "R22",
+  "file": "src/modules/demo/reset.ts",
+  "what": "no resume after a routine that failed",
+  "find": "    if (quiesced.stopped) {\n      let step: ResumeStep",
+  "replace": "    if (quiesced.stopped && !rejected) {\n      let step: ResumeStep"
+ },
+ {
+  "id": "R23",
+  "file": "src/modules/demo/reset.ts",
+  "what": "two resets of one server may run at once",
+  "find": "      if (inFlight) {",
+  "replace": "      if (inFlight && call.requestId === \"\") {"
+ },
+ {
+  "id": "R24",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the reset guard is never freed",
+  "find": "      } finally {\n        inFlight = false;\n      }",
+  "replace": "      } finally {\n        // not freed\n      }"
+ },
+ {
+  "id": "R25",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the routine is told no actor",
+  "find": "        actorId: call.actorId,\n        reason:",
+  "replace": "        actorId: null,\n        reason:"
+ },
+ {
+  "id": "R26",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the routine is told the scenario idle whatever was asked",
+  "find": "        scenario: call.scenario,\n        quiesce:",
+  "replace": "        scenario: 'idle',\n        quiesce:"
+ },
+ {
+  "id": "R27",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the clock handed to the routine is not the server clock",
+  "find": "        clock: () => host.now(),",
+  "replace": "        clock: () => host.now() + 1,"
+ },
+ {
+  "id": "R28",
+  "file": "src/modules/demo/reset.ts",
+  "what": "a reset that did not happen answers 500",
+  "find": "new ApiFailure(503, EnvelopeCode.NOT_READY,",
+  "replace": "new ApiFailure(500, EnvelopeCode.NOT_READY,"
+ },
+ {
+  "id": "R29",
+  "file": "src/modules/demo/reset.ts",
+  "what": "\"another reset is running\" is answered as a failure",
+  "find": "      throw refusal(running ? ResetRefusal.IN_PROGRESS : ResetRefusal.FAILED);",
+  "replace": "      throw refusal(ResetRefusal.FAILED);"
+ },
+ {
+  "id": "R30",
+  "file": "src/modules/demo/reset.ts",
+  "what": "a failed routine is not answered as a failure",
+  "find": "    if (rejected || report === null) {",
+  "replace": "    if (rejected && report !== null) {"
+ },
+ {
+  "id": "R31",
+  "file": "src/modules/demo/reset.ts",
+  "what": "no session.updated is published",
+  "find": "          host.publish({ kind: 'session.updated', ...change });",
+  "replace": "          void change;"
+ },
+ {
+  "id": "R32",
+  "file": "src/modules/demo/reset.ts",
+  "what": "admin.changed for the user list is not published",
+  "find": "    host.publish({ kind: 'admin.changed', resource: 'USERS' });\n",
+  "replace": ""
+ },
+ {
+  "id": "R33",
+  "file": "src/modules/demo/reset.ts",
+  "what": "admin.changed for the pairing code is always published",
+  "find": "    if (report.cancelledPairingCodes > 0) host.publish(",
+  "replace": "    if (report.cancelledPairingCodes >= 0) host.publish("
+ },
+ {
+  "id": "R34",
+  "file": "src/modules/demo/reset.ts",
+  "what": "an unchanged role counts as changed",
+  "find": "previous === role ||",
+  "replace": "previous !== role ||"
+ },
+ {
+  "id": "R35",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the roles are not read again after the reset",
+  "find": "roleChanges(quiesced.roles, await host.operatorRoles(), grants)",
+  "replace": "roleChanges(quiesced.roles, quiesced.roles, grants)"
+ },
+ {
+  "id": "R36",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the permissions published are those of the other roles",
+  "find": "grants.filter((grant) => grant.role === role)",
+  "replace": "grants.filter((grant) => grant.role !== role)"
+ },
+ {
+  "id": "R37",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the routine's own log lines are dropped",
+  "find": "        log: (entry) => log[entry.level]({ code: entry.code, ...entry.details }, entry.message),",
+  "replace": "        log: () => undefined,"
+ },
+ {
+  "id": "R38",
+  "file": "src/modules/demo/reset.ts",
+  "what": "a quiesce that broke off is not reported to the routine",
+  "find": "...describeError(error), context });\n            throw error;",
+  "replace": "...describeError(error), context });"
+ },
+ {
+  "id": "R39",
+  "file": "src/modules/demo/reset.ts",
+  "what": "an engine epoch other than the routine's is not reported",
+  "find": "    if (epoch !== report.epoch) {",
+  "replace": "    if (epoch !== report.epoch && epoch < 0) {"
+ },
+ {
+  "id": "R40",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the failed resume is not written to the error log",
+  "find": "        host.persist({\n          level: 'fatal',",
+  "replace": "        void ({\n          level: 'fatal',"
+ },
+ {
+  "id": "R41",
+  "file": "src/modules/demo/reset.ts",
+  "what": "the refused reset is not written to the error log",
+  "find": "      host.persist({\n        level: quiesced.stopped ? 'error' : 'warn',",
+  "replace": "      void ({\n        level: quiesced.stopped ? 'error' : 'warn',"
+ },
+ {
+  "id": "O01",
+  "file": "src/modules/demo/operations.ts",
+  "what": "the two reasons are swapped",
+  "find": "  loadScenario: 'SCENARIO_LOAD',\n  resetDemo: 'RESET',",
+  "replace": "  loadScenario: 'RESET',\n  resetDemo: 'SCENARIO_LOAD',"
+ },
+ {
+  "id": "O02",
+  "file": "src/modules/demo/operations.ts",
+  "what": "resetDemo loads the recording scenario",
+  "find": "export const RESET_DEMO_SCENARIO = ScenarioName.IDLE;",
+  "replace": "export const RESET_DEMO_SCENARIO = ScenarioName.RECORDING;"
+ },
+ {
+  "id": "H01",
+  "file": "src/modules/demo/host.ts",
+  "what": "B-1: the probe's answer is ignored",
+  "find": "    if (!(await app.db.probe({ fresh: true }))) throw new Error('the database does not answer');",
+  "replace": "    await app.db.probe({ fresh: true });"
+ },
+ {
+  "id": "H02",
+  "file": "src/modules/demo/host.ts",
+  "what": "B-1: the pinned path is not checked",
+  "find": "    if (answer.rows[0]?.[0] !== RUNTIME_SEARCH_PATH) {",
+  "replace": "    if (answer.rows[0]?.[0] !== RUNTIME_SEARCH_PATH && answer.rows.length > 99) {"
+ },
+ {
+  "id": "H03",
+  "file": "src/modules/demo/host.ts",
+  "what": "B-8 is not run",
+  "find": "      if (id === REPORTED_BOOT_CHECK) {\n",
+  "replace": "      if (id === REPORTED_BOOT_CHECK) {\n        continue;\n"
+ },
+ {
+  "id": "H04",
+  "file": "src/modules/demo/host.ts",
+  "what": "the blocking checks are not run",
+  "find": "      await check.run(app.db.pool);",
+  "replace": "      void check;"
+ },
+ {
+  "id": "H05",
+  "file": "src/modules/demo/host.ts",
+  "what": "a failed boot check is swallowed",
+  "find": "    throw new ResumeFailure(step, error);",
+  "replace": "    void new ResumeFailure(step, error);"
+ },
+ {
+  "id": "H06",
+  "file": "src/modules/demo/host.ts",
+  "what": "the hold is not bound to readiness",
+  "find": "    hold: () => app.readiness.hold(RESET_HOLD_NAME),",
+  "replace": "    hold: () => () => undefined,"
+ },
+ {
+  "id": "H07",
+  "file": "src/modules/demo/host.ts",
+  "what": "the drain is not bound to the pipeline",
+  "find": "    drain: () => app.pipeline.drain(),",
+  "replace": "    drain: async () => undefined,"
+ },
+ {
+  "id": "H08",
+  "file": "src/modules/demo/host.ts",
+  "what": "the engine stop is not bound",
+  "find": "    stopEngine: () => app.engine.stop(),",
+  "replace": "    stopEngine: async () => undefined,"
+ },
+ {
+  "id": "H09",
+  "file": "src/modules/demo/host.ts",
+  "what": "the pool close is not bound",
+  "find": "    closePool: () => app.db.close(),",
+  "replace": "    closePool: async () => undefined,"
+ },
+ {
+  "id": "H10",
+  "file": "src/modules/demo/host.ts",
+  "what": "the pool reopen is not bound",
+  "find": "    reopenPool: () => app.db.reopen(),",
+  "replace": "    reopenPool: async () => undefined,"
+ },
+ {
+  "id": "H11",
+  "file": "src/modules/demo/host.ts",
+  "what": "the engine is started as a process start (a second epoch increment)",
+  "find": "    reloadEngine: () => app.engine.reload(),",
+  "replace": "    reloadEngine: () => app.engine.start('boot'),"
+ },
+ {
+  "id": "H12",
+  "file": "src/modules/demo/host.ts",
+  "what": "the matrix is not reloaded by the host",
+  "find": "    reloadMatrix: async () => (await permissionGuard(app).reloadMatrix()).grants,",
+  "replace": "    reloadMatrix: async () => [],"
+ },
+ {
+  "id": "H13",
+  "file": "src/modules/demo/host.ts",
+  "what": "the clock of the host is the system clock",
+  "find": "    now: () => app.clock.now(),",
+  "replace": "    now: () => Date.now(),"
+ },
+ {
+  "id": "H14",
+  "file": "src/modules/demo/host.ts",
+  "what": "the epoch of the host is not the engine's",
+  "find": "    epoch: () => app.engine.epoch,",
+  "replace": "    epoch: () => 0,"
+ },
+ {
+  "id": "H15",
+  "file": "src/modules/demo/host.ts",
+  "what": "publications are not handed to the seam",
+  "find": "    publish: (publication) => app.publish(publication),",
+  "replace": "    publish: () => undefined,"
+ },
+ {
+  "id": "H16",
+  "file": "src/modules/demo/host.ts",
+  "what": "error-log entries are not handed to the error log",
+  "find": "    persist: (entry) => app.errorLog.append(entry),",
+  "replace": "    persist: () => undefined,"
+ },
+ {
+  "id": "H17",
+  "file": "src/modules/demo/host.ts",
+  "what": "the boot checks of the host are not run",
+  "find": "    bootChecks: () => runBootChecks(app),",
+  "replace": "    bootChecks: async () => undefined,"
+ },
+ {
+  "id": "H18",
+  "file": "src/modules/demo/host.ts",
+  "what": "the role read names the operator ID as the role",
+  "find": "SELECT id, role_id AS role FROM public.operators ORDER BY id",
+  "replace": "SELECT id, id AS role FROM public.operators ORDER BY id"
+ },
+ {
+  "id": "I01",
+  "file": "src/modules/demo/index.ts",
+  "what": "injectFault runs clearFault",
+  "find": "request.principal, 'inject', kind, target);",
+  "replace": "request.principal, 'clearFault', kind, target);"
+ },
+ {
+  "id": "I02",
+  "file": "src/modules/demo/index.ts",
+  "what": "clearFault runs inject",
+  "find": "request.principal, 'clearFault', kind, target);",
+  "replace": "request.principal, 'inject', kind, target);"
+ },
+ {
+  "id": "I03",
+  "file": "src/modules/demo/index.ts",
+  "what": "injectFault drops the target",
+  "find": "request.principal, 'inject', kind, target);",
+  "replace": "request.principal, 'inject', kind, undefined);"
+ },
+ {
+  "id": "I04",
+  "file": "src/modules/demo/index.ts",
+  "what": "no log line for an injected fault",
+  "find": "      request.log.info({ operationId: 'injectFault', operatorId: operatorIdOf(request), kind, target: target ?? null, epoch: outcome.epoch, revision: outcome.revision }, FAULT_INJECTED);\n",
+  "replace": ""
+ },
+ {
+  "id": "I05",
+  "file": "src/modules/demo/index.ts",
+  "what": "the log line of a cleared fault names no operator",
+  "find": "{ operationId: 'clearFault', operatorId: operatorIdOf(request), kind,",
+  "replace": "{ operationId: 'clearFault', kind,"
+ },
+ {
+  "id": "I06",
+  "file": "src/modules/demo/index.ts",
+  "what": "the answer adds 1 to the routine's epoch",
+  "find": "    return { epoch: report.epoch };",
+  "replace": "    return { epoch: report.epoch + 1 };"
+ },
+ {
+  "id": "I07",
+  "file": "src/modules/demo/index.ts",
+  "what": "resetDemo runs as a scenario load",
+  "find": "await reset.run({ operation: 'resetDemo', scenario: RESET_DEMO_SCENARIO,",
+  "replace": "await reset.run({ operation: 'loadScenario', scenario: RESET_DEMO_SCENARIO,"
+ },
+ {
+  "id": "I08",
+  "file": "src/modules/demo/index.ts",
+  "what": "loadScenario ignores the name",
+  "find": "operation: 'loadScenario', scenario: request.body.name,",
+  "replace": "operation: 'loadScenario', scenario: RESET_DEMO_SCENARIO,"
+ },
+ {
+  "id": "I09",
+  "file": "src/modules/demo/index.ts",
+  "what": "the actor of resetDemo is not the caller",
+  "find": "scenario: RESET_DEMO_SCENARIO, actorId: operatorIdOf(request),",
+  "replace": "scenario: RESET_DEMO_SCENARIO, actorId: 'OPR-001',"
+ },
+ {
+  "id": "I10",
+  "file": "src/modules/demo/index.ts",
+  "what": "the answer of a reset carries no state position",
+  "find": "    void reply.header(EPOCH_HEADER_NAME, app.engine.epoch).header(REVISION_HEADER_NAME, app.engine.revision);\n",
+  "replace": ""
+ },
+ {
+  "id": "I11",
+  "file": "src/modules/demo/index.ts",
+  "what": "the status answers epoch 0",
+  "find": "return demoStatusOf(app.engine.state(), app.engine.epoch, facts);",
+  "replace": "return demoStatusOf(app.engine.state(), 0, facts);"
+ },
+ {
+  "id": "I12",
+  "file": "src/modules/demo/index.ts",
+  "what": "the 204 of a fault carries no state position",
+  "find": "  return reply.header(EPOCH_HEADER_NAME, outcome.epoch).header(REVISION_HEADER_NAME, outcome.revision).code(204).send();",
+  "replace": "  void outcome;\n  return reply.code(204).send();"
+ },
+ {
+  "id": "I13",
+  "file": "src/modules/demo/index.ts",
+  "what": "a caller that is no operator is given an actor",
+  "find": "  if (principal.kind !== 'OPERATOR') throw new Error('a demo operation ran without an operator: the access rule of its route was not applied');",
+  "replace": "  if (principal.kind !== 'OPERATOR') return 'OPR-000';"
+ },
+ {
+  "id": "I14",
+  "file": "src/modules/demo/index.ts",
+  "what": "the read of operation 71 is not answered from the stored row",
+  "find": "const facts = seedFactsOf(await app.db.read(DEMO_STATUS_SOURCE, async (pool) => (await pool.query<SeedFactsRow>(READ_SEED_FACTS)).rows));",
+  "replace": "const facts = seedFactsOf([{ seeded_at: '1', last_reset_at: null }]);"
+ },
+ {
+  "id": "S01",
+  "file": "src/modules/demo/status.ts",
+  "what": "no fault is listed",
+  "find": "    activeFaults: state.faults.active.map((fault) => ({ kind: fault.kind, since: fault.since, target: fault.target })),",
+  "replace": "    activeFaults: [],"
+ },
+ {
+  "id": "S02",
+  "file": "src/modules/demo/status.ts",
+  "what": "the last reset is always null",
+  "find": "    lastResetAt: row.last_reset_at === null ? null : instantOf(row.last_reset_at, 'last_reset_at'),",
+  "replace": "    lastResetAt: null,"
+ },
+ {
+  "id": "S03",
+  "file": "src/modules/demo/status.ts",
+  "what": "the seed instant is 0",
+  "find": "    seededAt: instantOf(row.seeded_at, 'seeded_at'),",
+  "replace": "    seededAt: 0,"
+ },
+ {
+  "id": "S04",
+  "file": "src/modules/demo/status.ts",
+  "what": "the scenario is always idle",
+  "find": "    scenario: state.meta.scenario,",
+  "replace": "    scenario: 'idle',"
+ },
+ {
+  "id": "S05",
+  "file": "src/modules/demo/status.ts",
+  "what": "more than one state row is accepted",
+  "find": "  if (rows.length !== 1 || row === undefined) throw",
+  "replace": "  if (row === undefined) throw"
+ },
+ {
+  "id": "S06",
+  "file": "src/modules/demo/status.ts",
+  "what": "a value that is no instant is accepted",
+  "find": "  if (!Number.isSafeInteger(value)) throw",
+  "replace": "  if (!Number.isSafeInteger(value) && value === 0) throw"
+ },
+ {
+  "id": "S07",
+  "file": "src/modules/demo/status.ts",
+  "what": "the epoch of the answer is not the one handed in",
+  "find": "    epoch,\n  };",
+  "replace": "    epoch: state.meta.epoch,\n  };"
+ }
+]

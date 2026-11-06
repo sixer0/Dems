@@ -1,0 +1,47 @@
+Only in REPO/apps/core-server/src: .DS_Store
+Only in REPO/apps/core-server/src: .claude
+Files BASE/apps/core-server/src/__tests__/capture-composition.db.test.ts and REPO/apps/core-server/src/__tests__/capture-composition.db.test.ts differ
+Files BASE/apps/core-server/src/__tests__/capture-composition.test.ts and REPO/apps/core-server/src/__tests__/capture-composition.test.ts differ
+Only in REPO/apps/core-server/src/capture: .claude
+Files BASE/apps/core-server/src/capture/__tests__/destination-rule.test.ts and REPO/apps/core-server/src/capture/__tests__/destination-rule.test.ts differ
+Files BASE/apps/core-server/src/capture/adapters/__tests__/static.test.ts and REPO/apps/core-server/src/capture/adapters/__tests__/static.test.ts differ
+Files BASE/apps/core-server/src/capture/adapters/audio/__tests__/macos-card-listing.test.ts and REPO/apps/core-server/src/capture/adapters/audio/__tests__/macos-card-listing.test.ts differ
+Files BASE/apps/core-server/src/capture/adapters/audio/__tests__/mic-loss.test.ts and REPO/apps/core-server/src/capture/adapters/audio/__tests__/mic-loss.test.ts differ
+Files BASE/apps/core-server/src/capture/adapters/audio/__tests__/usb-audio-production.test.ts and REPO/apps/core-server/src/capture/adapters/audio/__tests__/usb-audio-production.test.ts differ
+Files BASE/apps/core-server/src/capture/adapters/audio/usb-audio-production.ts and REPO/apps/core-server/src/capture/adapters/audio/usb-audio-production.ts differ
+Files BASE/apps/core-server/src/capture/adapters/camera/__tests__/discovery-collector.test.ts and REPO/apps/core-server/src/capture/adapters/camera/__tests__/discovery-collector.test.ts differ
+Files BASE/apps/core-server/src/capture/adapters/camera/__tests__/stored-address-cases.ts and REPO/apps/core-server/src/capture/adapters/camera/__tests__/stored-address-cases.ts differ
+Files BASE/apps/core-server/src/capture/adapters/camera/__tests__/stored-address.test.ts and REPO/apps/core-server/src/capture/adapters/camera/__tests__/stored-address.test.ts differ
+Files BASE/apps/core-server/src/capture/adapters/camera/__tests__/ws-discovery.test.ts and REPO/apps/core-server/src/capture/adapters/camera/__tests__/ws-discovery.test.ts differ
+Files BASE/apps/core-server/src/capture/adapters/camera/discovery-collector.ts and REPO/apps/core-server/src/capture/adapters/camera/discovery-collector.ts differ
+Files BASE/apps/core-server/src/capture/adapters/camera/ws-discovery.ts and REPO/apps/core-server/src/capture/adapters/camera/ws-discovery.ts differ
+Files BASE/apps/core-server/src/capture/destination-rule.ts and REPO/apps/core-server/src/capture/destination-rule.ts differ
+Files BASE/apps/core-server/src/capture/fence/production-parts.ts and REPO/apps/core-server/src/capture/fence/production-parts.ts differ
+Files BASE/apps/core-server/src/capture/host-alias/__tests__/lifecycle.test.ts and REPO/apps/core-server/src/capture/host-alias/__tests__/lifecycle.test.ts differ
+Files BASE/apps/core-server/src/capture/host-alias/facts.ts and REPO/apps/core-server/src/capture/host-alias/facts.ts differ
+Files BASE/apps/core-server/src/capture-composition.ts and REPO/apps/core-server/src/capture-composition.ts differ
+Files BASE/apps/core-server/src/core/__tests__/writers.test.ts and REPO/apps/core-server/src/core/__tests__/writers.test.ts differ
+Files BASE/apps/core-server/src/core/audit-details.ts and REPO/apps/core-server/src/core/audit-details.ts differ
+Files BASE/apps/core-server/src/modules/capture-config/__tests__/adopted-camera-test.db.test.ts and REPO/apps/core-server/src/modules/capture-config/__tests__/adopted-camera-test.db.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-config/__tests__/camera-adapter-open.db.test.ts and REPO/apps/core-server/src/modules/capture-config/__tests__/camera-adapter-open.db.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-config/__tests__/capture-config.db.test.ts and REPO/apps/core-server/src/modules/capture-config/__tests__/capture-config.db.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-config/__tests__/credential-reader.db.test.ts and REPO/apps/core-server/src/modules/capture-config/__tests__/credential-reader.db.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-config/__tests__/credential-reader.test.ts and REPO/apps/core-server/src/modules/capture-config/__tests__/credential-reader.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-config/camera-network/__tests__/routes.db.test.ts and REPO/apps/core-server/src/modules/capture-config/camera-network/__tests__/routes.db.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-config/factory-scan/__tests__/routes.db.test.ts and REPO/apps/core-server/src/modules/capture-config/factory-scan/__tests__/routes.db.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-config/network/__tests__/routes.db.test.ts and REPO/apps/core-server/src/modules/capture-config/network/__tests__/routes.db.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-config/network/__tests__/service.test.ts and REPO/apps/core-server/src/modules/capture-config/network/__tests__/service.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-config/network/facts.ts and REPO/apps/core-server/src/modules/capture-config/network/facts.ts differ
+Files BASE/apps/core-server/src/modules/capture-config/network/index.ts and REPO/apps/core-server/src/modules/capture-config/network/index.ts differ
+Files BASE/apps/core-server/src/modules/capture-config/routes.ts and REPO/apps/core-server/src/modules/capture-config/routes.ts differ
+Files BASE/apps/core-server/src/modules/capture-discovery/__tests__/adopted-test.test.ts and REPO/apps/core-server/src/modules/capture-discovery/__tests__/adopted-test.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-discovery/__tests__/readdress.db.test.ts and REPO/apps/core-server/src/modules/capture-discovery/__tests__/readdress.db.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-discovery/__tests__/readdress.test.ts and REPO/apps/core-server/src/modules/capture-discovery/__tests__/readdress.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-discovery/connect/__tests__/service.test.ts and REPO/apps/core-server/src/modules/capture-discovery/connect/__tests__/service.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-discovery/connect/service.ts and REPO/apps/core-server/src/modules/capture-discovery/connect/service.ts differ
+Files BASE/apps/core-server/src/modules/capture-inputs/audio-cards/__tests__/fixtures.ts and REPO/apps/core-server/src/modules/capture-inputs/audio-cards/__tests__/fixtures.ts differ
+Files BASE/apps/core-server/src/modules/capture-inputs/audio-cards/__tests__/routes.db.test.ts and REPO/apps/core-server/src/modules/capture-inputs/audio-cards/__tests__/routes.db.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-inputs/audio-cards/__tests__/service.test.ts and REPO/apps/core-server/src/modules/capture-inputs/audio-cards/__tests__/service.test.ts differ
+Files BASE/apps/core-server/src/modules/capture-inputs/audio-cards/service.ts and REPO/apps/core-server/src/modules/capture-inputs/audio-cards/service.ts differ
+Files BASE/apps/core-server/src/modules/capture-inputs/audio-cards/statements.ts and REPO/apps/core-server/src/modules/capture-inputs/audio-cards/statements.ts differ
+Files BASE/apps/core-server/src/modules/capture-inputs/audio-cards/store.ts and REPO/apps/core-server/src/modules/capture-inputs/audio-cards/store.ts differ

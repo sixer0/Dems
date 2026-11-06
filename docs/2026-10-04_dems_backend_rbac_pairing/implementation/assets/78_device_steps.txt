@@ -1,0 +1,45 @@
+1 tap 540 1443
+2 wait 2
+3 link demsdemo:///devices/POE-SWITCH
+4 wait 4
+5 shot devices_detail_live_try
+6 shot detail_live
+7 tap 534 2067
+8 wait 2
+9 shot dialog_live
+10 dump
+11 tap 852 1334
+12 wait 1
+13 shot test_signal_toast_live
+14 live
+15 wait 3
+16 tap 585 738
+17 wait 2
+18 shot log_live
+19 simstart
+20 wait 4
+21 shot simulated_start
+22 simsignin
+23 wait 3
+24 shot simulated_after_sign_in
+25 tap 540 1410
+26 wait 2
+27 link demsdemo:///devices/POE-SWITCH
+28 wait 4
+29 shot detail_simulated
+30 tap 534 2067
+31 wait 2
+32 shot dialog_simulated
+33 dump
+34 tap 852 1365
+35 wait 1
+36 shot test_signal_toast_simulated
+37 simreq
+38 link demsdemo:///more
+39 wait 5
+40 shot more_simulated_top
+41 tap 781 586
+42 wait 4
+43 shot simulated_after_sign_out
+44 prefs
+45 done

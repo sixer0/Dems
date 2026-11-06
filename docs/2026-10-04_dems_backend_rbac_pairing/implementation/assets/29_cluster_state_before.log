@@ -1,0 +1,24 @@
+2026-10-04 11:00:09 WIB
+19121 Sun Oct  4 07:14:26 2026    
+session        dems_owner (superuser false) on 127.0.0.1:4432, PostgreSQL 18.4, postmaster started 2026-10-04 07:14:26 WIB
+pg_database    8 row(s)
+  dems_demo                                        owner dems_owner  template false allowconn true  UTF8 C
+  dems_test_step_43_tmd747jo_f01_boot_checks       owner dems_owner  template false allowconn true  UTF8 C
+  dems_test_step_43_tmd747jo_f02_boot_good         owner dems_owner  template false allowconn true  UTF8 C
+  dems_test_step_43_tmd747jo_tpl_schema            owner dems_owner  template true  allowconn false UTF8 C
+  dems_test_step_43_tmd747jo_tpl_seed              owner dems_owner  template true  allowconn false UTF8 C
+  postgres                                         owner dems_admin  template false allowconn true  UTF8 C
+  template0                                        owner dems_admin  template true  allowconn false UTF8 C
+  template1                                        owner dems_admin  template true  allowconn true  UTF8 C
+pg_roles       3 role(s) outside pg_*
+  dems_admin   superuser true  createdb true  createrole true  login true
+  dems_app     superuser false createdb false createrole false login true
+  dems_owner   superuser false createdb true  createrole false login true
+pg_settings    375 visible setting(s), digest 6373391cbc111bce33dc5cf487c0c1e8; pg_db_role_setting 0 row(s)
+client sessions 4 group(s)
+  dems_test_step_43_tmd747jo_f02_boot_good         dems_owner  dems-test-fixture        1
+  postgres                                         dems_owner  dems-test-file           2
+  postgres                                         dems_owner  dems-test-run            1
+  postgres                                         dems_owner  dems-w29-evidence        1
+advisory locks 2 (442002, 0) (442002, 646856913)
+exit=0

@@ -1,0 +1,6 @@
+mark technician Next second press at 10:26:24.834
+tap 1180,1456 at 10:26:25.083
+slept 1500 ms
+screencap 22j_technician_next_2nd_1s.png (790009 bytes) at 10:26:27.172
+create 403 (10-06 10:26:24.967 POST /api/v1/session 403)
+screencap 22k_technician_next_2nd_16s.png (789863 bytes) at 10:26:27.920

@@ -1,0 +1,74 @@
+// Page-side measurement expressions for the Dashboard ring word and status strip (R-W re-test).
+
+/** Ring word vs the inner edge of the inner ring's stroke (radius (74 - 1.25) / 200 of the ring size). */
+export const MEASURE_RING = `(() => {
+  const ring = document.querySelector('[data-testid="glow-ring"]')
+  if (!ring) return null
+  const rb = ring.getBoundingClientRect()
+  const word = ring.querySelector('[data-ring-word]')
+  const centerText = ring.querySelector('[data-ring-center]')?.innerText?.replace(/\\s+/g, ' ').trim() ?? null
+  if (!word) return { state: ring.getAttribute('data-state'), size: Math.round(rb.width), word: null, centerText }
+  const range = document.createRange()
+  range.selectNodeContents(word)
+  const wb = range.getBoundingClientRect()
+  const cx = rb.left + rb.width / 2
+  const cy = rb.top + rb.height / 2
+  const r = ((74 - 1.25) / 200) * rb.width
+  const dy = Math.max(Math.abs(wb.top - cy), Math.abs(wb.bottom - cy))
+  const chordHalf = dy < r ? Math.sqrt(r * r - dy * dy) : 0
+  const reach = Math.max(cx - wb.left, wb.right - cx)
+  return {
+    state: ring.getAttribute('data-state'),
+    size: Math.round(rb.width),
+    word: word.textContent.replace(/\\s+/g, ''),
+    fontSize: getComputedStyle(word).fontSize,
+    fitScale: word.getAttribute('data-fit-scale'),
+    wordWidth: +wb.width.toFixed(1),
+    innerEdgeDiameter: +(2 * r).toFixed(1),
+    chordAtWordHeight: +(2 * chordHalf).toFixed(1),
+    clearanceEachSidePx: +(chordHalf - reach).toFixed(1),
+    inside: chordHalf - reach > 0,
+    centerText,
+  }
+})()`
+
+/** Status strip: rows, cell-box overlaps, value text running past its cell, truncation, off-screen cells. */
+export const MEASURE_STRIP = `(() => {
+  const cells = [...document.querySelectorAll('.dems-strip-cell')]
+  const boxes = cells.map((cell) => {
+    const cb = cell.getBoundingClientRect()
+    const value = cell.querySelector('.dems-strip-value')
+    const clip = cell.querySelector('.dems-strip-value-text')
+    let vb = null
+    if (value) { const rg = document.createRange(); rg.selectNodeContents(value); vb = rg.getBoundingClientRect() }
+    const visibleRight = vb ? (clip ? Math.min(vb.right, clip.getBoundingClientRect().right) : vb.right) : null
+    return {
+      id: cell.getAttribute('data-testid'),
+      label: cell.querySelector('.dems-strip-text')?.innerText?.replace(/\\s+/g, ' ').trim() ?? null,
+      value: value?.innerText?.replace(/\\s+/g, ' ').trim() ?? null,
+      left: Math.round(cb.left), right: Math.round(cb.right), top: Math.round(cb.top), bottom: Math.round(cb.bottom),
+      valueVisibleRight: visibleRight === null ? null : Math.round(visibleRight),
+      valueOverrunsCell: visibleRight === null ? false : visibleRight > cb.right + 1,
+      truncated: clip ? clip.scrollWidth > clip.clientWidth + 1 : false,
+    }
+  })
+  const overlaps = []
+  for (let i = 0; i < boxes.length; i += 1) for (let j = i + 1; j < boxes.length; j += 1) {
+    const a = boxes[i], b = boxes[j]
+    const boxOverlap = a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1
+    const sameRow = Math.abs(a.top - b.top) < 8
+    const textOverrun = sameRow && a.valueVisibleRight !== null && a.left < b.left && a.valueVisibleRight > b.left + 1
+    if (boxOverlap) overlaps.push(a.id + ' box overlaps ' + b.id)
+    if (textOverrun) overlaps.push(a.id + ' value runs into ' + b.id)
+  }
+  const vw = document.documentElement.clientWidth
+  return {
+    cells: boxes.length,
+    rows: new Set(boxes.map((b) => b.top)).size,
+    overlaps,
+    overruns: boxes.filter((b) => b.valueOverrunsCell).map((b) => b.id),
+    truncated: boxes.filter((b) => b.truncated).map((b) => b.id),
+    offscreen: boxes.filter((b) => b.right > vw + 1 || b.left < -1).map((b) => b.id),
+    boxes,
+  }
+})()`

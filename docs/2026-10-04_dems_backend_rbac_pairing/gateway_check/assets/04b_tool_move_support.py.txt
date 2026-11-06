@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""Item 9, step 1 (scratch copy only): copies each shared test-support file to test/support/
+   with its relative imports re-based. The old files are rewritten by hand afterwards."""
+import os, re, sys
+S = sys.argv[1]
+MOVES = {
+  'src/plugins/config/__tests__/test-config.ts': 'test/support/config.ts',
+  'src/core/__tests__/support.ts': 'test/support/core.ts',
+  'src/db/seed/__tests__/support.ts': 'test/support/seed.ts',
+  'src/engine/__tests__/support.ts': 'test/support/engine.ts',
+  'src/modules/identity/__tests__/support.ts': 'test/support/identity.ts',
+  'src/plugins/permission-guard/__tests__/support.ts': 'test/support/guard.ts',
+  'src/modules/pairing/__tests__/support.ts': 'test/support/pairing.ts',
+  'src/db/reset/__tests__/support.ts': 'test/support/reset.ts',
+}
+SPEC = re.compile(r"""(\bfrom\s+|\bimport\s*\(\s*)(['"])(\.{1,2}(?:/[^'"]*)?)\2""")
+def rebase(text, old, new):
+    old_dir, new_dir = os.path.dirname(old), os.path.dirname(new)
+    def fix(m):
+        target = os.path.normpath(os.path.join(old_dir, m.group(3)))
+        if target + '.ts' in MOVES: target = MOVES[target + '.ts'][:-3]
+        elif os.path.isfile(os.path.join(S, target, 'index.ts')) and m.group(3).endswith('/index'): target = target
+        rel = os.path.relpath(target, new_dir)
+        if not rel.startswith('.'): rel = './' + rel
+        return f"{m.group(1)}{m.group(2)}{rel}{m.group(2)}"
+    return SPEC.sub(fix, text)
+os.makedirs(os.path.join(S, 'test/support'), exist_ok=True)
+for old, new in MOVES.items():
+    text = open(os.path.join(S, old)).read()
+    open(os.path.join(S, new), 'w').write(rebase(text, old, new))
+    print(f"{old} -> {new}")

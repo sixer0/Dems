@@ -1,0 +1,212 @@
+{
+ "result": {
+  "shots": [
+   {
+    "file": "45_investigator_session_new_filled.png",
+    "caption": "INVESTIGATOR: Start New Session, step 1 filled (case number from the Core, subject, investigator = self)"
+   },
+   {
+    "file": "46_investigator_session_new_precheck.png",
+    "caption": "INVESTIGATOR: Start New Session, step 2, the Core's pre-check verdict: pass"
+   },
+   {
+    "file": "47_investigator_session_new_ready.png",
+    "caption": "INVESTIGATOR: Start New Session, step 3 ready"
+   },
+   {
+    "file": "48_investigator_session_monitor_recording.png",
+    "caption": "INVESTIGATOR: Session Monitor while recording"
+   },
+   {
+    "file": "49_investigator_session_note_added.png",
+    "caption": "INVESTIGATOR: Session Note submitted (op 35)"
+   },
+   {
+    "file": "50_investigator_session_end_dialog.png",
+    "caption": "INVESTIGATOR: End Session dialog after the 1.5 s hold"
+   },
+   {
+    "file": "51_investigator_session_sealed.png",
+    "caption": "INVESTIGATOR: session ended and sealed (op 26), finalization"
+   }
+  ],
+  "steps": [
+   {
+    "name": "scan case number (op 32)",
+    "at": "2026-10-06T02:59:11.553Z",
+    "caseNumber": "LP/2026/1006-0008",
+    "net": {
+     "api": [
+      "POST /api/v1/session/case-number 200"
+     ],
+     "console": []
+    }
+   },
+   {
+    "name": "form filled",
+    "at": "2026-10-06T02:59:12.812Z",
+    "investigator": "AKP Budi Santoso",
+    "nextEnabled": true,
+    "net": {
+     "api": [],
+     "console": []
+    }
+   },
+   {
+    "name": "Next: create (op 24) + pre-check (op 28)",
+    "at": "2026-10-06T02:59:18.538Z",
+    "nextAt": "2026-10-06T02:59:12.995Z",
+    "settled": true,
+    "phase": "pass",
+    "blockedText": null,
+    "session": {
+     "id": "SES-20261006-0024",
+     "state": "ARMED"
+    },
+    "net": {
+     "api": [
+      "POST /api/v1/session 201",
+      "POST /api/v1/session/SES-20261006-0024/precheck 202",
+      "GET /api/v1/session/current 200"
+     ],
+     "console": []
+    }
+   },
+   {
+    "name": "to ready step",
+    "at": "2026-10-06T02:59:20.082Z",
+    "net": {
+     "api": [],
+     "console": []
+    }
+   },
+   {
+    "name": "Start (op 25)",
+    "at": "2026-10-06T02:59:24.496Z",
+    "startAt": "2026-10-06T02:59:20.252Z",
+    "recording": true,
+    "net": {
+     "api": [
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "POST /api/v1/session/SES-20261006-0024/start 200",
+      "GET /api/v1/session/current 200"
+     ],
+     "console": []
+    }
+   },
+   {
+    "name": "monitor",
+    "at": "2026-10-06T02:59:29.321Z",
+    "banner": "SESSION ACTIVE & SECURERecording in progress • All integrity checks passing",
+    "noteEnabled": true,
+    "net": {
+     "api": [],
+     "console": []
+    }
+   },
+   {
+    "name": "note (op 35)",
+    "at": "2026-10-06T02:59:34.395Z",
+    "noteAt": "2026-10-06T02:59:30.936Z",
+    "toasts": [
+     "SESSION ACTIVE & SECURERecording in progress • All integrity checks passing",
+     "Note added",
+     "Note added"
+    ],
+    "net": {
+     "api": [
+      "POST /api/v1/session/SES-20261006-0024/notes 204"
+     ],
+     "console": []
+    }
+   },
+   {
+    "name": "stop (op 26)",
+    "at": "2026-10-06T02:59:52.109Z",
+    "endAt": "2026-10-06T02:59:41.396Z",
+    "sealed": true,
+    "after": {
+     "id": "SES-20261006-0024",
+     "state": "SEALED",
+     "evidenceId": "EV-20261006-0014"
+    },
+    "net": {
+     "api": [
+      "POST /api/v1/session/SES-20261006-0024/stop 202",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200",
+      "GET /api/v1/session/current 200"
+     ],
+     "console": []
+    }
+   }
+  ],
+  "sessionId": "SES-20261006-0024",
+  "outcome": "RECORDED_NOTED_STOPPED"
+ },
+ "net": {
+  "api": [],
+  "console": []
+ }
+}

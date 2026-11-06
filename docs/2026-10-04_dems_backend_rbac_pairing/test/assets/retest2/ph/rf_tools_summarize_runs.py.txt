@@ -1,0 +1,38 @@
+"""summarize_runs.py: one JSON line per R-P-1 run from the batch output, the frame analysis, the timer lag and the
+native log counts."""
+import json, re, subprocess, sys, os
+S = '/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/rfph'
+def secs(t):
+    h, m, s = t.split(':'); return int(h) * 3600 + int(m) * 60 + float(s)
+def hms(x):
+    h = int(x // 3600); m = int(x % 3600 // 60); s = x % 60
+    return f'{h:02d}:{m:02d}:{s:06.3f}'
+VAR = {'R18': 's30', 'R13': 'e5', 'R14': 'bm', 'R15': 's30', 'R16': 'e5', 'R17': 'xearly', 'R01': 'bm', 'R02': 'early', 'R03': 's30', 'R04': 'bm', 'R05': 'early', 'R06': 's30', 'R07': 'bm', 'R08': 'early', 'R09': 's30', 'R10': 'bm', 'R11': 'early', 'R12': 's30'}
+for n in sys.argv[1:]:
+    out = open(f'{S}/runs/{n}.out').read()
+    a = json.loads(open(f'{S}/runs/{n}_analysis.json').read().split('\n')[0])
+    st = re.search(r'(\d\d:\d\d:\d\d\.\d+) POST /api/v1/session/:id/start 200', out)
+    sp = re.search(r'(\d\d:\d\d:\d\d\.\d+) POST /api/v1/session/:id/stop (\d+)', out)
+    mk = re.search(r'(\d\d:\d\d:\d\d\.\d+) POST /api/v1/session/:id/markers (\d+)', out)
+    load = re.findall(r'host load ([\d.]+) ([\d.]+) ([\d.]+)', out)
+    js = re.search(r'js => (\{"id".*\})', out)
+    sess = json.loads(js.group(1)) if js else {}
+    lag = json.loads(subprocess.run(['python3', f'{S}/tools/lag.py', f'{S}/phone_frames/{n}_rows.json', st.group(1)] + ([sp.group(1)] if sp else []), capture_output=True, text=True).stdout)
+    stopdev = hms(secs(sp.group(1)) - 0.43) if sp else ''
+    nat = json.loads(subprocess.run(['python3', f'{S}/tools/native_summary.py', f'{S}/phone_assets/{n}_native.txt', stopdev], capture_output=True, text=True).stdout)
+    h = a['handover'] or {}
+    row = {'run': n, 'variant': VAR.get(n), 'session': sess.get('id'), 'evidence': sess.get('evidenceId'), 'state': sess.get('state'),
+           'coreStart': st.group(1) if st else None, 'coreStop': sp.group(1) if sp else None, 'stopStatus': sp.group(2) if sp else None,
+           'marker': (mk.group(1) + ' ' + mk.group(2)) if mk else None,
+           'stopAfterStartS': round(secs(sp.group(1)) - secs(st.group(1)), 1) if st and sp else None,
+           'stopAfterMarkerS': round(secs(sp.group(1)) - secs(mk.group(1)), 2) if mk and sp else None,
+           'load': load[0] if load else None,
+           'frames': a['frames'], 'monitorFrames': a['monitorFrames'], 'banner': a['bannerFrames'], 'blank': a['blankFrames'], 'red': a['redFrames'],
+           'timerDecoded': a['timerDecoded'], 'timerUndecoded': a['timerUndecoded'], 'backward': a['backwardSteps'], 'jumps': a['forwardJumpsOver2s'],
+           'lastMonitorHost': h.get('lastMonitorHost'), 'nextHost': h.get('nextHost'), 'nextFrame': h.get('nextFrame'), 'lastMonitorFrame': h.get('lastMonitorFrame'),
+           'nextBlank': h.get('nextBlank'), 'blankAfter': h.get('blankAfter'),
+           'core202ToNextS': round(secs(h['nextHost']) - secs(sp.group(1)), 2) if h and sp else None,
+           'maxLag': lag['maxLag'], 'lagSpans': [(s['from'], s['to'], s['timer'], s['maxLag']) for s in lag['spans'] if s['maxLag'] > 2.5],
+           'crashClass': nat['crashClass'], 'syncWarn': nat['syncUpdateFailed'], 'syncNearStop': nat['syncNearStop'],
+           'audit': [x[1] + ('/' + x[2] if x[2] else '') for x in sess.get('audit', [])]}
+    print(json.dumps(row))

@@ -1,0 +1,12 @@
+09:45:16.387 keyguard false
+09:45:16.477 focused true; keyguard false; inputType 0x80001
+09:45:16.961 mCurrentFocus=Window{5b196b2 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+09:45:17.027 mark start at 09:45:17.027
+09:45:17.057 w1: HeadlessChrome/153.0.8010.12 headless=true devtools 127.0.0.1:9561, fresh profile in TMPDIR
+09:45:17.377 w2: HeadlessChrome/153.0.8010.12 headless=true devtools 127.0.0.1:9562, fresh profile in TMPDIR
+09:45:17.664 nav /login load=true
+09:45:20.410 js => "LIVE"
+09:45:20.441 signin andi.pratama (SUPERVISOR) dashboard after 1088 ms
+09:45:23.717 screenshot w1_dashboard_supervisor_probe.png 09:45:23.717..09:45:24.105
+09:45:24.168 api GET /api/v1/session/current => {"status":200,"body":{"session":null,"serverTime":"2026-10-06T09:45:24.172+07:00"}}
+09:45:24.216 api GET /api/v1/admin/users => {"status":200,"body":{"users":[{"id":"OPR-001","username":"budi.santoso","rank":"AKP","name":"Budi Santoso","displayName":"AKP Budi Santoso","initials":"BS","role":"INVESTIGATOR","enabled":true,"lastSignInAt":1791226317643,"activeSessions":0,"roleChangedAt":null},{"id":"OPR-002","username":"andi.pratama","rank":"AKP","name":"Andi Pratama","displayName":"AKP Andi Pratama","initials":"AP","role":"SUPERVISOR","enabled":true,"lastSignInAt":1791254720568,"activeSessions":1,"roleChangedAt":null},{"id":"OPR-003","username":"rina.wijaya","rank":null,"name":"Rina Wijaya","displayName":"Rina Wijaya","initials":"RW","role":"TECHNICIAN","enabled":true,"lastSignInAt":null,"activeSessions":0,"roleChangedAt":null}]}}

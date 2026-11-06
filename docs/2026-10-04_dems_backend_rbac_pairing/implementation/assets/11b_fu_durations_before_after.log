@@ -1,0 +1,69 @@
+# W11b follow-up (decision D110): the helper's database test files before and after the limits.
+# 'Before' is the unchanged copy, 'after' the copy with vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
+# both in scratch trees of the same layout outside the repository, run alternately against the project's PostgreSQL, label 33c.
+# Numbers are the sum of the test durations of a file in ms, from Vitest's JSON reporter.
+
+## 1. One worker: no file runs beside another. This is the comparison of the limits themselves.
+# order, time and load average at the start of each run; all twelve runs: 59 of 59 tests, exit 0
+#   before 1: 17:55:05 load 1.94 2.56 3.40 |  Tests 59 passed (59) |  Duration 14.40s (tests  | exit=0
+#   after 1: 17:55:20 load 2.01 2.55 3.38 |  Tests 59 passed (59) |  Duration 14.37s (tests  | exit=0
+#   before 2: 17:55:34 load 1.86 2.49 3.34 |  Tests 59 passed (59) |  Duration 14.42s (tests  | exit=0
+#   after 2: 17:55:49 load 1.67 2.41 3.30 |  Tests 59 passed (59) |  Duration 14.34s (tests  | exit=0
+#   before 3: 17:56:04 load 1.75 2.39 3.28 |  Tests 59 passed (59) |  Duration 14.41s (tests  | exit=0
+#   after 3: 17:56:18 load 1.82 2.37 3.25 |  Tests 59 passed (59) |  Duration 14.64s (tests  | exit=0
+
+  file                         before: three runs     after: three runs        median before -> after
+  cleanup.db.test.ts           [1889, 1883, 1857]     [2069, 1837, 1948]         1883 ->   1948  (  +65)
+  clone-lock.db.test.ts        [1247, 1250, 1239]     [1258, 1231, 1265]         1247 ->   1258  (  +11)
+  drop-retry.db.test.ts        [1399, 1394, 1390]     [1385, 1341, 1411]         1394 ->   1385  (   -9)
+  global-setup.db.test.ts      [516, 565, 562]        [544, 533, 591]             562 ->    544  (  -18)
+  guards.db.test.ts            [300, 334, 339]        [301, 336, 331]             334 ->    331  (   -3)
+  isolation-a.db.test.ts       [25, 25, 25]           [26, 26, 26]                 25 ->     26  (   +1)
+  isolation-b.db.test.ts       [26, 25, 25]           [26, 26, 26]                 25 ->     26  (   +1)
+  nested-run.db.test.ts        [2211, 2174, 2192]     [2141, 2185, 2185]         2192 ->   2185  (   -7)
+  sweep.db.test.ts             [525, 527, 548]        [537, 530, 546]             527 ->    537  (  +10)
+  templates.db.test.ts         [2819, 2717, 2711]     [2577, 2694, 2730]         2717 ->   2694  (  -23)
+  timing.db.test.ts            [1301, 1358, 1355]     [1359, 1364, 1389]         1355 ->   1364  (   +9)
+  sum of the medians                                                            12261 ->  12298  (  +37, +0.3 %)
+
+## 2. Two workers (as test:db runs): files run in pairs, and a file waits for the clone lock its neighbour holds.
+#   before 1: 17:53:10 load 1.71 2.52 3.49 |  Tests 59 passed (59) |  Duration 9.39s (tests 9 | exit=0
+#   after 1: 17:53:20 load 2.00 2.56 3.49 |  Tests 59 passed (59) |  Duration 8.94s (tests 9 | exit=0
+#   before 2: 17:53:29 load 2.14 2.57 3.49 |  Tests 59 passed (59) |  Duration 10.01s (tests  | exit=0
+#   after 2: 17:53:39 load 2.89 2.71 3.53 |  Tests 59 passed (59) |  Duration 10.25s (tests  | exit=0
+#   before 3: 17:53:50 load 3.14 2.77 3.54 |  Tests 59 passed (59) |  Duration 10.27s (tests  | exit=0
+#   after 3: 17:54:00 load 3.34 2.83 3.55 |  Tests 59 passed (59) |  Duration 9.95s (tests 9 | exit=0
+
+  file                         before: three runs     after: three runs        median before -> after
+  cleanup.db.test.ts           [2089, 2261, 2143]     [3090, 3270, 3217]         2143 ->   3217  (+1074)
+  clone-lock.db.test.ts        [1426, 1358, 1352]     [1404, 1361, 1314]         1358 ->   1361  (   +3)
+  drop-retry.db.test.ts        [1850, 1767, 2522]     [1442, 1927, 1671]         1850 ->   1671  ( -179)
+  global-setup.db.test.ts      [581, 654, 1024]       [1053, 715, 659]            654 ->    715  (  +61)
+  guards.db.test.ts            [325, 382, 389]        [341, 691, 390]             382 ->    390  (   +8)
+  isolation-a.db.test.ts       [27, 40, 34]           [25, 35, 25]                 34 ->     25  (   -9)
+  isolation-b.db.test.ts       [26, 39, 38]           [28, 37, 25]                 38 ->     28  (  -10)
+  nested-run.db.test.ts        [2672, 3358, 3402]     [2254, 2668, 2536]         3358 ->   2536  ( -822)
+  sweep.db.test.ts             [684, 555, 590]        [567, 792, 566]             590 ->    567  (  -23)
+  templates.db.test.ts         [3079, 3363, 3383]     [2951, 3149, 3088]         3363 ->   3088  ( -275)
+  timing.db.test.ts            [1713, 3018, 1996]     [1648, 2135, 2946]         1996 ->   2135  ( +139)
+  sum of the medians                                                            15766 ->  15733  (  -33, -0.2 %)
+
+## 3. Why cleanup.db.test.ts differs in table 2: which file ran beside it, and which of its tests moved
+  before 1: cleanup started  2763 ms into the run, beside ['templates', 'global-setup', 'nested-run']
+  before 2: cleanup started  3674 ms into the run, beside ['drop-retry', 'timing']
+  before 3: cleanup started  3983 ms into the run, beside ['timing', 'drop-retry']
+  after 1: cleanup started   199 ms into the run, beside ['templates', 'timing']
+  after 2: cleanup started   258 ms into the run, beside ['templates', 'nested-run']
+  after 3: cleanup started   266 ms into the run, beside ['templates', 'nested-run']
+  per test of cleanup.db.test.ts (ms): before 1, 2, 3 | after 1, 2, 3
+    118   113   137 |   290   228   218  a body that throws: the database is dropped all the same, and the body's error
+     73    69    95 |    96   137   136  a body that returns: its value comes back and the database is gone
+     69   114    94 |    72    89    87  drop() closes the pools it handed out and what the test registered, then drops
+    436   416   410 |   427   436   434  a leaked session of the runtime role: the drop fails with SESSIONS_REMAIN and 
+    502   564   541 |   550   591   596  a leaked session of the owner role does not stop the drop: the forced drop end
+    259   466   321 |  1197  1251  1208  the teardown removes what a crashed worker left: clones, a locked template, ev
+    632   518   545 |   457   538   537  a database that cannot be dropped is reported by the teardown, by name and rea
+# In the 'after' tree the runner started cleanup beside templates in all three runs (it orders files by size and by the
+# durations it cached; the two trees have caches of their own). One test of cleanup, which builds two templates and a clone,
+# then waits for the clone lock that templates.db.test.ts holds for about a second during its test 'a hook that leaves a
+# session open' (1.1 s). With one worker that neighbour does not exist, and the file takes the same time (table 1).

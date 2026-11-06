@@ -1,0 +1,21 @@
+// W97: lines of the main Core log (.cache/manual/main-server-w94.log) in a time window [from, to] (epoch ms).
+// Prints every line in the window as time (WIB) | msg | method route status | principal/kind, then counts.
+// "Request lines" = any line with a reqId or whose msg starts with "request". Socket lines counted apart.
+import { readFileSync } from 'node:fs'
+const [from, to = String(Date.now())] = process.argv.slice(2).map(Number).map(String)
+const LOG = '/Users/gsp-budi/Documents/DEMS/.cache/manual/main-server-w94.log'
+const lines = readFileSync(LOG, 'utf8').split('\n').filter(Boolean)
+const fmt = (ms) => new Date(ms + 7 * 3600e3).toISOString().replace('T', ' ').replace('Z', ' WIB')
+let req = 0, sock = 0, other = 0
+const out = []
+for (const l of lines) {
+  let d; try { d = JSON.parse(l) } catch { continue }
+  if (d.time < Number(from) || d.time > Number(to)) continue
+  const isReq = d.reqId !== undefined || /^request/.test(d.msg ?? '')
+  const isSock = /^socket/.test(d.msg ?? '')
+  if (isReq) req++; else if (isSock) sock++; else other++
+  out.push(`${fmt(d.time)} | ${d.msg} | ${[d.method, d.route, d.status].filter(Boolean).join(' ')} | ${d.principal ?? ''} ${d.kind ?? ''}`.trim())
+}
+console.log(`window ${fmt(Number(from))} .. ${fmt(Number(to))}; log lines total ${lines.length}`)
+for (const o of out) console.log('  ' + o)
+console.log(`request lines: ${req}; socket lines: ${sock}; other lines: ${other}`)

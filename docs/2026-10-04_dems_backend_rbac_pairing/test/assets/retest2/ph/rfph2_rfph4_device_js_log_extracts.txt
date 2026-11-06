@@ -1,0 +1,50 @@
+# emulator-5554 ReactNativeJS (logcat -v threadtime -s ReactNativeJS:V), device time = host - 0.43 s
+## R11 (web stop at host 17:07:18.462, Core SEALED 17:07:25.993)
+# The device ring buffer had rotated by 18:06; these lines are copied verbatim (prefix trimmed) from the same logcat
+# command run between 17:11 and 17:18 (adb logcat -d -v threadtime -T '10-06 17:07:10.000' -s ReactNativeJS:V):
+10-06 17:07:15.698 [DEMS-LIVE] POST /api/v1/session/{id}/start 200 c9e0f429-aa74-4feb-9fb9-e53cecb24a33
+10-06 17:08:29.376 source: 'runtime.routeSync.transition', message: 'Resynced route to the session state', context: { state: 'FINALIZING', to: '/session/finalizing' }
+10-06 17:08:41.987 source: 'runtime.routeSync.transition', message: 'Resynced route to the session state', context: { state: 'SEALED', to: '/session/summary/SES-20261006-0070' }
+10-06 17:08:41.991 source: 'runtime.keepAwake', message: 'Screen keep-on released', context: { tag: 'dems-session' }
+10-06 17:09:17.336 [DEMS-LIVE] POST /api/v1/auth/touch 200
+10-06 17:09:17.339 [DEMS-LIVE] POST /api/v1/session/{id}/summary/acknowledge 204
+
+## RF-PH-4 idle sign-out (Core: OPR-001 and OPR-002 sockets closed 4401 at host 17:40:50.6)
+10-06 17:40:50.250 20207 20239 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T10:40:50.247Z',
+10-06 17:40:50.250 20207 20239 I ReactNativeJS:   level: 'info',
+10-06 17:40:50.250 20207 20239 I ReactNativeJS:   source: 'auth.sessionEnd',
+10-06 17:40:50.250 20207 20239 I ReactNativeJS:   message: 'The session on this tablet ended',
+10-06 17:40:50.250 20207 20239 I ReactNativeJS:   context: 
+10-06 17:40:50.250 20207 20239 I ReactNativeJS:    { kind: 'SESSION_ENDED',
+10-06 17:40:50.250 20207 20239 I ReactNativeJS:      reason: 'IDLE_EXPIRED',
+10-06 17:40:50.250 20207 20239 I ReactNativeJS:      endSource: 'CONTROL',
+10-06 17:40:50.250 20207 20239 I ReactNativeJS:      signOut: null,
+10-06 17:40:50.250 20207 20239 I ReactNativeJS:      wasSignedIn: true },
+10-06 17:40:50.250 20207 20239 I ReactNativeJS:   correlationId: 'Lmuwhkigr' }
+10-06 17:41:00.275 20207 20239 I ReactNativeJS: [DEMS-LIVE] GET /api/v1/auth/session - -
+10-06 17:41:00.286 20207 20239 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T10:41:00.284Z',
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:   level: 'info',
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:   source: 'live.client',
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:   message: 'No answer within 8000 ms. The command may or may not have been applied.',
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:   context: 
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:    { probe: true,
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:      operationId: 'getAuthSession',
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:      method: 'GET',
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:      path: '/api/v1/auth/session',
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:      kind: 'TIMEOUT',
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:      status: null,
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:      requestId: null,
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:      skippedBefore: 0 },
+10-06 17:41:00.286 20207 20239 I ReactNativeJS:   correlationId: 'Lmuwhkigr' }
+10-06 17:41:00.545 20207 20239 I ReactNativeJS: [DEMS-LIVE] GET /api/v1/auth/status 200 151427c3-753a-428d-8aac-dfa5530c9a9c
+10-06 17:41:00.550 20207 20239 I ReactNativeJS: [DEMS-LIVE] GET /api/v1/auth/session 401 8d295f6e-17fe-4504-8d58-89105f0acc07
+10-06 17:41:00.552 20207 20239 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T10:41:00.551Z',
+10-06 17:41:00.552 20207 20239 I ReactNativeJS:   level: 'info',
+10-06 17:41:00.552 20207 20239 I ReactNativeJS:   source: 'live.client.recheck',
+10-06 17:41:00.552 20207 20239 I ReactNativeJS:   message: 'A probe ran out of time and its re-check was answered: the time-out was not the network',
+10-06 17:41:00.552 20207 20239 I ReactNativeJS:   context: 
+10-06 17:41:00.552 20207 20239 I ReactNativeJS:    { operationId: 'getAuthSession',
+10-06 17:41:00.552 20207 20239 I ReactNativeJS:      recheckMs: 263,
+10-06 17:41:00.552 20207 20239 I ReactNativeJS:      status: 401,
+10-06 17:41:00.552 20207 20239 I ReactNativeJS:      failuresInARow: 0 },
+10-06 17:41:00.552 20207 20239 I ReactNativeJS:   correlationId: 'Lmuwhkigr' }

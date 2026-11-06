@@ -1,0 +1,139 @@
+### 001.cmd
+# Login (W60's measured field centres, phone portrait 1080x2424); username only, then check the focus
+tap 540 1105
+sleep 800
+username
+sleep 400
+tap 540 1265
+sleep 800
+focus
+### 001.out
+tap 540,1105
+slept 800 ms
+username typed (budi.santoso); editor inputType 0x80001
+slept 400 ms
+tap 540,1265
+slept 800 ms
+focused true; editor inputType 0x80081
+screencap 001.png (1231511 bytes)
+### 002.cmd
+# The demo password only if the IME reports a password field (the driver refuses otherwise); no screencap until 200
+password
+sleep 300
+key 66
+waitlog signin 30
+sleep 4000
+### 002.out
+password typed (not shown); editor inputType 0x80081
+slept 300 ms
+key 66
+signin 200 (POST /api/v1/auth/sign-in 200)
+slept 4000 ms
+screencap 002.png (395920 bytes)
+### 003.cmd
+# Decline the app's biometric offer with its own "Not now" (in-memory), then Start Session by deep link
+tap 541 1444
+sleep 1500
+shot home_live
+link demsdemo:///session/new?step=1
+sleep 3000
+### 003.out
+tap 541,1444
+slept 1500 ms
+screencap 68_phone_home_live.png (444718 bytes)
+deep link demsdemo:///session/new?step=1
+slept 3000 ms
+screencap 003.png (205638 bytes)
+### 004.cmd
+# Step 1: scan (S4-6, computed from the replica), TERSANGKA, a demo name; Next → create, then pre-check
+tap 912 668
+sleep 700
+tap 229 915
+sleep 700
+tap 540 1230
+sleep 900
+text Ahmad Fauzi
+sleep 1200
+shot step1_filled_live
+tap 540 2256
+waitlog create 15
+waitlog precheck 15
+sleep 7000
+### 004.out
+tap 912,668
+slept 700 ms
+tap 229,915
+slept 700 ms
+tap 540,1230
+slept 900 ms
+text typed (Ahmad Fauzi); editor inputType 0x2001
+slept 1200 ms
+screencap 68_phone_step1_filled_live.png (226605 bytes)
+tap 540,2256
+create 201 (POST /api/v1/session 201)
+precheck 202 (POST /api/v1/session/{id}/precheck 202)
+slept 7000 ms
+screencap 004.png (497715 bytes)
+### 005.cmd
+# Step 2 Next → Ready; Start Recording → the hand-off into the monitor (W68's screen); meters twice, 3 s apart
+tap 540 2256
+sleep 1800
+shot step3_ready_live
+tap 540 2256
+waitlog start 20
+sleep 2500
+shot monitor_meters_a_live
+sleep 3000
+shot monitor_meters_b_live
+noshot
+### 005.out
+tap 540,2256
+slept 1800 ms
+screencap 68_phone_step3_ready_live.png (248106 bytes)
+tap 540,2256
+start 200 (POST /api/v1/session/{id}/start 200)
+slept 2500 ms
+screencap 68_phone_monitor_meters_a_live.png (513231 bytes)
+slept 3000 ms
+screencap 68_phone_monitor_meters_b_live.png (503270 bytes)
+### 006.cmd
+# S2-1 Snapshot over the Core (tile centre 162,1557), then End Session: a tap opens the reason Dialog under motion=off (W67 F-4)
+tap 162 1557
+waitlog snapshot 15
+sleep 1200
+shot snapshot_live
+tap 539 2266
+sleep 1500
+tap 539 1278
+sleep 800
+text W68 device check end
+sleep 1200
+### 006.out
+tap 162,1557
+snapshot 204 (POST /api/v1/session/{id}/snapshots 204)
+slept 1200 ms
+screencap 68_phone_snapshot_live.png (533413 bytes)
+tap 539,2266
+slept 1500 ms
+tap 539,1278
+slept 800 ms
+text typed (W68 device check end); editor inputType 0x24001
+slept 1200 ms
+screencap 006.png (314803 bytes)
+### 007.cmd
+# The Dialog's End Session → stopSession with the typed reason; route-sync follows to finalizing and the summary
+tap 809 1621
+waitlog stop 15
+sleep 7000
+shot after_stop_summary_live
+noshot
+### 007.out
+tap 809,1621
+stop 202 (POST /api/v1/session/{id}/stop 202)
+slept 7000 ms
+screencap 68_phone_after_stop_summary_live.png (204705 bytes)
+### 008.cmd
+done 0
+### 008.out
+
+done 0

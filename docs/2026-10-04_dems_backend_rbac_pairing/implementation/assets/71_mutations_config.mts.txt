@@ -1,0 +1,43 @@
+// W71 mutation runner (W63's, renamed) (rule M15: a mutation never changes a file of the workspace tree).
+// The app's own Vite / Vitest configuration, plus ONE plugin that replaces a text in ONE module
+// while it is transformed, in memory. Which mutation: the environment variable W71_MUT (an id of
+// mutations.json); unset: no mutation (the baseline). The same plugin serves the one "relaxation"
+// of section 13 of the row's document (id RELAX-W50), which is not a mutation of production code.
+//   W71_MUT=C01 npx vitest run --config .cache/w71/mut/vitest.mutation.config.mts --maxWorkers=2 <test files>
+import { readFileSync, writeFileSync } from 'node:fs'
+import { fileURLToPath, URL } from 'node:url'
+import { mergeConfig } from 'vite'
+import appConfig from '../../../apps/core-web/vite.config.ts'
+
+const here = fileURLToPath(new URL('./', import.meta.url))
+const web = fileURLToPath(new URL('../../../apps/core-web/', import.meta.url))
+const table = JSON.parse(readFileSync(`${here}mutations.json`, 'utf8'))
+const id = process.env.W71_MUT ?? ''
+const mutation = id === '' ? null : table.find((entry: { id: string }) => entry.id === id)
+if (id !== '' && !mutation) throw new Error(`W71 mutation "${id}" is not in mutations.json`)
+
+function mutationPlugin() {
+  return {
+    name: 'w71-mutation',
+    enforce: 'pre' as const,
+    transform(code: string, moduleId: string) {
+      if (!mutation) return null
+      const file = moduleId.split('?')[0] ?? ''
+      if (!file.endsWith(mutation.file)) return null
+      const count = code.split(mutation.find).length - 1
+      if (count !== 1) throw new Error(`W71 mutation ${mutation.id}: the text to replace occurs ${count} times in ${mutation.file}`)
+      // The marker that the mutation really ran, in the directory the runner names (under TMPDIR).
+      writeFileSync(`${process.env.W71_APPLIED_DIR}/${mutation.id}`, 'applied\n')
+      return { code: code.replace(mutation.find, () => mutation.replace), map: null }
+    },
+  }
+}
+
+const base = typeof appConfig === 'function' ? await appConfig({ command: 'serve', mode: 'test', isPreview: false, isSsrBuild: false }) : appConfig
+
+// The mutation plugin stands FIRST, so it sees the source text as it is on disk.
+const { plugins = [], ...rest } = base
+export default {
+  ...mergeConfig(rest, { root: web, cacheDir: `${here}vite-cache`, test: { root: web } }),
+  plugins: [mutationPlugin(), ...plugins],
+}

@@ -1,0 +1,25 @@
+10:27:38.179 mark b05 at 10:27:38.179
+10:27:38.245 tap 302,1239
+10:27:38.469 slept 3000 ms
+10:27:41.508 declared screen session-new
+10:27:41.572 tap 913,748
+10:27:41.720 slept 900 ms
+10:27:42.698 tap 229,994
+10:27:42.816 slept 700 ms
+10:27:43.543 tap 540,1309
+10:27:43.713 slept 900 ms
+10:27:44.647 text typed (SC3 Phone Start); inputType 0x2001
+10:27:45.231 slept 800 ms
+10:27:46.065 key 111
+10:27:46.171 slept 800 ms
+10:27:47.010 screencap 60_sc3_s3_phone_step1.png 10:27:47.010..10:27:47.248
+10:27:47.288 tap 540,2257
+10:27:47.410 create 201 at device 10-06 10:27:47.220 (POST /api/v1/session 201)
+10:27:48.323 precheck 202 at device 10-06 10:27:47.409 (POST /api/v1/session/{id}/precheck 202)
+10:27:48.521 slept 6000 ms
+10:27:54.575 tap 540,2257
+10:27:54.758 slept 2500 ms
+10:27:57.282 screencap 61_sc3_s3_phone_ready.png 10:27:57.282..10:27:57.413
+10:27:57.434 serverlog since b05 (2):
+    10:27:47.413 POST /api/v1/session 201 operator:OPR-001
+    10:27:47.668 POST /api/v1/session/:id/precheck 202 operator:OPR-001

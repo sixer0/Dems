@@ -1,0 +1,34 @@
+import os, re, sys
+F = '/Users/gsp-budi/Documents/DEMS/apps/core-web/src/features'
+SAFE = re.compile(r'^(set[A-Z]\w*|clearTimeout|setTimeout|clearInterval|setInterval|requestAnimationFrame|cancelAnimationFrame|t|Math\.\w+|Date\.now|Number|String|Boolean|Array\.from|Object\.\w+|JSON\.\w+|deferEffectStart|addEventListener|removeEventListener|toast\.\w+|console\.\w+|Promise\.\w+|isFinite|parseInt|parseFloat|structuredClone|queueMicrotask)$')
+def code(text):
+    text = re.sub(r'/\*[\s\S]*?\*/', lambda m: re.sub(r'[^\n]', ' ', m.group(0)), text)
+    text = re.sub(r'(^|[^:\'"`\\])//[^\n]*', r'\1', text)
+    text = re.sub(r"'(?:[^'\\\n]|\\.)*'", "''", text)
+    text = re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', text)
+    return text
+def balanced(text, i):
+    depth = 1; j = i
+    while j < len(text) and depth > 0:
+        c = text[j]
+        if c == '(': depth += 1
+        elif c == ')': depth -= 1
+        j += 1
+    return text[i:j-1]
+for root, dirs, files in os.walk(F):
+    dirs[:] = [d for d in dirs if d not in ('__tests__', 'testing')]
+    for name in sorted(files):
+        if not re.search(r'\.(ts|tsx)$', name) or re.search(r'\.test\.', name): continue
+        path = os.path.join(root, name)
+        text = code(open(path).read())
+        for m in re.finditer(r'\buse(?:Layout|Insertion)?Effect\s*\(', text):
+            body = balanced(text, m.end())
+            body = re.sub(r',\s*\[[^\[\]]*\]\s*,?\s*$', '', body)
+            line = text[:m.start()].count('\n') + 1
+            calls = []
+            for c in re.finditer(r'(?<![\w$.])((?:[A-Za-z_$][\w$]*\.)*[A-Za-z_$][\w$]*)\s*\(', body):
+                n = c.group(1)
+                if n in ('if', 'for', 'while', 'switch', 'return', 'function', 'catch', 'typeof', 'new', 'await', 'void') or SAFE.match(n): continue
+                calls.append(n)
+            if calls:
+                print(f"{os.path.relpath(path, F)}:{line} {sorted(set(calls))}")

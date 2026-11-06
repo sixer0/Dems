@@ -1,0 +1,76 @@
+
+== 22:40:11 0. the three ports must be free before anything is started (nothing is stopped that this check did not start)
+free: 4421 5176 9396
+2026-10-05 22:40:11 WIB
+22:40  up 4 days,  5:53, 2 users, load averages: 3.35 4.05 3.87
+
+== 22:40:11 1. lane database before the check (no reset): npm run db:status -w @dems/core-server -- --database dems_lane_1
+db:status exit 0
+  audit_log                103
+  auth_sessions            3
+  device_credentials       1
+  paired_devices           1
+
+== 22:40:11 2. start the lane backend: DEMS_CORE_PORT=4421 npm run start -w @dems/core-server (demo flag OFF)
+backend up after 3 quarter seconds, npm pid 70575
+"port":4421,"database":"dems_lane_1","demoControls":false
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    70596 gsp-budi   17u  IPv4 0x56d0d74f5cfd69a4      0t0  TCP 127.0.0.1:4421 (LISTEN)
+-- direct health on the backend:
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T15:40:12.781Z","uptimeMs":137,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 22:40:12 3. start Vite for lane 1: DEMS_CORE_PROXY_PORT=4421 VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port 5176 --strictPort
+waited 2 quarter seconds
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    70635 gsp-budi   14u  IPv4 0x6994a3d7fb448396      0t0  TCP 127.0.0.1:5176 (LISTEN)
+-- health through the dev server: 200
+
+== 22:40:13 4. the Start New Session page in a real browser (headless Chromium over CDP)
+chrome pid 70654
+Google Chrome for Testing 153.0.8010.12
+cdp-driver exit 0
+      "sessionRequestsOfThePage": []
+    }
+  }
+}
+
+== 22:41:26 5. what Vite printed (no page error)
+-- lines in Vite's log:        8
+
+== 22:41:26 6. the backend's request log for the session routes (method, route, status; no body is logged)
+   1 GET /api/v1/auth/session 200
+   1 GET /api/v1/auth/session 401
+   2 GET /api/v1/auth/status 200
+   1 POST /api/v1/auth/sign-in 200
+   1 POST /api/v1/auth/sign-out 204
+   1 POST /api/v1/session 201
+   1 POST /api/v1/session/:id/cancel 204
+   1 POST /api/v1/session/:id/precheck 202
+   1 POST /api/v1/session/:id/precheck/retry 202
+   1 POST /api/v1/session/:id/start 409
+   1 POST /api/v1/session/case-number 200
+-- credential-shaped values in the backend log (must be 0): 0
+-- lines with level error or fatal: 0
+
+== 22:41:26 7. lane database after the check
+db:status exit 0
+-- row counts that differ (before / after):
+< audit head       seq 103; hash fd7f865095bb969b...
+> audit head       seq 110; hash a3e067ef47f4ce5e...
+<   audit_log                103
+<   auth_sessions            3
+>   audit_log                110
+>   auth_sessions            4
+<   events                   92
+>   events                   102
+<   health_snapshots         13
+>   health_snapshots         14
+
+== 22:41:27 stop what this check started
+chrome stopped
+vite: npm exit status 143
+backend: npm exit status 0
+
+== 22:41:27 listeners left on 4421, 5176, 9396 (expect none):
+lsof exit 1 (1 with no output: no listener)
+-- the check took 76 s

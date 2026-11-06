@@ -1,0 +1,4 @@
+deep link demsdemo:///more at 17:26:25.123: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 3500 ms
+screencap S09a_more_before_signout.png (327889 bytes) at 17:26:29.048
+ids: 73 nodes -> q/more_screen.txt

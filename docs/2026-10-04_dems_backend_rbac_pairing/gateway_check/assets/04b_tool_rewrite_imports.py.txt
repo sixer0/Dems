@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Item 9, step 3 (scratch copy only): in the test files of landed rows, an import of a test-support
+   file that moved now names its neutral home. Only the specifier of an import line changes.
+   rewrite_imports.py <root> [--dry]"""
+import os, re, sys
+S = sys.argv[1]; dry = '--dry' in sys.argv
+WHOLE = {  # old path (no extension) -> new path: the old path is a pure shim
+  'src/plugins/config/__tests__/test-config': 'test/support/config',
+  'src/db/seed/__tests__/support': 'test/support/seed',
+  'src/modules/identity/__tests__/support': 'test/support/identity',
+  'src/plugins/permission-guard/__tests__/support': 'test/support/guard',
+  'src/modules/pairing/__tests__/support': 'test/support/pairing',
+  'src/db/reset/__tests__/support': 'test/support/reset',
+}
+SPLIT = {  # the old path keeps what is private to its row: its own folder keeps importing it
+  'src/core/__tests__/support': 'test/support/core',
+  'src/engine/__tests__/support': 'test/support/engine',
+}
+ADMIN_OLD, ADMIN_NEW, ADMIN_NAMES = 'src/modules/admin/__tests__/support', 'test/support/admin', {'USERS', 'roleUrl', 'enableUrl', 'disableUrl'}
+IN_FLIGHT = ('src/realtime/', 'test/acceptance/', 'src/modules/sessions/', 'src/db/fixtures/')
+SKIP = ('test/support/', 'test/helpers/db/selfcheck/')
+# The pure shims are never rewritten; the files that keep private helpers are, like any test file.
+OLD_FILES = {p + '.ts' for p in list(WHOLE)}
+IMPORT = re.compile(r"""((?:import|export)\s+(?:type\s+)?(?:\{([^}]*)\}|\*(?:\s+as\s+\w+)?)\s+from\s+)(['"])(\.{1,2}(?:/[^'"]*)?)\3""", re.S)
+changes = []
+for base in ('src', 'test'):
+    for d, dirs, names in os.walk(os.path.join(S, base)):
+        dirs[:] = [x for x in dirs if x != 'node_modules']
+        for n in sorted(names):
+            if not n.endswith('.ts'): continue
+            rel = os.path.relpath(os.path.join(d, n), S)
+            if rel.startswith(IN_FLIGHT) or rel.startswith(SKIP) or rel in OLD_FILES: continue
+            if '__tests__/' not in rel and not rel.startswith('test/') and not rel.endswith('.test.ts'): continue
+            text = open(os.path.join(S, rel)).read()
+            here = os.path.dirname(rel)
+            def fix(m):
+                target = os.path.normpath(os.path.join(here, m.group(4)))
+                new = None
+                if target in WHOLE: new = WHOLE[target]
+                elif target in SPLIT and os.path.dirname(target) != here: new = SPLIT[target]
+                elif target == ADMIN_OLD and os.path.dirname(target) != here and m.group(2) is not None:
+                    names = {x.strip().split(' as ')[0].replace('type ', '').strip() for x in m.group(2).split(',') if x.strip()}
+                    if names <= ADMIN_NAMES: new = ADMIN_NEW
+                if new is None: return m.group(0)
+                spec = os.path.relpath(new, here)
+                if not spec.startswith('.'): spec = './' + spec
+                line = text.count('\n', 0, m.start(4)) + 1
+                changes.append(f"{rel}:{line}  '{m.group(4)}' -> '{spec}'")
+                return f"{m.group(1)}{m.group(3)}{spec}{m.group(3)}"
+            out = IMPORT.sub(fix, text)
+            if out != text and not dry: open(os.path.join(S, rel), 'w').write(out)
+for c in changes: print(c)
+print(f"{len(changes)} import line(s) in {len({c.split(':')[0] for c in changes})} file(s)", file=sys.stderr)

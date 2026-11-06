@@ -1,0 +1,336 @@
+{
+  "phase": "after",
+  "item": "EV-20261006-0012",
+  "ring1440": {
+    "state": "ATTENTION",
+    "size": 258,
+    "word": "ATTENTIONATTENTION",
+    "wordWidth": 164,
+    "fontSize": "24.608px",
+    "innerDiameter": 191,
+    "wordLeftInsideInner": 13,
+    "wordRightInsideInner": 13
+  },
+  "strip1440": {
+    "boxes": [
+      {
+        "id": "strip-cameras",
+        "cell": {
+          "left": 600,
+          "right": 730,
+          "top": 309,
+          "bottom": 350
+        },
+        "valueText": "Ready",
+        "valueLeft": 643,
+        "valueRight": 687,
+        "visibleRight": 687,
+        "truncated": false
+      },
+      {
+        "id": "strip-mics",
+        "cell": {
+          "left": 731,
+          "right": 861,
+          "top": 309,
+          "bottom": 350
+        },
+        "valueText": "Ready",
+        "valueLeft": 774,
+        "valueRight": 818,
+        "visibleRight": 818,
+        "truncated": false
+      },
+      {
+        "id": "strip-storage",
+        "cell": {
+          "left": 862,
+          "right": 992,
+          "top": 309,
+          "bottom": 350
+        },
+        "valueText": "3.2 TB Free",
+        "valueLeft": 905,
+        "valueRight": 975,
+        "visibleRight": 975,
+        "truncated": false
+      },
+      {
+        "id": "strip-time",
+        "cell": {
+          "left": 993,
+          "right": 1124,
+          "top": 309,
+          "bottom": 350
+        },
+        "valueText": "Synchronized",
+        "valueLeft": 1036,
+        "valueRight": 1118,
+        "visibleRight": 1118,
+        "truncated": false
+      },
+      {
+        "id": "strip-security",
+        "cell": {
+          "left": 1125,
+          "right": 1255,
+          "top": 309,
+          "bottom": 350
+        },
+        "valueText": "Secure",
+        "valueLeft": 1167,
+        "valueRight": 1216,
+        "visibleRight": 1216,
+        "truncated": false
+      },
+      {
+        "id": "strip-network",
+        "cell": {
+          "left": 1256,
+          "right": 1386,
+          "top": 309,
+          "bottom": 350
+        },
+        "valueText": "Connected",
+        "valueLeft": 1298,
+        "valueRight": 1367,
+        "visibleRight": 1367,
+        "truncated": false
+      }
+    ],
+    "overlaps": [],
+    "offscreen": [],
+    "rows": 1
+  },
+  "menu": [
+    {
+      "text": "Details",
+      "disabled": false
+    },
+    {
+      "text": "Test signal",
+      "disabled": false
+    },
+    {
+      "text": "RestartRequires the Technician role",
+      "disabled": true
+    }
+  ],
+  "testSignalToast": "Test signal sent to Camera 1",
+  "ring390": {
+    "state": "ATTENTION",
+    "size": 284,
+    "word": "ATTENTIONATTENTION",
+    "wordWidth": 196,
+    "fontSize": "29.344px",
+    "innerDiameter": 210,
+    "wordLeftInsideInner": 7,
+    "wordRightInsideInner": 7
+  },
+  "strip390": {
+    "boxes": [
+      {
+        "id": "strip-cameras",
+        "cell": {
+          "left": 19,
+          "right": 195,
+          "top": 399,
+          "bottom": 438
+        },
+        "valueText": "Ready",
+        "valueLeft": 53,
+        "valueRight": 98,
+        "visibleRight": 98,
+        "truncated": false
+      },
+      {
+        "id": "strip-mics",
+        "cell": {
+          "left": 195,
+          "right": 371,
+          "top": 399,
+          "bottom": 438
+        },
+        "valueText": "Ready",
+        "valueLeft": 229,
+        "valueRight": 274,
+        "visibleRight": 274,
+        "truncated": false
+      },
+      {
+        "id": "strip-storage",
+        "cell": {
+          "left": 19,
+          "right": 195,
+          "top": 440,
+          "bottom": 479
+        },
+        "valueText": "3.2 TB Free",
+        "valueLeft": 53,
+        "valueRight": 123,
+        "visibleRight": 123,
+        "truncated": false
+      },
+      {
+        "id": "strip-time",
+        "cell": {
+          "left": 195,
+          "right": 371,
+          "top": 440,
+          "bottom": 479
+        },
+        "valueText": "Synchronized",
+        "valueLeft": 229,
+        "valueRight": 311,
+        "visibleRight": 311,
+        "truncated": false
+      },
+      {
+        "id": "strip-security",
+        "cell": {
+          "left": 19,
+          "right": 195,
+          "top": 481,
+          "bottom": 520
+        },
+        "valueText": "Secure",
+        "valueLeft": 53,
+        "valueRight": 101,
+        "visibleRight": 101,
+        "truncated": false
+      },
+      {
+        "id": "strip-network",
+        "cell": {
+          "left": 195,
+          "right": 371,
+          "top": 481,
+          "bottom": 520
+        },
+        "valueText": "Connected",
+        "valueLeft": 229,
+        "valueRight": 297,
+        "visibleRight": 297,
+        "truncated": false
+      }
+    ],
+    "overlaps": [],
+    "offscreen": [],
+    "rows": 3
+  },
+  "metadata": {
+    "dataPackage": "foreign",
+    "regions": [
+      "Core record",
+      "Bundled DEMO package · EV-20261001-0012 · manifest.json"
+    ],
+    "firstJsonIds": [
+      "EV-20261001-0012",
+      "EV-20261006-0012"
+    ],
+    "alert": "The bundled DEMO package is another recordThis item plays the demo media of the bundled package EV-20261001-0012 (session SES-20261001-0022, recorded 1 Oct 2026). Its documents describe that package, not this item. This item's metadata is the Core record.",
+    "headings": [
+      "Record of this itemCore record",
+      "Bundled DEMO package · EV-20261001-0012DEMO"
+    ]
+  },
+  "integrityOpen": {
+    "card": {
+      "verdict": "PASS",
+      "last": "Last verification PASS · 6 Oct 2026 11:57:47 UTC+07:00 · AKP Andi Pratama",
+      "button": "Verify again",
+      "progress": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. | Last verification PASS · 6 Oct 2026 11:57:47 UTC+07:00 · AKP Andi Pratama | Verify again to see each check."
+    },
+    "core": {
+      "verification": {
+        "status": "PASS",
+        "at": 1791262667314
+      },
+      "lastCustody": {
+        "at": 1791262667314,
+        "action": "VERIFIED",
+        "actorId": "OPR-002",
+        "detail": null
+      }
+    }
+  },
+  "integrityVerified": {
+    "card": {
+      "verdict": "PASS",
+      "last": "Last verification PASS · 6 Oct 2026 12:03:06 UTC+07:00 · AKP Andi Pratama",
+      "button": "Verify again",
+      "progress": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. | Last verification PASS · 6 Oct 2026 12:03:06 UTC+07:00 · AKP Andi Pratama | 6 of 6 checks | DEMO - recomputed · Recomputed in this browser for display only. It writes nothing and is not the record."
+    },
+    "core": {
+      "verification": {
+        "status": "PASS",
+        "at": 1791262986900
+      },
+      "lastCustody": {
+        "at": 1791262986900,
+        "action": "VERIFIED",
+        "actorId": "OPR-002",
+        "detail": null
+      }
+    }
+  },
+  "integrityReload": {
+    "card": {
+      "verdict": "PASS",
+      "last": "Last verification PASS · 6 Oct 2026 12:03:06 UTC+07:00 · AKP Andi Pratama",
+      "button": "Verify again",
+      "progress": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. | Last verification PASS · 6 Oct 2026 12:03:06 UTC+07:00 · AKP Andi Pratama | Verify again to see each check."
+    },
+    "core": {
+      "verification": {
+        "status": "PASS",
+        "at": 1791262986900
+      },
+      "lastCustody": {
+        "at": 1791262986900,
+        "action": "VERIFIED",
+        "actorId": "OPR-002",
+        "detail": null
+      }
+    }
+  },
+  "custody": [
+    {
+      "lines": 2,
+      "text": [
+        "6 Oct 2026",
+        "12:03:06"
+      ]
+    },
+    {
+      "lines": 2,
+      "text": [
+        "6 Oct 2026",
+        "11:57:47"
+      ]
+    },
+    {
+      "lines": 2,
+      "text": [
+        "6 Oct 2026",
+        "11:27:23"
+      ]
+    },
+    {
+      "lines": 2,
+      "text": [
+        "6 Oct 2026",
+        "09:34:13"
+      ]
+    },
+    {
+      "lines": 2,
+      "text": [
+        "6 Oct 2026",
+        "09:14:49"
+      ]
+    }
+  ],
+  "exceptions": [],
+  "blocked": []
+}

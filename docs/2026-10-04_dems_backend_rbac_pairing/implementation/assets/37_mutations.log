@@ -1,0 +1,87 @@
+# node mutate.mjs unit (all 47), 14:53:30 to 14:56:18 WIB
+[w37 mutation] mode unit; start 14:53:30
+[w37 mutation] baseline: exit 0, 130 passed, 0 failed
+[w37 mutation] M01 DETECTED storage/index.ts: 53 answers the raw state instead of the summary -> 8 failed in storage/__tests__/routes.test.ts
+[w37 mutation] M02 DETECTED storage/index.ts: 54 answers a policy that is not the committed one -> 4 failed in storage/__tests__/routes.test.ts
+[w37 mutation] M03 DETECTED storage/index.ts: 54 reads the state twice (two slices of two states) -> 5 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M04 DETECTED storage/index.ts: 55 does not run the hosted action -> 16 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M05 DETECTED storage/index.ts: 55 swaps the two headers -> 6 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M06 DETECTED storage/index.ts: 55 sets no header -> 6 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M07 DETECTED storage/index.ts: 55 takes the revision from the engine before the command, not from the outcome -> 3 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M08 DETECTED storage/index.ts: 55 passes a copy of the principal, not the principal as it is -> 4 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M09 DETECTED storage/index.ts: 55 passes the whole body, not the patch -> 2 failed in storage/__tests__/static.test.ts
+[w37 mutation] M10 DETECTED storage/index.ts: 55 answers the policy it read BEFORE the command -> 6 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M11 DETECTED storage/index.ts: 55 answers the body merged over the policy instead of the committed slice -> 2 failed in storage/__tests__/static.test.ts
+[w37 mutation] M47 DETECTED storage/index.ts: 55 sets the two headers before it reads the committed slice (a 503 after the commit would carry them) -> 2 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M12 DETECTED storage/index.ts: 55 runs another hosted action -> 12 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M13 DETECTED storage/index.ts: 55 has no body schema (stage 7 validates nothing) -> 12 failed in storage/__tests__/routes.test.ts
+[w37 mutation] M14 DETECTED storage/index.ts: 55 checks a role in the handler (a second, unlisted rule) -> 9 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M15 DETECTED storage/index.ts: a route carries a hook of its own -> 2 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M16 DETECTED storage/index.ts: 53 and 54 are registered under each other's registry entry -> 17 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M17 DETECTED storage/index.ts: 53 has a response schema of its own, not the registry's -> 1 failed in storage/__tests__/routes.test.ts
+[w37 mutation] M18 DETECTED storage/index.ts: 55 catches the engine's refusal and answers the old policy -> 5 failed in storage/__tests__/routes.test.ts, storage/__tests__/static.test.ts
+[w37 mutation] M19 DETECTED storage/status.ts: the percentage is not rounded -> 9 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M20 DETECTED storage/status.ts: the remaining time is not rounded -> 11 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M21 DETECTED storage/status.ts: free bytes are the total -> 10 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M22 DETECTED storage/status.ts: the state is always READY -> 4 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M23 DETECTED storage/status.ts: the write rate is 0 -> 2 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M24 DETECTED storage/status.ts: the bitrate is the write rate -> 8 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M25 DETECTED storage/status.ts: the volumes are the slice's own objects -> 1 failed in storage/__tests__/projection.test.ts
+[w37 mutation] M26 DETECTED storage/status.ts: a volume's used bytes are its total -> 8 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M27 DETECTED storage/status.ts: the retention days are a constant -> 2 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M28 DETECTED storage/status.ts: the automatic archive is inverted -> 9 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M29 DETECTED storage/status.ts: the retention policy is a constant -> 2 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M30 DETECTED storage/status.ts: the totals are the first volume's (the system volume) -> 9 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M31 DETECTED storage/policy.ts: `autoArchive: false` is treated as absent -> 5 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M32 DETECTED storage/policy.ts: the days are not passed on -> 7 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M33 DETECTED storage/policy.ts: the policy name is not passed on -> 7 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M34 DETECTED storage/policy.ts: every member is always a key of the patch -> 6 failed in storage/__tests__/projection.test.ts, storage/__tests__/routes.test.ts
+[w37 mutation] M35 DETECTED storage/policy.ts: the whole body is the patch -> 2 failed in storage/__tests__/projection.test.ts
+[w37 mutation] M36 DETECTED network-time/index.ts: 56 leaves the tablet link out -> 12 failed in network-time/__tests__/routes.test.ts, network-time/__tests__/static.test.ts
+[w37 mutation] M37 DETECTED network-time/index.ts: 56 reads the state twice (two slices of two states) -> 5 failed in network-time/__tests__/routes.test.ts, network-time/__tests__/static.test.ts
+[w37 mutation] M38 DETECTED network-time/index.ts: 56 stamps the tablet link with the system time -> 11 failed in network-time/__tests__/routes.test.ts, network-time/__tests__/static.test.ts
+[w37 mutation] M39 DETECTED network-time/index.ts: 56 stamps the tablet link with the server clock at the request -> 3 failed in network-time/__tests__/routes.test.ts, network-time/__tests__/static.test.ts
+[w37 mutation] M40 DETECTED network-time/index.ts: 57 answers the slice without its name -> 11 failed in network-time/__tests__/routes.test.ts, network-time/__tests__/static.test.ts
+[w37 mutation] M41 DETECTED network-time/index.ts: 57 stamps the last sync with the system time -> 11 failed in network-time/__tests__/routes.test.ts, network-time/__tests__/static.test.ts
+[w37 mutation] M42 DETECTED network-time/index.ts: 57 answers another slice under the name `time` -> 11 failed in network-time/__tests__/routes.test.ts, network-time/__tests__/static.test.ts
+[w37 mutation] M43 DETECTED network-time/index.ts: 56 and 57 are registered under each other's registry entry -> 18 failed in network-time/__tests__/routes.test.ts, network-time/__tests__/static.test.ts
+[w37 mutation] M44 DETECTED network-time/index.ts: 56 reports the link of the host: always up -> 2 failed in network-time/__tests__/routes.test.ts, network-time/__tests__/static.test.ts
+[w37 mutation] M45 DETECTED network-time/index.ts: 57 has a response schema of its own, not the registry's -> 1 failed in network-time/__tests__/routes.test.ts
+[w37 mutation] M46 DETECTED network-time/index.ts: a route reads the caller -> 4 failed in network-time/__tests__/static.test.ts
+[w37 mutation] end 14:56:18: 47 detected, 0 survived of 47
+
+# node mutate.mjs db (31 behaviour mutations), 14:56:26 to 15:00:57 WIB
+[w37 mutation] mode db; start 14:56:26
+[w37 mutation] baseline: exit 0, 29 passed, 0 failed
+[w37 mutation] M01 DETECTED storage/index.ts: 53 answers the raw state instead of the summary -> 7 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M02 DETECTED storage/index.ts: 54 answers a policy that is not the committed one -> 4 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M04 DETECTED storage/index.ts: 55 does not run the hosted action -> 7 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M06 DETECTED storage/index.ts: 55 sets no header -> 3 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M07 DETECTED storage/index.ts: 55 takes the revision from the engine before the command, not from the outcome -> 1 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M10 DETECTED storage/index.ts: 55 answers the policy it read BEFORE the command -> 5 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M12 DETECTED storage/index.ts: 55 runs another hosted action -> 8 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M13 DETECTED storage/index.ts: 55 has no body schema (stage 7 validates nothing) -> 3 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M16 DETECTED storage/index.ts: 53 and 54 are registered under each other's registry entry -> 6 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M19 DETECTED storage/status.ts: the percentage is not rounded -> 7 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M20 DETECTED storage/status.ts: the remaining time is not rounded -> 7 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M21 DETECTED storage/status.ts: free bytes are the total -> 4 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M22 DETECTED storage/status.ts: the state is always READY -> 1 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M23 DETECTED storage/status.ts: the write rate is 0 -> 1 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M24 DETECTED storage/status.ts: the bitrate is the write rate -> 4 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M26 DETECTED storage/status.ts: a volume's used bytes are its total -> 4 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M27 DETECTED storage/status.ts: the retention days are a constant -> 3 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M28 DETECTED storage/status.ts: the automatic archive is inverted -> 5 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M29 DETECTED storage/status.ts: the retention policy is a constant -> 2 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M30 DETECTED storage/status.ts: the totals are the first volume's (the system volume) -> 4 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M31 DETECTED storage/policy.ts: `autoArchive: false` is treated as absent -> 2 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M32 DETECTED storage/policy.ts: the days are not passed on -> 2 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M33 DETECTED storage/policy.ts: the policy name is not passed on -> 5 failed in storage/__tests__/storage.db.test.ts
+[w37 mutation] M36 DETECTED network-time/index.ts: 56 leaves the tablet link out -> 10 failed in network-time/__tests__/network-time.db.test.ts
+[w37 mutation] M38 DETECTED network-time/index.ts: 56 stamps the tablet link with the system time -> 9 failed in network-time/__tests__/network-time.db.test.ts
+[w37 mutation] M39 DETECTED network-time/index.ts: 56 stamps the tablet link with the server clock at the request -> 2 failed in network-time/__tests__/network-time.db.test.ts
+[w37 mutation] M40 DETECTED network-time/index.ts: 57 answers the slice without its name -> 9 failed in network-time/__tests__/network-time.db.test.ts
+[w37 mutation] M41 DETECTED network-time/index.ts: 57 stamps the last sync with the system time -> 8 failed in network-time/__tests__/network-time.db.test.ts
+[w37 mutation] M42 DETECTED network-time/index.ts: 57 answers another slice under the name `time` -> 9 failed in network-time/__tests__/network-time.db.test.ts
+[w37 mutation] M43 DETECTED network-time/index.ts: 56 and 57 are registered under each other's registry entry -> 9 failed in network-time/__tests__/network-time.db.test.ts
+[w37 mutation] M44 SURVIVED network-time/index.ts: 56 reports the link of the host: always up -> 0 failed in (no test file named)
+[w37 mutation] end 15:00:57: 30 detected, 1 survived of 31

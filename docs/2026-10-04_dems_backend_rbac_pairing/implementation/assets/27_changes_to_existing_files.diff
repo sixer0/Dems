@@ -1,0 +1,3195 @@
+(packages/shared/openapi/openapi.json: regenerated; 96,541 to 882,723 bytes; not listed line by line)
+--- packages/shared/scripts/gen-openapi.ts	2026-10-04 10:45:26
++++ packages/shared/scripts/gen-openapi.ts	2026-10-04 10:19:58
+@@ -1,7 +1,8 @@
+ /**
+- * OpenAPI generator (masterplan/01_specs.md §14.9; blueprint step 33; AC-56).
++ * OpenAPI generator (masterplan/01_specs.md §14.9; blueprint step 33; AC-56; backend task
++ * 2026-10-04: 01_specs AC-B-11).
+  *
+- * Writes `serializeOpenApiDocument(createOpenApiDocument())` to packages/shared/openapi/openapi.json.
++ * Writes the document of the committed scope to packages/shared/openapi/openapi.json.
+  * Deterministic: the document is built from constants and zod schemas only (no clock, no RNG,
+  * no network), so a second run leaves the file byte-identical. test/openapi.test.ts fails when
+  * the committed file differs from the module.
+@@ -12,12 +13,19 @@
+  *
+  * `--check` writes nothing and exits 1 when the file is missing or stale (for CI).
+  *
+- * Scopes (backend task: 2026-10-04 02_plan §16 CO-3, CO-4). The builder knows two scopes,
+- * `offline` (the ten operations a client can call without the Core server) and `all` (every
+- * operation of the registry). The committed file holds `OPENAPI_COMMITTED_SCOPE`: `offline` while
+- * the registry grows; contract C sets it to `all` when the registry is complete. Every run also
+- * builds the other scope, so a registry that cannot be turned into a document fails here.
+- * `--scope <offline|all> --print` writes that scope's document to stdout and no file.
++ * Scopes (backend task: 2026-10-04 02_plan §16 CO-3, CO-4; 04_client_integration_spec §11 AR-1).
++ * The builder knows two scopes, `offline` (the ten operations a client can call without the Core
++ * server) and `all` (every operation of the registry, as the Core server answers it). The
++ * committed file holds `OPENAPI_COMMITTED_SCOPE`, which is `all` since the registry is complete
++ * (plan row W27, contract C): 75 operations, two security schemes, the server 127.0.0.1:4420,
++ * version 0.2.0.
++ *
++ * The `offline` document is not a file. It is what `createOpenApiDocument()` returns by default,
++ * and the web API Reference builds it in the browser from the registry; no app reads
++ * openapi.json. test/api-openapi-scope.test.ts holds every section of it to the baseline commit.
++ * Every run of this script builds both scopes, so a registry that cannot be turned into either
++ * document fails here. `--scope <offline|all> --print` writes that scope's document to stdout and
++ * no file.
+  */
+ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+ import { dirname, relative, resolve } from 'node:path';
+@@ -29,7 +37,7 @@
+ export const OPENAPI_JSON_PATH = resolve(PACKAGE_DIR, 'openapi', 'openapi.json');
+ 
+ /** The scope of the committed openapi.json. */
+-export const OPENAPI_COMMITTED_SCOPE: CoreApiScope = CoreApiScope.OFFLINE;
++export const OPENAPI_COMMITTED_SCOPE: CoreApiScope = CoreApiScope.ALL;
+ 
+ const SCOPES = Object.values(CoreApiScope) as readonly CoreApiScope[];
+ 
+@@ -38,12 +46,18 @@
+   return serializeOpenApiDocument(createOpenApiDocument({ scope }));
+ }
+ 
+-/** `scope name: n operations` for every scope; building each one is the check that it can be built. */
++/** `scope name: n operations` for every scope, the committed one first; building each one is the check that it can be built. */
+ function describeScopes(): string {
+-  return SCOPES.map((scope) => {
+-    const count = listOpenApiOperations(createOpenApiDocument({ scope })).length;
+-    return `${scope}${scope === OPENAPI_COMMITTED_SCOPE ? ' (committed)' : ''}: ${count} operations`;
+-  }).join('; ');
++  return [...SCOPES]
++    .sort((a, b) => Number(b === OPENAPI_COMMITTED_SCOPE) - Number(a === OPENAPI_COMMITTED_SCOPE))
++    .map((scope) => {
++      const document = createOpenApiDocument({ scope });
++      const count = listOpenApiOperations(document).length;
++      const schemes = Object.keys(document.components.securitySchemes ?? {}).length;
++      const committed = scope === OPENAPI_COMMITTED_SCOPE ? ' (committed)' : '';
++      return `${scope}${committed}: ${count} operations, ${schemes} security schemes, version ${document.info.version}`;
++    })
++    .join('; ');
+ }
+ 
+ function scopeArgument(argv: readonly string[]): CoreApiScope | null {
+--- packages/shared/src/api/constants.ts	2026-10-04 10:45:26
++++ packages/shared/src/api/constants.ts	2026-10-04 10:50:38
+@@ -72,3 +72,21 @@
+ export const REALTIME_CLIENT_MESSAGE_MAX_BYTES = 65_536;
+ /** A connection that sends more client messages than this is closed with 1008 (RT-P5). */
+ export const REALTIME_CLIENT_MESSAGE_LIMIT = { count: 30, windowMs: 10_000 } as const;
++
++// ── List reads of the Core server (backend task: 2026-10-04 01_specs §7.1 API-9) ──────────────
++// A list is cursor-paged: the query takes `cursor` (opaque) and `limit`, the answer holds
++// `nextCursor` or null. A client that sends no limit gets the default; the query schemas carry no
++// default of their own, so the typed client sends only what the caller gave.
++
++/**
++ * Longest reason of an export (evidence, audit log, log bundle), in characters and in UTF-16 code
++ * units, after trimming. The reason is mandatory for all three (01_specs §7.9, §7.13) and is
++ * stored with the export record and in its audit row; the specification gives the minimum of 5
++ * only, and 500 is the cap the contract gives every other reason.
++ */
++export const EXPORT_REASON_MAX_LENGTH = 500;
++
++/** Rows of a page when the query names no `limit`. */
++export const API_PAGE_LIMIT_DEFAULT = 50;
++/** Largest `limit` a list read accepts. */
++export const API_PAGE_LIMIT_MAX = 200;
+--- packages/shared/src/api/contract-model.ts	2026-10-04 08:38:28
++++ packages/shared/src/api/contract-model.ts	2026-10-04 09:57:04
+@@ -10,6 +10,8 @@
+  * | `access`   | Who may call it (exactly one rule, RB-1) | `PUBLIC`, `DEVICE`, `AUTHENTICATED`, one permission, or the one any-of |
+  * | `audit`    | Which audit row it writes (exactly one rule, API-8) | On success one audit type, or `NONE-R` (a read) or `NONE-P` (parity with the simulator, which writes none). On a refusal `ACCESS_DENIED`, or `EXPORT_DENIED` for the three exports (RB-5) |
+  * | `query`    | Query parameters of a GET, as one object schema (D36, contract gap 2) | A `CORE_API_SCHEMAS` name |
++ * | `coreServerDescription` | What the `all` scope says where `description` speaks of the simulator or of mock-core | Markdown; the ten existing operations only |
++ * | `responses[status].services` | Which services send that status, when not every answerer of the operation does | Omitted for an answer the in-app simulator gives too |
+  *
+  * Two types, on purpose:
+  * - `CoreApiOperation` is what a transport needs (the typed client, the route matcher, the OpenAPI
+@@ -42,6 +44,12 @@
+   ADMINISTRATION: 'Administration',
+   PAIRING: 'Pairing',
+   DEMO: 'Demo',
++  // Backend task (01_specs §7.12 to §7.15): areas 8 to 11, answered by the Core server only. Areas 4
++  // to 7 extend the Session, Evidence, Device and Storage tags.
++  NETWORK: 'Network',
++  SECURITY: 'Security',
++  SYSTEM: 'System',
++  ALERTS: 'Alerts',
+ } as const;
+ export type CoreApiTag = (typeof CoreApiTag)[keyof typeof CoreApiTag];
+ 
+@@ -104,6 +112,11 @@
+   return { kind: CoreApiAccessKind.PERMISSION, permission } as const;
+ }
+ 
++/** The access rule "an OPERATOR whose role holds `first` or `second`" (`ANY-OF(first, second)`). */
++export function anyOfAccess<A extends Permission, B extends Permission>(first: A, second: B) {
++  return { kind: CoreApiAccessKind.ANY_OF, permissions: [first, second] } as const;
++}
++
+ /** The permissions an access rule names: none, one, or the alternatives of an any-of. */
+ export function coreApiAccessPermissions(access: CoreApiAccess): readonly Permission[] {
+   if (access.kind === CoreApiAccessKind.PERMISSION) return [access.permission];
+@@ -152,6 +165,14 @@
+   description: string;
+   /** Body schema; omitted for a response without a body. */
+   schema?: CoreApiSchemaName;
++  /**
++   * The services that send this status, when not every answerer of the operation does. Used for
++   * the statuses that only the Core server sends on an operation the in-app simulator answers too
++   * (01_specs §7.19): the 401 and the 403 of the five simulated reads, the 422 of `startSession`.
++   * Omitted: every answerer sends it, the simulator included. The document of the `offline` scope
++   * leaves a status out when this member is set (`isOfflineCoreApiResponse`).
++   */
++  services?: readonly CoreApiService[];
+ }
+ 
+ export interface CoreApiRbac {
+@@ -172,6 +193,13 @@
+   summary: string;
+   /** Markdown. */
+   description: string;
++  /**
++   * Markdown of the `all` scope, for an operation whose `description` speaks of the in-app
++   * simulator or of mock-core: it describes the operation as the Core server answers it. The ten
++   * existing operations carry it; `description` stays what the `offline` scope shows. Omitted:
++   * `description` serves both scopes.
++   */
++  coreServerDescription?: string;
+   /** Where the endpoint comes from: the design book section or this demo's spec. */
+   source: string;
+   /** The `{id}` path parameter, when the path has one. */
+--- packages/shared/src/api/core-api.ts	2026-10-04 10:45:26
++++ packages/shared/src/api/core-api.ts	2026-10-04 10:50:38
+@@ -1,12 +1,14 @@
+ /**
+- * Core API v1 contract: the 10 REST operations the demo documents and the zod schemas of their
+- * bodies (masterplan/01_specs.md §14.9; book §21.2; D26, D31).
++ * Core API v1 contract: the registry of its 75 REST operations, and the zod schemas of the ten
++ * operations the demo documented first (masterplan/01_specs.md §14.9; book §21.2; D26, D31).
+  *
+- * | Mode      | Operations | Answered by |
+- * |-----------|------------|-------------|
+- * | LIVE      | `GET /api/v1/health` | mock-core on 127.0.0.1:4400 (apps/mock-core/src/app.ts) |
+- * | SIMULATED | the 9 §21.2 endpoints | the in-browser simulator: `Sim.request` → `sim/api.ts` `handleSimApiRequest`, header `x-dems-simulated: 1` |
++ * The ten operations of this file, and who answers each:
+  *
++ * | Mode      | Operations | Simulated mode | Live mode |
++ * |-----------|------------|----------------|-----------|
++ * | LIVE      | `GET /api/v1/health` | mock-core, the heartbeat-only service (apps/mock-core/src/app.ts; 127.0.0.1:4400 in a development run, the page's own origin in a packaged one) | the Core server (apps/core-server) |
++ * | SIMULATED | the 9 §21.2 endpoints | the in-app simulator: `Sim.request` → `sim/api.ts` `handleSimApiRequest`, header `x-dems-simulated: 1` | the Core server |
++ *
+  * The design book names the nine endpoints and their purpose only (01 G6), so every body is a
+  * demo definition. The simulated bodies follow the handler types in `sim/api.ts` (step 32
+  * declares them "the contract for step 33's OpenAPI schemas"); these zod schemas restate them
+@@ -27,6 +29,8 @@
+  * |------|-------|
+  * | The model of an entry: `mode`, `services`, `access`, `audit`, `query` | `contract-model.ts` |
+  * | Area 1 identity, area 2 administration, area 3 pairing, area 13 demo controls: schemas, operations, examples | `identity.ts`, `administration.ts`, `pairing.ts`, `demo-controls.ts` |
++ * | Areas 4 to 11 (plan row W27, contract C): sessions, evidence, devices, storage, network and time, security and audit, system, alerts | `sessions.ts`, `evidence.ts`, `devices.ts`, `storage.ts`, `network-time.ts`, `security-audit.ts`, `system.ts`, `alerts.ts`; their state examples in `state-examples.ts` |
++ * | The 42 simulator actions and the operation each one reaches (01_specs §7.17) | `sim-actions.ts` |
+  * | The text rule API-13 | `text.ts` |
+  * | The Core state on the wire: one schema per replicated slice (plan row W22, contract B) | `state-slices.ts` |
+  * | The messages of WS `/ws`: the union the Core server sends, the client messages, close codes | `realtime-messages.ts`, `realtime-examples.ts` |
+@@ -36,11 +40,15 @@
+  *   declared `as const satisfies readonly CoreApiRegistryOperation[]`, so an entry without them
+  *   does not compile.
+  * - The ten operations above keep their path, method and schemas. They gained `access`, `audit`
+- *   and `services` only; `rbac` still feeds their `x-dems-rbac`.
++ *   and `services`; `rbac` still feeds their `x-dems-rbac`. With the registry complete they also
++ *   carry what only the Core server needs said (01_specs §7.19): `coreServerDescription`, which
++ *   the `all` scope shows in place of `description`, and the statuses that only the Core server
++ *   sends (`401` and `403` on the five reads, `422` on `startSession`), each marked with
++ *   `services`. The `offline` scope shows neither, so its document is unchanged.
+  * - `mode` keeps its two values: `simulated` for the nine design-book operations (the in-app
+  *   simulator can answer them), `live` for every other one (only a service answers it).
+  *   `listCoreApiOperations('offline')` is what a client can call without the Core server (the
+- *   ten above); `'all'` is every entry.
++ *   ten above); `'all'` is every entry: 75 operations, 27 GET and 48 POST.
+  * - `CORE_API_OPERATION_TABLE` (`operation-table.ts`) is the same table with literal types;
+  *   `CORE_API_OPERATIONS` is the widened view.
+  */
+@@ -72,7 +80,8 @@
+   SystemState,
+ } from '../sim/vocabulary';
+ import { ADMINISTRATION_OPERATIONS, ADMINISTRATION_SCHEMAS } from './administration';
+-import { ALLOW_HEADER_NAME, API_BASE_PATH, HEALTH_PATH, RETRY_AFTER_HEADER_NAME } from './constants';
++import { ALERT_OPERATIONS, ALERT_SCHEMAS } from './alerts';
++import { ALLOW_HEADER_NAME, API_BASE_PATH, EXPORT_REASON_MAX_LENGTH, HEALTH_PATH, RETRY_AFTER_HEADER_NAME } from './constants';
+ import {
+   AUTHENTICATED_ACCESS,
+   CORE_SERVER_ONLY,
+@@ -86,8 +95,12 @@
+   type CoreApiResponseSpec,
+ } from './contract-model';
+ import { DEMO_OPERATIONS, DEMO_SCHEMAS } from './demo-controls';
++import { DEVICE_OPERATIONS, DEVICE_SCHEMAS } from './devices';
++import { EVIDENCE_OPERATIONS, EVIDENCE_SCHEMAS } from './evidence';
+ import { HealthResponseSchema } from './health';
+ import { IDENTITY_OPERATIONS, IDENTITY_SCHEMAS } from './identity';
++import { NETWORK_TIME_OPERATIONS, NETWORK_TIME_SCHEMAS } from './network-time';
++import { INVALID_INPUT, NOT_SIGNED_IN, forbidden } from './operation-parts';
+ import { PAIRING_OPERATIONS, PAIRING_SCHEMAS } from './pairing';
+ import { HeartbeatSchema, REALTIME_SCHEMAS } from './realtime-messages';
+ import {
+@@ -97,8 +110,13 @@
+   OPERATOR_ID_PATTERN,
+   SESSION_ID_PATTERN,
+ } from './patterns';
++import { codeUnitBoundMessage } from './schema-parts';
++import { SECURITY_AUDIT_OPERATIONS, SECURITY_AUDIT_SCHEMAS } from './security-audit';
+ import { sessionCreateSchema } from './session-schema';
++import { SESSION_OPERATIONS, SESSION_SCHEMAS } from './sessions';
+ import { STATE_SCHEMAS } from './state-slices';
++import { STORAGE_OPERATIONS, STORAGE_SCHEMAS } from './storage';
++import { SYSTEM_OPERATIONS, SYSTEM_SCHEMAS } from './system';
+ import { apiText } from './text';
+ 
+ export * from './contract-model';
+@@ -107,7 +125,11 @@
+ // Building blocks
+ // ═══════════════════════════════════════════════════════════════════════════════════════
+ 
+-/** An export destination longer than this is truncated by the simulator. */
++/**
++ * The simulator keeps at most this many UTF-16 code units of an export destination and cuts the
++ * rest. The request schemas refuse a longer one (after trimming), so a server that validates with
++ * them never asks the simulator to cut (decision on finding F-1 of contract B).
++ */
+ export const EXPORT_DESTINATION_MAX_LENGTH = 120;
+ 
+ /** ISO-8601 with an offset. The simulator writes UTC+07:00 (`…+07:00`, D28/Q2); `Z` is accepted too. */
+@@ -401,8 +423,14 @@
+     reason: apiText()
+       .overwrite((value) => value.trim())
+       .min(EXPORT_REASON_MIN_LENGTH)
++      // A refinement, like the text rule: the JSON Schema of the component does not change.
++      .refine((value) => value.length <= EXPORT_REASON_MAX_LENGTH, { error: codeUnitBoundMessage(EXPORT_REASON_MAX_LENGTH) })
+       .describe(`Purpose of the export (book §19.2 item 8; at least ${EXPORT_REASON_MIN_LENGTH} characters after trimming).`),
+     destination: apiText()
++      // A refinement, like the text rule: the JSON Schema of the component does not change.
++      .refine((value) => value.trim().length <= EXPORT_DESTINATION_MAX_LENGTH, {
++        error: codeUnitBoundMessage(EXPORT_DESTINATION_MAX_LENGTH),
++      })
+       .optional()
+       .describe(
+         `Destination or approved media identifier (book §19.2 item 6). Empty means "Case file transfer (simulated)"; text beyond ${EXPORT_DESTINATION_MAX_LENGTH} characters is cut.`,
+@@ -432,11 +460,11 @@
+  * socket; the Realtime tag describes it).
+  *
+  * The first 18 are the schemas of the ten existing operations, in their order; the document of
+- * the `offline` scope holds exactly these. The schemas of the backend task follow, by area; then
+- * the Core state on the wire (`state-slices.ts`: the 28 replicated slices and what they are made
+- * of) and the messages of the Core server's socket (`realtime-messages.ts`). No operation of the
+- * registry refers to a slice or a message yet: the socket uses them, and the reads of 01_specs
+- * §7.8 to §7.15 will return the slices (API-6).
++ * the `offline` scope holds exactly these. The schemas of contract A follow, by area (areas 1, 2,
++ * 3 and 13); then the Core state on the wire (`state-slices.ts`: the 28 replicated slices and what
++ * they are made of) and the messages of the Core server's socket (`realtime-messages.ts`); then
++ * the schemas of contract C, by area (areas 4 to 11). The reads of those areas answer the slices
++ * and their rows (API-6), so a slice has one schema for the socket and for REST.
+  */
+ export const CORE_API_SCHEMAS = {
+   HealthResponse: HealthResponseSchema,
+@@ -463,6 +491,14 @@
+   ...DEMO_SCHEMAS,
+   ...STATE_SCHEMAS,
+   ...REALTIME_SCHEMAS,
++  ...SESSION_SCHEMAS,
++  ...EVIDENCE_SCHEMAS,
++  ...DEVICE_SCHEMAS,
++  ...STORAGE_SCHEMAS,
++  ...NETWORK_TIME_SCHEMAS,
++  ...SECURITY_AUDIT_SCHEMAS,
++  ...SYSTEM_SCHEMAS,
++  ...ALERT_SCHEMAS,
+ } as const;
+ export type CoreApiSchemaName = keyof typeof CORE_API_SCHEMAS;
+ 
+@@ -482,6 +518,77 @@
+ const READ_AUDIT = { success: CoreApiAuditNone.READ, denial: AuditType.ACCESS_DENIED } as const;
+ const SESSION_START_ACCESS = permissionAccess(Permission.SESSION_START);
+ 
++// ── What the `all` scope says about the ten operations (01_specs §7.19) ───────────────────────
++// `description` is the text of the `offline` scope and stays as it was: it speaks of the simulator
++// and of mock-core, which is who answers when the Core server is not there. `coreServerDescription`
++// keeps the paragraphs that hold for both and ends with what the Core server does.
++
++/** Last paragraph of `coreServerDescription` of the nine design-book operations. */
++const CORE_SERVER_ANSWERS =
++  'Answered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.';
++
++/** `coreServerDescription` of the five simulated reads: their access rule is AUTHENTICATED. */
++const READ_FOR_EVERY_ROLE = 'Needs a signed-in operator. Every role may read it: the operation needs no permission.';
++
++/** `coreServerDescription` of the three session commands. */
++const SESSION_START_REFUSAL =
++  'One session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.';
++
++/**
++ * The statuses only the Core server sends on a read that the in-app simulator answers too: the
++ * simulator's read handlers check no sign-in, the server's access rule does (01_specs §7.2, §7.19).
++ */
++const CORE_SERVER_READ_REFUSALS = {
++  401: { ...NOT_SIGNED_IN, services: CORE_SERVER_ONLY },
++  403: { ...forbidden(), services: CORE_SERVER_ONLY },
++} as const;
++
++const CREATE_SESSION_TEXT = [
++  'Creates a session and returns its Session ID; the session enters **CREATE** (book §6.2, §12.2 steps 1-2).',
++  'Idempotent (S26): the same input while that session is still open returns it with `200` and `created: false`.',
++  'Requires a signed-in operator holding SESSION_START; writes the SESSION_CREATED audit row.',
++];
++
++const START_SESSION_TEXT = [
++  'Runs the Core pre-check (book §5.3: 8 checks) and starts recording.',
++  [
++    '- From **CREATE**: begins the pre-check and answers `202` with state **PRECHECK**. Poll `GET /api/v1/session/current` and call again once it is **ARMED**.',
++    '- From **ARMED**: starts recording and answers `200` with state **RECORDING**.',
++    '- Pre-check ended with **WARN**: send `{"acknowledgeWarnings": true}` to acknowledge and start; without it the answer is `409 PRECHECK_WARNINGS`.',
++    '- Pre-check with a **BLOCK** (Core offline, lens fault, storage full, security fault): `409 PRECHECK_BLOCKED` with the reasons.',
++  ].join('\n'),
++  'Requires a signed-in operator holding SESSION_START; the audit rows name that operator.',
++];
++
++const STOP_SESSION_TEXT = [
++  'Stops the recording with a mandatory reason and moves the session to finalization: **STOPPING** → **FINALIZING** (hashes, manifest, encryption, signature) → **SEALED** (book §6.2, §12.2 steps 5-10).',
++  'Answers `202` at STOPPING; poll `GET /api/v1/session/current` for the seal.',
++  'Requires a signed-in operator holding SESSION_START; the RECORDING_STOPPED row names that operator.',
++];
++
++const CURRENT_SESSION_TEXT = [
++  'Returns the open session, or `null` when idle. The tablet calls it after a reconnect to resynchronise (book §5.5, §5.6).',
++];
++
++const DEVICE_HEALTH_TEXT = [
++  'Health of camera, audio, storage, time and security (book §6.1, §21.2), used by the pre-check and diagnostics. Distinct from the service liveness `GET /api/v1/health`.',
++];
++
++const AUDIO_STATUS_TEXT = [
++  'Per-channel levels and faults for AUDIO-01 (MIC 1) and AUDIO-02 (MIC 2), reported separately (book §21.2, SYS-003).',
++];
++
++const VIDEO_STATUS_TEXT = ['Per-track status for VIDEO-01 and VIDEO-02 (book §21.2).'];
++
++const STORAGE_STATUS_TEXT = ['Capacity and health of the evidence storage, including the LOW and FULL states (book §21.2).'];
++
++const EXPORT_OUTCOMES = [
++  '- SUPERVISOR (holds EVIDENCE_EXPORT): `202`, and an EVIDENCE_EXPORTED audit row (the ExportEvent).',
++  '- INVESTIGATOR or TECHNICIAN: `403 FORBIDDEN`, and an EXPORT_DENIED audit row (EVT-26).',
++].join('\n');
++const EXPORT_SEALED_ONLY =
++  'Only SEALED, UNDER_REVIEW or EXPORTED evidence can be exported, and the sealed source is never modified (book §19.3 rule 1).';
++
+ const OPERATION_TABLE = [
+   {
+     operationId: 'getServiceHealth',
+@@ -492,6 +599,14 @@
+     summary: 'Service liveness',
+     description:
+       'Liveness of the local mock-core service. **Live**: served by mock-core on 127.0.0.1:4400 (CORS allows the web dev origins). This is not the device health snapshot; that is `GET /api/v1/device/health`.',
++    coreServerDescription: [
++      'Liveness of the service that answers. Public: it needs no credential and returns nothing of the Core state.',
++      [
++        '- The Core server answers `service: dems-core-server` with its version and `ready`, which says whether its database and its engine are ready. The status is `200` for as long as the process answers, so a stopped database shows as `ready.database: false`.',
++        '- mock-core, the heartbeat-only service of Simulated mode, answers `service: dems-mock-core` and no `ready`.',
++      ].join('\n'),
++      'This is not the device health snapshot; that is `GET /api/v1/device/health`.',
++    ].join('\n\n'),
+     source: 'masterplan/01_specs.md §2.5, §3.2 (demo; not in the design book)',
+     responses: {
+       200: { description: 'The service is up.', schema: 'HealthResponse' },
+@@ -507,12 +622,8 @@
+     tag: CoreApiTag.SESSION,
+     mode: CoreApiMode.SIMULATED,
+     summary: 'Create session',
+-    description: [
+-      'Creates a session and returns its Session ID; the session enters **CREATE** (book §6.2, §12.2 steps 1-2).',
+-      'Idempotent (S26): the same input while that session is still open returns it with `200` and `created: false`.',
+-      'Requires a signed-in operator holding SESSION_START; writes the SESSION_CREATED audit row.',
+-      SIM_NOTE,
+-    ].join('\n\n'),
++    description: [...CREATE_SESSION_TEXT, SIM_NOTE].join('\n\n'),
++    coreServerDescription: [...CREATE_SESSION_TEXT, SESSION_START_REFUSAL, CORE_SERVER_ANSWERS].join('\n\n'),
+     source: 'Design book §21.2',
+     requestBody: { schema: 'SessionCreateRequest', required: true },
+     responses: {
+@@ -540,16 +651,12 @@
+     tag: CoreApiTag.SESSION,
+     mode: CoreApiMode.SIMULATED,
+     summary: 'Start recording',
+-    description: [
+-      'Runs the Core pre-check (book §5.3: 8 checks) and starts recording.',
+-      [
+-        '- From **CREATE**: begins the pre-check and answers `202` with state **PRECHECK**. Poll `GET /api/v1/session/current` and call again once it is **ARMED**.',
+-        '- From **ARMED**: starts recording and answers `200` with state **RECORDING**.',
+-        '- Pre-check ended with **WARN**: send `{"acknowledgeWarnings": true}` to acknowledge and start; without it the answer is `409 PRECHECK_WARNINGS`.',
+-        '- Pre-check with a **BLOCK** (Core offline, lens fault, storage full, security fault): `409 PRECHECK_BLOCKED` with the reasons.',
+-      ].join('\n'),
+-      'Requires a signed-in operator holding SESSION_START; the audit rows name that operator.',
+-      SIM_NOTE,
++    description: [...START_SESSION_TEXT, SIM_NOTE].join('\n\n'),
++    coreServerDescription: [
++      ...START_SESSION_TEXT,
++      SESSION_START_REFUSAL,
++      'A body that does not match its schema answers `422 INVALID_INPUT`. The pre-check and its outcome also have operations of their own: `beginPrecheck`, `retryPrecheck` and `acknowledgePrecheckWarnings`.',
++      CORE_SERVER_ANSWERS,
+     ].join('\n\n'),
+     source: 'Design book §21.2',
+     pathParam: { name: 'id', description: 'Session ID of the open session.', pattern: SESSION_ID_PATTERN },
+@@ -565,6 +672,8 @@
+         description: 'Not startable now (PRECHECK_RUNNING, PRECHECK_WARNINGS, PRECHECK_BLOCKED, INVALID_STATE).',
+         schema: 'ApiError',
+       },
++      // Only the Core server validates the optional body with its schema; the simulator ignores a wrong member.
++      422: { ...INVALID_INPUT, services: CORE_SERVER_ONLY },
+     },
+     rbac: {
+       permission: Permission.SESSION_START,
+@@ -583,11 +692,12 @@
+     tag: CoreApiTag.SESSION,
+     mode: CoreApiMode.SIMULATED,
+     summary: 'Stop recording',
+-    description: [
+-      'Stops the recording with a mandatory reason and moves the session to finalization: **STOPPING** → **FINALIZING** (hashes, manifest, encryption, signature) → **SEALED** (book §6.2, §12.2 steps 5-10).',
+-      'Answers `202` at STOPPING; poll `GET /api/v1/session/current` for the seal.',
+-      'Requires a signed-in operator holding SESSION_START; the RECORDING_STOPPED row names that operator.',
+-      SIM_NOTE,
++    description: [...STOP_SESSION_TEXT, SIM_NOTE].join('\n\n'),
++    coreServerDescription: [
++      ...STOP_SESSION_TEXT,
++      SESSION_START_REFUSAL,
++      'The operator who stops a recording need not be the one who started it. A reason that the schema refuses for another cause than its length answers `422 INVALID_INPUT`.',
++      CORE_SERVER_ANSWERS,
+     ].join('\n\n'),
+     source: 'Design book §21.2',
+     pathParam: { name: 'id', description: 'Session ID of the recording session.', pattern: SESSION_ID_PATTERN },
+@@ -617,13 +727,12 @@
+     tag: CoreApiTag.SESSION,
+     mode: CoreApiMode.SIMULATED,
+     summary: 'Current session',
+-    description: [
+-      'Returns the open session, or `null` when idle. The tablet calls it after a reconnect to resynchronise (book §5.5, §5.6).',
+-      SIM_NOTE,
+-    ].join('\n\n'),
++    description: [...CURRENT_SESSION_TEXT, SIM_NOTE].join('\n\n'),
++    coreServerDescription: [...CURRENT_SESSION_TEXT, READ_FOR_EVERY_ROLE, CORE_SERVER_ANSWERS].join('\n\n'),
+     source: 'Design book §21.2',
+     responses: {
+       200: { description: 'The current session state.', schema: 'CurrentSessionResponse' },
++      ...CORE_SERVER_READ_REFUSALS,
+     },
+     access: AUTHENTICATED_ACCESS,
+     audit: READ_AUDIT,
+@@ -636,13 +745,12 @@
+     tag: CoreApiTag.DEVICE,
+     mode: CoreApiMode.SIMULATED,
+     summary: 'Device health snapshot',
+-    description: [
+-      'Health of camera, audio, storage, time and security (book §6.1, §21.2), used by the pre-check and diagnostics. Distinct from the service liveness `GET /api/v1/health`.',
+-      SIM_NOTE,
+-    ].join('\n\n'),
++    description: [...DEVICE_HEALTH_TEXT, SIM_NOTE].join('\n\n'),
++    coreServerDescription: [...DEVICE_HEALTH_TEXT, READ_FOR_EVERY_ROLE, CORE_SERVER_ANSWERS].join('\n\n'),
+     source: 'Design book §21.2',
+     responses: {
+       200: { description: 'The health snapshot.', schema: 'DeviceHealthResponse' },
++      ...CORE_SERVER_READ_REFUSALS,
+     },
+     access: AUTHENTICATED_ACCESS,
+     audit: READ_AUDIT,
+@@ -655,13 +763,12 @@
+     tag: CoreApiTag.DEVICE,
+     mode: CoreApiMode.SIMULATED,
+     summary: 'Audio status',
+-    description: [
+-      'Per-channel levels and faults for AUDIO-01 (MIC 1) and AUDIO-02 (MIC 2), reported separately (book §21.2, SYS-003).',
+-      SIM_NOTE,
+-    ].join('\n\n'),
++    description: [...AUDIO_STATUS_TEXT, SIM_NOTE].join('\n\n'),
++    coreServerDescription: [...AUDIO_STATUS_TEXT, READ_FOR_EVERY_ROLE, CORE_SERVER_ANSWERS].join('\n\n'),
+     source: 'Design book §21.2',
+     responses: {
+       200: { description: 'Both audio channels.', schema: 'AudioStatusResponse' },
++      ...CORE_SERVER_READ_REFUSALS,
+     },
+     access: AUTHENTICATED_ACCESS,
+     audit: READ_AUDIT,
+@@ -674,10 +781,12 @@
+     tag: CoreApiTag.DEVICE,
+     mode: CoreApiMode.SIMULATED,
+     summary: 'Video status',
+-    description: ['Per-track status for VIDEO-01 and VIDEO-02 (book §21.2).', SIM_NOTE].join('\n\n'),
++    description: [...VIDEO_STATUS_TEXT, SIM_NOTE].join('\n\n'),
++    coreServerDescription: [...VIDEO_STATUS_TEXT, READ_FOR_EVERY_ROLE, CORE_SERVER_ANSWERS].join('\n\n'),
+     source: 'Design book §21.2',
+     responses: {
+       200: { description: 'Both video tracks.', schema: 'VideoStatusResponse' },
++      ...CORE_SERVER_READ_REFUSALS,
+     },
+     access: AUTHENTICATED_ACCESS,
+     audit: READ_AUDIT,
+@@ -690,13 +799,12 @@
+     tag: CoreApiTag.STORAGE,
+     mode: CoreApiMode.SIMULATED,
+     summary: 'Storage status',
+-    description: [
+-      'Capacity and health of the evidence storage, including the LOW and FULL states (book §21.2).',
+-      SIM_NOTE,
+-    ].join('\n\n'),
++    description: [...STORAGE_STATUS_TEXT, SIM_NOTE].join('\n\n'),
++    coreServerDescription: [...STORAGE_STATUS_TEXT, READ_FOR_EVERY_ROLE, CORE_SERVER_ANSWERS].join('\n\n'),
+     source: 'Design book §21.2',
+     responses: {
+       200: { description: 'Storage capacity and state.', schema: 'StorageStatusResponse' },
++      ...CORE_SERVER_READ_REFUSALS,
+     },
+     access: AUTHENTICATED_ACCESS,
+     audit: READ_AUDIT,
+@@ -711,13 +819,17 @@
+     summary: 'Authorized export',
+     description: [
+       '**RBAC + audit required** (book §19.3, §21.2). The simulator applies the role of the operator signed in to this console; the design book defines no authentication endpoint, so no token travels on the wire.',
+-      [
+-        '- SUPERVISOR (holds EVIDENCE_EXPORT): `202`, and an EVIDENCE_EXPORTED audit row (the ExportEvent).',
+-        '- INVESTIGATOR or TECHNICIAN: `403 FORBIDDEN`, and an EXPORT_DENIED audit row (EVT-26).',
+-      ].join('\n'),
+-      'Only SEALED, UNDER_REVIEW or EXPORTED evidence can be exported, and the sealed source is never modified (book §19.3 rule 1).',
++      EXPORT_OUTCOMES,
++      EXPORT_SEALED_ONLY,
+       SIM_NOTE,
+     ].join('\n\n'),
++    coreServerDescription: [
++      '**RBAC + audit required** (book §19.3, §21.2). The Core server applies the role of the operator whose session the request carries, before the body is read.',
++      EXPORT_OUTCOMES,
++      EXPORT_SEALED_ONLY,
++      `The answer holds no file: the server records the export, and a client keeps its bundled export archive (01_specs §11). The reason is mandatory. A reason longer than ${EXPORT_REASON_MAX_LENGTH} UTF-16 code units, a destination longer than ${EXPORT_DESTINATION_MAX_LENGTH}, and any other body that does not match its schema, answers \`422 INVALID_INPUT\`; the server does not cut a text.`,
++      CORE_SERVER_ANSWERS,
++    ].join('\n\n'),
+     source: 'Design book §21.2, §19.2, §19.3',
+     pathParam: { name: 'id', description: 'Evidence ID `EV-{YYYYMMDD}-NNNN`.', pattern: EVIDENCE_ID_PATTERN },
+     requestBody: { schema: 'EvidenceExportRequest', required: true },
+@@ -746,10 +858,19 @@
+     audit: { success: AuditType.EVIDENCE_EXPORTED, denial: AuditType.EXPORT_DENIED },
+     services: CORE_SERVER_ONLY,
+   },
+-  // Backend task (01_specs §7.5 to §7.7, §7.16): answered by the Core server only.
++  // Backend task (01_specs §7.5 to §7.16): answered by the Core server only, by area. Areas 1 to 3,
++  // then the 38 of areas 4 to 11 that are not among the ten above, then area 13.
+   ...IDENTITY_OPERATIONS,
+   ...ADMINISTRATION_OPERATIONS,
+   ...PAIRING_OPERATIONS,
++  ...SESSION_OPERATIONS,
++  ...EVIDENCE_OPERATIONS,
++  ...DEVICE_OPERATIONS,
++  ...STORAGE_OPERATIONS,
++  ...NETWORK_TIME_OPERATIONS,
++  ...SECURITY_AUDIT_OPERATIONS,
++  ...SYSTEM_OPERATIONS,
++  ...ALERT_OPERATIONS,
+   ...DEMO_OPERATIONS,
+ ] as const satisfies readonly CoreApiRegistryOperation[];
+ 
+@@ -775,6 +896,34 @@
+   return scope === CoreApiScope.ALL ? CORE_API_OPERATIONS : CORE_API_OPERATIONS.filter(isOfflineCoreApiOperation);
+ }
+ 
++/**
++ * True for an answer that every answerer of the operation gives, the in-app simulator and
++ * mock-core included. False for a status that names its services: only those send it (the `401`
++ * and the `403` of the five simulated reads, the `422` of `startSession`, which only the Core
++ * server sends).
++ */
++export function isOfflineCoreApiResponse(spec: CoreApiResponseSpec): boolean {
++  return spec.services === undefined;
++}
++
++/**
++ * The documented statuses of an operation in a scope, ascending. `all`: every status. `offline`:
++ * the statuses a client can get without the Core server, which is what the in-app simulator and
++ * mock-core produce (01_specs §7.19).
++ */
++export function listCoreApiResponseStatuses(
++  operation: Pick<CoreApiRegistryOperation, 'responses'>,
++  scope: CoreApiScope = CoreApiScope.ALL,
++): number[] {
++  return Object.keys(operation.responses)
++    .map(Number)
++    .filter((status) => {
++      const spec = operation.responses[status];
++      return spec !== undefined && (scope === CoreApiScope.ALL || isOfflineCoreApiResponse(spec));
++    })
++    .sort((a, b) => a - b);
++}
++
+ // ═══════════════════════════════════════════════════════════════════════════════════════
+ // Answers defined once for every operation (backend task 01_specs §7.2, §7.3)
+ // ═══════════════════════════════════════════════════════════════════════════════════════
+@@ -963,6 +1112,10 @@
+  * the body must parse with that status's schema. A status the operation does not document is
+  * accepted when it is a pipeline answer of `CORE_API_ENVELOPE_RESPONSES` with one of its codes.
+  * For the sim handlers' tests, the typed fake transport and the server's conformance test.
++ *
++ * Every documented status counts, whoever sends it: a status that only the Core server sends
++ * (`responses[status].services`) is valid for the operation. That the simulator never sends one
++ * is what test/openapi.test.ts checks.
+  */
+ export function validateCoreApiResponse(operationId: string, status: number, body: unknown): CoreApiValidation {
+   const operation = findCoreApiOperation(operationId);
+--- packages/shared/src/api/example-parts.ts	2026-10-04 08:17:17
++++ packages/shared/src/api/example-parts.ts	2026-10-04 10:40:28
+@@ -61,6 +61,14 @@
+     'The body does not match its schema',
+     apiErrorExample('INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' }),
+   ),
++  invalidPathParameter: named(
++    'The path parameter does not match its pattern',
++    apiErrorExample('INVALID_INPUT', 'The request does not match the expected input.', { in: 'params' }),
++  ),
++  invalidQuery: named(
++    'A query parameter does not match its schema',
++    apiErrorExample('INVALID_INPUT', 'The request does not match the expected input.', { in: 'querystring' }),
++  ),
+   notSignedIn: named('No valid session', apiErrorExample('NOT_SIGNED_IN', 'Sign in first.')),
+   credentialConflict: named(
+     'A cookie and an Authorization header in one request',
+@@ -97,6 +105,22 @@
+   );
+ }
+ 
++/** The two refusals every operation of an OPERATOR shares on 403: a retired device, the Origin guard. */
++export const BASIC_403_EXAMPLES = {
++  deviceRevoked: ERROR_EXAMPLES.deviceRevoked,
++  originNotAllowed: ERROR_EXAMPLES.originNotAllowed,
++} as const;
++
++/** The 403 examples of an operation that needs `permission`; `role` is a role that lacks it. */
++export function deniedExamples(operationId: string, permission: string, role: string) {
++  return { notPermitted: notPermittedExample(operationId, permission, role), ...BASIC_403_EXAMPLES };
++}
++
++/** A refusal the hosted simulator action raised: `details.simCode` names its code (01_specs §7.2). */
++export function simRefusalExample(summary: string, code: string, message: string, simCode: string, details?: ErrorDetails): OpenApiExample<ApiError> {
++  return named(summary, apiErrorExample(code, message, { simCode, ...details }));
++}
++
+ /** `423 LOCKED` 42 s into a 60 s lock. */
+ export function lockedExample(summary: string, message: string): OpenApiExample<ApiError> {
+   return named(summary, apiErrorExample('LOCKED', message, { lockedUntil: EXAMPLE_INSTANT_MS + 18_000, retryInMs: 18_000 }));
+--- packages/shared/src/api/examples.ts	2026-10-04 10:45:26
++++ packages/shared/src/api/examples.ts	2026-10-04 10:11:23
+@@ -17,9 +17,15 @@
+  * numbers with the simulator's own answers at this instant.
+  *
+  * The examples of the Core-server operations (backend task 2026-10-04) live beside their
+- * operations, in `identity.ts`, `administration.ts`, `pairing.ts` and `demo-controls.ts`, and are
+- * merged into `CORE_API_EXAMPLES` at the end of this file. They use the same instant, as epoch
+- * milliseconds, and show every secret as a placeholder (`example-parts.ts`).
++ * operations, in the module of their area (`identity.ts` to `alerts.ts`), and are merged into
++ * `CORE_API_EXAMPLES` at the end of this file. They use the same instant, as epoch milliseconds,
++ * and show every secret as a placeholder (`example-parts.ts`). The state they show is the idle
++ * simulator's at that instant (`state-examples.ts`).
++ *
++ * The ten operations of this file also have examples for the statuses that only the Core server
++ * sends (the `401` and the `403` of the five reads, the `422` of `startSession`): those carry the
++ * request ID, as every answer of the Core server does. The document of the `offline` scope leaves
++ * those statuses out.
+  */
+ import type {
+   ApiError,
+@@ -37,12 +43,21 @@
+   VideoTrackStatus,
+ } from './core-api';
+ import { ADMINISTRATION_EXAMPLES } from './administration';
++import { ALERT_EXAMPLES } from './alerts';
+ import { DEMO_EXAMPLES } from './demo-controls';
++import { DEVICE_EXAMPLES } from './devices';
++import { EVIDENCE_EXAMPLES } from './evidence';
++import { BASIC_403_EXAMPLES, ERROR_EXAMPLES } from './example-parts';
+ import type { HealthResponse } from './health';
+ import { IDENTITY_EXAMPLES } from './identity';
++import { NETWORK_TIME_EXAMPLES } from './network-time';
+ import { PAIRING_EXAMPLES } from './pairing';
+ import type { Heartbeat } from './realtime-messages';
++import { SECURITY_AUDIT_EXAMPLES } from './security-audit';
+ import type { SessionCreateRequest } from './session-schema';
++import { SESSION_EXAMPLES } from './sessions';
++import { STORAGE_EXAMPLES } from './storage';
++import { SYSTEM_EXAMPLES } from './system';
+ 
+ /** The instant every example describes: 2026-10-01 10:00:00 WIB (UTC+07:00). */
+ export const OPENAPI_EXAMPLE_INSTANT = '2026-10-01T03:00:00.000Z';
+@@ -310,6 +325,15 @@
+ const NOT_SIGNED_IN = apiError('NOT_SIGNED_IN', 'Sign in first.');
+ /** Step 54 (D101): start / stop as a role without SESSION_START (the simulator's exact text). */
+ const SESSION_NOT_PERMITTED = apiError('NOT_PERMITTED', 'Your role cannot control sessions (RBAC).');
++
++/**
++ * The two refusals only the Core server sends on a read that the in-app simulator answers too
++ * (01_specs §7.19): no valid session, and a retired device or an Origin outside the lists.
++ */
++const CORE_SERVER_READ_REFUSALS = {
++  401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
++  403: BASIC_403_EXAMPLES,
++} as const;
+ 
+ // ── Per operation ─────────────────────────────────────────────────────────────────────────
+ 
+@@ -374,6 +398,8 @@
+           value: apiError('PRECHECK_RUNNING', 'Pre-recording checks are still running.'),
+         },
+       },
++      // Core server only: the optional body failed its schema.
++      422: { invalidInput: ERROR_EXAMPLES.invalidInput },
+     },
+   },
+   stopSession: {
+@@ -422,23 +448,25 @@
+           value: { session: null, serverTime: AT } satisfies CurrentSessionResponse,
+         },
+       },
++      ...CORE_SERVER_READ_REFUSALS,
+     },
+   },
+   getDeviceHealth: {
+-    responses: { 200: { idle: { summary: 'Idle, all green', value: DEVICE_HEALTH_IDLE } } },
++    responses: { 200: { idle: { summary: 'Idle, all green', value: DEVICE_HEALTH_IDLE } }, ...CORE_SERVER_READ_REFUSALS },
+   },
+   getAudioStatus: {
+-    responses: { 200: { recording: { summary: 'Interviewer speaking', value: AUDIO_RECORDING } } },
++    responses: { 200: { recording: { summary: 'Interviewer speaking', value: AUDIO_RECORDING } }, ...CORE_SERVER_READ_REFUSALS },
+   },
+   getVideoStatus: {
+     responses: {
+       200: {
+         recording: { summary: 'Both tracks recording', value: { tracks: videoTracks('REC') } satisfies VideoStatusResponse },
+       },
++      ...CORE_SERVER_READ_REFUSALS,
+     },
+   },
+   getStorageStatus: {
+-    responses: { 200: { atLoad: { summary: '20 % used, 3.2 TB free', value: STORAGE_AT_LOAD } } },
++    responses: { 200: { atLoad: { summary: '20 % used, 3.2 TB free', value: STORAGE_AT_LOAD } }, ...CORE_SERVER_READ_REFUSALS },
+   },
+   exportEvidence: {
+     pathParams: { id: EXAMPLE_IDS.exportedEvidenceId },
+@@ -470,9 +498,17 @@
+       },
+     },
+   },
+-  // Backend task (01_specs §7.5 to §7.7, §7.16): the Core-server operations, by area.
++  // Backend task (01_specs §7.5 to §7.16): the Core-server operations, by area.
+   ...IDENTITY_EXAMPLES,
+   ...ADMINISTRATION_EXAMPLES,
+   ...PAIRING_EXAMPLES,
++  ...SESSION_EXAMPLES,
++  ...EVIDENCE_EXAMPLES,
++  ...DEVICE_EXAMPLES,
++  ...STORAGE_EXAMPLES,
++  ...NETWORK_TIME_EXAMPLES,
++  ...SECURITY_AUDIT_EXAMPLES,
++  ...SYSTEM_EXAMPLES,
++  ...ALERT_EXAMPLES,
+   ...DEMO_EXAMPLES,
+ };
+--- packages/shared/src/api/index.ts	2026-10-04 10:45:26
++++ packages/shared/src/api/index.ts	2026-10-04 10:11:23
+@@ -22,3 +22,16 @@
+ // `./realtime-messages`, exported at the top.
+ export * from './state-slices';
+ export * from './realtime-examples';
++// Backend task (01_specs §7.8 to §7.15, §7.17; plan row W27, contract C): areas 4 to 11 (schemas,
++// operations, examples), the state values their examples show, and the map of the 42 simulator
++// actions to operations. The registry now holds all 75 operations.
++export * from './sessions';
++export * from './evidence';
++export * from './devices';
++export * from './storage';
++export * from './network-time';
++export * from './security-audit';
++export * from './system';
++export * from './alerts';
++export * from './state-examples';
++export * from './sim-actions';
+--- packages/shared/src/api/openapi.ts	2026-10-04 10:45:26
++++ packages/shared/src/api/openapi.ts	2026-10-04 10:19:58
+@@ -1,48 +1,57 @@
+ /**
+  * The OpenAPI 3.1.0 document of the Core API v1 (masterplan/01_specs.md §14.9; D26, D31, D45;
+- * AC-56).
++ * AC-56; backend task 2026-10-04: 01_specs §7.1 API-12, §7.19; 02_plan §16; 04_client_integration_spec
++ * §11 AR-1).
+  *
+- * - 10 operations from `CORE_API_OPERATIONS`: `GET /api/v1/health` is LIVE (mock-core) and the 9
+- *   book §21.2 endpoints are SIMULATED (answered in the browser by the simulator).
+- * - Each operation carries `x-badges` (Scalar's native badge extension: LIVE, SIMULATED, and
+- *   RBAC + AUDIT on export), `x-dems-mode: live | simulated` and `x-dems-source` (book section);
+- *   RBAC-checked operations also carry `x-dems-rbac`. No other vendor extension is used: no `x-scalar-*`,
+- *   `x-pre-request` / `x-post-response` scripts or code-sample extensions, so the document enables
+- *   no renderer feature beyond display (D45; test/openapi.test.ts keeps an allowlist).
++ * The registry holds 75 operations, and the builder writes one of two documents from it:
++ *
++ * | | `offline` (the default) | `all` |
++ * |---|---|---|
++ * | Describes | What a client can call without the Core server: Simulated mode | The API as the Core server answers it: Live mode |
++ * | Operations | 10: `GET /api/v1/health` (mock-core) and the 9 book §21.2 endpoints (the in-app simulator) | 75 |
++ * | Who reads it | The API Reference page in Simulated mode: `createOpenApiDocument()` | The committed `openapi/openapi.json`, its drift test, and the API Reference page in Live mode |
++ * | `info.version` | 0.1.0 | 0.2.0 |
++ * | Servers | mock-core | The Core server `http://127.0.0.1:4420`, then mock-core |
++ * | Security | none: the simulator acts as the operator signed in to the console | Two schemes, the session cookie and HTTP bearer; each operation states which it takes |
++ * | Badges | LIVE on health, SIMULATED on the nine, RBAC + AUDIT on the export | LIVE on all 75: the Core server answers each over the network |
++ * | Per operation | `x-badges`, `x-dems-mode`, `x-dems-source`, and `x-dems-rbac` on the four simulated commands | Also `x-dems-access`, `x-dems-audit`, `x-dems-services`, `security`, the Core server's text (`coreServerDescription`) and the statuses only the Core server sends |
++ * | Response headers | `x-dems-simulated` on the nine | `x-request-id` on every answer of the Core server, `x-dems-epoch` and `x-dems-revision` on a 2xx of a POST |
++ * | `components.responses` | none | The answers defined once for every operation |
++ * | Realtime tag | mock-core's heartbeat socket | Both sockets; the Core server's protocol in full |
++ *
++ * The `offline` document is, byte for byte, the document of the baseline commit, except the two
++ * components the specification widened (`HealthResponse`, `ApiError`); test/api-openapi-scope.test.ts
++ * holds every section of it to that commit. Nothing this file does for the `all` scope may change it.
++ *
++ * - No vendor extension beyond `x-badges` (Scalar's native badge extension) and `x-dems-*`: no
++ *   `x-scalar-*`, no `x-pre-request` / `x-post-response` scripts, no code-sample extension, so a
++ *   document enables no renderer feature beyond display (D45). The names inside a `headers` map
++ *   (`x-request-id`, `x-dems-epoch`, `x-dems-revision`, `x-dems-simulated`) are HTTP header names,
++ *   not extensions.
+  * - `components.schemas` are generated from the shared zod schemas (`CORE_API_SCHEMAS`) with
+  *   `z.toJSONSchema` (JSON Schema 2020-12, the OpenAPI 3.1 dialect), so the document, the form
+- *   validation and the simulator's bodies cannot drift apart.
++ *   validation, the server's validation and the simulator's bodies cannot drift apart.
+  * - WebSockets cannot be modelled in OpenAPI: WS `/ws` is described in the Realtime tag, and its
+- *   message is the `Heartbeat` component.
++ *   messages are components (`Heartbeat`; in the `all` scope the `Realtime*` and `*Slice` ones).
+  *
+  * The builder runs on demand (a few milliseconds), never at import time, so mock-core and the
+  * mobile app pay nothing for importing `@dems/shared/api`. Every call returns a fresh object
+  * that the caller may filter or hand to a renderer that mutates its input.
+  *
+- * `npm run openapi:gen -w @dems/shared` (scripts/gen-openapi.ts) writes
+- * `serializeOpenApiDocument(createOpenApiDocument())` to packages/shared/openapi/openapi.json;
+- * the test fails when the committed file drifts from this module.
+- *
+- * Scopes (backend task: 2026-10-04 02_plan §16 CO-4; 04_client_integration_spec §11 AR-1). The
+- * registry now holds more operations than a client can call without the Core server, so the
+- * builder takes a scope:
+- * - `offline`, the default: the ten operations above, with the components they use. Everything
+- *   said in this header describes this scope, and `createOpenApiDocument()` returns it, so the
+- *   API Reference page and the committed openapi.json stay as they are.
+- * - `all`: every operation of the registry, with every component. Each operation also states
+- *   its access rule, its audit rule and its answering services (`x-dems-access`, `x-dems-audit`,
+- *   `x-dems-services`), a Core-server operation documents the request ID and state revision
+- *   headers, and the answers that are defined once for every operation are
+- *   `components.responses`. The security schemes, the second server and `info.version` 0.2.0 of
+- *   API-12 are not built yet: they come with the committed document of this scope.
+- *   The Realtime tag of this scope also describes the socket of the Core server: principals,
+- *   every message of the union with its model, the client messages, state replication, close
+- *   codes and examples (plan row W22). The models are the `Realtime*` and `*Slice` components.
++ * `npm run openapi:gen -w @dems/shared` (scripts/gen-openapi.ts) writes the `all` scope to
++ * packages/shared/openapi/openapi.json; the test fails when the committed file drifts from this
++ * module.
+  */
+ import { z } from 'zod';
+ import { palette } from '../tokens/tokens';
+ import {
++  API_PAGE_LIMIT_DEFAULT,
++  API_PAGE_LIMIT_MAX,
+   CORE_HTTP_ORIGIN,
++  CORE_SERVER_HTTP_ORIGIN,
++  CORE_SERVER_PORT,
++  CORE_SERVER_SERVICE_NAME,
++  CORE_SERVER_WS_URL,
+   CORE_WS_URL,
+   EPOCH_HEADER_NAME,
+   HEARTBEAT_INTERVAL_MS,
+@@ -53,11 +62,13 @@
+   REQUEST_ID_HEADER_NAME,
+   RETRY_AFTER_HEADER_NAME,
+   REVISION_HEADER_NAME,
++  SERVICE_NAME,
+   WS_PATH,
+ } from './constants';
+ import {
+   CORE_API_ENVELOPE_RESPONSES,
+   CORE_API_SCHEMAS,
++  CoreApiAccessKind,
+   CoreApiMode,
+   CoreApiScope,
+   CoreApiService,
+@@ -65,6 +76,8 @@
+   coreApiAccessPermissions,
+   describeCoreApiAccess,
+   listCoreApiOperations,
++  listCoreApiResponseStatuses,
++  type CoreApiAccess,
+   type CoreApiMethod,
+   type CoreApiRegistryOperation,
+   type CoreApiSchemaName,
+@@ -85,9 +98,27 @@
+ // ═══════════════════════════════════════════════════════════════════════════════════════
+ 
+ export const OPENAPI_VERSION = '3.1.0';
+-/** `info.version`: the version of this API description (the server strip's "Spec version"). */
++/** `info.version` of the `offline` scope: the version of that API description (the server strip's "Spec version"). */
+ export const OPENAPI_DOCUMENT_VERSION = '0.1.0';
++/** `info.version` of the `all` scope (API-12): the version of the Core server, which answers it. */
++export const OPENAPI_CORE_SERVER_DOCUMENT_VERSION = '0.2.0';
+ export const OPENAPI_TITLE = 'DEMS Core API';
++
++/**
++ * The two security schemes of the `all` scope (API-12), by their `components.securitySchemes` name.
++ * - `sessionCookie`: the session of a web console, in an `HttpOnly` cookie the browser attaches.
++ * - `bearerAuth`: a paired device. `Authorization: Bearer` carries its device credential (`dvc_`)
++ *   on the DEVICE operations and at sign-in, and its session token (`ses_`) once an operator is
++ *   signed in on it.
++ */
++export const OpenApiSecurityScheme = { SESSION_COOKIE: 'sessionCookie', BEARER: 'bearerAuth' } as const;
++export type OpenApiSecurityScheme = (typeof OpenApiSecurityScheme)[keyof typeof OpenApiSecurityScheme];
++
++/**
++ * The cookie name the document shows: the main instance's (ID-P7). The name is
++ * `dems_session_<listen port>`, so a lane instance on another port uses another name.
++ */
++export const OPENAPI_SESSION_COOKIE_NAME = `dems_session_${CORE_SERVER_PORT}`;
+ 
+ /** Header on every simulated response (AC-58). The sim handlers set it; the OpenAPI document documents it. */
+ export const SIMULATED_HEADER_NAME = 'x-dems-simulated';
+@@ -135,6 +166,12 @@
+   schema: { type?: string; pattern?: string; [key: string]: unknown };
+   example?: string;
+ }
++/** One alternative of `security`: the schemes a request needs together. `{}` means none is needed. */
++export type OpenApiSecurityRequirement = Partial<Record<OpenApiSecurityScheme, string[]>>;
++export type OpenApiSecuritySchemeObject =
++  | { type: 'apiKey'; in: 'cookie'; name: string; description: string }
++  | { type: 'http'; scheme: 'bearer'; description: string };
++
+ export interface OpenApiOperationObject {
+   operationId: string;
+   tags: string[];
+@@ -142,6 +179,8 @@
+   description: string;
+   parameters?: OpenApiParameterObject[];
+   requestBody?: { required: boolean; content: { 'application/json': OpenApiMediaType } };
++  /** Scope `all` only: the credential the operation takes, from its access rule. `[]`: none. */
++  security?: OpenApiSecurityRequirement[];
+   responses: Record<string, OpenApiResponseObject>;
+   'x-badges': OpenApiBadge[];
+   'x-dems-mode': CoreApiMode;
+@@ -171,6 +210,8 @@
+     headers: Record<string, { description: string; required: boolean; schema: JsonSchemaObject }>;
+     /** Scope `all` only: the answers defined once for every operation (`CORE_API_ENVELOPE_RESPONSES`). */
+     responses?: Record<string, OpenApiResponseObject>;
++    /** Scope `all` only: the session cookie and HTTP bearer (API-12). */
++    securitySchemes?: Record<OpenApiSecurityScheme, OpenApiSecuritySchemeObject>;
+   };
+ }
+ 
+@@ -179,7 +220,7 @@
+   includeSimulated?: boolean;
+   /**
+    * Default `offline`: the ten operations a client can call without the Core server. `all`:
+-   * every operation of the registry (see the file header).
++   * every operation of the registry, as the Core server answers it (see the file header).
+    */
+   scope?: CoreApiScope;
+ }
+@@ -188,6 +229,10 @@
+ // Text
+ // ═══════════════════════════════════════════════════════════════════════════════════════
+ 
++// The texts of the `offline` scope are those of the baseline document and do not change: they
++// describe Simulated mode, where mock-core answers health and the in-app simulator the nine. The
++// `all` scope has texts of its own, below, which describe the Core server.
++
+ const INFO_SUMMARY =
+   'Core API v1 of the DEMS Edge Client demo: one live endpoint on the local mock-core, nine simulated in the browser.';
+ 
+@@ -214,6 +259,58 @@
+   'Examples are frozen at 2026-10-01 10:00:00 WIB and follow the canonical demo dataset: session SES-20261001-0024 (case LP/2026/1001-0007, 00:18:42 into the recording) and evidence EV-20260930-0004, exported by the SUPERVISOR operator. Simulated responses write times at UTC+07:00 (WIB); mock-core writes UTC. The live simulator dates IDs from its own clock, so only the date part differs from these examples. All data is synthetic.',
+ ].join('\n\n');
+ 
++/** `info.summary` of the `all` scope, for a document of `count` operations. */
++const coreServerInfoSummary = (count: number): string =>
++  `Core API v1 of the DEMS Edge Client demo, as the Core server answers it: ${count} operations and one WebSocket channel.`;
++
++/** `info.description` of the `all` scope. */
++const CORE_SERVER_INFO_DESCRIPTION = [
++  'Reference for the Core API v1 of the **DEMS Edge Client demo** (device DEMS-IR-01), as the **Core server** answers it. The design book (§21.2) names nine endpoints; this document adds their bodies, and the operations both clients need beyond them: sign-in, user administration, pairing, the session lifecycle, evidence, devices, storage, network and time, security and audit, system, alerts and the demo controls.',
++  '### Who answers',
++  [
++    '| Service | Address | Answers |',
++    '|---|---|---|',
++    `| The Core server (\`${CORE_SERVER_SERVICE_NAME}\`) | \`${CORE_SERVER_HTTP_ORIGIN}\` | Every operation of this document and \`WS ${WS_PATH}\`. It keeps the Core state in PostgreSQL and is the only authority on who may do what. Loopback only. |`,
++    `| mock-core (\`${SERVICE_NAME}\`) | \`${CORE_HTTP_ORIGIN}\` | \`GET /api/v1/health\` and a heartbeat-only \`WS ${WS_PATH}\`. It is the service of Simulated mode and answers no other operation. |`,
++    `| The in-app simulator | none | In Simulated mode, the nine design-book operations (\`x-dems-mode: simulated\`), inside the app and without a request. Its answers carry \`${SIMULATED_HEADER_NAME}: ${SIMULATED_HEADER_VALUE}\`; the Core server never sends that header. |`,
++  ].join('\n'),
++  'Every operation carries the badge **LIVE**: the Core server answers it over the network. `x-dems-services` names the services that answer an operation, and `x-dems-mode` says whether the in-app simulator can answer it too (`simulated`) or only a service can (`live`).',
++  '### Access',
++  [
++    'The Core server decides on every request, before the body is read, from the credential the request carries:',
++    `- a **web console** sends the session cookie that \`signIn\` set (scheme \`${OpenApiSecurityScheme.SESSION_COOKIE}\`);`,
++    `- a **paired device** sends \`Authorization: Bearer\` (scheme \`${OpenApiSecurityScheme.BEARER}\`): its device credential on the device operations and at sign-in, its session token once an operator is signed in.`,
++  ].join('\n'),
++  'A request carries one credential, never both. Each operation states its access rule as `x-dems-access` (PUBLIC, DEVICE, AUTHENTICATED, one permission, or the one any-of) and the audit row it writes as `x-dems-audit`. A refusal for a missing permission answers `403` and writes one audit row; the role and its permissions are read from the database for each request.',
++  '### Answers every operation shares',
++  `The answers that do not depend on the operation are defined once, under Responses: a malformed path, an unknown route, a wrong method, a server that is not ready, an Origin outside the allowed lists, two credentials in one request, the request throttle, a body over 65,536 bytes, and an unexpected failure. Every answer carries \`${REQUEST_ID_HEADER_NAME}\`, and an error repeats it as \`error.requestId\`. A 2xx answer of a POST carries \`${EPOCH_HEADER_NAME}\` and \`${REVISION_HEADER_NAME}\`: the state revision that holds the effect of the command.`,
++  '### Lists',
++  `A list is cursor-paged: \`cursor\` is the \`nextCursor\` of the page before, \`limit\` is 1 to ${API_PAGE_LIMIT_MAX} (${API_PAGE_LIMIT_DEFAULT} when omitted), and \`nextCursor\` is null on the last page.`,
++  '### Not part of this API',
++  [
++    '- Media and evidence package files are not served: the clients keep their bundled demo media, and the server owns the records, the hashes and the verdicts.',
++    '- No operation creates or deletes a user, changes a password or edits the role matrix.',
++    '- No operation takes a file or resolves a path that a client sent.',
++  ].join('\n'),
++  '### Examples',
++  'Examples are frozen at 2026-10-01 10:00:00 WIB and follow the canonical demo dataset: session SES-20261001-0024 (case LP/2026/1001-0007) and evidence EV-20260930-0004, exported by the SUPERVISOR operator. The nine design-book operations write times as ISO-8601 text; every other operation writes epoch milliseconds on the server clock. A password, a pairing code, a session token, a device credential and a biometric token appear only as placeholders that open nothing. All data is synthetic.',
++].join('\n\n');
++
++/** mock-core's socket, as the `offline` Realtime tag has always described it: three paragraphs. */
++const MOCK_CORE_SOCKET_INTRO = `**LIVE** WebSocket \`${CORE_WS_URL}\` served by mock-core. OpenAPI 3.1 cannot describe a socket, so it is documented here and shown live in the Realtime panel next to this reference.`;
++const MOCK_CORE_SOCKET_RULES = [
++  `- Server to client only: one JSON \`Heartbeat\` message (see the Heartbeat model) per text frame every ${HEARTBEAT_INTERVAL_MS} ms, plus one immediately after connecting.`,
++  '- `seq` counts ticks since the server started. `sessionState` is `null` in this demo phase.',
++  '- Upgrades from origins other than the web dev origins and the service\'s own origins are refused with 403.',
++  `- Clients show the link as STALE after ${HEARTBEAT_STALE_AFTER_MS} ms without a heartbeat and reconnect after ${RECONNECT_BACKOFF_MS.map((ms) => `${ms / 1000} s`).join(', ')} (the last delay repeats), plus up to ${RECONNECT_JITTER_MS} ms of jitter.`,
++  '- Messages sent by clients are ignored.',
++].join('\n');
++const HEARTBEAT_EXAMPLE_BLOCK = `Example message:\n\n\`\`\`json\n${JSON.stringify(HEARTBEAT_EXAMPLE, null, 2)}\n\`\`\``;
++
++/**
++ * The tag texts. For the six tags of the `offline` scope these are the baseline's; the tags of the
++ * operations that only the Core server answers have one text for both scopes.
++ */
+ const TAG_DESCRIPTIONS: Record<CoreApiTag, string> = {
+   [CoreApiTag.SERVICE]: 'Liveness of the local mock-core service. **LIVE.**',
+   [CoreApiTag.SESSION]:
+@@ -229,33 +326,66 @@
+     'One-time pairing codes and the registry of paired devices. A device pairs by entering a code that a Supervisor issued. Answered by the Core server.',
+   [CoreApiTag.DEMO]:
+     'Scenarios, fault injection and the reset to the seed state, behind DEMO_CONTROL and the server-side demo flag. Answered by the Core server.',
+-  [CoreApiTag.REALTIME]: [
+-    `**LIVE** WebSocket \`${CORE_WS_URL}\` served by mock-core. OpenAPI 3.1 cannot describe a socket, so it is documented here and shown live in the Realtime panel next to this reference.`,
+-    [
+-      `- Server to client only: one JSON \`Heartbeat\` message (see the Heartbeat model) per text frame every ${HEARTBEAT_INTERVAL_MS} ms, plus one immediately after connecting.`,
+-      '- `seq` counts ticks since the server started. `sessionState` is `null` in this demo phase.',
+-      '- Upgrades from origins other than the web dev origins and the service\'s own origins are refused with 403.',
+-      `- Clients show the link as STALE after ${HEARTBEAT_STALE_AFTER_MS} ms without a heartbeat and reconnect after ${RECONNECT_BACKOFF_MS.map((ms) => `${ms / 1000} s`).join(', ')} (the last delay repeats), plus up to ${RECONNECT_JITTER_MS} ms of jitter.`,
+-      '- Messages sent by clients are ignored.',
+-    ].join('\n'),
+-    `Example message:\n\n\`\`\`json\n${JSON.stringify(HEARTBEAT_EXAMPLE, null, 2)}\n\`\`\``,
+-  ].join('\n\n'),
++  [CoreApiTag.NETWORK]:
++    'The network of the Core device and its time service: simulated hardware signals, read-only. The time service is not the server clock, which stamps every record. Answered by the Core server.',
++  [CoreApiTag.SECURITY]:
++    'The security status, the audit log and its hash chain, the audit and log exports, and the operational events. Every signed-in role reads; the two exports need AUDIT_EXPORT. Answered by the Core server.',
++  [CoreApiTag.SYSTEM]:
++    'The Core device, its services, diagnostics, the simulated software update and the display preferences. Answered by the Core server.',
++  [CoreApiTag.ALERTS]:
++    'The alerts of the Core and their acknowledgement. Every alert was raised by a fault, and raising it wrote a FAULT_RAISED audit row. Answered by the Core server.',
++  [CoreApiTag.REALTIME]: [MOCK_CORE_SOCKET_INTRO, MOCK_CORE_SOCKET_RULES, HEARTBEAT_EXAMPLE_BLOCK].join('\n\n'),
+ };
+ 
+ /**
+- * Scope `all`: the socket of the Core server, appended to the Realtime tag (01_specs §9; plan row
+- * W22). The text above it describes mock-core's socket and stays as it is, in both scopes. The
+- * tables are built from the catalogue of `realtime-messages.ts` and every JSON block is an example
+- * of `realtime-examples.ts`, so the text cannot name a message the union does not have. It names
+- * no host: the server entry of the Core server comes with the committed document of this scope.
++ * Scope `all`: the texts of the five tags that the `offline` scope describes as mock-core's or the
++ * simulator's. Here they describe the Core server, which answers every operation of the tag.
+  */
++const CORE_SERVER_TAG_DESCRIPTIONS: Partial<Record<CoreApiTag, string>> = {
++  [CoreApiTag.SERVICE]:
++    'Liveness of the service that answers: the Core server, or mock-core in Simulated mode. Public; it returns nothing of the Core state.',
++  [CoreApiTag.SESSION]:
++    'Session lifecycle (book §6.2): CREATE → PRECHECK → ARMED → RECORDING → STOPPING → FINALIZING → SEALED, with FAULT and RECOVERY after a critical fault. One session is open per Core. The commands need SESSION_START; markers, notes and snapshots need SESSION_NOTE; every role reads the open session and the history. Answered by the Core server; in Simulated mode the in-app simulator answers the four design-book operations.',
++  [CoreApiTag.DEVICE]:
++    'The devices of the Core (book §6.1, §21.2): health, audio channels, video tracks, the inventory and the device commands. AUDIO-01 and AUDIO-02 are reported separately in every answer. Answered by the Core server; in Simulated mode the in-app simulator answers the three design-book reads.',
++  [CoreApiTag.STORAGE]:
++    'Evidence storage: capacity, state, history and the retention policy. Answered by the Core server; in Simulated mode the in-app simulator answers the design-book status read.',
++  [CoreApiTag.EVIDENCE]:
++    'Evidence items with their tracks, hashes, custody chain and verification, and the authorized export with chain of custody (book §19.2, §19.3). No operation changes a sealed item, and none serves a media file. Answered by the Core server; in Simulated mode the in-app simulator answers the design-book export.',
++};
++
++/**
++ * Scope `all`: the Realtime tag. It names both sockets, then describes the Core server's protocol
++ * in full and mock-core's heartbeat with the rules and the example of the `offline` text.
++ */
++function allScopeRealtimeDescription(): string {
++  return [
++    `WebSocket \`${WS_PATH}\`. OpenAPI 3.1 cannot describe a socket, so it is documented here. Two services serve it:`,
++    [
++      '| Service | URL | Sends |',
++      '|---|---|---|',
++      `| The Core server (\`${CORE_SERVER_SERVICE_NAME}\`) | \`${CORE_SERVER_WS_URL}\` | The protocol of the section "Core server": \`hello\`, the heartbeat, the replicated Core state, the audio meters and the control messages |`,
++      `| mock-core (\`${SERVICE_NAME}\`) | \`${CORE_WS_URL}\` | The heartbeat only (section "mock-core"): the socket of Simulated mode |`,
++    ].join('\n'),
++    coreServerRealtimeDescription(),
++    '### mock-core',
++    MOCK_CORE_SOCKET_RULES,
++    HEARTBEAT_EXAMPLE_BLOCK,
++  ].join('\n\n');
++}
++
++/**
++ * Scope `all`: the socket of the Core server (01_specs §9; plan row W22). The tables are built from
++ * the catalogue of `realtime-messages.ts` and every JSON block is an example of
++ * `realtime-examples.ts`, so the text cannot name a message the union does not have.
++ */
+ function coreServerRealtimeDescription(): string {
+   const cell = (text: string) => text.replaceAll('|', '\\|');
+   const jsonBlock = (title: string, value: unknown) => `${title}\n\n\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``;
+   const principals = Object.values(RealtimePrincipal);
+   return [
+     '### Core server',
+-    `The Core server (\`dems-core-server\`) serves \`${WS_PATH}\` on its own port with the protocol below. mock-core, above, sends the heartbeat only.`,
++    `The Core server serves \`${CORE_SERVER_WS_URL}\` with the protocol below. A lane instance serves the same path on its own port.`,
+     '**Who a connection is.** Decided once, at the upgrade, from the request headers only: the session cookie of a web console, or `Authorization: Bearer` of a paired device. Nothing in the URL, in a subprotocol or in a message authenticates. The principal stays for the life of the connection, so a client opens a new socket after a sign-in or a sign-out.',
+     [
+       '| Principal | Receives |',
+@@ -289,7 +419,7 @@
+       `A client that sees a gap, or another epoch, sends \`resync\` (at most one in ${REALTIME_RESYNC_MIN_INTERVAL_MS / 1000} s) and gets a new \`snapshot\`. A demo reset, a scenario load and a server start begin a new epoch. A 2xx answer of a POST carries the same two numbers in \`${EPOCH_HEADER_NAME}\` and \`${REVISION_HEADER_NAME}\`, so a client knows which delta holds the effect of its command.`,
+       `Not replicated: ${UNREPLICATED_SLICE_NAMES.map((name) => `\`${name}\``).join(', ')}. The audio frames travel in \`meters\` only; a client builds the other four itself, from the server time and from the answers of the identity and pairing operations.`,
+     ].join(' '),
+-    '**Time.** `heartbeat.serverTime` is an ISO-8601 string, as mock-core writes it. Every other time of the protocol is epoch milliseconds on the server clock.',
++    '**Time.** `heartbeat.serverTime` is an ISO-8601 string, as mock-core writes it too. Every other time of the protocol is epoch milliseconds on the server clock.',
+     '**Close codes.**',
+     ['| Code | When | What a client does |', '|--:|---|---|', ...REALTIME_CLOSE_CODES.map((entry) => `| ${entry.code} | ${cell(entry.when)} | ${cell(entry.reaction)} |`)].join('\n'),
+     '**Never in a message.** A password, a session token, a cookie value, a device credential, a biometric token, a pairing code or a QR payload, or any hash or salt of those; the `enabled` flag or the session list of another operator; the list of paired devices; the lockout state of another console. `admin.changed` names the list that changed and holds no row of it.',
+@@ -316,9 +446,64 @@
+   CoreApiTag.DEVICE,
+   CoreApiTag.STORAGE,
+   CoreApiTag.EVIDENCE,
++  CoreApiTag.NETWORK,
++  CoreApiTag.SECURITY,
++  CoreApiTag.SYSTEM,
++  CoreApiTag.ALERTS,
+   CoreApiTag.DEMO,
+   CoreApiTag.REALTIME,
+ ];
++
++/** The servers of a document, by scope. */
++const OFFLINE_SERVERS: OpenApiDocument['servers'] = [
++  {
++    url: CORE_HTTP_ORIGIN,
++    description:
++      'Local mock-core. It serves GET /api/v1/health and WS /ws; the simulated endpoints are answered in the browser.',
++  },
++];
++const ALL_SERVERS: OpenApiDocument['servers'] = [
++  {
++    url: CORE_SERVER_HTTP_ORIGIN,
++    description: `The Core server (${CORE_SERVER_SERVICE_NAME}), main instance: every operation of this document and WS ${WS_PATH}. Loopback only.`,
++  },
++  {
++    url: CORE_HTTP_ORIGIN,
++    description: `mock-core (${SERVICE_NAME}), the heartbeat-only service of Simulated mode: GET /api/v1/health and its heartbeat socket. It answers no other operation.`,
++  },
++];
++
++/** Scope `all`: the two security schemes (API-12). */
++const SECURITY_SCHEMES: Record<OpenApiSecurityScheme, OpenApiSecuritySchemeObject> = {
++  [OpenApiSecurityScheme.SESSION_COOKIE]: {
++    type: 'apiKey',
++    in: 'cookie',
++    name: OPENAPI_SESSION_COOKIE_NAME,
++    description: `The session of a web console. \`signIn\` sets it as an \`HttpOnly\`, \`SameSite=Strict\` cookie without an expiry, and its body then holds no token; the browser attaches the cookie to same-origin requests and to the socket upgrade. The name is \`dems_session_<listen port>\`: \`${OPENAPI_SESSION_COOKIE_NAME}\` on the main instance. It resolves only a session that is not bound to a device, and a POST that carries it must come from a web console origin.`,
++  },
++  [OpenApiSecurityScheme.BEARER]: {
++    type: 'http',
++    scheme: 'bearer',
++    description:
++      'A paired device. `Authorization: Bearer` carries the device credential (prefix `dvc_`) on the device operations and at sign-in, and the session token (prefix `ses_`) once an operator is signed in on the device. The server stores only a hash of either. One credential per request: a request that carries the session cookie and this header is refused. Neither value ever travels in a URL.',
++  },
++};
++
++/**
++ * Scope `all`: the credential an operation takes, from its access rule (01_specs §4.1, §4.2).
++ * - PUBLIC: none (`[]`). `signIn` adds the console rule: a web console sends none and is known by
++ *   its Origin, a paired device sends its device credential, so the bearer is optional there.
++ * - DEVICE, and an operation that needs a device session: the bearer.
++ * - Every other rule needs an OPERATOR: the session cookie of a web console, or the bearer of a
++ *   paired device.
++ */
++function securityFor(access: CoreApiAccess): OpenApiSecurityRequirement[] {
++  const conditions: readonly string[] = access.conditions ?? [];
++  const bearer: OpenApiSecurityRequirement = { [OpenApiSecurityScheme.BEARER]: [] };
++  if (access.kind === CoreApiAccessKind.PUBLIC) return conditions.includes('CONSOLE_IDENTITY') ? [{}, bearer] : [];
++  if (access.kind === CoreApiAccessKind.DEVICE || conditions.includes('DEVICE_SESSION')) return [bearer];
++  return [{ [OpenApiSecurityScheme.SESSION_COOKIE]: [] }, bearer];
++}
+ 
+ // ═══════════════════════════════════════════════════════════════════════════════════════
+ // Builder
+@@ -400,7 +585,10 @@
+   for (const operation of operations) {
+     if (operation.requestBody) visit(operation.requestBody.schema);
+     if (operation.query) visit(operation.query.schema);
+-    for (const spec of Object.values(operation.responses)) if (spec.schema) visit(spec.schema);
++    for (const status of listCoreApiResponseStatuses(operation, scope)) {
++      const name = operation.responses[status]?.schema;
++      if (name) visit(name);
++    }
+   }
+   const out: Record<string, JsonSchemaObject> = {};
+   for (const name of Object.keys(all)) {
+@@ -410,9 +598,13 @@
+   return out;
+ }
+ 
+-/** True for an operation that only the Core server answers (every one except health and the simulated nine). */
++/**
++ * True for an operation whose every answer over the network is the Core server's: all but health,
++ * which mock-core answers too. The nine design-book operations are among them: in the `all` scope
++ * they are described as the Core server answers them.
++ */
+ function isCoreServerOperation(operation: CoreApiRegistryOperation): boolean {
+-  return operation.mode === CoreApiMode.LIVE && !operation.services.includes(CoreApiService.MOCK_CORE);
++  return operation.services.includes(CoreApiService.CORE_SERVER) && !operation.services.includes(CoreApiService.MOCK_CORE);
+ }
+ 
+ /**
+@@ -434,8 +626,13 @@
+   });
+ }
+ 
+-function badgesFor(operation: CoreApiRegistryOperation): OpenApiBadge[] {
+-  const main = operation.mode === CoreApiMode.LIVE ? API_BADGES.LIVE : API_BADGES.SIMULATED;
++/**
++ * `offline`: LIVE for health, SIMULATED for the nine. `all`: LIVE for every operation, because the
++ * Core server answers each one over the network (AR-3); `x-dems-mode` still says which nine the
++ * in-app simulator can answer.
++ */
++function badgesFor(operation: CoreApiRegistryOperation, scope: CoreApiScope): OpenApiBadge[] {
++  const main = scope === CoreApiScope.ALL || operation.mode === CoreApiMode.LIVE ? API_BADGES.LIVE : API_BADGES.SIMULATED;
+   const badges: OpenApiBadge[] = [{ name: main.name, position: 'after', color: main.color }];
+   if (operation.rbac && operation.tag === CoreApiTag.EVIDENCE) {
+     badges.push({ name: API_BADGES.RBAC_AUDIT.name, position: 'after', color: API_BADGES.RBAC_AUDIT.color });
+@@ -458,16 +655,17 @@
+   schemas: Record<string, JsonSchemaObject>,
+ ): OpenApiOperationObject {
+   const examples = CORE_API_EXAMPLES[operation.operationId];
+-  const simulated = operation.mode === CoreApiMode.SIMULATED;
+   const all = scope === CoreApiScope.ALL;
++  // The simulator's header belongs to the simulator's answers, which the `offline` scope describes.
++  const simulated = !all && operation.mode === CoreApiMode.SIMULATED;
+   const coreServer = all && isCoreServerOperation(operation);
+   const built: OpenApiOperationObject = {
+     operationId: operation.operationId,
+     tags: [operation.tag],
+     summary: operation.summary,
+-    description: operation.description,
++    description: all ? (operation.coreServerDescription ?? operation.description) : operation.description,
+     responses: {},
+-    'x-badges': badgesFor(operation),
++    'x-badges': badgesFor(operation, scope),
+     'x-dems-mode': operation.mode,
+     'x-dems-source': operation.source,
+   };
+@@ -492,10 +690,9 @@
+     if (requestExamples) media.examples = requestExamples;
+     built.requestBody = { required: operation.requestBody.required, content: { 'application/json': media } };
+   }
+-  const statuses = Object.keys(operation.responses)
+-    .map(Number)
+-    .sort((a, b) => a - b);
+-  for (const status of statuses) {
++  if (all) built.security = securityFor(operation.access);
++  // `offline` leaves out a status that only the Core server sends (01_specs §7.19).
++  for (const status of listCoreApiResponseStatuses(operation, scope)) {
+     const spec = operation.responses[status];
+     if (!spec) continue;
+     const response: OpenApiResponseObject = { description: spec.description };
+@@ -601,6 +798,7 @@
+ export function createOpenApiDocument(options: CreateOpenApiDocumentOptions = {}): OpenApiDocument {
+   const includeSimulated = options.includeSimulated ?? true;
+   const scope = options.scope ?? CoreApiScope.OFFLINE;
++  const all = scope === CoreApiScope.ALL;
+   const inScope = listCoreApiOperations(scope);
+   const operations = inScope.filter((operation) => includeSimulated || operation.mode === CoreApiMode.LIVE);
+   const schemas = selectComponentSchemas(buildComponentSchemas(), inScope, scope);
+@@ -613,13 +811,38 @@
+   usedTags.add(CoreApiTag.REALTIME);
+   const tags: OpenApiTagObject[] = TAG_ORDER.filter((tag) => usedTags.has(tag)).map((tag) => {
+     const object: OpenApiTagObject = { name: tag, description: TAG_DESCRIPTIONS[tag] };
++    if (all) object.description = CORE_SERVER_TAG_DESCRIPTIONS[tag] ?? object.description;
+     if (tag === CoreApiTag.REALTIME) {
+       object['x-dems-mode'] = CoreApiMode.LIVE;
+-      // Scope `all` also documents the Core server's socket; the offline text stays as it is.
+-      if (scope === CoreApiScope.ALL) object.description = `${TAG_DESCRIPTIONS[tag]}\n\n${coreServerRealtimeDescription()}`;
++      // Scope `all` documents both sockets; the offline text stays as it is.
++      if (all) object.description = allScopeRealtimeDescription();
+     }
+     return object;
+   });
++  if (all) {
++    return {
++      openapi: OPENAPI_VERSION,
++      info: {
++        title: OPENAPI_TITLE,
++        version: OPENAPI_CORE_SERVER_DOCUMENT_VERSION,
++        summary: coreServerInfoSummary(operations.length),
++        description: CORE_SERVER_INFO_DESCRIPTION,
++      },
++      servers: ALL_SERVERS.map((server) => ({ ...server })),
++      tags,
++      paths,
++      components: {
++        schemas,
++        // No operation of this scope documents the simulator's header: the Core server never sends it.
++        headers: { ...CORE_SERVER_HEADERS },
++        responses: buildEnvelopeResponses(),
++        securitySchemes: {
++          [OpenApiSecurityScheme.SESSION_COOKIE]: { ...SECURITY_SCHEMES[OpenApiSecurityScheme.SESSION_COOKIE] },
++          [OpenApiSecurityScheme.BEARER]: { ...SECURITY_SCHEMES[OpenApiSecurityScheme.BEARER] },
++        },
++      },
++    };
++  }
+   return {
+     openapi: OPENAPI_VERSION,
+     info: {
+@@ -628,13 +851,7 @@
+       summary: INFO_SUMMARY,
+       description: INFO_DESCRIPTION,
+     },
+-    servers: [
+-      {
+-        url: CORE_HTTP_ORIGIN,
+-        description:
+-          'Local mock-core. It serves GET /api/v1/health and WS /ws; the simulated endpoints are answered in the browser.',
+-      },
+-    ],
++    servers: OFFLINE_SERVERS.map((server) => ({ ...server })),
+     tags,
+     paths,
+     components: {
+@@ -645,9 +862,7 @@
+           required: true,
+           schema: { type: 'string', const: SIMULATED_HEADER_VALUE },
+         },
+-        ...(scope === CoreApiScope.ALL ? CORE_SERVER_HEADERS : {}),
+       },
+-      ...(scope === CoreApiScope.ALL ? { responses: buildEnvelopeResponses() } : {}),
+     },
+   };
+ }
+--- packages/shared/src/api/operation-parts.ts	2026-10-04 08:10:13
++++ packages/shared/src/api/operation-parts.ts	2026-10-04 09:57:51
+@@ -16,6 +16,21 @@
+ export const CORE_SERVER_NOTE =
+   'Core server only: the in-app simulator has no such operation, so it is not available in Simulated mode.';
+ 
++/**
++ * Last paragraph of an operation that hosts a simulator action (01_specs §7.17): the server calls
++ * the shared action under the caller's identity, so both modes run the same code.
++ */
++export const hostedNote = (action: string): string =>
++  `Core server only: the server runs the shared simulator action \`${action}\` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.`;
++
++/** Last paragraph of a read that answers slices of the Core state (API-6). */
++export const STATE_READ_NOTE =
++  'Core server only: the answer holds the named slices in their wire form, the same JSON as the `state` topic of the socket (API-6). In Simulated mode a client reads them from its own simulator and sends no request.';
++
++/** Last paragraph of a list read (API-9). */
++export const LIST_READ_NOTE =
++  'Core server only: the rows come from the stored tables, which may hold more than the rings a client receives on the socket. In Simulated mode a client reads the list from its own simulator and sends no request.';
++
+ /** For the six operations whose body or answer holds a secret (01_specs §7.7; AR-3a). */
+ export const SECRET_NOTE =
+   'The body or the answer holds a secret. It is never logged, and the API Reference offers no "Try it" for this operation in Live mode.';
+@@ -34,6 +49,14 @@
+   'The body or the path parameter does not match its schema (INVALID_INPUT). Free text that holds U+0000 or an unpaired surrogate is refused here (API-13).',
+ );
+ 
++/** 422 of an operation whose only input is the path parameter. */
++export const INVALID_PATH_PARAMETER = refusal('The path parameter does not match its pattern (INVALID_INPUT).');
++
++/** 422 of a list read (SR-64: a query is validated like a body). */
++export const INVALID_QUERY = refusal(
++  'A query parameter does not match its schema (INVALID_INPUT): a value outside its set, a `limit` outside 1 to 200, a cursor that is not one, or text that holds U+0000 or an unpaired surrogate (API-13).',
++);
++
+ /** 401 of an operation that needs an OPERATOR. */
+ export const NOT_SIGNED_IN = refusal(
+   'No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).',
+@@ -60,5 +83,18 @@
+   return forbidden(`the operator's role lacks ${permission} (NOT_PERMITTED; one ACCESS_DENIED audit row)`, ...extra);
+ }
+ 
++/** 403 of the one operation that needs one of two permissions (`setStoragePolicy`). */
++export function notPermittedAnyOf(first: Permission, second: Permission) {
++  return forbidden(`the operator's role holds neither ${first} nor ${second} (NOT_PERMITTED; one ACCESS_DENIED audit row)`);
++}
++
++/**
++ * 403 of the audit export and the log export (RB-5): the denial keeps today's audit type
++ * EXPORT_DENIED; the code is NOT_PERMITTED (FORBIDDEN stays the code of `exportEvidence` only).
++ */
++export function exportNotPermitted(permission: Permission) {
++  return forbidden(`the operator's role lacks ${permission} (NOT_PERMITTED; one EXPORT_DENIED audit row)`);
++}
++
+ /** The demo flag, checked after the permission (DC-1, DC-2). */
+ export const DEMO_FLAG_OFF = 'the demo flag of the server is off (DEMO_DISABLED; no audit row)';
+--- packages/shared/src/api/operation-table.ts	2026-10-04 08:38:28
++++ packages/shared/src/api/operation-table.ts	2026-10-04 10:38:06
+@@ -1,24 +1,22 @@
+ /**
+- * The operation table with literal types (backend task: decision D36, contract gap 1).
++ * The operation table with literal types (backend task: decisions D36, contract gap 1, and D51).
+  *
+  * `CORE_API_OPERATION_TABLE` is the registry's table as it is written, `as const`: operation IDs,
+  * methods, paths and schema names are literal types, so a client built on it gets one typed
+  * `call` per operation. It is the same array object as `CORE_API_OPERATIONS`, which stays the
+- * widened view (`readonly CoreApiRegistryOperation[]`).
++ * widened view (`readonly CoreApiRegistryOperation[]`) for a loop over the registry.
+  *
+  * ```ts
+  * const client = createCoreClient({ baseUrl, credentials, operations: CORE_API_OPERATION_TABLE });
+  * const answer = await client.call('assignUserRole', { params: { id: 'OPR-003' }, body: { role: 'INVESTIGATOR' } });
++ * const page = await client.call('listAuditRows', { query: { order: 'DESC', limit: 50 } });
+  * ```
+  *
+- * Why this is a module of its own. The typed client takes its default table type from the
+- * exports of `core-api.ts`: the day that module exports this name, every client call without an
+- * explicit table becomes literal-typed. Two files outside the contract owner's paths do not
+- * compile against that yet (`packages/shared/test/client-core.test.ts`,
+- * `apps/mobile/src/runtime/dev-probes.ts`; implementation/19_contract_a.md, finding F-1). Until
+- * their owner has changed them, the name is exported from here and from `@dems/shared/api` only.
+- * The switch: declare the table in `core-api.ts` as `export const CORE_API_OPERATION_TABLE = [...]`
+- * (it is `OPERATION_TABLE` there today) and delete this module.
++ * The typed client takes its default table type from `CoreApiOperationTable` of `core-api.ts`
++ * (D51), so a client made without `operations` is typed the same way; this module gives the table
++ * as a value of that type. The table has 75 entries since contract C. A type function over it must
++ * not intersect several unions of its entries: three of them are 75 * 75 * 75 combinations, more
++ * than the compiler represents (implementation/27_contract_c.md, finding F-1).
+  */
+ import { CORE_API_OPERATIONS, type CoreApiOperationTable } from './core-api';
+ 
+--- packages/shared/src/api/patterns.ts	2026-10-04 10:45:26
++++ packages/shared/src/api/patterns.ts	2026-10-04 09:56:46
+@@ -61,3 +61,31 @@
+  * and the simulated signature of an evidence item all have this form.
+  */
+ export const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
++
++// ── Identifiers of the domain operations (backend task: 2026-10-04 01_specs §7.8 to §7.15) ──
++
++/**
++ * A device of the Core itself, as the simulator names it: `CAM-01`, `MIC-02`, `POE-SWITCH`, and the
++ * platform devices `GNSS`, `TPM`, `FRONT-PANEL` (01_specs §7.10). Not a paired device (`DEV-NNNN`).
++ */
++export const HARDWARE_DEVICE_ID_PATTERN = /^[A-Z][A-Z0-9-]{0,31}$/;
++
++/** Alert `ALR-NNNNNN`, e.g. `ALR-000042` (the simulator's item counter). */
++export const ALERT_ID_PATTERN = /^ALR-\d{6,}$/;
++
++/** Diagnostics run `DIAG-NNNNNN`, e.g. `DIAG-000043` (the simulator's item counter). */
++export const DIAGNOSTICS_RUN_ID_PATTERN = /^DIAG-\d{6,}$/;
++
++/**
++ * The join key of a demo evidence package: the four digits at the end of an evidence ID, e.g.
++ * `0004` for `EV-20260930-0004` (`@dems/shared/demo-data` `demoIdSuffix`; 01_specs §11 MS-2).
++ */
++export const DEMO_PACKAGE_SUFFIX_PATTERN = /^\d{4}$/;
++
++/**
++ * The cursor of a list read (API-9): opaque to a client, 1 to 128 letters, digits or hyphens. It
++ * has no underscore, so no bearer value fits (`ses_…`, `dvc_…`, `bio_…`) and a cursor can never be
++ * mistaken for a credential in a URL (CL-6a). A sequence number, or a time and an identifier
++ * joined by hyphens, both fit.
++ */
++export const LIST_CURSOR_PATTERN = /^[A-Za-z0-9-]{1,128}$/;
+--- packages/shared/src/api/schema-parts.ts	2026-10-04 08:05:12
++++ packages/shared/src/api/schema-parts.ts	2026-10-04 09:57:51
+@@ -5,7 +5,15 @@
+  * schema, so a named component never shares an instance with another one by accident.
+  */
+ import { z } from 'zod';
+-import { DEVICE_ID_PATTERN, OPERATOR_ID_PATTERN } from './patterns';
++import { API_PAGE_LIMIT_DEFAULT, API_PAGE_LIMIT_MAX } from './constants';
++import {
++  DEVICE_ID_PATTERN,
++  EVIDENCE_ID_PATTERN,
++  LIST_CURSOR_PATTERN,
++  OPERATOR_ID_PATTERN,
++  SESSION_ID_PATTERN,
++  SHA256_HEX_PATTERN,
++} from './patterns';
+ import { apiText } from './text';
+ 
+ /**
+@@ -17,6 +25,9 @@
+ export const count = () => z.int().nonnegative();
+ export const operatorId = () => z.string().regex(OPERATOR_ID_PATTERN);
+ export const deviceId = () => z.string().regex(DEVICE_ID_PATTERN);
++export const sessionId = () => z.string().regex(SESSION_ID_PATTERN);
++export const evidenceId = () => z.string().regex(EVIDENCE_ID_PATTERN);
++export const sha256Hex = () => z.string().regex(SHA256_HEX_PATTERN);
+ 
+ /** Free text of 1 to `max` characters after trimming, with the text rule (API-13). */
+ export const trimmedText = (max: number) =>
+@@ -27,3 +38,59 @@
+ 
+ /** A value the server returns as text and a client only displays: non-empty, with the text rule. */
+ export const displayText = () => apiText().min(1);
++
++/** Message of the code-unit bound of a free text. It quotes no input. */
++export const codeUnitBoundMessage = (max: number): string => `The text is longer than ${max} UTF-16 code units.`;
++
++/**
++ * Free text, trimmed, of `min` to `max` characters **and** at most `max` UTF-16 code units, with
++ * the text rule (API-13).
++ *
++ * zod's `.max()` counts code points, while the simulator bounds and cuts its texts by code units
++ * (`value.length`; a character outside the Basic Multilingual Plane is two). The extra bound makes
++ * the contract refuse what the hosted action would refuse or cut, so the engine is never asked to
++ * cut a text that passed validation (decision on finding F-1 of contract B). `.max()` stays for
++ * the `maxLength` of the JSON Schema; the code-unit bound is the stricter of the two.
++ */
++export const boundedText = (max: number, min = 1) =>
++  apiText()
++    .overwrite((value) => value.trim())
++    .min(min)
++    .max(max)
++    .refine((value) => value.length <= max, { error: codeUnitBoundMessage(max) });
++
++// ── Query members of a list read (01_specs §7.1 API-9; decision D51) ──────────────────────────
++// A query schema serves three readers: the typed client parses the caller's object with it and
++// sends the result, the server parses the text of the URL with it, and the document lists its
++// members as parameters. So every member is optional and has no default (a client that gives none
++// sends none, and the server applies the default), and every member is a string, a number or a
++// boolean after parsing.
++
++/** `cursor`: the `nextCursor` of the page before. */
++export const pageCursor = () =>
++  z
++    .string()
++    .regex(LIST_CURSOR_PATTERN)
++    .optional()
++    .describe('Opaque position: the `nextCursor` of the page before. Omit it for the first page.');
++
++/**
++ * `limit`: a whole number from 1 to 200. The URL carries it as decimal text, so the server's parse
++ * coerces text to a number; a client passes a number.
++ */
++export const pageLimit = () =>
++  z.coerce
++    .number<number | string>()
++    .int()
++    .min(1)
++    .max(API_PAGE_LIMIT_MAX)
++    .optional()
++    .describe(`Rows of the page: 1 to ${API_PAGE_LIMIT_MAX}. The server uses ${API_PAGE_LIMIT_DEFAULT} when it is omitted.`);
++
++/** `nextCursor` of a page: the cursor of the next page, or null on the last one. */
++export const nextCursor = () =>
++  z
++    .string()
++    .regex(LIST_CURSOR_PATTERN)
++    .nullable()
++    .describe('The `cursor` of the next page, or null when this page is the last.');
+--- packages/shared/src/api/state-slices.ts	2026-10-04 09:25:53
++++ packages/shared/src/api/state-slices.ts	2026-10-04 10:35:45
+@@ -28,12 +28,14 @@
+  *   string, a number, a boolean or null as value. Their content is the writer's duty (SR-54).
+  * - **Time** is epoch milliseconds on the server clock (API-5), an integer. Levels, rates and
+  *   temperatures are plain numbers; counters, sequence numbers and byte sizes are integers.
+- * - **Text is taken as the engine holds it.** A slice is output: the text rule API-13 (`text.ts`)
+- *   guards what a client sends, and it is not repeated here. The engine can cut a text in the
+- *   middle of a surrogate pair (the timeline entry of a long note, a long export destination), so
+- *   a rule on output would refuse a state that well-formed input produced, and no client would get
+- *   a snapshot (implementation/22_contract_b.md, finding F-1). The operator's members keep the
+- *   rule of the `Operator` schema they come from: they are seeded, never typed.
++ * - **Text carries the text rule API-13** (`text.ts`): no U+0000 and no unpaired surrogate, in a
++ *   free text and in the keys and values of an open map. A slice is output, and every text in it
++ *   came through the rule on its way in or was written by the engine, so the rule here is a second
++ *   check that what is sent can be stored and hashed as it is. It was off while the engine could
++ *   cut a text in the middle of a surrogate pair (implementation/22_contract_b.md, finding F-1);
++ *   the engine now cuts on a character boundary (`sim/text-cut.ts`), and the request schemas
++ *   refuse the texts it would cut (plan row W27). So every string of a slice is bound by a value
++ *   set, by a pattern or by the rule, which is what API-13 asks of the registry.
+  *
+  * Framework-free like the rest of `src/api`: zod, the domain enums and the simulator's value sets.
+  * The simulator's types are not imported here; the compile-time proofs live in the test.
+@@ -84,15 +86,16 @@
+ import { OperatorSchema } from './identity';
+ import { EVIDENCE_ID_PATTERN, SESSION_ID_PATTERN, SHA256_HEX_PATTERN } from './patterns';
+ import { count, epochMs, nullableEpochMs, operatorId } from './schema-parts';
++import { apiText } from './text';
+ 
+ // ═══════════════════════════════════════════════════════════════════════════════════════
+ // Building blocks
+ // ═══════════════════════════════════════════════════════════════════════════════════════
+ 
+-/** Free text as the engine holds it: it may be empty, and it carries no text rule (see the file header). */
+-const text = () => z.string();
+-/** An identifier or a name the engine mints: never empty. */
+-const label = () => z.string().min(1);
++/** Free text as the engine holds it: it may be empty, and it carries the text rule (see the file header). */
++const text = () => apiText();
++/** An identifier or a name the engine mints: never empty, and under the text rule like every string of a slice. */
++const label = () => apiText().min(1);
+ const sessionId = () => z.string().regex(SESSION_ID_PATTERN);
+ const evidenceId = () => z.string().regex(EVIDENCE_ID_PATTERN);
+ const sha256 = () => z.string().regex(SHA256_HEX_PATTERN);
+--- packages/shared/test/api-envelope.test.ts	2026-10-04 08:24:08
++++ packages/shared/test/api-envelope.test.ts	2026-10-04 10:26:40
+@@ -155,11 +155,15 @@
+   });
+ 
+   it('the Origin guard and the credential conflict are accepted where an operation documents no 403 or 401', () => {
+-    // The ten existing operations keep their responses (AC-B-13); health and the reads document 200 only.
++    // Changed by design (W27; 01_specs §7.19): health is the one operation that documents 200 only.
++    // The five reads document 401 and 403 of their own now (Core server only), so a 403 on them is
++    // checked like any documented status, by its schema.
+     expect(validateCoreApiResponse('getServiceHealth', 403, envelope('ORIGIN_NOT_ALLOWED'))).toEqual({ ok: true });
+     expect(validateCoreApiResponse('getCurrentSession', 403, envelope('ORIGIN_NOT_ALLOWED'))).toEqual({ ok: true });
+-    // Not a blanket 403: a permission refusal on an operation without a permission is a contract violation.
+-    expect(validateCoreApiResponse('getCurrentSession', 403, envelope('NOT_PERMITTED'))).toMatchObject({ ok: false, reason: 'INVALID_BODY' });
++    expect(validateCoreApiResponse('getCurrentSession', 403, envelope('DEVICE_REVOKED'))).toEqual({ ok: true });
++    expect(validateCoreApiResponse('getCurrentSession', 401, envelope('NOT_SIGNED_IN'))).toEqual({ ok: true });
++    // Not a blanket 403: where no 403 is documented, only the envelope-level code passes.
++    expect(validateCoreApiResponse('getServiceHealth', 403, envelope('NOT_PERMITTED'))).toMatchObject({ ok: false, reason: 'INVALID_BODY' });
+     const conflict = envelope('NOT_SIGNED_IN', { details: { reason: CREDENTIAL_CONFLICT_REASON } });
+     expect(validateCoreApiResponse('getServiceHealth', 401, conflict)).toEqual({ ok: true });
+     expect(validateCoreApiResponse('getSignInStatus', 401, conflict)).toEqual({ ok: true });
+--- packages/shared/test/api-examples.test.ts	2026-10-04 08:27:12
++++ packages/shared/test/api-examples.test.ts	2026-10-04 10:36:30
+@@ -1,6 +1,8 @@
+-// Backend task 2026-10-04, plan row W19 (contract A): the examples of the Core-server operations.
+-// They follow the canonical dataset, use the example instant as epoch milliseconds, and show every
+-// secret as a placeholder (SR-48; AR-3a): no example, description or document holds a credential.
++// Backend task 2026-10-04, plan rows W19 (contract A) and W27 (contract C): the examples of the
++// Core-server operations. They follow the canonical dataset, use the example instant as epoch
++// milliseconds, and show every secret as a placeholder (SR-48; AR-3a): no example, description or
++// document holds a credential. The examples of areas 4 to 11 are compared with the real simulator in
++// test/api-state-examples.test.ts.
+ import { describe, expect, it } from 'vitest';
+ import {
+   BIOMETRIC_TOKEN_PATTERN,
+@@ -47,7 +49,7 @@
+   return example!.value as T;
+ }
+ 
+-describe('the examples of the 27 new operations', () => {
++describe('the examples of the 65 operations that only the Core server answers', () => {
+   it('every operation has examples: a request for each body, an ID for each path parameter, a body for each answer that has one', () => {
+     let responses = 0;
+     for (const operation of NEW_OPERATIONS) {
+@@ -70,7 +72,8 @@
+         }
+       }
+     }
+-    expect(responses).toBeGreaterThan(110);
++    expect(NEW_OPERATIONS).toHaveLength(65);
++    expect(responses).toBeGreaterThan(300);
+   });
+ 
+   it('use the example instant of the existing examples, as epoch milliseconds', () => {
+@@ -122,7 +125,7 @@
+         }
+       }
+     }
+-    expect(errors).toBeGreaterThan(80);
++    expect(errors).toBeGreaterThan(230);
+   });
+ });
+ 
+@@ -168,6 +171,16 @@
+     // sign-in password; biometric token (request, enrolment, rotation); session token (two answers);
+     // pairing code and QR payload; redeem code; device credential (redeem, rotation).
+     expect(seen).toBeGreaterThanOrEqual(11);
++    // W27: no operation of areas 4 to 11 carries a secret, so their examples add none. An ID such as
++    // `ALR-000001` or `EXP-000032` is not six digits on its own, and no member is named like a secret.
++    const contractC = CORE_API_OPERATIONS.filter((operation) => /§7\.(8|9|10|11|12|13|14|15), /.test(operation.source));
++    expect(contractC).toHaveLength(38);
++    for (const operation of contractC) {
++      for (const [path, value] of strings(CORE_API_EXAMPLES[operation.operationId])) {
++        expect(/^(ses|dvc|bio)_/.test(value) || /^\d{6}$/.test(value) || value.startsWith('DEMS-PAIR:'), `${operation.operationId}${path}`).toBe(false);
++        expect(secretKeys.test(path) && !path.endsWith('.error.code'), `${operation.operationId}${path}`).toBe(false);
++      }
++    }
+   });
+ 
+   it('no bearer-shaped value hides in a description or a document either', () => {
+--- packages/shared/test/api-openapi-scope.test.ts	2026-10-04 08:38:28
++++ packages/shared/test/api-openapi-scope.test.ts	2026-10-04 10:36:30
+@@ -1,24 +1,41 @@
+-// Backend task 2026-10-04, plan row W19 (contract A): the two scopes of the OpenAPI builder
+-// (02_plan §16 CO-3, CO-4; 04_client_integration_spec §11 AR-1).
++// Backend task 2026-10-04, plan rows W19 (contract A) and W27 (contract C): the two scopes of the
++// OpenAPI builder (02_plan §16 CO-3, CO-4; 04_client_integration_spec §11 AR-1; 01_specs API-12,
++// §7.19, AC-B-11).
+ // - `offline` is the default and is the document of the baseline commit `acaff20`, section by
+-//   section, except the two components the specification widens (AC-B-13).
+-// - `all` holds every operation of the registry and is a valid OpenAPI 3.1 document.
++//   section, except the two components the specification widens (AC-B-13). The web API Reference
++//   builds it in Simulated mode.
++// - `all` holds every operation of the registry, as the Core server answers it: 75 operations, two
++//   security schemes, the server 127.0.0.1:4420, version 0.2.0. It is the committed openapi.json.
+ import { createHash } from 'node:crypto';
+ import { readFileSync } from 'node:fs';
+ import { dereference, validate } from '@scalar/openapi-parser';
+ import { describe, expect, it } from 'vitest';
+ import { OPENAPI_COMMITTED_SCOPE, OPENAPI_JSON_PATH, renderOpenApiJson } from '../scripts/gen-openapi';
+ import {
++  API_BADGES,
+   CORE_API_ENVELOPE_RESPONSES,
+   CORE_API_OPERATIONS,
+   CORE_API_SCHEMAS,
++  CORE_HTTP_ORIGIN,
+   CORE_SERVER_HTTP_ORIGIN,
++  CORE_SERVER_PORT,
++  CORE_SERVER_WS_URL,
++  CORE_WS_URL,
++  CoreApiAccessKind,
+   CoreApiScope,
++  EPOCH_HEADER_NAME,
+   OPENAPI_ALLOWED_EXTENSION,
++  OPENAPI_CORE_SERVER_DOCUMENT_VERSION,
+   OPENAPI_DOCUMENT_VERSION,
++  OPENAPI_SESSION_COOKIE_NAME,
++  OpenApiSecurityScheme,
++  REQUEST_ID_HEADER_NAME,
++  REVISION_HEADER_NAME,
+   buildOpenApiQueryParameters,
++  coreApiAccessPermissions,
+   createOpenApiDocument,
+   describeCoreApiAccess,
++  listCoreApiResponseStatuses,
+   listOpenApiOperations,
+   serializeOpenApiDocument,
+   type JsonSchemaObject,
+@@ -168,19 +185,38 @@
+     expect(serializeOpenApiDocument(offline)).not.toContain('4420');
+   });
+ 
+-  it('is the committed openapi.json, byte for byte', () => {
+-    expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.OFFLINE);
++  it('is not a file: the builder returns it, and the committed openapi.json holds the other scope', () => {
++    // Changed by design (W27; AC-B-11, AR-1): until contract C the committed file was this scope.
++    // No app reads openapi.json: the web page builds this document in the browser, so what it
++    // renders in Simulated mode did not change when the committed scope did.
++    expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.ALL);
+     const committed = readFileSync(OPENAPI_JSON_PATH, 'utf8');
+-    expect(committed).toBe(renderOpenApiJson());
+-    expect(committed).toBe(serializeOpenApiDocument(offline));
+-    expect(renderOpenApiJson('offline')).toBe(committed);
+-    expect(listOpenApiOperations(JSON.parse(committed) as OpenApiDocument)).toHaveLength(10);
++    expect(committed).not.toBe(serializeOpenApiDocument(offline));
++    expect(renderOpenApiJson('offline')).toBe(serializeOpenApiDocument(offline));
++    expect(listOpenApiOperations(JSON.parse(renderOpenApiJson('offline')) as OpenApiDocument)).toHaveLength(10);
+   });
++
++  it('leaves out what only the Core server sends: its statuses, its text, its headers, its security', () => {
++    for (const { operation } of listOpenApiOperations(offline)) {
++      const entry = CORE_API_OPERATIONS.find((candidate) => candidate.operationId === operation.operationId)!;
++      expect(Object.keys(operation.responses).map(Number), operation.operationId).toEqual(listCoreApiResponseStatuses(entry, CoreApiScope.OFFLINE));
++      expect(operation.description, operation.operationId).toBe(entry.description);
++      expect('security' in operation, operation.operationId).toBe(false);
++    }
++    // The five reads document 200 alone here, as at the baseline; the registry holds 401 and 403 for them.
++    const read = offline.paths['/api/v1/session/current']?.get;
++    expect(Object.keys(read?.responses ?? {})).toEqual(['200']);
++    expect(Object.keys(CORE_API_OPERATIONS.find((operation) => operation.operationId === 'getCurrentSession')!.responses)).toEqual(['200', '401', '403']);
++    expect(Object.keys(offline.paths['/api/v1/session/{id}/start']?.post?.responses ?? {})).not.toContain('422');
++    expect('securitySchemes' in offline.components).toBe(false);
++    expect('security' in offline).toBe(false);
++  });
+ });
+ 
+-describe('scope all: every operation of the registry', () => {
++describe('scope all: every operation of the registry, as the Core server answers it', () => {
+   const all = createOpenApiDocument({ scope: 'all' });
+   const operations = listOpenApiOperations(all);
++  const entryOf = (operationId: string) => CORE_API_OPERATIONS.find((candidate) => candidate.operationId === operationId)!;
+ 
+   it('is a valid OpenAPI 3.1.0 document for @scalar/openapi-parser, with every $ref resolvable', async () => {
+     const text = serializeOpenApiDocument(all);
+@@ -190,37 +226,59 @@
+     expect(result.version).toBe('3.1');
+     expect((await dereference(text)).errors ?? []).toEqual([]);
+     expect(renderOpenApiJson('all')).toBe(text);
+-    expect(text).not.toBe(renderOpenApiJson());
++    // Changed by design (W27): `all` is the committed scope, so the default render is this text.
++    expect(renderOpenApiJson()).toBe(text);
++    expect(text).not.toBe(renderOpenApiJson('offline'));
+   });
+ 
+-  it('has 37 operations on 36 paths: the 10 existing ones and the 27 of areas 1, 2, 3 and 13', () => {
+-    expect(operations).toHaveLength(37);
+-    expect(Object.keys(all.paths)).toHaveLength(36);
++  it('AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes', () => {
++    expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.ALL);
++    const committed = readFileSync(OPENAPI_JSON_PATH, 'utf8');
++    expect(committed).toBe(renderOpenApiJson());
++    expect(committed).toBe(serializeOpenApiDocument(all));
++    const parsed = JSON.parse(committed) as OpenApiDocument;
++    expect(listOpenApiOperations(parsed)).toHaveLength(75);
++    expect(Object.keys(parsed.components.securitySchemes ?? {})).toHaveLength(2);
++    expect(parsed.info.version).toBe('0.2.0');
++    expect(parsed.servers[0]?.url).toBe('http://127.0.0.1:4420');
++  });
++
++  it('has 75 operations on 74 paths: 27 GET and 48 POST', () => {
++    expect(operations).toHaveLength(75);
++    expect(Object.keys(all.paths)).toHaveLength(74);
+     expect(new Set(operations.map((entry) => entry.operation.operationId))).toEqual(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)));
+-    expect(operations.filter((entry) => entry.method === 'get')).toHaveLength(14);
+-    expect(operations.filter((entry) => entry.method === 'post')).toHaveLength(23);
++    expect(operations.filter((entry) => entry.method === 'get')).toHaveLength(27);
++    expect(operations.filter((entry) => entry.method === 'post')).toHaveLength(48);
+     expect(Object.keys(all.paths['/api/v1/pairing/code'] ?? {})).toEqual(['post', 'get']);
+     expect(all.tags.map((tag) => tag.name)).toEqual([
+-      'Service', 'Identity', 'Administration', 'Pairing', 'Session', 'Device', 'Storage', 'Evidence', 'Demo', 'Realtime',
++      'Service', 'Identity', 'Administration', 'Pairing', 'Session', 'Device', 'Storage', 'Evidence', 'Network', 'Security', 'System', 'Alerts', 'Demo', 'Realtime',
+     ]);
+-    for (const tag of all.tags.filter((entry) => ['Identity', 'Administration', 'Pairing', 'Demo'].includes(entry.name))) {
+-      expect(tag.description).toContain('Answered by the Core server');
+-      expect(tag.description).not.toMatch(/mock-core/);
+-    }
++    // Every tag an operation uses is declared, and every declared tag but Realtime is used.
++    const used = new Set(operations.flatMap((entry) => entry.operation.tags));
++    expect([...used].sort()).toEqual(all.tags.map((tag) => tag.name).filter((name) => name !== 'Realtime').sort());
+   });
+ 
+-  it('nine stay simulated, 28 are live; "Show simulated endpoints" off keeps the 28', () => {
++  it('nine can be answered by the in-app simulator, 66 only by a service; "Show simulated endpoints" off keeps the 66', () => {
+     expect(operations.filter((entry) => entry.operation['x-dems-mode'] === 'simulated')).toHaveLength(9);
+-    expect(operations.filter((entry) => entry.operation['x-dems-mode'] === 'live')).toHaveLength(28);
+-    expect(listOpenApiOperations(createOpenApiDocument({ scope: 'all', includeSimulated: false }))).toHaveLength(28);
++    expect(operations.filter((entry) => entry.operation['x-dems-mode'] === 'live')).toHaveLength(66);
++    expect(listOpenApiOperations(createOpenApiDocument({ scope: 'all', includeSimulated: false }))).toHaveLength(66);
++    // AR-3: in this scope every operation carries LIVE, because the Core server answers each one.
++    for (const { operation } of operations) {
++      const badges = operation['x-badges'].map((badge) => badge.name);
++      expect(badges, operation.operationId).toContain(API_BADGES.LIVE.name);
++      expect(badges, operation.operationId).not.toContain(API_BADGES.SIMULATED.name);
++    }
++    expect(operations.filter((entry) => entry.operation['x-badges'].some((badge) => badge.name === API_BADGES.RBAC_AUDIT.name)).map((entry) => entry.operation.operationId)).toEqual([
++      'exportEvidence',
++    ]);
+   });
+ 
+   it('states the access rule, the audit rule and the services of every operation', () => {
+     for (const { operation } of operations) {
+-      const entry = CORE_API_OPERATIONS.find((candidate) => candidate.operationId === operation.operationId)!;
++      const entry = entryOf(operation.operationId);
+       expect(operation['x-dems-access'], operation.operationId).toEqual({
+         rule: describeCoreApiAccess(entry.access),
+-        permissions: 'permission' in entry.access ? [entry.access.permission] : [],
++        permissions: [...coreApiAccessPermissions(entry.access)],
+         conditions: [...(entry.access.conditions ?? [])],
+       });
+       expect(operation['x-dems-audit'], operation.operationId).toEqual({
+@@ -234,27 +292,187 @@
+       'dems-mock-core',
+       'dems-core-server',
+     ]);
+-    // Only the four simulated commands keep `x-dems-rbac`; the holders of a new permission are not restated here.
++    // The one any-of names both permissions.
++    expect(operations.find((entry) => entry.operation.operationId === 'setStoragePolicy')?.operation['x-dems-access']).toEqual({
++      rule: 'ANY-OF(EVIDENCE_REVIEW, MAINTENANCE)',
++      permissions: ['EVIDENCE_REVIEW', 'MAINTENANCE'],
++      conditions: [],
++    });
++    // 41 operations carry a permission (01_specs §7.19). Only the four simulated commands keep
++    // `x-dems-rbac`, which lists the simulator's role holders; the role holders of the Core server
++    // are data, read with `getRoleMatrix`.
++    expect(operations.filter((entry) => (entry.operation['x-dems-access']?.permissions ?? []).length > 0)).toHaveLength(41);
+     expect(operations.filter((entry) => entry.operation['x-dems-rbac']).map((entry) => entry.operation.operationId).sort()).toEqual([
+       'createSession', 'exportEvidence', 'startSession', 'stopSession',
+     ]);
+   });
+ 
+-  it('uses no vendor extension beyond x-badges and x-dems-*', () => {
++  it('API-12: two security schemes, and each operation takes the credential its access rule names', () => {
++    const schemes = all.components.securitySchemes;
++    expect(Object.keys(schemes ?? {})).toEqual(['sessionCookie', 'bearerAuth']);
++    expect(Object.values(OpenApiSecurityScheme)).toEqual(['sessionCookie', 'bearerAuth']);
++    // ID-P7: the session cookie, documented under the main instance's name.
++    expect(schemes?.sessionCookie).toMatchObject({ type: 'apiKey', in: 'cookie', name: 'dems_session_4420' });
++    expect(OPENAPI_SESSION_COOKIE_NAME).toBe(`dems_session_${CORE_SERVER_PORT}`);
++    expect(schemes?.bearerAuth).toMatchObject({ type: 'http', scheme: 'bearer' });
++    for (const scheme of Object.values(schemes ?? {})) expect(scheme.description.length).toBeGreaterThan(80);
++    // No document-level requirement: the rule is per operation.
++    expect('security' in all).toBe(false);
++
++    const cookieOrBearer = [{ sessionCookie: [] }, { bearerAuth: [] }];
++    const bearer = [{ bearerAuth: [] }];
++    for (const { operation } of operations) {
++      const { access } = entryOf(operation.operationId);
++      const conditions: readonly string[] = access.conditions ?? [];
++      const expected =
++        access.kind === CoreApiAccessKind.PUBLIC
++          ? conditions.includes('CONSOLE_IDENTITY')
++            ? [{}, { bearerAuth: [] }]
++            : []
++          : access.kind === CoreApiAccessKind.DEVICE || conditions.includes('DEVICE_SESSION')
++            ? bearer
++            : cookieOrBearer;
++      expect(operation.security, operation.operationId).toEqual(expected);
++    }
++    const securityOf = (operationId: string) => operations.find((entry) => entry.operation.operationId === operationId)?.operation.security;
++    expect(securityOf('getServiceHealth')).toEqual([]);
++    expect(securityOf('redeemPairingCode')).toEqual([]);
++    expect(securityOf('signIn')).toEqual([{}, { bearerAuth: [] }]);
++    expect(securityOf('unpairDevice')).toEqual(bearer);
++    expect(securityOf('setBiometricEnrollment')).toEqual(bearer);
++    expect(securityOf('getCurrentSession')).toEqual(cookieOrBearer);
++    expect(securityOf('exportAudit')).toEqual(cookieOrBearer);
++    // By count: 3 take none, 1 an optional bearer, 6 the bearer, 65 the cookie or the bearer.
++    const shape = (security: unknown) => JSON.stringify(security);
++    const count = (expected: unknown) => operations.filter((entry) => shape(entry.operation.security) === shape(expected)).length;
++    expect([count([]), count([{}, { bearerAuth: [] }]), count(bearer), count(cookieOrBearer)]).toEqual([3, 1, 6, 65]);
++  });
++
++  it('API-12: the Core server 127.0.0.1:4420 is the first server, mock-core the second; version 0.2.0', () => {
++    expect(all.servers.map((server) => server.url)).toEqual([CORE_SERVER_HTTP_ORIGIN, CORE_HTTP_ORIGIN]);
++    expect(CORE_SERVER_HTTP_ORIGIN).toBe('http://127.0.0.1:4420');
++    expect(all.servers[0]?.description).toContain('dems-core-server');
++    expect(all.servers[1]?.description).toContain('It answers no other operation');
++    expect(hostsOf(all).sort()).toEqual(['127.0.0.1:4400', '127.0.0.1:4420']);
++    expect(all.info.version).toBe(OPENAPI_CORE_SERVER_DOCUMENT_VERSION);
++    expect(OPENAPI_CORE_SERVER_DOCUMENT_VERSION).toBe('0.2.0');
++    expect(all.info.summary).toContain('75 operations');
++    expect(createOpenApiDocument({ scope: 'all', includeSimulated: false }).info.summary).toContain('66 operations');
++    // Each build is independent: a caller may change the servers of its own copy.
++    const mine = createOpenApiDocument({ scope: 'all' });
++    mine.servers[0]!.url = 'http://changed';
++    expect(createOpenApiDocument({ scope: 'all' }).servers[0]?.url).toBe(CORE_SERVER_HTTP_ORIGIN);
++  });
++
++  it('describes the Core server truthfully: no text of this scope says that mock-core or the browser answers an operation (KI-18)', () => {
++    const texts: [string, string][] = [
++      ['info.summary', all.info.summary],
++      ['info.description', all.info.description],
++      ...all.servers.map((server, index) => [`servers[${index}]`, server.description] as [string, string]),
++      ...all.tags.map((tag) => [`tag ${tag.name}`, tag.description] as [string, string]),
++      ...operations.map(({ operation }) => [operation.operationId, operation.description] as [string, string]),
++    ];
++    // The sentences of the offline document that are untrue of the Core server.
++    const stale = [
++      /served by mock-core on 127\.0\.0\.1:4400/,
++      /CORS allows the web dev origins/,
++      /Liveness of the local mock-core service/,
++      /one live endpoint on the local mock-core, nine simulated in the browser/,
++      /Served over the network by mock-core/,
++      /the simulated endpoints are answered in the browser/,
++      /"Try it" is answered in the browser/,
++      /Nothing leaves the machine/,
++      /left out here on purpose/,
++      /no token travels on the wire/,
++      /\*\*SIMULATED\.?\*\*/,
++    ];
++    for (const [where, text] of texts) for (const pattern of stale) expect(text, `${where}: ${pattern}`).not.toMatch(pattern);
++    const whole = serializeOpenApiDocument(all);
++    for (const pattern of stale) expect(whole, String(pattern)).not.toMatch(pattern);
++    // mock-core is named for what it does answer: health and its heartbeat socket.
++    expect(all.info.description).toContain('`GET /api/v1/health` and a heartbeat-only');
++    for (const tag of all.tags.filter((entry) => !['Service', 'Realtime'].includes(entry.name))) {
++      expect(tag.description, tag.name).toContain('Answered by the Core server');
++    }
++    for (const tag of all.tags.filter((entry) => ['Identity', 'Administration', 'Pairing', 'Demo', 'Network', 'Security', 'System', 'Alerts'].includes(entry.name))) {
++      expect(tag.description, tag.name).not.toMatch(/mock-core|simulator/);
++    }
++    // The ten existing operations show the Core server's text; every other one has one text.
++    for (const { operation } of operations) {
++      const entry = entryOf(operation.operationId);
++      expect(operation.description, operation.operationId).toBe(entry.coreServerDescription ?? entry.description);
++    }
++    // 01_specs §11: the document offers no media operation and says so.
++    expect(all.info.description).toContain('Media and evidence package files are not served');
++  });
++
++  it('the Realtime tag names both sockets', () => {
++    const realtime = all.tags.find((tag) => tag.name === 'Realtime')?.description ?? '';
++    expect(realtime).toContain(`\`${CORE_SERVER_WS_URL}\``);
++    expect(realtime).toContain(`\`${CORE_WS_URL}\``);
++    expect(realtime.indexOf('### Core server')).toBeGreaterThan(0);
++    expect(realtime.indexOf('### mock-core')).toBeGreaterThan(realtime.indexOf('### Core server'));
++  });
++
++  it('uses no vendor extension beyond x-badges and x-dems-*; the names in a headers map are HTTP header names', () => {
+     const keys = [...new Set(extensionKeys(all))].sort();
+     expect(keys).toEqual(['x-badges', 'x-dems-access', 'x-dems-audit', 'x-dems-mode', 'x-dems-rbac', 'x-dems-services', 'x-dems-source']);
+     expect(keys.filter((key) => !OPENAPI_ALLOWED_EXTENSION.test(key))).toEqual([]);
++    // The pinned response header names of the Core server (D36). `x-request-id` does not fit the
++    // extension pattern and need not: it is the name of a header, inside `headers` maps only.
++    const headerNames = new Set<string>();
++    const collect = (value: unknown): void => {
++      if (Array.isArray(value)) value.forEach(collect);
++      else if (value && typeof value === 'object') {
++        for (const [key, child] of Object.entries(value)) {
++          if (key === 'headers' && child && typeof child === 'object') for (const name of Object.keys(child)) if (name.startsWith('x-')) headerNames.add(name);
++          collect(child);
++        }
++      }
++    };
++    collect(all.paths);
++    expect([...headerNames].sort()).toEqual([EPOCH_HEADER_NAME, REVISION_HEADER_NAME, REQUEST_ID_HEADER_NAME].sort());
++    expect([...headerNames].sort()).toEqual(['x-dems-epoch', 'x-dems-revision', 'x-request-id']);
++    expect(OPENAPI_ALLOWED_EXTENSION.test(REQUEST_ID_HEADER_NAME)).toBe(false);
++    // No renderer feature beyond display (D45).
++    const everyKey: string[] = [];
++    const walk = (value: unknown): void => {
++      if (Array.isArray(value)) value.forEach(walk);
++      else if (value && typeof value === 'object') {
++        for (const [key, child] of Object.entries(value)) {
++          everyKey.push(key);
++          walk(child);
++        }
++      }
++    };
++    walk(all);
++    expect(everyKey.filter((key) => /scalar|agent|mcp|pre-request|post-response|code-?samples/i.test(key))).toEqual([]);
+   });
+ 
+-  it('holds one component per registry schema, and the ten existing operations as in the offline scope', () => {
++  it('holds one component per registry schema, and the ten existing operations with the schemas of the offline scope', () => {
+     expect(Object.keys(all.components.schemas)).toEqual(Object.keys(CORE_API_SCHEMAS));
++    expect(Object.keys(all.components.schemas)).toHaveLength(130);
+     const offline = createOpenApiDocument();
+     for (const [name, schema] of Object.entries(offline.components.schemas)) expect(all.components.schemas[name], name).toEqual(schema);
++    // Changed by design (W27; 01_specs §7.19): in this scope the ten are described as the Core
++    // server answers them. What they are is unchanged: ID, tags, summary, parameters, request body,
++    // mode, source, the simulator's RBAC note, and the schema and the examples of every status the
++    // offline scope documents. What differs is listed below.
+     for (const { path, method, operation } of listOpenApiOperations(offline)) {
+       const twin = all.paths[path]?.[method];
+       expect(twin, operation.operationId).toBeDefined();
+-      const { 'x-dems-access': _access, 'x-dems-audit': _audit, 'x-dems-services': _services, ...rest } = twin!;
+-      expect(rest, operation.operationId).toEqual(operation);
++      for (const member of ['operationId', 'tags', 'summary', 'parameters', 'requestBody', 'x-dems-mode', 'x-dems-source', 'x-dems-rbac'] as const) {
++        expect(twin?.[member], `${operation.operationId} ${member}`).toEqual(operation[member]);
++      }
++      for (const [status, response] of Object.entries(operation.responses)) {
++        expect(twin?.responses[status]?.description, `${operation.operationId} ${status}`).toBe(response.description);
++        expect(twin?.responses[status]?.content, `${operation.operationId} ${status}`).toEqual(response.content);
++      }
++      const extra = Object.keys(twin?.responses ?? {}).filter((status) => !(status in operation.responses));
++      const entry = entryOf(operation.operationId);
++      expect(extra.map(Number), operation.operationId).toEqual(
++        listCoreApiResponseStatuses(entry).filter((status) => !listCoreApiResponseStatuses(entry, CoreApiScope.OFFLINE).includes(status)),
++      );
+     }
+     const serialized = JSON.stringify(all.components.schemas);
+     expect(serialized).not.toContain('"$schema"');
+@@ -262,24 +480,56 @@
+     // Nested named schemas are references.
+     expect(JSON.stringify(all.components.schemas.AuthSessionInfo)).toContain('#/components/schemas/Operator');
+     expect(JSON.stringify(all.components.schemas.PairingRedeemed)).toContain('#/components/schemas/CoreIdentity');
++    // API-6: a read of contract C refers to the slice components; it does not copy them.
++    expect(all.components.schemas.DeviceInventory).toMatchObject({
++      properties: {
++        device: { $ref: '#/components/schemas/DeviceSlice' },
++        cameras: { $ref: '#/components/schemas/CamerasSlice' },
++        tabletLink: { $ref: '#/components/schemas/TabletLinkSlice' },
++      },
++      additionalProperties: false,
++    });
++    expect(JSON.stringify(all.components.schemas.AuditPage)).toContain('#/components/schemas/AuditRow');
++    expect(JSON.stringify(all.components.schemas.EvidenceDetail)).toContain('#/components/schemas/EvidenceMediaRef');
++    expect(JSON.stringify(all.components.schemas.AuditChainStatus)).toContain('#/components/schemas/AuditChainLineageEntry');
+   });
+ 
+-  it('documents the request ID on every answer of a Core-server operation, and the state revision on a 2xx of its POSTs', () => {
+-    expect(Object.keys(all.components.headers)).toEqual(['XDemsSimulated', 'XRequestId', 'XDemsEpoch', 'XDemsRevision', 'Allow', 'RetryAfter']);
++  it('documents the request ID on every answer of the Core server, and the state revision on a 2xx of its POSTs', () => {
++    // Changed by design (W27): the nine design-book operations are answered by the Core server in
++    // this scope, so they document its headers; the simulator's header belongs to the offline scope.
++    expect(Object.keys(all.components.headers)).toEqual(['XRequestId', 'XDemsEpoch', 'XDemsRevision', 'Allow', 'RetryAfter']);
+     // D36: the epoch and the revision are integers.
+     expect(all.components.headers.XDemsEpoch?.schema).toEqual({ type: 'integer', minimum: 0 });
+     expect(all.components.headers.XDemsRevision?.schema).toEqual({ type: 'integer', minimum: 0 });
+     for (const { method, operation } of operations) {
+       for (const [status, response] of Object.entries(operation.responses)) {
+         const names = Object.keys(response.headers ?? {});
+-        if (operation['x-dems-mode'] === 'simulated') expect(names, operation.operationId).toEqual(['x-dems-simulated']);
+-        else if (operation.operationId === 'getServiceHealth') expect(names).toEqual([]);
++        // health is answered by mock-core too, which sends none of them.
++        if (operation.operationId === 'getServiceHealth') expect(names).toEqual([]);
+         else if (method === 'post' && Number(status) < 300) expect(names, `${operation.operationId} ${status}`).toEqual(['x-request-id', 'x-dems-epoch', 'x-dems-revision']);
+         else expect(names, `${operation.operationId} ${status}`).toEqual(['x-request-id']);
+       }
+     }
++    expect(serializeOpenApiDocument(all)).not.toContain('"x-dems-simulated"');
+   });
+ 
++  it('a list read documents its query members as parameters', () => {
++    const parametersOf = (path: string) => (all.paths[path]?.get?.parameters ?? []).map((parameter) => [parameter.name, parameter.in, parameter.required]);
++    expect(parametersOf('/api/v1/session/history')).toEqual([['cursor', 'query', false], ['limit', 'query', false]]);
++    expect(parametersOf('/api/v1/evidence')).toEqual([
++      ['status', 'query', false], ['caseType', 'query', false], ['q', 'query', false], ['cursor', 'query', false], ['limit', 'query', false],
++    ]);
++    expect(parametersOf('/api/v1/audit').map(([name]) => name)).toEqual(['category', 'type', 'actorId', 'sessionId', 'evidenceId', 'order', 'cursor', 'limit']);
++    expect(parametersOf('/api/v1/events').map(([name]) => name)).toEqual(['category', 'type', 'severity', 'cursor', 'limit']);
++    // API-9: the limit is a whole number from 1 to 200; the cursor is opaque and has a pattern.
++    const limit = all.paths['/api/v1/audit']?.get?.parameters?.find((parameter) => parameter.name === 'limit');
++    expect(limit?.schema).toEqual({ type: 'integer', minimum: 1, maximum: 200 });
++    const cursor = all.paths['/api/v1/audit']?.get?.parameters?.find((parameter) => parameter.name === 'cursor');
++    expect(cursor?.schema).toEqual({ type: 'string', pattern: '^[A-Za-z0-9-]{1,128}$' });
++    // The item read has its path parameter and no query.
++    expect(all.paths['/api/v1/evidence/{id}']?.get?.parameters?.map((parameter) => [parameter.name, parameter.in])).toEqual([['id', 'path']]);
++  });
++
+   it('defines the envelope-level answers once, as components.responses', () => {
+     const responses = all.components.responses ?? {};
+     expect(Object.keys(responses)).toEqual([
+@@ -293,16 +543,6 @@
+     expect(Object.keys(responses.RateLimited?.headers ?? {})).toEqual(['retry-after']);
+     expect(responses.RateLimited?.description.startsWith('429 RATE_LIMITED.')).toBe(true);
+   });
+-
+-  it('what contract C still owes this scope (API-12): no security scheme, one server, version 0.1.0', () => {
+-    // Pinned so that the change is made on purpose: two security schemes, the server 127.0.0.1:4420
+-    // and info.version 0.2.0 arrive with the committed document of the `all` scope (plan row W27).
+-    expect('security' in all).toBe(false);
+-    expect('securitySchemes' in all.components).toBe(false);
+-    expect(all.servers.map((server) => server.url)).not.toContain(CORE_SERVER_HTTP_ORIGIN);
+-    expect(hostsOf(all)).toEqual(['127.0.0.1:4400']);
+-    expect(all.info.version).toBe('0.1.0');
+-  });
+ });
+ 
+ describe('contract gap 2: the query parameters of an operation come from its query schema', () => {
+--- packages/shared/test/api-realtime.test.ts	2026-10-04 09:17:10
++++ packages/shared/test/api-realtime.test.ts	2026-10-04 10:26:15
+@@ -8,6 +8,7 @@
+   ADMIN_RESOURCE_PERMISSION,
+   AdminChangedMessageSchema,
+   CORE_API_SCHEMAS,
++  CORE_SERVER_WS_URL,
+   CORE_WS_URL,
+   DeltaMessageSchema,
+   DeltaOpSchema,
+@@ -814,11 +815,26 @@
+     expect(tagOf(offline)).toContain(CORE_WS_URL);
+   });
+ 
+-  it('the `all` scope keeps that text and adds the Core server\'s protocol: every message, every close code, no host', () => {
++  it('the `all` scope names both sockets, then gives the Core server\'s protocol (every message, every close code) and mock-core\'s heartbeat', () => {
++    // Changed by design (W27, contract C): until the committed document of this scope, the tag
++    // began with the offline text and named no host for the Core server. It now names both sockets
++    // (`ws://127.0.0.1:4420/ws`, then `ws://127.0.0.1:4400/ws`), describes the Core server first,
++    // and keeps the rules and the example of mock-core's heartbeat in a section of their own.
+     const text = tagOf(all);
+-    expect(text.startsWith(tagOf(offline))).toBe(true);
+-    const added = text.slice(tagOf(offline).length);
+-    expect(added).toContain('### Core server');
++    const coreServerAt = text.indexOf('### Core server');
++    const mockCoreAt = text.indexOf('### mock-core');
++    expect(coreServerAt).toBeGreaterThan(0);
++    expect(mockCoreAt).toBeGreaterThan(coreServerAt);
++    const intro = text.slice(0, coreServerAt);
++    const added = text.slice(coreServerAt, mockCoreAt);
++    const mockCore = text.slice(mockCoreAt);
++    expect(intro).toContain(`\`${CORE_SERVER_WS_URL}\``);
++    expect(intro).toContain(`\`${CORE_WS_URL}\``);
++    // The rules of mock-core's socket and its example are those of the offline text, word for word.
++    const [, ...offlineRest] = tagOf(offline).split('\n\n');
++    expect(offlineRest.length).toBeGreaterThan(1);
++    expect(mockCore).toBe(['### mock-core', ...offlineRest].join('\n\n'));
++    expect(text).not.toContain('served by mock-core.');
+     for (const message of REALTIME_SERVER_MESSAGES) {
+       expect(added, message.type).toContain(`| \`${message.type}\` | ${message.topic ?? 'none'} |`);
+       expect(added, message.schema).toContain(`| ${message.schema} |`);
+@@ -828,9 +844,10 @@
+     for (const name of UNREPLICATED_SLICE_NAMES) expect(added, name).toContain(`\`${name}\``);
+     expect(added).toContain('| ANONYMOUS | `hello`, `heartbeat` |');
+     expect(added).toContain('| DEVICE | `hello`, `heartbeat`, `device.revoked` |');
+-    // No host: the server entry of the Core server comes with the committed document of this scope.
+-    expect(added).not.toMatch(/(?:https?|wss?):\/\//);
+-    expect(added).not.toMatch(/127\.0\.0\.1|localhost/);
++    // The only hosts of the whole tag are the two sockets, each named with its URL.
++    const urls = [...text.matchAll(/(?:https?|wss?):\/\/[^\s`"')]+/g)].map((match) => match[0]);
++    expect([...new Set(urls)]).toEqual([CORE_SERVER_WS_URL, CORE_WS_URL]);
++    expect(text).not.toMatch(/localhost/);
+   });
+ 
+   it('every JSON block of the `all` scope is a message of the contract, and all but the snapshot are shown', () => {
+@@ -846,7 +863,10 @@
+     expect([...new Set(types)].sort()).toEqual(
+       ['hello', 'heartbeat', 'delta', 'meters', 'session.updated', 'session.ended', 'device.revoked', 'admin.changed', 'subscribe', 'resync'].sort(),
+     );
+-    expect(found[0]?.type).toBe('heartbeat');
++    // Changed by design (W27): the Core server's examples come first, mock-core's heartbeat last.
++    expect(found[0]?.type).toBe('hello');
++    expect(found[found.length - 1]?.type).toBe('heartbeat');
++    expect(HeartbeatSchema.safeParse(found[found.length - 1]).success).toBe(true);
+   });
+ 
+   it('the messages are components of the `all` scope, closed to unknown members; the union refers to its nine members', () => {
+--- packages/shared/test/api-registry.test.ts	2026-10-04 09:08:08
++++ packages/shared/test/api-registry.test.ts	2026-10-04 10:24:14
+@@ -1,8 +1,14 @@
+-// Backend task 2026-10-04, plan row W19 (contract A): the registry model and the operation table.
+-// AC-B-13 (the ten existing operations keep path, method and schemas), RB-1 / API-8 (every entry
+-// carries exactly one access rule and one audit rule), API-2 / API-3 (two methods, one path
+-// parameter named `id`), and decision D36 (contract gap 1: the table with literal types;
+-// contract gap 2: the `query` member).
++// Backend task 2026-10-04, plan rows W19 (contract A) and W27 (contract C): the registry model and
++// the operation table. AC-B-09 (registry side: exactly 75 operations, 27 GET and 48 POST), AC-B-13
++// (the ten existing operations keep path, method and schemas), RB-1 / API-8 (every entry carries
++// exactly one access rule and one audit rule), API-2 / API-3 (two methods, one path parameter named
++// `id`), AC-C-01 (the typed client calls every operation), and decision D36 (contract gap 1: the
++// table with literal types; contract gap 2: the `query` member).
++//
++// Changed by design with contract C (01_specs §7.19; implementation/27_contract_c.md §9): every
++// count that contract A pinned at 37 operations is now pinned at 75, and the ten existing
++// operations are compared with their baseline for the statuses a client gets without the Core
++// server, with the statuses only the Core server sends pinned beside them.
+ import { describe, expect, expectTypeOf, it } from 'vitest';
+ import {
+   ApiErrorSchema,
+@@ -23,15 +29,22 @@
+   describeCoreApiAccess,
+   findCoreApiOperation,
+   isOfflineCoreApiOperation,
++  isOfflineCoreApiResponse,
+   listCoreApiOperations,
++  listCoreApiResponseStatuses,
+   matchCoreApiOperation,
+   type AdminUser,
++  type AuditListQuery,
+   type CoreApiAccess,
+   type CoreApiOperation,
+   type CoreApiRegistryOperation,
+   type CoreApiSchemaName,
++  type EvidencePage,
+   type PairingRedeemed,
++  type SessionNoteRequest,
+   type SignInRequest,
++  type StoragePolicyRequest,
++  type StoragePolicySliceBody,
+   type UserRoleRequest,
+ } from '../src/api';
+ import {
+@@ -77,6 +90,69 @@
+ ];
+ 
+ /**
++ * `[#, operationId, method, path, access, audit on success, denial]` of the 38 operations of
++ * 01_specs §7.8 to §7.15 that contract C adds, in spec order. The other nine operations of areas 4
++ * to 11 (24 to 27, 42, 44 to 46, 53) are among the ten existing ones.
++ */
++const CONTRACT_C_OPERATIONS: readonly [number, string, 'get' | 'post', string, string, string, string][] = [
++  [28, 'beginPrecheck', 'post', '/api/v1/session/{id}/precheck', 'SESSION_START', 'NONE-P', 'ACCESS_DENIED'],
++  [29, 'retryPrecheck', 'post', '/api/v1/session/{id}/precheck/retry', 'SESSION_START', 'NONE-P', 'ACCESS_DENIED'],
++  [30, 'acknowledgePrecheckWarnings', 'post', '/api/v1/session/{id}/precheck/acknowledge', 'SESSION_START', 'PRECHECK_PASSED', 'ACCESS_DENIED'],
++  [31, 'cancelSession', 'post', '/api/v1/session/{id}/cancel', 'SESSION_START', 'SESSION_CANCELLED', 'ACCESS_DENIED'],
++  [32, 'scanCaseNumber', 'post', '/api/v1/session/case-number', 'SESSION_START', 'NONE-P', 'ACCESS_DENIED'],
++  [33, 'recoverSession', 'post', '/api/v1/session/{id}/recover', 'SESSION_START', 'RECOVERY_STARTED', 'ACCESS_DENIED'],
++  [34, 'addSessionMarker', 'post', '/api/v1/session/{id}/markers', 'SESSION_NOTE', 'MARKER_ADDED', 'ACCESS_DENIED'],
++  [35, 'addSessionNote', 'post', '/api/v1/session/{id}/notes', 'SESSION_NOTE', 'NOTE_ADDED', 'ACCESS_DENIED'],
++  [36, 'takeSessionSnapshot', 'post', '/api/v1/session/{id}/snapshots', 'SESSION_NOTE', 'SNAPSHOT_TAKEN', 'ACCESS_DENIED'],
++  [37, 'acknowledgeSessionSummary', 'post', '/api/v1/session/{id}/summary/acknowledge', 'SESSION_START', 'SUMMARY_ACKNOWLEDGED', 'ACCESS_DENIED'],
++  [38, 'listSessionHistory', 'get', '/api/v1/session/history', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED'],
++  [39, 'listEvidence', 'get', '/api/v1/evidence', 'EVIDENCE_VIEW', 'NONE-R', 'ACCESS_DENIED'],
++  [40, 'getEvidence', 'get', '/api/v1/evidence/{id}', 'EVIDENCE_VIEW', 'NONE-R', 'ACCESS_DENIED'],
++  [41, 'verifyEvidence', 'post', '/api/v1/evidence/{id}/verify', 'EVIDENCE_VIEW', 'EVIDENCE_VERIFIED', 'ACCESS_DENIED'],
++  [43, 'archiveEvidence', 'post', '/api/v1/evidence/{id}/archive', 'EVIDENCE_REVIEW', 'EVIDENCE_ARCHIVED', 'ACCESS_DENIED'],
++  [47, 'getDeviceInventory', 'get', '/api/v1/device/inventory', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED'],
++  [48, 'restartDevice', 'post', '/api/v1/device/{id}/restart', 'DEVICE_MANAGE', 'DEVICE_COMMAND', 'ACCESS_DENIED'],
++  [49, 'testDeviceSignal', 'post', '/api/v1/device/{id}/test-signal', 'DIAGNOSTICS_RUN', 'DEVICE_COMMAND', 'ACCESS_DENIED'],
++  [50, 'identifyDevice', 'post', '/api/v1/device/{id}/identify', 'DIAGNOSTICS_RUN', 'DEVICE_COMMAND', 'ACCESS_DENIED'],
++  [51, 'setActiveCamera', 'post', '/api/v1/video/active-camera', 'AUTHENTICATED', 'NONE-P', 'ACCESS_DENIED'],
++  [52, 'resetMicClip', 'post', '/api/v1/audio/clip/reset', 'AUTHENTICATED', 'NONE-P', 'ACCESS_DENIED'],
++  [54, 'getStorageDetail', 'get', '/api/v1/storage/detail', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED'],
++  [55, 'setStoragePolicy', 'post', '/api/v1/storage/policy', 'ANY-OF(EVIDENCE_REVIEW, MAINTENANCE)', 'STORAGE_POLICY_CHANGED', 'ACCESS_DENIED'],
++  [56, 'getNetworkStatus', 'get', '/api/v1/network/status', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED'],
++  [57, 'getTimeStatus', 'get', '/api/v1/time/status', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED'],
++  [58, 'getSecurityStatus', 'get', '/api/v1/security/status', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED'],
++  [59, 'listAuditRows', 'get', '/api/v1/audit', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED'],
++  [60, 'verifyAuditChain', 'get', '/api/v1/audit/chain', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED'],
++  [61, 'exportAudit', 'post', '/api/v1/audit/export', 'AUDIT_EXPORT', 'AUDIT_EXPORTED', 'EXPORT_DENIED'],
++  [62, 'exportLogs', 'post', '/api/v1/logs/export', 'AUDIT_EXPORT', 'AUDIT_EXPORTED', 'EXPORT_DENIED'],
++  [63, 'listEvents', 'get', '/api/v1/events', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED'],
++  [64, 'getSystemStatus', 'get', '/api/v1/system/status', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED'],
++  [65, 'runDiagnostics', 'post', '/api/v1/system/diagnostics', 'DIAGNOSTICS_RUN', 'DIAGNOSTICS_RUN', 'ACCESS_DENIED'],
++  [66, 'restartServices', 'post', '/api/v1/system/services/restart', 'MAINTENANCE', 'DEVICE_COMMAND', 'ACCESS_DENIED'],
++  [67, 'startSoftwareUpdate', 'post', '/api/v1/system/update', 'MAINTENANCE', 'UPDATE_STARTED', 'ACCESS_DENIED'],
++  [68, 'updateSettings', 'post', '/api/v1/settings', 'AUTHENTICATED', 'NONE-P', 'ACCESS_DENIED'],
++  [69, 'listAlerts', 'get', '/api/v1/alerts', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED'],
++  [70, 'acknowledgeAlert', 'post', '/api/v1/alerts/{id}/acknowledge', 'AUTHENTICATED', 'NONE-P', 'ACCESS_DENIED'],
++];
++
++/** The spec numbers of the ten existing operations (01_specs §7.4, §7.8 to §7.11), in registry order. */
++const EXISTING_NUMBERS = [1, 24, 25, 26, 27, 44, 45, 46, 53, 42];
++
++/**
++ * The statuses that only the Core server sends on one of the ten existing operations (01_specs
++ * §7.2, §7.19): the simulator's read handlers check no sign-in, and it ignores a wrong member of
++ * the optional start body. Each is marked `services: ['dems-core-server']`.
++ */
++const CORE_SERVER_ONLY_STATUSES: Record<string, number[]> = {
++  startSession: [422],
++  getCurrentSession: [401, 403],
++  getDeviceHealth: [401, 403],
++  getAudioStatus: [401, 403],
++  getVideoStatus: [401, 403],
++  getStorageStatus: [401, 403],
++};
++
++/**
+  * The ten operations as they were at the baseline commit `acaff20`, read from the committed
+  * openapi.json of that commit: `[operationId, method, path, path-parameter pattern, request schema
+  * and whether it is required, status → response schema]`. AC-B-13.
+@@ -140,14 +216,18 @@
+ const AUDIT_TYPES = Object.values(AuditType) as string[];
+ const AUDIT_NONE = Object.values(CoreApiAuditNone) as string[];
+ 
+-function shapeOf(operation: CoreApiOperation) {
++/**
++ * The shape the baseline is compared with. The responses are those a client gets without the Core
++ * server: what the in-app simulator and mock-core answer, which is what the baseline documented.
++ */
++function shapeOf(operation: CoreApiRegistryOperation) {
+   return [
+     operation.operationId,
+     operation.method,
+     operation.path,
+     operation.pathParam?.pattern.source ?? null,
+     operation.requestBody ? [operation.requestBody.schema, operation.requestBody.required] : null,
+-    Object.fromEntries(Object.entries(operation.responses).map(([status, spec]) => [status, spec.schema])),
++    Object.fromEntries(listCoreApiResponseStatuses(operation, CoreApiScope.OFFLINE).map((status) => [status, operation.responses[status]?.schema])),
+   ];
+ }
+ 
+@@ -157,25 +237,51 @@
+   return operation.pathParam ? operation.path.replace('{id}', id ?? 'MISSING') : operation.path;
+ }
+ 
+-describe('the registry after contract A: 37 operations', () => {
+-  it('holds the 10 existing operations first, then the 27 of areas 1, 2, 3 and 13, in spec order', () => {
+-    expect(CORE_API_OPERATIONS).toHaveLength(37);
++describe('AC-B-09: the registry holds exactly 75 operations', () => {
++  it('holds the 10 existing operations first, then the 65 that only the Core server answers, by area in spec order', () => {
++    expect(CORE_API_OPERATIONS).toHaveLength(75);
+     expect(CORE_API_OPERATIONS.slice(0, 10).map((operation) => operation.operationId)).toEqual(BASELINE.map(([id]) => id));
+-    expect(CORE_API_OPERATIONS.slice(10).map((operation) => operation.operationId)).toEqual(NEW_OPERATIONS.map(([, id]) => id));
++    // Areas 1, 2 and 3 (contract A), then areas 4 to 11 (contract C), then area 13 (contract A).
++    const byNumber = [...NEW_OPERATIONS.map(([number, id]) => [number, id] as const), ...CONTRACT_C_OPERATIONS.map(([number, id]) => [number, id] as const)].sort(
++      (a, b) => a[0] - b[0],
++    );
++    expect(CORE_API_OPERATIONS.slice(10).map((operation) => operation.operationId)).toEqual(byNumber.map(([, id]) => id));
+     expect(NEW_OPERATIONS).toHaveLength(27);
+     expect(NEW_OPERATIONS.map(([number]) => number)).toEqual([...Array.from({ length: 22 }, (_, index) => index + 2), 71, 72, 73, 74, 75]);
++    expect(CONTRACT_C_OPERATIONS).toHaveLength(38);
++    // Every number of 01_specs §7 from 1 to 75 is one operation of the registry.
++    const numbers = [...EXISTING_NUMBERS, ...byNumber.map(([number]) => number)].sort((a, b) => a - b);
++    expect(numbers).toEqual(Array.from({ length: 75 }, (_, index) => index + 1));
++    // Areas 4 to 11 are the numbers 24 to 70: 47 operations, 9 of them existing and 38 new.
++    expect(numbers.filter((number) => number >= 24 && number <= 70)).toHaveLength(47);
++    expect(EXISTING_NUMBERS.filter((number) => number >= 24 && number <= 70)).toHaveLength(9);
+   });
+ 
+-  it('names every operation and every method-and-path once; 14 are GET and 23 are POST', () => {
++  it('names every operation and every method-and-path once; 27 are GET and 48 are POST', () => {
+     const ids = CORE_API_OPERATIONS.map((operation) => operation.operationId);
+-    expect(new Set(ids).size).toBe(37);
++    expect(new Set(ids).size).toBe(75);
+     const routes = CORE_API_OPERATIONS.map((operation) => `${operation.method} ${operation.path}`);
+-    expect(new Set(routes).size).toBe(37);
+-    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(14);
+-    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(23);
++    expect(new Set(routes).size).toBe(75);
++    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(27);
++    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(48);
+     for (const id of ids) expect(findCoreApiOperation(id)?.operationId).toBe(id);
+   });
+ 
++  it('the 38 operations of areas 4 to 11 have the method, path, access rule and audit rule of the specification', () => {
++    for (const [, operationId, method, path, access, success, denial] of CONTRACT_C_OPERATIONS) {
++      const operation = findCoreApiOperation(operationId);
++      expect(operation, operationId).toBeDefined();
++      expect([operation?.method, operation?.path], operationId).toEqual([method, path]);
++      expect(describeCoreApiAccess(operation!.access), operationId).toBe(access);
++      expect(operation?.audit.success, operationId).toBe(success);
++      expect(operation?.audit.denial, operationId).toBe(denial);
++      expect(operation?.mode, operationId).toBe(CoreApiMode.LIVE);
++      expect(operation?.rbac, operationId).toBeUndefined();
++      expect(operation?.access.conditions, operationId).toBeUndefined();
++      expect(operation?.coreServerDescription, operationId).toBeUndefined();
++    }
++  });
++
+   it('the 27 new operations have the method, path, access rule and audit rule of the specification', () => {
+     for (const [, operationId, method, path, access, success] of NEW_OPERATIONS) {
+       const operation = findCoreApiOperation(operationId);
+@@ -192,10 +298,55 @@
+ 
+ describe('AC-B-13: the ten existing operations equal their baseline', () => {
+   it('path, method, path parameter, request schema and response schemas are those of acaff20', () => {
++    // Changed by design (W27; 01_specs §7.19): the baseline is compared with the statuses a client
++    // gets without the Core server. The statuses only the Core server sends are pinned below.
+     const now = CORE_API_OPERATIONS.slice(0, 10).map(shapeOf);
+     expect(now).toEqual(BASELINE.map((entry) => [...entry]));
+   });
+ 
++  it('what only the Core server sends on them: 401 and 403 on the five reads, 422 on startSession', () => {
++    const marked = Object.fromEntries(
++      CORE_API_OPERATIONS.slice(0, 10)
++        .map((operation) => [
++          operation.operationId,
++          Object.keys(operation.responses).map(Number).filter((status) => !isOfflineCoreApiResponse(operation.responses[status]!)),
++        ] as const)
++        .filter(([, statuses]) => statuses.length > 0),
++    );
++    expect(marked).toEqual(CORE_SERVER_ONLY_STATUSES);
++    for (const operation of CORE_API_OPERATIONS) {
++      for (const [status, spec] of Object.entries(operation.responses)) {
++        if (spec.services === undefined) continue;
++        // Only the Core server, only a refusal, and only on an operation the simulator answers too.
++        expect(spec.services, `${operation.operationId} ${status}`).toEqual([CoreApiService.CORE_SERVER]);
++        expect(spec.schema, `${operation.operationId} ${status}`).toBe('ApiError');
++        expect(operation.mode, operation.operationId).toBe(CoreApiMode.SIMULATED);
++        expect(CORE_API_EXAMPLES[operation.operationId]?.responses[Number(status)], `${operation.operationId} ${status}`).toBeDefined();
++      }
++      expect(listCoreApiResponseStatuses(operation), operation.operationId).toEqual(Object.keys(operation.responses).map(Number).sort((a, b) => a - b));
++    }
++    // health is PUBLIC: its only refusals are the two envelope-level ones, so it documents 200 alone.
++    expect(Object.keys(findCoreApiOperation('getServiceHealth')!.responses)).toEqual(['200']);
++    // Every operation that is not PUBLIC documents 401 now, the five reads included.
++    for (const operation of CORE_API_OPERATIONS) {
++      expect(operation.responses[401] !== undefined, operation.operationId).toBe(
++        operation.access.kind !== CoreApiAccessKind.PUBLIC || ['signIn', 'redeemPairingCode'].includes(operation.operationId),
++      );
++    }
++  });
++
++  it('each of the ten says in `coreServerDescription` what the Core server does; no other operation needs it', () => {
++    for (const operation of CORE_API_OPERATIONS.slice(0, 10)) {
++      const text = operation.coreServerDescription ?? '';
++      expect(text.length, operation.operationId).toBeGreaterThan(80);
++      expect(text, operation.operationId).not.toBe(operation.description);
++      expect(text, operation.operationId).toContain('Core server');
++      // KI-18: the stale sentence and the simulator-only wording stay out of the Core server's text.
++      expect(text, operation.operationId).not.toMatch(/served by mock-core|CORS allows|"Try it" is answered in the browser|Nothing leaves the machine/);
++    }
++    expect(CORE_API_OPERATIONS.slice(10).filter((operation) => operation.coreServerDescription !== undefined)).toEqual([]);
++  });
++
+   it('they keep their mode, their tag and their simulator rule; one is live, nine are simulated', () => {
+     const ten = CORE_API_OPERATIONS.slice(0, 10);
+     expect(ten.map((operation) => operation.mode)).toEqual(['live', ...Array<string>(9).fill('simulated')]);
+@@ -255,18 +406,22 @@
+       if (operation.method === 'get') expect(audit.success, operation.operationId).toBe(CoreApiAuditNone.READ);
+       else expect(audit.success, operation.operationId).not.toBe(CoreApiAuditNone.READ);
+     }
+-    // RB-5: only an export keeps EXPORT_DENIED.
++    // RB-5: only the three exports (operations 42, 61 and 62) keep EXPORT_DENIED.
+     expect(CORE_API_OPERATIONS.filter((operation) => operation.audit.denial === 'EXPORT_DENIED').map((operation) => operation.operationId)).toEqual([
+       'exportEvidence',
++      'exportAudit',
++      'exportLogs',
+     ]);
+     // The vocabulary this file relies on (D37).
+     expect(PERMISSIONS).toHaveLength(12);
+     expect(AUDIT_TYPES).toHaveLength(53);
+   });
+ 
+-  it('counts by access rule: 4 PUBLIC, 5 DEVICE, 10 AUTHENTICATED, 18 with one permission, no any-of yet', () => {
++  it('counts by access rule: 4 PUBLIC, 5 DEVICE, 25 AUTHENTICATED, 40 with one permission, 1 any-of', () => {
+     const count = (kind: string) => CORE_API_OPERATIONS.filter((operation) => operation.access.kind === kind).length;
+-    expect([count('PUBLIC'), count('DEVICE'), count('AUTHENTICATED'), count('PERMISSION'), count('ANY_OF')]).toEqual([4, 5, 10, 18, 0]);
++    expect([count('PUBLIC'), count('DEVICE'), count('AUTHENTICATED'), count('PERMISSION'), count('ANY_OF')]).toEqual([4, 5, 25, 40, 1]);
++    // 41 operations carry a permission (01_specs §7.19): the 40, and the one any-of.
++    expect(CORE_API_OPERATIONS.filter((operation) => coreApiAccessPermissions(operation.access).length > 0)).toHaveLength(41);
+     const byPermission = (permission: string) =>
+       CORE_API_OPERATIONS.filter((operation) => describeCoreApiAccess(operation.access) === permission).map((operation) => operation.operationId);
+     expect(byPermission('USER_ADMIN')).toEqual(['listUsers', 'assignUserRole', 'enableUser', 'disableUser']);
+@@ -274,8 +429,40 @@
+       'issuePairingCode', 'getPairingCodeStatus', 'cancelPairingCode', 'listPairedDevices', 'revokeDevice',
+     ]);
+     expect(byPermission('DEMO_CONTROL')).toEqual(['getDemoStatus', 'loadScenario', 'injectFault', 'clearFault', 'resetDemo']);
++    expect(byPermission('ANY-OF(EVIDENCE_REVIEW, MAINTENANCE)')).toEqual(['setStoragePolicy']);
+   });
+ 
++  it('every permission is enforced at the operations 01_specs §4.3 names, and at no other', () => {
++    // `[permission, operation numbers]` of the table of 01_specs §4.3; 55 is the any-of and counts for both.
++    const ENFORCED_AT: readonly [string, number[]][] = [
++      ['SESSION_START', [24, 25, 26, 28, 29, 30, 31, 32, 33, 37]],
++      ['SESSION_NOTE', [34, 35, 36]],
++      ['EVIDENCE_VIEW', [39, 40, 41]],
++      ['EVIDENCE_REVIEW', [43, 55]],
++      ['EVIDENCE_EXPORT', [42]],
++      ['AUDIT_EXPORT', [61, 62]],
++      ['DEVICE_MANAGE', [48]],
++      ['DIAGNOSTICS_RUN', [49, 50, 65]],
++      ['MAINTENANCE', [55, 66, 67]],
++      ['PAIRING_MANAGE', [15, 16, 17, 19, 20]],
++      ['USER_ADMIN', [11, 12, 13, 14]],
++      ['DEMO_CONTROL', [71, 72, 73, 74, 75]],
++    ];
++    expect(ENFORCED_AT.map(([permission]) => permission)).toEqual(PERMISSIONS);
++    const numberOf = new Map<string, number>([
++      ...BASELINE.map(([id], index) => [id, EXISTING_NUMBERS[index]!] as const),
++      ...NEW_OPERATIONS.map(([number, id]) => [id, number] as const),
++      ...CONTRACT_C_OPERATIONS.map(([number, id]) => [id, number] as const),
++    ]);
++    expect(numberOf.size).toBe(75);
++    for (const [permission, numbers] of ENFORCED_AT) {
++      const found = CORE_API_OPERATIONS.filter((operation) => (coreApiAccessPermissions(operation.access) as string[]).includes(permission))
++        .map((operation) => numberOf.get(operation.operationId))
++        .sort((a, b) => (a ?? 0) - (b ?? 0));
++      expect(found, permission).toEqual(numbers);
++    }
++  });
++
+   it('the conditions on top of a marker: the console rule, a device session, the demo flag', () => {
+     const withCondition = (condition: string) =>
+       CORE_API_OPERATIONS.filter((operation) => (operation.access.conditions ?? []).includes(condition as never)).map((operation) => operation.operationId);
+@@ -300,7 +487,22 @@
+     expect(also('issuePairingCode')).toEqual(['PAIRING_CODE_CLOSED']);
+     expect(also('redeemPairingCode')).toEqual(['PAIRING_FAILED', 'PAIRING_LOCKED', 'PAIRING_CODE_CLOSED']);
+     expect(also('injectFault')).toEqual(['AUDIT_CHAIN_DISCONTINUITY']);
++    // Contract C: the simulated boot of a recovery after a power failure; the failed verdict.
++    expect(also('recoverSession')).toEqual(['SYSTEM_BOOT', 'FAULT_CLEARED']);
++    expect(also('verifyEvidence')).toEqual(['EVIDENCE_VERIFY_FAILED']);
++    // No other operation of contract C names a second row type.
++    const withAlso = CONTRACT_C_OPERATIONS.map(([, id]) => id).filter((id) => also(id).length > 0);
++    expect(withAlso).toEqual(['recoverSession', 'verifyEvidence']);
+   });
++
++  it('NONE-P marks the eight commands whose simulator action writes no audit row: touchSession and seven of areas 4 to 11', () => {
++    const parity = CONTRACT_C_OPERATIONS.filter(([, , , , , success]) => success === CoreApiAuditNone.PARITY).map(([, id]) => id);
++    expect(parity).toEqual(['beginPrecheck', 'retryPrecheck', 'scanCaseNumber', 'setActiveCamera', 'resetMicClip', 'updateSettings', 'acknowledgeAlert']);
++    expect(CORE_API_OPERATIONS.filter((operation) => operation.audit.success === CoreApiAuditNone.PARITY).map((operation) => operation.operationId)).toEqual([
++      'touchSession',
++      ...parity,
++    ]);
++  });
+ });
+ 
+ describe('answering services and the two scopes (AR-1)', () => {
+@@ -318,14 +520,20 @@
+ 
+   it('the offline scope is the ten existing operations; the all scope is every one', () => {
+     expect(listCoreApiOperations(CoreApiScope.OFFLINE).map((operation) => operation.operationId)).toEqual(BASELINE.map(([id]) => id));
+-    expect(listCoreApiOperations(CoreApiScope.ALL)).toHaveLength(37);
+-    expect(listCoreApiOperations()).toHaveLength(37);
++    expect(listCoreApiOperations(CoreApiScope.ALL)).toHaveLength(75);
++    expect(listCoreApiOperations()).toHaveLength(75);
+     expect(CORE_API_OPERATIONS.filter(isOfflineCoreApiOperation)).toHaveLength(10);
+   });
+ 
+   it('the new tags hold the new areas', () => {
+     const byTag = (tag: string) => CORE_API_OPERATIONS.filter((operation) => operation.tag === tag).length;
+     expect([byTag(CoreApiTag.IDENTITY), byTag(CoreApiTag.ADMINISTRATION), byTag(CoreApiTag.PAIRING), byTag(CoreApiTag.DEMO)]).toEqual([8, 5, 9, 5]);
++    // Areas 4 to 7 extend the four existing tags; areas 8 to 11 have a tag each.
++    expect([byTag(CoreApiTag.SESSION), byTag(CoreApiTag.EVIDENCE), byTag(CoreApiTag.DEVICE), byTag(CoreApiTag.STORAGE)]).toEqual([4 + 11, 1 + 4, 3 + 6, 1 + 2]);
++    expect([byTag(CoreApiTag.NETWORK), byTag(CoreApiTag.SECURITY), byTag(CoreApiTag.SYSTEM), byTag(CoreApiTag.ALERTS)]).toEqual([2, 6, 5, 2]);
++    expect(byTag(CoreApiTag.SERVICE)).toBe(1);
++    expect(byTag(CoreApiTag.REALTIME)).toBe(0);
++    expect(Object.values(CoreApiTag).reduce((sum, tag) => sum + byTag(tag), 0)).toBe(75);
+   });
+ });
+ 
+@@ -355,22 +563,42 @@
+       }
+     }
+     // Schemas reached only through another one.
+-    const nested: CoreApiSchemaName[] = ['PrecheckItem', 'SessionResource', 'VideoTrackStatus', 'AudioChannelStatus', 'Operator', 'PairingCodeStatus', 'CoreIdentity', 'FaultTarget'];
++    const nested: CoreApiSchemaName[] = [
++      'PrecheckItem', 'SessionResource', 'VideoTrackStatus', 'AudioChannelStatus', 'Operator', 'PairingCodeStatus', 'CoreIdentity', 'FaultTarget',
++      // Contract C: the media reference of an evidence item, and the two parts of the chain status.
++      'EvidenceMediaRef', 'ChainVerifyResult', 'AuditChainLineageEntry',
++    ];
+     for (const name of nested) used.add(name);
+     // Changed by design (W22, contract B): the registry also holds the Core state on the wire (the
+     // 37 schemas of `state-slices.ts`) and the messages of the socket (the 11 of
+-    // `realtime-messages.ts`). No operation refers to them yet: the socket uses them, and
+-    // test/api-state-slices.test.ts and test/api-realtime.test.ts hold each one to its use.
++    // `realtime-messages.ts`). The socket uses them, and test/api-state-slices.test.ts and
++    // test/api-realtime.test.ts hold each one to its use.
+     const socket = [...Object.keys(STATE_SCHEMAS), ...Object.keys(REALTIME_SCHEMAS)];
+     expect(socket).toHaveLength(37 + 11);
+     for (const name of socket) used.add(name);
+     expect(Object.keys(CORE_API_SCHEMAS).filter((name) => !used.has(name))).toEqual([]);
+-    expect(Object.keys(CORE_API_SCHEMAS)).toHaveLength(50 + 37 + 11);
+-    // The 50 of contract A stay first and in their order: the socket's schemas were appended.
+-    expect(Object.keys(CORE_API_SCHEMAS).slice(50)).toEqual(socket);
++    // Changed by design (W27, contract C): 32 schemas of areas 4 to 11 follow, appended.
++    expect(Object.keys(CORE_API_SCHEMAS)).toHaveLength(50 + 37 + 11 + 32);
++    // The 50 of contract A stay first and in their order, then the socket's schemas.
++    expect(Object.keys(CORE_API_SCHEMAS).slice(50, 50 + 37 + 11)).toEqual(socket);
++    expect(Object.keys(CORE_API_SCHEMAS).slice(50 + 37 + 11)).toEqual([
++      'SessionMarkerRequest', 'SessionNoteRequest', 'CaseNumberScan', 'PageQuery', 'SessionHistoryPage',
++      'EvidenceListQuery', 'EvidencePage', 'EvidenceMediaRef', 'EvidenceDetail', 'EvidenceVerifyResult',
++      'DeviceInventory', 'ActiveCameraRequest', 'MicClipResetRequest',
++      'StorageDetail', 'StoragePolicyRequest',
++      'NetworkStatus', 'TimeStatus',
++      'SecurityStatus', 'AuditListQuery', 'AuditPage', 'ChainVerifyResult', 'AuditChainLineageEntry', 'AuditChainStatus', 'AuditExportRequest', 'AuditExportAccepted', 'EventListQuery', 'EventPage',
++      'SystemStatus', 'DiagnosticsRunStarted', 'ServicesRestarted', 'SettingsUpdateRequest',
++      'AlertList',
++    ]);
++    // API-6: a read of contract C answers slices, so two operations answer a slice component directly.
++    const answersSlice = CORE_API_OPERATIONS.filter((operation) => Object.values(operation.responses).some((spec) => spec.schema?.endsWith('Slice')));
++    expect(answersSlice.map((operation) => operation.operationId)).toEqual(['setStoragePolicy', 'updateSettings']);
+   });
+ 
+-  it('a success has a schema unless it is 204; every refusal is the error envelope', () => {
++  it('a success has a schema unless it is 204 or the 202 of the software update; every refusal is the error envelope', () => {
++    // Changed by design (W27): 01_specs §7.14 gives `startSoftwareUpdate` a 202 without a body.
++    const BODILESS_202 = ['startSoftwareUpdate'];
+     for (const operation of CORE_API_OPERATIONS) {
+       const statuses = Object.keys(operation.responses).map(Number);
+       expect(statuses.filter((status) => status >= 200 && status <= 299).length, operation.operationId).toBeGreaterThan(0);
+@@ -378,14 +606,90 @@
+         const spec = operation.responses[status];
+         expect(spec?.description.length, `${operation.operationId} ${status}`).toBeGreaterThan(0);
+         if (status === 204) expect(spec?.schema, `${operation.operationId} ${status}`).toBeUndefined();
++        else if (status === 202 && BODILESS_202.includes(operation.operationId)) expect(spec?.schema, `${operation.operationId} ${status}`).toBeUndefined();
+         else if (status < 300) expect(spec?.schema, `${operation.operationId} ${status}`).toBeDefined();
+         else expect(spec?.schema, `${operation.operationId} ${status}`).toBe('ApiError');
+       }
+     }
+     const bodiless = CORE_API_OPERATIONS.filter((operation) => operation.responses[204]).map((operation) => operation.operationId);
+-    expect(bodiless).toEqual(['signOut', 'cancelPairingCode', 'unpairDevice', 'injectFault', 'clearFault']);
++    expect(bodiless).toEqual([
++      'signOut', 'cancelPairingCode', 'unpairDevice',
++      'cancelSession', 'addSessionMarker', 'addSessionNote', 'takeSessionSnapshot', 'acknowledgeSessionSummary',
++      'archiveEvidence', 'restartDevice', 'testDeviceSignal', 'identifyDevice', 'setActiveCamera', 'resetMicClip', 'acknowledgeAlert',
++      'injectFault', 'clearFault',
++    ]);
+   });
+ 
++  it('the status of every success is the one 01_specs §7 gives it', () => {
++    const success = (operationId: string) =>
++      Object.keys(findCoreApiOperation(operationId)!.responses).map(Number).filter((status) => status < 300).map((status) => [status, findCoreApiOperation(operationId)!.responses[status]?.schema ?? null]);
++    const EXPECTED: Record<string, [number, string | null][]> = {
++      beginPrecheck: [[202, 'SessionCommandResponse']],
++      retryPrecheck: [[202, 'SessionCommandResponse']],
++      acknowledgePrecheckWarnings: [[200, 'SessionCommandResponse']],
++      cancelSession: [[204, null]],
++      scanCaseNumber: [[200, 'CaseNumberScan']],
++      recoverSession: [[202, 'SessionCommandResponse']],
++      addSessionMarker: [[204, null]],
++      addSessionNote: [[204, null]],
++      takeSessionSnapshot: [[204, null]],
++      acknowledgeSessionSummary: [[204, null]],
++      listSessionHistory: [[200, 'SessionHistoryPage']],
++      listEvidence: [[200, 'EvidencePage']],
++      getEvidence: [[200, 'EvidenceDetail']],
++      verifyEvidence: [[200, 'EvidenceVerifyResult']],
++      archiveEvidence: [[204, null]],
++      getDeviceInventory: [[200, 'DeviceInventory']],
++      restartDevice: [[204, null]],
++      testDeviceSignal: [[204, null]],
++      identifyDevice: [[204, null]],
++      setActiveCamera: [[204, null]],
++      resetMicClip: [[204, null]],
++      getStorageDetail: [[200, 'StorageDetail']],
++      setStoragePolicy: [[200, 'StoragePolicySlice']],
++      getNetworkStatus: [[200, 'NetworkStatus']],
++      getTimeStatus: [[200, 'TimeStatus']],
++      getSecurityStatus: [[200, 'SecurityStatus']],
++      listAuditRows: [[200, 'AuditPage']],
++      verifyAuditChain: [[200, 'AuditChainStatus']],
++      exportAudit: [[202, 'AuditExportAccepted']],
++      exportLogs: [[202, 'AuditExportAccepted']],
++      listEvents: [[200, 'EventPage']],
++      getSystemStatus: [[200, 'SystemStatus']],
++      runDiagnostics: [[202, 'DiagnosticsRunStarted']],
++      restartServices: [[200, 'ServicesRestarted']],
++      startSoftwareUpdate: [[202, null]],
++      updateSettings: [[200, 'SettingsSlice']],
++      listAlerts: [[200, 'AlertList']],
++      acknowledgeAlert: [[204, null]],
++    };
++    expect(Object.keys(EXPECTED)).toEqual(CONTRACT_C_OPERATIONS.map(([, id]) => id));
++    for (const [operationId, expected] of Object.entries(EXPECTED)) expect(success(operationId), operationId).toEqual(expected);
++  });
++
++  it('the specific refusals of 01_specs §7.8 to §7.15: 404 for an unknown resource, 409 for a state conflict', () => {
++    const specific = (operationId: string) =>
++      Object.keys(findCoreApiOperation(operationId)!.responses).map(Number).filter((status) => status === 404 || status === 409);
++    const EXPECTED: Record<string, number[]> = {
++      beginPrecheck: [404, 409], retryPrecheck: [404, 409], acknowledgePrecheckWarnings: [404, 409], cancelSession: [404, 409],
++      recoverSession: [404, 409], addSessionMarker: [404, 409], addSessionNote: [404, 409], takeSessionSnapshot: [404, 409],
++      getEvidence: [404], verifyEvidence: [404], archiveEvidence: [404, 409],
++      restartDevice: [404, 409], testDeviceSignal: [404, 409], identifyDevice: [404],
++      restartServices: [409], startSoftwareUpdate: [409],
++    };
++    for (const [, operationId] of CONTRACT_C_OPERATIONS) expect(specific(operationId), operationId).toEqual(EXPECTED[operationId] ?? []);
++    // The codes each 409 names, as the hosted simulator action raises them (01_specs §7.2).
++    const codes = (operationId: string) => findCoreApiOperation(operationId)!.responses[409]?.description.match(/[A-Z][A-Z_]{4,}/g) ?? [];
++    expect(codes('restartDevice')).toEqual(['RECORDING_ACTIVE', 'COMMAND_UNSUPPORTED']);
++    expect(codes('testDeviceSignal')).toEqual(['COMMAND_UNSUPPORTED']);
++    expect(codes('archiveEvidence')).toEqual(['RECORDED', 'NOT_SEALED']);
++    expect(codes('restartServices')).toEqual(['SESSION_ACTIVE']);
++    expect(codes('startSoftwareUpdate')).toEqual(['SESSION_ACTIVE']);
++    expect(codes('retryPrecheck')).toEqual(['PRECHECK', 'INVALID_STATE', 'PRECHECK_RUNNING']);
++    // The two exports answer 422 INVALID_REASON for a reason that is too short.
++    for (const id of ['exportAudit', 'exportLogs']) expect(findCoreApiOperation(id)!.responses[422]?.description, id).toContain('INVALID_REASON');
++  });
++
+   it('a new operation documents the common refusals of 01_specs §7.3 that its own rules can produce', () => {
+     for (const operation of CORE_API_OPERATIONS.slice(10)) {
+       const documented = (status: number) => operation.responses[status] !== undefined;
+@@ -395,8 +699,16 @@
+       if (operation.access.kind === CoreApiAccessKind.PERMISSION) {
+         expect(operation.responses[403]?.description, operation.operationId).toContain(`${operation.access.permission} (NOT_PERMITTED`);
+       }
++      if (operation.access.kind === CoreApiAccessKind.ANY_OF) {
++        for (const permission of operation.access.permissions) expect(operation.responses[403]?.description, operation.operationId).toContain(permission);
++        expect(operation.responses[403]?.description, operation.operationId).toContain('(NOT_PERMITTED');
++      }
+       expect(documented(400), `${operation.operationId} 400`).toBe(operation.requestBody !== undefined);
+-      expect(documented(422), `${operation.operationId} 422`).toBe(operation.requestBody !== undefined);
++      // Changed by design (W27; SR-64): a query and a path parameter are validated like a body, so an
++      // operation with either documents 422 too. Contract A had no operation with a query, and none
++      // with a path parameter and no body.
++      const validated = operation.requestBody !== undefined || operation.query !== undefined || operation.pathParam !== undefined;
++      expect(documented(422), `${operation.operationId} 422`).toBe(validated);
+       // Never per operation: these are defined once (CORE_API_ENVELOPE_RESPONSES).
+       for (const status of [405, 413, 429, 500, 503]) expect(documented(status), `${operation.operationId} ${status}`).toBe(false);
+     }
+@@ -416,7 +728,7 @@
+   });
+ });
+ 
+-describe('routing over 37 operations', () => {
++describe('routing over 75 operations', () => {
+   it('a concrete path of one operation matches that operation and no other route', () => {
+     for (const operation of CORE_API_OPERATIONS) {
+       const path = concretePath(operation);
+@@ -437,6 +749,36 @@
+     expect(matchCoreApiOperation('GET', '/api/v1/pairing/code/cancel')).toBeNull();
+     expect(matchCoreApiOperation('POST', '/api/v1/admin/users/OPR-003/role')?.params).toEqual({ id: 'OPR-003' });
+   });
++
++  it('the literal routes of areas 4 to 11 never match a templated one', () => {
++    const id = (method: string, path: string) => matchCoreApiOperation(method, path)?.operation.operationId ?? null;
++    // `case-number`, `current` and `history` are literal segments where other routes have `{id}`.
++    expect(id('POST', '/api/v1/session/case-number')).toBe('scanCaseNumber');
++    expect(id('GET', '/api/v1/session/history')).toBe('listSessionHistory');
++    expect(id('GET', '/api/v1/session/current')).toBe('getCurrentSession');
++    expect(id('POST', '/api/v1/session/SES-20261001-0024/precheck')).toBe('beginPrecheck');
++    expect(id('POST', '/api/v1/session/SES-20261001-0024/precheck/retry')).toBe('retryPrecheck');
++    expect(id('POST', '/api/v1/session/SES-20261001-0024/summary/acknowledge')).toBe('acknowledgeSessionSummary');
++    // The list and the item of evidence differ in length; the three evidence commands in their last segment.
++    expect(id('GET', '/api/v1/evidence')).toBe('listEvidence');
++    expect(id('GET', '/api/v1/evidence/EV-20260930-0004')).toBe('getEvidence');
++    expect(id('POST', '/api/v1/evidence/EV-20260930-0004/verify')).toBe('verifyEvidence');
++    expect(id('POST', '/api/v1/evidence/EV-20260930-0004/export')).toBe('exportEvidence');
++    expect(id('GET', '/api/v1/device/health')).toBe('getDeviceHealth');
++    expect(id('GET', '/api/v1/device/inventory')).toBe('getDeviceInventory');
++    expect(id('POST', '/api/v1/device/FRONT-PANEL/identify')).toBe('identifyDevice');
++    expect(id('GET', '/api/v1/audit')).toBe('listAuditRows');
++    expect(id('GET', '/api/v1/audit/chain')).toBe('verifyAuditChain');
++    expect(id('POST', '/api/v1/audit/export')).toBe('exportAudit');
++    // A read has no POST and a command has no GET.
++    expect(id('POST', '/api/v1/audit/chain')).toBeNull();
++    expect(id('GET', '/api/v1/session/SES-20261001-0024/precheck')).toBeNull();
++    // 01_specs §11: no route serves media or a file.
++    for (const path of ['/api/v1/evidence/EV-20260930-0004/media', '/api/v1/evidence/EV-20260930-0004/tracks/VIDEO-01', '/api/v1/media', '/api/v1/audit/export/EXP-000032']) {
++      expect(id('GET', path), path).toBeNull();
++    }
++    expect(CORE_API_OPERATIONS.filter((operation) => /media|file|download|upload/i.test(operation.path))).toEqual([]);
++  });
+ });
+ 
+ // ── D36, contract gap 1: the table with literal types ────────────────────────────────────────────
+@@ -451,10 +793,13 @@
+     expectTypeOf(CORE_API_OPERATIONS).toEqualTypeOf<readonly CoreApiRegistryOperation[]>();
+     expectTypeOf<Table>().toExtend<readonly CoreApiRegistryOperation[]>();
+     expectTypeOf<Table>().toExtend<readonly CoreApiOperation[]>();
+-    expectTypeOf<Table['length']>().toEqualTypeOf<37>();
++    expectTypeOf<Table['length']>().toEqualTypeOf<75>();
+     expectTypeOf<Table[0]['operationId']>().toEqualTypeOf<'getServiceHealth'>();
+     expectTypeOf<Table[10]['operationId']>().toEqualTypeOf<'signIn'>();
+-    expectTypeOf<Table[36]['path']>().toEqualTypeOf<'/api/v1/demo/reset'>();
++    // Areas 4 to 11 sit between pairing and the demo controls, which stay last.
++    expectTypeOf<Table[32]['operationId']>().toEqualTypeOf<'beginPrecheck'>();
++    expectTypeOf<Table[69]['operationId']>().toEqualTypeOf<'acknowledgeAlert'>();
++    expectTypeOf<Table[74]['path']>().toEqualTypeOf<'/api/v1/demo/reset'>();
+   });
+ 
+   it('gives the typed client one typed call per operation', async () => {
+@@ -473,13 +818,37 @@
+     // A success without a body has no data.
+     expectTypeOf<CoreCallSuccessOf<Table, 'signOut'>>().toEqualTypeOf<CoreCallSuccess<204, undefined>>();
+ 
++    // Contract C: a body, an optional body, a path parameter without a body, a query, a slice as the answer.
++    expectTypeOf<'verifyAuditChain'>().toExtend<Id>();
++    expectTypeOf<CoreCallInput<Table, 'addSessionNote'>['body']>().toEqualTypeOf<SessionNoteRequest>();
++    expectTypeOf<CoreCallInput<Table, 'addSessionNote'>['params']>().toEqualTypeOf<{ readonly id: string }>();
++    expectTypeOf<CoreCallInput<Table, 'setStoragePolicy'>['body']>().toEqualTypeOf<StoragePolicyRequest>();
++    expectTypeOf<CoreCallInput<Table, 'cancelSession'>['body']>().toEqualTypeOf<undefined>();
++    expectTypeOf<CoreCallSuccessOf<Table, 'cancelSession'>>().toEqualTypeOf<CoreCallSuccess<204, undefined>>();
++    expectTypeOf<CoreCallSuccessOf<Table, 'startSoftwareUpdate'>>().toEqualTypeOf<CoreCallSuccess<202, undefined>>();
++    expectTypeOf<CoreCallSuccessOf<Table, 'listEvidence'>>().toEqualTypeOf<CoreCallSuccess<200, EvidencePage>>();
++    expectTypeOf<CoreCallSuccessOf<Table, 'setStoragePolicy'>>().toEqualTypeOf<CoreCallSuccess<200, StoragePolicySliceBody>>();
++    // A query schema types the query: the members of the schema, and `limit` as a number or its decimal text.
++    type AuditQuery = NonNullable<CoreCallInput<Table, 'listAuditRows'>['query']>;
++    expectTypeOf<AuditQuery['order']>().toEqualTypeOf<AuditListQuery['order']>();
++    expectTypeOf<AuditQuery['limit']>().toEqualTypeOf<number | string | undefined>();
++    expectTypeOf<AuditListQuery['limit']>().toEqualTypeOf<number | undefined>();
++
+     const client = createCoreClient({ baseUrl: 'http://127.0.0.1:4420', credentials: 'browser-cookie', fetch: noAnswer, operations: CORE_API_OPERATION_TABLE });
+-    expect(client.operationIds).toHaveLength(37);
++    // AC-C-01: the callable operation count of the typed client is the registry's, 75.
++    expect(client.operationIds).toHaveLength(75);
++    expect(client.operationIds).toEqual(CORE_API_OPERATIONS.map((operation) => operation.operationId));
+     const signedOut = await client.call('signOut', { body: { reason: 'LOCK' } });
+     expectTypeOf(signedOut).toEqualTypeOf<CoreCallSuccess<204, undefined> | CoreCallFailure>();
+     expect(signedOut).toMatchObject({ ok: true, status: 204, data: undefined });
+     // An optional body: the input itself is optional.
+     expect(await client.call('unpairDevice')).toMatchObject({ ok: true, status: 204 });
++    // Contract C, through the literal table: a path parameter and a body; a path parameter alone.
++    expect(await client.call('addSessionNote', { params: { id: 'SES-20261001-0024' }, body: { text: 'Subject confirms the statement.' } })).toMatchObject({
++      ok: true,
++      status: 204,
++    });
++    expect(await client.call('acknowledgeAlert', { params: { id: 'ALR-000001' } })).toMatchObject({ ok: true, status: 204 });
+ 
+     // Never run: each line must be a compile error.
+     const misuse = (): void => {
+@@ -491,12 +860,16 @@
+       void client.call('signIn');
+       // @ts-expect-error the body has the type of its schema
+       void client.call('assignUserRole', { params: { id: 'OPR-003' }, body: { role: 'ADMIN' } });
++      // @ts-expect-error a query member has the type of its schema
++      void client.call('listAuditRows', { query: { order: 'NEWEST' } });
++      // @ts-expect-error the path parameter of a command without a body is required
++      void client.call('cancelSession');
+     };
+     void misuse;
+   });
+ });
+ 
+-describe('the typed client calls all 37 operations (AC-C-01 at the size of contract A)', () => {
++describe('the typed client calls all 75 operations (AC-C-01)', () => {
+   it('returns every documented example as a success or as the error envelope, a success without a body included', async () => {
+     // The widened view on purpose: the loop passes operation IDs as plain strings.
+     const operations: readonly CoreApiOperation[] = CORE_API_OPERATIONS;
+@@ -529,8 +902,33 @@
+       }
+     }
+     expect(exchanges).toBe(CORE_API_OPERATIONS.reduce((sum, operation) => sum + Object.keys(operation.responses).length, 0));
+-    expect(exchanges).toBeGreaterThan(150);
++    expect(exchanges).toBeGreaterThan(330);
+   });
++
++  it('a list read sends the query its schema parses, and nothing when the caller gives none', async () => {
++    const urls: string[] = [];
++    const fetch: CoreFetch = async (url) => {
++      urls.push(String(url));
++      return { status: 401, headers: { get: () => null }, text: async () => JSON.stringify({ error: { code: 'NOT_SIGNED_IN', message: 'Sign in first.' } }) };
++    };
++    const operations: readonly CoreApiOperation[] = CORE_API_OPERATIONS;
++    const client = createCoreClient({ baseUrl: 'http://127.0.0.1:4420', credentials: 'browser-cookie', fetch, operations });
++    await client.call('listEvidence');
++    await client.call('listEvidence', { query: { status: 'SEALED', q: '  0930-0004 ', limit: 20 } });
++    await client.call('listAuditRows', { query: { order: 'DESC', actorId: 'OPR-002', cursor: '81', limit: '200' } });
++    await client.call('listSessionHistory', { query: { limit: 5, stray: 'x' } });
++    expect(urls).toEqual([
++      'http://127.0.0.1:4420/api/v1/evidence',
++      'http://127.0.0.1:4420/api/v1/evidence?status=SEALED&q=0930-0004&limit=20',
++      'http://127.0.0.1:4420/api/v1/audit?actorId=OPR-002&order=DESC&cursor=81&limit=200',
++      'http://127.0.0.1:4420/api/v1/session/history?limit=5',
++    ]);
++    // A query the schema refuses is a programming error, before any request.
++    for (const query of [{ limit: 201 }, { limit: 0 }, { status: 'OPEN' }, { cursor: 'ses_abc' }, { q: '' }]) {
++      await expect(client.call('listEvidence', { query }), JSON.stringify(query)).rejects.toThrow(/does not match EvidenceListQuery/);
++    }
++    expect(urls).toHaveLength(4);
++  });
+ });
+ 
+ // ── D36, contract gap 2: the `query` member ──────────────────────────────────────────────────────
+@@ -555,7 +953,12 @@
+     expectTypeOf<NonNullable<CoreApiOperation['query']>>().toEqualTypeOf<{ schema: CoreApiSchemaName }>();
+     expectTypeOf<CoreCallInput<typeof LIST, 'listThings'>['query']>().toEqualTypeOf<{ acknowledgeWarnings?: boolean | undefined } | undefined>();
+     expect(LIST[0].query.schema in CORE_API_SCHEMAS).toBe(true);
+-    // No operation of contract A has a query; the first list read with one comes with contract C.
+-    expect(CORE_API_OPERATIONS.filter((operation) => operation.query)).toEqual([]);
++    // Changed by design (W27): contract C brings the list reads. Four operations name a query schema.
++    expect(CORE_API_OPERATIONS.filter((operation) => operation.query).map((operation) => [operation.operationId, operation.query?.schema])).toEqual([
++      ['listSessionHistory', 'PageQuery'],
++      ['listEvidence', 'EvidenceListQuery'],
++      ['listAuditRows', 'AuditListQuery'],
++      ['listEvents', 'EventListQuery'],
++    ]);
+   });
+ });
+--- packages/shared/test/api-state-slices.test.ts	2026-10-04 09:25:53
++++ packages/shared/test/api-state-slices.test.ts	2026-10-04 10:36:30
+@@ -21,6 +21,7 @@
+   StateSliceDelivery,
+   UNREPLICATED_SLICE_NAMES,
+   createOpenApiDocument,
++  isWellFormedText,
+   pickReplicatedState,
+   stateSliceSchemaName,
+   type ActiveSessionBody,
+@@ -776,46 +777,79 @@
+     expect(AudioSliceSchema.safeParse({ channels: { ...audio.channels, 'AUDIO-01': { ...frame, dbfs: -90, peak: 0 } } }).success).toBe(true);
+   });
+ 
+-  it('text is taken as the engine holds it: a slice is output, and the text rule API-13 guards input only', () => {
+-    // The engine cuts two texts by UTF-16 code units: the timeline entry of a note longer than 140
+-    // (sim/session-machine.ts, `addNoteTransition`) and an export destination longer than 120
+-    // (sim/evidence-actions.ts). A surrogate pair at the cut is split, so well-formed input can
+-    // leave ill-formed text in the state (finding F-1 of implementation/22_contract_b.md). Whatever
+-    // the engine made of these inputs, every slice is accepted unchanged and survives the wire.
++  it('text carries the text rule API-13: what well-formed input leaves in the state is well-formed, and a slice with ill-formed text is refused', () => {
++    // Changed by design (W27; the ruling on finding F-1 of implementation/22_contract_b.md). Contract B
++    // took slice text as the engine held it, because the engine cut two texts by UTF-16 code units and
++    // could split a surrogate pair: the timeline entry of a note longer than 140, an export destination
++    // longer than 120. The engine now cuts on a character boundary (`sim/text-cut.ts`), so the rule is
++    // on for slice text: one line, `text()` in `state-slices.ts`.
+     const h = harness('recording');
+     const { actions } = h.sim;
+     const pair = '\u{1F600}';
+     actions.signInWithBiometric('OPR-001');
++    // The pair sits on the cut: code units 139 and 140 of the note.
+     actions.addNote(`${'a'.repeat(138)}${pair} and the rest of a long note`);
++    actions.addMarker(`${'m'.repeat(79)}${pair} and more`);
+     actions.signOut();
+     actions.signInWithSecurityKey();
+     const destination = `${'d'.repeat(119)}${pair} and more`;
+-    // The contract accepts the destination: it is well-formed.
+-    expect(CORE_API_SCHEMAS.EvidenceExportRequest.safeParse({ reason: 'Case file transfer', destination }).success).toBe(true);
++    // The contract refuses a destination of more than 120 UTF-16 code units, so a server that validates
++    // never hands the engine a text to cut. The same text one unit under the bound passes. The engine is
++    // still called with the long one, as the in-app simulator can be.
++    expect(destination.length).toBe(130);
++    expect(CORE_API_SCHEMAS.EvidenceExportRequest.safeParse({ reason: 'Case file transfer', destination }).success).toBe(false);
++    expect(CORE_API_SCHEMAS.AuditExportRequest.safeParse({ reason: 'Quarterly audit', destination }).success).toBe(false);
++    expect(CORE_API_SCHEMAS.EvidenceExportRequest.safeParse({ reason: 'Case file transfer', destination: `${'d'.repeat(118)}${pair}` }).success).toBe(true);
+     expect(actions.exportEvidence('EV-20260930-0004', { reason: 'Case file transfer', destination })).toMatchObject({ ok: true });
+     expect(actions.exportAudit({ reason: 'Quarterly audit', destination })).toMatchObject({ ok: true });
+     expect(h.sim.errors()).toEqual([]);
+-    expect(refusals([{ label: 'texts cut by the engine', state: h.state() }])).toEqual([]);
+-    const sent = wire(h.state());
+-    expect(sent).toEqual(h.state());
++    // Every text the engine cut is well-formed: the whole character was left out.
++    const cut = h.state();
++    expect(cut.session?.timeline.some((item) => item.detail === `${'a'.repeat(138)}…`)).toBe(true);
++    expect(cut.audit.rows.filter((row) => row.details.destination === 'd'.repeat(119))).toHaveLength(2);
++    expect(cut.audit.rows.some((row) => row.details.label === 'm'.repeat(79))).toBe(true);
++    const strings: string[] = [];
++    const collect = (value: unknown): void => {
++      if (typeof value === 'string') strings.push(value);
++      else if (Array.isArray(value)) value.forEach(collect);
++      else if (value && typeof value === 'object') {
++        for (const [key, child] of Object.entries(value)) {
++          strings.push(key);
++          collect(child);
++        }
++      }
++    };
++    collect(cut);
++    expect(strings.filter((text) => !isWellFormedText(text))).toEqual([]);
++    // The note itself is kept whole, pair included; only its timeline line was cut.
++    expect(strings.some((text) => text.includes(pair))).toBe(true);
++    // So every slice of that state passes the rule and survives the wire.
++    expect(refusals([{ label: 'texts cut by the engine', state: cut }])).toEqual([]);
++    const sent = wire(cut);
++    expect(sent).toEqual(cut);
+     // The chain of the parsed slice still verifies: the hashed text is the text that travelled.
+     const audit = REPLICATED_SLICE_SCHEMAS.audit.parse(sent.audit);
+     expect(verifyAuditChain(audit)).toMatchObject({ ok: true });
+ 
+-    // Directly: an unpaired surrogate or U+0000 in a free text of a real slice does not make the slice unreadable.
++    // Directly: an unpaired surrogate or U+0000 in a free text of a slice, or in a key or a value of an
++    // open map, is refused. Such a row could not be stored as it was hashed (03_database_contract §13.1).
+     const session = sent.session;
+     if (!session) throw new Error('the recording scenario has a session');
++    const row = sent.audit.rows[0];
+     for (const bad of ['a\ud83d', '\udc00b', 'a\u0000b']) {
+-      const notes = { ...session, stopReason: bad, notes: [{ id: 'NOTE-000099', at: AT, authorId: 'OPR-001', text: bad }] };
+-      expect(REPLICATED_SLICE_SCHEMAS.session.parse(notes)).toStrictEqual(notes);
+-      const row = sent.audit.rows[0];
+-      const altered = { ...sent.audit, rows: [{ ...row, message: bad, details: { destination: bad } }] };
+-      expect(REPLICATED_SLICE_SCHEMAS.audit.parse(altered)).toStrictEqual(altered);
++      expect(refuses('session', { ...session, stopReason: bad }), JSON.stringify(bad)).toBe(true);
++      expect(refuses('session', { ...session, notes: [{ id: 'NOTE-000099', at: AT, authorId: 'OPR-001', text: bad }] }), JSON.stringify(bad)).toBe(true);
++      expect(refuses('audit', { ...sent.audit, rows: [{ ...row, message: bad }] }), JSON.stringify(bad)).toBe(true);
++      expect(refuses('audit', { ...sent.audit, rows: [{ ...row, details: { destination: bad } }] }), JSON.stringify(bad)).toBe(true);
++      expect(refuses('audit', { ...sent.audit, rows: [{ ...row, details: { [bad]: 'x' } }] }), JSON.stringify(bad)).toBe(true);
+     }
++    // The same members with well-formed text, a surrogate pair included, are accepted unchanged.
++    const fine = { ...session, stopReason: `Interview completed ${pair}`, notes: [{ id: 'NOTE-000099', at: AT, authorId: 'OPR-001', text: pair }] };
++    expect(REPLICATED_SLICE_SCHEMAS.session.parse(fine)).toStrictEqual(fine);
+     // Identifiers and value sets stay closed whatever the text holds.
+     expect(refuses('session', { ...session, id: 'SES-20261001-0024\u0000' })).toBe(true);
+     expect(refuses('session', { ...session, state: 'RECORDING\ud83d' })).toBe(true);
+-    // An operator's members come from the `Operator` schema and keep its rule: they are seeded, never typed.
++    // An operator's members come from the `Operator` schema and carry the same rule.
+     const operator = sent.operators[0];
+     expect(refuses('operators', [{ ...operator, name: 'a\u0000b' }])).toBe(true);
+   });
+--- packages/shared/test/api-text-rule.test.ts	2026-10-04 08:31:48
++++ packages/shared/test/api-text-rule.test.ts	2026-10-04 10:35:45
+@@ -151,15 +151,52 @@
+         }
+       }
+     }
+-    // 13 operations of contract A and 4 of the existing ten take a body.
+-    expect(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).map((operation) => operation.operationId)).toHaveLength(17);
+-    expect(new Set(checked).size).toBeGreaterThanOrEqual(20);
++    // Changed by design (W27): 13 operations of contract A, 4 of the existing ten and 8 of contract C
++    // take a body; 4 of contract C take a query.
++    expect(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).map((operation) => operation.operationId)).toHaveLength(25);
++    expect(CORE_API_OPERATIONS.filter((operation) => operation.query).map((operation) => operation.operationId)).toHaveLength(4);
++    expect(new Set(checked).size).toBeGreaterThanOrEqual(30);
+     expect(checked).toContain('SignInRequest(root).password');
+     expect(checked).toContain('DeviceRevokeRequest(root).reason');
+     expect(checked).toContain('SessionCreateRequest(root).subjectName');
+     expect(checked).toContain('EvidenceExportRequest(root).destination');
++    // Contract C: the texts an operator types, and every string of a query.
++    for (const leaf of [
++      'SessionNoteRequest(root).text',
++      'SessionMarkerRequest(root).label',
++      'AuditExportRequest(root).reason',
++      'AuditExportRequest(root).destination',
++      'EvidenceListQuery(root).q',
++      'EvidenceListQuery(root).cursor',
++      'AuditListQuery(root).actorId',
++      'AuditListQuery(root).sessionId',
++      'AuditListQuery(root).evidenceId',
++      'AuditListQuery(root).cursor',
++      'EventListQuery(root).cursor',
++      'PageQuery(root).cursor',
++    ]) {
++      expect(checked, leaf).toContain(leaf);
++    }
+   });
+ 
++  it('a query yields only strings, numbers and booleans, has no required member and no default (decision D51)', () => {
++    for (const operation of CORE_API_OPERATIONS) {
++      if (!operation.query) continue;
++      const schema = CORE_API_SCHEMAS[operation.query.schema];
++      // No member is required and none has a default: a client that gives no query sends none.
++      expect(schema.parse({}), operation.operationId).toEqual({});
++      const shape = (schema as unknown as { _zod: { def: { shape: Record<string, z.ZodType> } } })._zod.def.shape;
++      for (const [name, member] of Object.entries(shape)) {
++        const def = (member as unknown as { _zod: { def: Def } })._zod.def;
++        expect(def.type, `${operation.query.schema}.${name}`).toBe('optional');
++        const inner = (def.innerType as unknown as { _zod: { def: Def } })._zod.def.type;
++        expect(['string', 'enum', 'number'], `${operation.query.schema}.${name}: ${inner}`).toContain(inner);
++      }
++      // Unknown members are dropped, as in a body (API-4).
++      expect(schema.parse({ stray: 'x' }), operation.operationId).toEqual({});
++    }
++  });
++
+   it('no string of any schema of the backend task accepts them either, requests and answers alike', () => {
+     let leaves = 0;
+     for (const [name, schema] of Object.entries({ ...IDENTITY_SCHEMAS, ...ADMINISTRATION_SCHEMAS, ...PAIRING_SCHEMAS, ...DEMO_SCHEMAS })) {
+@@ -171,6 +208,30 @@
+     expect(leaves).toBeGreaterThan(40);
+   });
+ 
++  it('API-13 holds for every string of the registry that the backend task added: the state, the socket and areas 4 to 11', () => {
++    // W27: the rule is on for slice text since the engine cuts on a character boundary, so the
++    // statement of API-13 ("every string schema of the registry") holds for all 112 schemas of the
++    // backend task. The 18 schemas of the ten existing operations are the exception, by AC-B-13:
++    // their answers describe what the simulator answers, and their request texts carry the rule.
++    const names = Object.keys(CORE_API_SCHEMAS) as CoreApiSchemaName[];
++    const added = names.slice(18);
++    expect(added).toHaveLength(112);
++    let leaves = 0;
++    const open: string[] = [];
++    for (const name of added) {
++      for (const [path, leaf] of stringLeaves(CORE_API_SCHEMAS[name])) {
++        if (acceptsIllFormed(leaf).length > 0) open.push(`${name}${path.replace('(root)', '')}`);
++        leaves += 1;
++      }
++    }
++    expect(open).toEqual([]);
++    expect(leaves).toBeGreaterThan(900);
++    // The slices of the state and the answers that are built from them are among them.
++    for (const name of ['AuditRow', 'SessionSlice', 'EvidenceItem', 'DeviceInventory', 'AuditPage', 'EvidenceVerifyResult', 'AuditChainStatus', 'RealtimeSnapshot']) {
++      expect(added, name).toContain(name);
++    }
++  });
++
+   it('positive control: the walker finds a string that has no rule', () => {
+     // The response schemas of the ten existing operations are untouched (AC-B-13): they describe
+     // what the simulator answers, and a client never sends them.
+--- packages/shared/test/openapi.test.ts	2026-10-04 10:45:26
++++ packages/shared/test/openapi.test.ts	2026-10-04 10:27:00
+@@ -7,10 +7,18 @@
+ // `createOpenApiDocument()` returns the `offline` scope, which is the document this file has always
+ // described, so its assertions stand. The one that compared the components with the whole schema
+ // registry is narrowed to the scope by design; test/api-openapi-scope.test.ts covers the `all` scope.
++//
++// Plan row W27 (contract C; 01_specs §7.19, AC-B-11): the registry is complete, and two assertions
++// changed by design. The committed openapi.json now holds the `all` scope (75 operations, two
++// security schemes), so the drift check compares the file with that scope. And the five simulated
++// reads and `startSession` document statuses that only the Core server sends, so the comparison
++// with the simulator covers the statuses the simulator can produce. The `x-` check below still runs
++// on the offline document; the `all` scope, where `x-request-id` is a response header name, has
++// its own in test/api-openapi-scope.test.ts.
+ import { readFileSync } from 'node:fs';
+ import { dereference, validate } from '@scalar/openapi-parser';
+ import { describe, expect, it } from 'vitest';
+-import { OPENAPI_JSON_PATH, renderOpenApiJson } from '../scripts/gen-openapi';
++import { OPENAPI_COMMITTED_SCOPE, OPENAPI_JSON_PATH, renderOpenApiJson } from '../scripts/gen-openapi';
+ import {
+   API_BADGES,
+   CORE_API_EXAMPLES,
+@@ -21,11 +29,13 @@
+   EXAMPLE_IDS,
+   HEALTH_PATH,
+   HeartbeatSchema,
++  CoreApiScope,
+   OPENAPI_ALLOWED_EXTENSION,
+   OPENAPI_EXAMPLE_INSTANT,
+   SIMULATED_HEADER_NAME,
+   SIMULATED_HEADER_VALUE,
+   createOpenApiDocument,
++  listCoreApiResponseStatuses,
+   listOpenApiOperations,
+   matchCoreApiOperation,
+   serializeOpenApiDocument,
+@@ -160,10 +170,15 @@
+     }
+   });
+ 
+-  it('matches the committed openapi/openapi.json byte for byte (no drift)', () => {
++  it('the committed openapi/openapi.json matches the builder byte for byte (no drift)', () => {
++    // Changed by design (W27; AC-B-11): the committed file holds the `all` scope, 75 operations.
++    // The document this file describes is the offline one, which the generator still renders.
+     const committed = readFileSync(OPENAPI_JSON_PATH, 'utf8');
+-    expect(renderOpenApiJson()).toBe(serializeOpenApiDocument(document));
++    expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.ALL);
++    expect(renderOpenApiJson()).toBe(serializeOpenApiDocument(createOpenApiDocument({ scope: OPENAPI_COMMITTED_SCOPE })));
+     expect(committed).toBe(renderOpenApiJson());
++    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(75);
++    expect(renderOpenApiJson(CoreApiScope.OFFLINE)).toBe(serializeOpenApiDocument(document));
+   });
+ 
+   it('builds deterministically, and each build is an independent object', () => {
+@@ -418,11 +433,21 @@
+     ).toBe(403);
+     b.sim.stop();
+ 
+-    // Every documented status of the simulated operations was produced by the simulator.
++    // Every status of the simulated operations that the simulator can produce was produced by it.
++    // Changed by design (W27; 01_specs §7.19): the five reads document a 401 and a 403, and
++    // `startSession` a 422, that only the Core server sends (`responses[status].services`). The
++    // simulator is not rewritten, so the comparison is limited to the statuses of the offline scope,
++    // and the simulator must never produce one of the others.
++    let coreServerOnly = 0;
+     for (const operation of CORE_API_OPERATIONS.filter((o) => o.mode === 'simulated')) {
+-      const documented = Object.keys(operation.responses).map(Number).sort();
+-      expect([...(seen.get(operation.operationId) ?? [])].sort(), operation.operationId).toEqual(documented);
++      const produced = [...(seen.get(operation.operationId) ?? [])].sort((a, b) => a - b);
++      expect(produced, operation.operationId).toEqual(listCoreApiResponseStatuses(operation, CoreApiScope.OFFLINE));
++      const others = listCoreApiResponseStatuses(operation).filter((status) => !produced.includes(status));
++      for (const status of others) expect(operation.responses[status]?.services, `${operation.operationId} ${status}`).toEqual(['dems-core-server']);
++      coreServerOnly += others.length;
+     }
++    // 401 and 403 on five reads, 422 on startSession.
++    expect(coreServerOnly).toBe(11);
+   });
+ });
+ 

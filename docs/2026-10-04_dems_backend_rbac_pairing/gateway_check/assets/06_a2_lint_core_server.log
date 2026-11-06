@@ -1,0 +1,5 @@
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+EXIT=0

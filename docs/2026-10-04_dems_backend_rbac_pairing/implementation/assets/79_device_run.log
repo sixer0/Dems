@@ -1,0 +1,149 @@
+
+== 00:53:06 0. before (no reset): ports free?; dems_lane_1 counts
+   audit_log                169
+   device_credentials       1
+   events                   163
+   paired_devices           1
+   storage_policy           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 00:53:07 1. start the lane-1 backend
+npm PID 66618, listener PID 66665
+   "port":4421,"database":"dems_lane_1","demoControls":false
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T17:53:08.724Z","uptimeMs":433,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 00:53:08 2. device session: phone, Metro 8083, tcp:4420 -> tcp:4421 (cap 600 s)
+[device-session phone 00:53:08] lock held; hard cap 600 s, until 01:03:08 (watchdog PID 66724)
+[device-session phone 00:53:08] session serial: emulator-5554 (dems2_phone)
+[device-session phone 00:53:09] emulator-5554: screen awake, no keyguard
+[device-session phone 00:53:09] Metro PID 66760 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session phone 00:53:12] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 00:53:12] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 00:53:12] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), Metro 8083
+== L. LIVE mode ==
+-- am start -W -d 'demsdemo:///login?core=LIVE&motion=off'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 1 s for runtime.live.ready
+-- 00:53:33 screencap 79_phone_live_login.png (1720870 bytes)
+-- 00:53:33 tapped the username field at 540,1105
+-- 00:53:34 tapped the handwriting coach's Cancel (empty space when none) at 540,2338
+-- 00:53:35 tapped the username field at 540,1105
+-- 00:53:36 typed the operator username (andi.pratama)
+-- 00:53:36 tapped the password field at 540,1265
+-- 00:53:37 typed the demo password (not shown)
+-- 00:53:37 pressed the keypad's go key
+-- 00:53:39 the app's sign-in: POST /api/v1/auth/sign-in 200
+-- 00:53:44 screencap 79_phone_live_after_signin.png (395119 bytes)
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+-- 00:53:44 deep link demsdemo:///storage
+-- 00:53:48 screencap 79_phone_live_storage_gate.png (266770 bytes)
+-- 00:53:48 GATE live_storage_gate: waiting for /Users/gsp-budi/Documents/DEMS/.cache/w79/gate_live_storage_gate.go or .abort (120 s)
+-- 00:53:59 GATE live_storage_gate: go
+-- 00:54:05 tapped biometric-offer-decline at 541,1444
+-- 00:54:05 declined the biometric offer ("Not now")
+-- 00:54:09 storage on screen: ring "Evidence storage 20% used, READY"; first activity row "23:59:53, Storage write verified"
+-- 00:54:09 texts saying "simulat" on Storage: 0
+-- 00:54:09 screencap 79_phone_live_storage.png (274651 bytes)
+-- 00:54:11 tapped storage-manage at 540,1665
+-- 00:54:15 sheet: "Current: 90 days · auto-archive on" (policy DAYS_90)
+-- 00:54:15 screencap 79_phone_live_sheet.png (282964 bytes)
+-- 00:54:18 tapped storage-manage-retention-YEAR_1 at 541,1271
+-- 00:54:21 tapped storage-manage-apply at 541,2194
+-- 00:54:22 S2-6 change to YEAR_1: POST /api/v1/storage/policy 200
+-- 00:54:22 screencap 79_phone_live_applied_toast.png (302235 bytes)
+-- 00:54:27 after the change: first activity row "00:54:21, Storage policy changed · 365 days · auto-archive on"; sheet open: no
+-- 00:54:28 screencap 79_phone_live_storage_changed.png (276149 bytes)
+-- 00:54:30 tapped storage-manage at 540,1665
+-- 00:54:35 tapped storage-manage-retention-DAYS_90 at 541,1177
+-- 00:54:37 tapped storage-manage-apply at 541,2194
+-- 00:54:38 set back to DAYS_90: POST /api/v1/storage/policy 200 | POST /api/v1/storage/policy 200
+-- 00:54:44 after the set back: first activity row "00:54:37, Storage policy changed · 90 days · auto-archive on"
+-- 00:54:47 tapped storage-manage at 540,1665
+-- 00:54:51 sheet after the set back: "Current: 90 days · auto-archive on"; equal to before: true
+-- 00:54:52 screencap 79_phone_live_sheet_set_back.png (282971 bytes)
+-- 00:54:54 tapped storage-manage-close at 986,619
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+-- 00:54:56 deep link demsdemo:///network-time
+-- 00:55:02 network & time on screen: server "192.168.10.1", source "GPS (GNSS Stratum-1)", sync "GNSS / NTP, Synchronized, UTC+07:00. GNSS locked, 10 satellites in view"
+-- 00:55:02 texts saying "simulat" on Network & Time: 0
+-- 00:55:03 screencap 79_phone_live_network_time.png (268257 bytes)
+-- 00:55:03 credential/token lines in the JS log (must be 0): 0
+-- 00:55:03 demo operations (must be 0): 0; biometric enrolment requests (must be 0): 0
+-- 00:55:03 storage or network reads by a screen (must be 0): 0
+-- LIVE flow exit: 0
+-- Core request lines of the LIVE part:
+      2 DEMS-LIVE] POST /api/v1/storage/policy 200
+      1 DEMS-LIVE] POST /api/v1/auth/touch 200
+      1 DEMS-LIVE] POST /api/v1/auth/sign-in 200
+      1 DEMS-LIVE] GET /api/v1/pairing/device 200
+      1 DEMS-LIVE] GET /api/v1/auth/status 200
+      1 DEMS-LIVE] GET /api/v1/auth/session 401
+== S. SIMULATED mode (the last launch, D124) ==
+-- am start -W -d 'demsdemo:///login?core=SIMULATED&motion=off'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 2 s for runtime.sim.hydrated
+-- 00:55:26 screencap 79_phone_simulated_login.png (1719326 bytes)
+-- 00:55:26 tapped the username field at 540,1105
+-- 00:55:28 tapped the handwriting coach's Cancel (empty space when none) at 540,2338
+-- 00:55:28 tapped the username field at 540,1105
+-- 00:55:29 typed the operator username (andi.pratama)
+-- 00:55:30 tapped the password field at 540,1265
+-- 00:55:31 typed the demo password (not shown)
+-- 00:55:31 pressed the keypad's go key
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+-- 00:55:36 deep link demsdemo:///storage
+-- 00:55:41 screencap 79_phone_simulated_storage_gate.png (250497 bytes)
+-- 00:55:41 GATE simulated_storage_gate: waiting for /Users/gsp-budi/Documents/DEMS/.cache/w79/gate_simulated_storage_gate.go or .abort (120 s)
+-- 00:55:53 GATE simulated_storage_gate: go
+-- 00:55:59 tapped biometric-offer-decline at 541,1413
+-- 00:55:59 declined the biometric offer ("Not now")
+-- 00:56:03 storage on screen: ring "Evidence storage 20% used, READY"; first activity row "00:06:40, Storage write verified"
+-- 00:56:03 texts saying "simulat" on Storage: 0
+-- 00:56:03 screencap 79_phone_simulated_storage.png (286529 bytes)
+-- 00:56:05 tapped storage-manage at 540,1665
+-- 00:56:09 sheet: "Current: 90 days · auto-archive on" (policy DAYS_90)
+-- 00:56:09 screencap 79_phone_simulated_sheet.png (283493 bytes)
+-- 00:56:12 tapped storage-manage-close at 986,619
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+-- 00:56:14 deep link demsdemo:///network-time
+-- 00:56:20 network & time on screen: server "192.168.10.1", source "GPS (GNSS Stratum-1)", sync "GNSS / NTP, Synchronized, UTC+07:00. GNSS locked, 13 satellites in view"
+-- 00:56:20 texts saying "simulat" on Network & Time: 0
+-- 00:56:21 screencap 79_phone_simulated_network_time.png (270361 bytes)
+-- 00:56:21 Core requests in SIMULATED mode (must be 0): 0
+-- SIMULATED flow exit: 0
+-- prefs after: {"coreLinkSource":"SIMULATED"}
+
+-- remove this row's dump file only: adb shell rm /sdcard/w79.xml
+   ls: /sdcard/w79.xml: No such file or directory
+-- lock at end: isKeyguardShowing=false
+[device-session phone 00:56:22] Metro 66760 stopped
+[device-session phone 00:56:22] session ended with status 0
+device session exit=0
+
+== 00:56:22 3. backend requests during the session
+      1 GET /api/v1/auth/session 401 principal=device
+      1 GET /api/v1/auth/status 200 principal=device
+      1 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/device 200 principal=device
+      1 POST /api/v1/auth/sign-in 200 principal=device
+      1 POST /api/v1/auth/touch 200 principal=operator
+      2 POST /api/v1/storage/policy 200 principal=operator
+-- error or fatal lines in the backend log: 0
+-- bearer/cookie/credential lines in the server log (must be 0): 0
+
+== 00:56:22 4. stop the backend; nothing left
+lsof exit 1 (1 = none)
+
+reverse rules listed above (none expected)
+   audit_log                175
+   device_credentials       1
+   events                   172
+   paired_devices           1
+   storage_policy           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 00:56:22 end
+run exit=0

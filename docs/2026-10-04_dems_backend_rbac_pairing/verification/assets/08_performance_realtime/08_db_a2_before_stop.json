@@ -1,0 +1,196 @@
+{
+ "database": "dems_demo",
+ "at": 1791342203211,
+ "atIso": "2026-10-07T03:03:23.211Z",
+ "transactionReadOnly": "on",
+ "tables": 30,
+ "rows": {
+  "active_session": {
+   "count": 1,
+   "ins": 7,
+   "upd": 790,
+   "del": 6
+  },
+  "alerts": {
+   "count": 0,
+   "ins": 0,
+   "upd": 0,
+   "del": 0
+  },
+  "audit_chain_head": {
+   "count": 1,
+   "ins": 1,
+   "upd": 215,
+   "del": 0
+  },
+  "audit_chain_history": {
+   "count": 0,
+   "ins": 0,
+   "upd": 0,
+   "del": 0
+  },
+  "audit_log": {
+   "count": 215,
+   "ins": 215,
+   "upd": 0,
+   "del": 0
+  },
+  "auth_sessions": {
+   "count": 11,
+   "ins": 11,
+   "upd": 67,
+   "del": 0
+  },
+  "biometric_tokens": {
+   "count": 0,
+   "ins": 0,
+   "upd": 0,
+   "del": 0
+  },
+  "console_settings": {
+   "count": 1,
+   "ins": 1,
+   "upd": 0,
+   "del": 0
+  },
+  "core_device": {
+   "count": 1,
+   "ins": 1,
+   "upd": 0,
+   "del": 0
+  },
+  "core_state": {
+   "count": 1,
+   "ins": 1,
+   "upd": 16,
+   "del": 0
+  },
+  "device_credentials": {
+   "count": 4,
+   "ins": 4,
+   "upd": 0,
+   "del": 0
+  },
+  "engine_counters": {
+   "count": 5,
+   "ins": 5,
+   "upd": 316,
+   "del": 0
+  },
+  "events": {
+   "count": 205,
+   "ins": 205,
+   "upd": 0,
+   "del": 0
+  },
+  "evidence_custody": {
+   "count": 46,
+   "ins": 46,
+   "upd": 0,
+   "del": 0
+  },
+  "evidence_items": {
+   "count": 19,
+   "ins": 19,
+   "upd": 0,
+   "del": 0
+  },
+  "evidence_tracks": {
+   "count": 76,
+   "ins": 76,
+   "upd": 0,
+   "del": 0
+  },
+  "exports": {
+   "count": 1,
+   "ins": 1,
+   "upd": 0,
+   "del": 0
+  },
+  "hardware_snapshot": {
+   "count": 1,
+   "ins": 1,
+   "upd": 4904,
+   "del": 0
+  },
+  "health_snapshots": {
+   "count": 79,
+   "ins": 79,
+   "upd": 0,
+   "del": 0
+  },
+  "operator_credentials": {
+   "count": 3,
+   "ins": 3,
+   "upd": 0,
+   "del": 0
+  },
+  "operators": {
+   "count": 3,
+   "ins": 3,
+   "upd": 15,
+   "del": 0
+  },
+  "paired_devices": {
+   "count": 4,
+   "ins": 4,
+   "upd": 28,
+   "del": 0
+  },
+  "pairing_codes": {
+   "count": 4,
+   "ins": 4,
+   "upd": 8,
+   "del": 0
+  },
+  "permissions": {
+   "count": 12,
+   "ins": 12,
+   "upd": 0,
+   "del": 0
+  },
+  "registry_counters": {
+   "count": 2,
+   "ins": 2,
+   "upd": 8,
+   "del": 0
+  },
+  "role_permissions": {
+   "count": 18,
+   "ins": 18,
+   "upd": 0,
+   "del": 0
+  },
+  "roles": {
+   "count": 3,
+   "ins": 3,
+   "upd": 0,
+   "del": 0
+  },
+  "schema_meta": {
+   "count": 1,
+   "ins": 1,
+   "upd": 0,
+   "del": 0
+  },
+  "session_history": {
+   "count": 19,
+   "ins": 19,
+   "upd": 0,
+   "del": 0
+  },
+  "storage_policy": {
+   "count": 1,
+   "ins": 1,
+   "upd": 0,
+   "del": 0
+  }
+ },
+ "database_stats": {
+  "xact_commit": 9101,
+  "xact_rollback": 4,
+  "tup_inserted": 28286,
+  "tup_updated": 8571,
+  "tup_deleted": 24380
+ }
+}

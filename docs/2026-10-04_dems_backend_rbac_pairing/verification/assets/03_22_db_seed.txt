@@ -1,0 +1,48 @@
+$ /usr/bin/lockf -k .locks/db-migrate.lock npm run db:seed -- --database dems_demo
+# 2026-10-07 05:30:44
+
+> dems-demo@0.1.0 db:seed
+> npm run db:seed -w @dems/core-server -- --database dems_demo
+
+
+> @dems/core-server@0.2.0 db:seed
+> tsx src/db/seed/cli.ts --database dems_demo
+
+db:seed: dems_demo is seeded under the migrate lock: this command must be run as "/usr/bin/lockf -k .locks/db-migrate.lock npm run db:seed ...".
+db:seed: dems_demo on PostgreSQL 18.4 as dems_owner
+db:seed: dataset as of 2026-10-06T22:30:44.943Z (1791325844943); scenario idle; seed 20261001; epoch 0
+db:seed: seeded in 78 ms (dataset and hashes 41 ms, transaction 33 ms); the database now holds 301 row(s) in 21 of 30 table(s)
+row counts       30 table(s)
+  active_session           0
+  alerts                   0
+  audit_chain_head         1
+  audit_chain_history      0
+  audit_log                82
+  auth_sessions            0
+  biometric_tokens         0
+  console_settings         1
+  core_device              1
+  core_state               1
+  device_credentials       0
+  engine_counters          5
+  events                   59
+  evidence_custody         28
+  evidence_items           13
+  evidence_tracks          52
+  exports                  1
+  hardware_snapshot        1
+  health_snapshots         0
+  operator_credentials     3
+  operators                3
+  paired_devices           0
+  pairing_codes            0
+  permissions              12
+  registry_counters        2
+  role_permissions         18
+  roles                    3
+  schema_meta              1
+  session_history          13
+  storage_policy           1
+audit head       seq 82; hash 90273cdc24cd8a9f...
+db:seed: OK: dems_demo is seeded. State: npm run db:status -w @dems/core-server -- --database dems_demo
+exit=0

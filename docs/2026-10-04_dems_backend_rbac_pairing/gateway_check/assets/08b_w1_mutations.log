@@ -1,0 +1,153 @@
+## 2026-10-06 02:31:14 WIB batch ['P01', 'P02', 'P03', 'P04']
+baseline (no mutation) exit 0 Test Files  1 passed (1) | Tests  11 passed (11) (3 s) over 1 files
+P01 detected    system/sim-adapter.ts regressed to its pre-W76 shape (a bare `actions.updateSettings(stored)` in the set-up), entry removed | Test Files  1 failed (1) | Tests  1 failed | 10 passed (11) | × every production file of `features/` holds the rule (the allowed list names each exception and why) 8ms | expected text seen (3 s)
+P02 detected    system/sim-adapter.ts regressed to `settle(() => actions.updateSettings(stored))` in the set-up, entry removed | Test Files  1 failed (1) | Tests  1 failed | 10 passed (11) | × every production file of `features/` holds the rule (the allowed list names each exception and why) 9ms | expected text seen (3 s)
+P03 detected    system/sim-adapter.ts helper called but not returned, entry removed | Test Files  1 failed (1) | Tests  1 failed | 10 passed (11) | × every production file of `features/` holds the rule (the allowed list names each exception and why) 9ms | expected text seen (3 s)
+P04 control ok  CONTROL: the pre-W76 regression of P01 with the old entry restored — the entry would hide it (why it goes) | Test Files  1 passed (1) | Tests  11 passed (11) |  (3 s)
+## 2026-10-06 02:31:28 WIB 4 mutations: 3 detected, 0 survived [], 0 red for another reason [], 0 not applied []; controls green ['P04'], controls red []
+## the mutated files (and watched files) in the tree, before and after: identical
+   335cbf871ebbe528  apps/core-web/src/features/system/sim-adapter.ts
+   35c73ff592eb4177  apps/core-web/src/test/live-strict-mode-starts.test.tsx
+## 2026-10-06 02:41:18 WIB batch ['X00', 'K01', 'K02', 'K03', 'K04', 'K05', 'K06', 'S01', 'S02', 'S03', 'S04', 'S05', 'S06', 'S07']
+baseline (no mutation) exit 0 Test Files  2 passed (2) | Tests  23 passed (23) (10 s) over 2 files
+X00 control ok  PROOF (control, no production change): W75 now sends no page of 59 after a sign-out (the injected test on the tree as it is) | Test Files  1 passed (1) | Tests  11 passed (11) |  (10 s)
+K01 detected    a page skipped: the rows of audit page 2 are dropped | Test Files  2 failed (2) | Tests  4 failed | 19 passed (23) | × one POST with the reason; the file holds ALL 450 stored audit rows and ALL 450 events, read page by page, though the ring holds 100; the toast names the export ID 15221ms (38 s)
+K02 detected    a page skipped: the events of page 2 are dropped | Test Files  1 failed (1) | Tests  1 failed | 12 passed (13) | × one POST with the reason; the file holds ALL 450 stored audit rows and ALL 450 events, read page by page, though the ring holds 100; the toast names the export ID 140ms (3 s)
+K03 detected    a page skipped: the audit walk stops after its first page | Test Files  2 failed (2) | Tests  7 failed | 16 passed (23) | × one POST with the reason; the file holds ALL 450 stored audit rows and ALL 450 events, read page by page, though the ring holds 100; the toast names the export ID 15142ms (30 s)
+K04 detected    a page skipped: the events walk stops after its first page | Test Files  1 failed (1) | Tests  2 failed | 11 passed (13) | × one POST with the reason; the file holds ALL 450 stored audit rows and ALL 450 events, read page by page, though the ring holds 100; the toast names the export ID 135ms (11 s)
+K05 detected    a page skipped: the next page is read from the first cursor again (nextCursor not followed) | Test Files  2 failed (2) | Tests  3 failed | 20 passed (23) | × one POST with the reason; the file holds ALL 450 stored audit rows and ALL 450 events, read page by page, though the ring holds 100; the toast names the export ID 15168ms (37 s)
+K06 detected    pages of 100 rows instead of the contract's 200 | Test Files  2 failed (2) | Tests  3 failed | 20 passed (23) | × one POST with the reason; the file holds ALL 450 stored audit rows and ALL 450 events, read page by page, though the ring holds 100; the toast names the export ID 150ms (15 s)
+S01 detected    the signed-in check removed | Test Files  1 failed | 1 passed (2) | Tests  1 failed | 22 passed (23) | × the session ends while the walk waits for a page: no further page of 59 or 63 is asked for, no file, nothing said 138ms (8 s)
+S02 detected    the signed-in check only before the first page | Test Files  1 failed | 1 passed (2) | Tests  1 failed | 22 passed (23) | × the session ends while the walk waits for a page: no further page of 59 or 63 is asked for, no file, nothing said 130ms (8 s)
+S03 SURVIVED    the signed-in check after the page is asked for (a request still leaves) | Test Files  2 passed (2) | Tests  23 passed (23) |  (8 s)
+S04 detected    PROOF: the signed-in check removed, with the W75 proof injected | Test Files  1 failed (1) | Tests  1 failed | 10 passed (11) | × the session ends while the walk waits for page 1: no further page of 59 is asked for; no file; nothing said 364ms | expected text seen (9 s)
+S05 detected    W75 call site: the session check always says signed in (with the W75 proof injected) | Test Files  1 failed (1) | Tests  1 failed | 10 passed (11) | × the session ends while the walk waits for page 1: no further page of 59 is asked for; no file; nothing said 366ms | expected text seen (9 s)
+S06 detected    W76 call site: the session check always says signed in | Test Files  1 failed (1) | Tests  1 failed | 12 passed (13) | × the session ends while the walk waits for a page: no further page of 59 or 63 is asked for, no file, nothing said 174ms (3 s)
+S07 detected    the signed-out ending is not the Core's 401 (`transport` missing: the presenter no longer reads it as a refusal) — with the W75 proof | Test Files  1 failed | 1 passed (2) | Tests  1 failed | 23 passed (24) | × the session ends while the walk waits for page 1: no further page of 59 is asked for; no file; nothing said 358ms (9 s)
+## 2026-10-06 02:44:48 WIB 14 mutations: 12 detected, 1 survived ['S03'], 0 red for another reason [], 0 not applied []; controls green ['X00'], controls red []
+## the mutated files (and watched files) in the tree, before and after: identical
+   27cf185189e3dece  apps/core-web/src/features/security-audit/export-audit-dialog.tsx
+   fd42a1bd2b6e7c83  apps/core-web/src/features/security-audit/export-file.ts
+   d911589a6a19cd66  apps/core-web/src/features/system/export-logs-dialog.tsx
+   ca219c12d6a94fff  apps/core-web/src/features/system/live-log-export.ts
+   335cbf871ebbe528  apps/core-web/src/features/system/sim-adapter.ts
+   02aa74819283ad0e  apps/core-web/src/lib/core-page-walk.ts
+   59f1f00b415f85c9  apps/core-web/src/test/live-security-audit-export.test.tsx
+## 2026-10-06 02:45:27 WIB batch ['F01', 'F02', 'F03', 'F04', 'F05', 'F06', 'F07', 'F08', 'F09', 'F10', 'F11', 'P10', 'P11', 'P12', 'P13']
+F01 detected    partial: a refused events page ends the walk with the events read so far | Test Files  1 failed (1) | Tests  1 failed | 12 passed (13) | × a page of operation 63 that gets no answer: no partial file; the presenter, then the sentence that the export was recorded; one record 8109ms (11 s)
+F02 detected    partial: a refused audit page ends the walk with the rows read so far | Test Files  2 failed (2) | Tests  2 failed | 21 passed (23) | × a chain that moved between two pages (the Core answers 422 to the old cursor): never a partial file 8121ms (20 s)
+F03 detected    partial: the chain check is not run | Test Files  2 failed (2) | Tests  2 failed | 21 passed (23) | × a page that skips a row (a gap in the chain): no file; the page's sentence that the export was recorded; the record names CHAIN_MOVED 8128ms (21 s)
+F04 detected    partial: a chain that fails its check returns the rows anyway | Test Files  2 failed (2) | Tests  2 failed | 21 passed (23) | × a page that skips a row (a gap in the chain): no file; the page's sentence that the export was recorded; the record names CHAIN_MOVED 8142ms (21 s)
+F05 SURVIVED    partial: the count check removed | Test Files  2 passed (2) | Tests  23 passed (23) |  (8 s)
+F06 SURVIVED    partial: the sequence check removed | Test Files  2 passed (2) | Tests  23 passed (23) |  (8 s)
+F07 detected    partial: the head check removed | Test Files  1 failed | 1 passed (2) | Tests  1 failed | 22 passed (23) | × a chain that moved (the walk does not end on the export's head): no file; the page's toast and one record with no text 12226ms (21 s)
+F08 SURVIVED    partial: an endless audit list returns what it read | Test Files  2 passed (2) | Tests  23 passed (23) |  (8 s)
+F09 SURVIVED    partial: an endless events list returns what it read | Test Files  1 passed (1) | Tests  13 passed (13) |  (3 s)
+F10 detected    the walk reads past the rows the export covers (the stop on the count removed) | Test Files  2 failed (2) | Tests  7 failed | 16 passed (23) | × one POST with the reason; the file holds ALL 450 stored audit rows and ALL 450 events, read page by page, though the ring holds 100; the toast names the export ID 15168ms (52 s)
+F11 SURVIVED    without a known count the walk does not stop before the export's own row | Test Files  2 passed (2) | Tests  23 passed (23) |  (8 s)
+P10 detected    the page counter is not called | Test Files  1 failed | 1 passed (2) | Tests  1 failed | 22 passed (23) | × the step "Build export package" shows the page count while the pages are read 10215ms (16 s)
+P11 detected    W75 error: a moved chain is not named CHAIN_MOVED | Test Files  1 failed (1) | Tests  1 failed | 9 passed (10) | × a chain that moved (the walk does not end on the export's head): no file; the page's toast and one record with no text 174ms (8 s)
+P12 detected    W76 error: a moved chain is not named CHAIN_MOVED | Test Files  1 failed (1) | Tests  1 failed | 12 passed (13) | × a page that skips a row (a gap in the chain): no file; the page's sentence that the export was recorded; the record names CHAIN_MOVED 98ms (3 s)
+P13 detected    a refused page loses its list name | Test Files  1 failed (1) | Tests  1 failed | 12 passed (13) | × a page of operation 63 that gets no answer: no partial file; the presenter, then the sentence that the export was recorded; one record 83ms (3 s)
+## 2026-10-06 02:48:59 WIB 15 mutations: 10 detected, 5 survived ['F05', 'F06', 'F08', 'F09', 'F11'], 0 red for another reason [], 0 not applied []; controls green [], controls red []
+## the mutated files (and watched files) in the tree, before and after: identical
+   fd42a1bd2b6e7c83  apps/core-web/src/features/security-audit/export-file.ts
+   ca219c12d6a94fff  apps/core-web/src/features/system/live-log-export.ts
+   335cbf871ebbe528  apps/core-web/src/features/system/sim-adapter.ts
+   02aa74819283ad0e  apps/core-web/src/lib/core-page-walk.ts
+## 2026-10-06 02:50:39 WIB batch ['ZS03', 'ZF05', 'ZF06', 'ZF08', 'ZF09', 'ZF11']
+baseline (no mutation) .cache/w1/mut/vitest.proof.config.mts exit 1 Test Files  1 failed (1) | Tests  no tests (0 s) over 1 files
+## 2026-10-06 02:50:49 WIB batch ['ZS03', 'ZF05', 'ZF06', 'ZF08', 'ZF09', 'ZF11']
+baseline (no mutation) .cache/w1/mut/vitest.proof.config.mts exit 0 Test Files  1 passed (1) | Tests  10 passed (10) (1 s) over 1 files
+ZS03 detected    PROOF outside the tree: the signed-in check after the page is asked for (a request still leaves) | Test Files  1 failed (1) | Tests  2 failed | 8 passed (10) | × D176: a walk that starts signed out reads nothing and ends with the Core's own 401 (a refusal, not an outage) 2ms (1 s)
+ZF05 detected    PROOF outside the tree: partial: the count check removed | Test Files  1 failed (1) | Tests  1 failed | 9 passed (10) | × the count check: a list that ends early (no head known) is a moved chain, never a short file 2ms (1 s)
+ZF06 detected    PROOF outside the tree: partial: the sequence check removed | Test Files  1 failed (1) | Tests  1 failed | 9 passed (10) | × the sequence check: a duplicated row in place of a missing one (right count, no head known) is a moved chain 2ms (1 s)
+ZF08 detected    PROOF outside the tree: partial: an endless audit list returns what it read | Test Files  1 failed (1) | Tests  1 failed | 9 passed (10) | × a server that never stops handing out cursors: ENDLESS, never what was read (audit, unknown count; events) 6ms (1 s)
+ZF09 detected    PROOF outside the tree: partial: an endless events list returns what it read | Test Files  1 failed (1) | Tests  1 failed | 9 passed (10) | × a server that never stops handing out cursors: ENDLESS, never what was read (audit, unknown count; events) 4ms (1 s)
+ZF11 detected    PROOF outside the tree: without a known count the walk does not stop before the export's own row | Test Files  1 failed (1) | Tests  1 failed | 9 passed (10) | × without a known count the walk stops before the export's own AUDIT_EXPORTED row 2ms (1 s)
+## 2026-10-06 02:50:56 WIB 6 mutations: 6 detected, 0 survived [], 0 red for another reason [], 0 not applied []; controls green [], controls red []
+## the mutated files (and watched files) in the tree, before and after: identical
+   fd42a1bd2b6e7c83  apps/core-web/src/features/security-audit/export-file.ts
+   ca219c12d6a94fff  apps/core-web/src/features/system/live-log-export.ts
+   335cbf871ebbe528  apps/core-web/src/features/system/sim-adapter.ts
+   02aa74819283ad0e  apps/core-web/src/lib/core-page-walk.ts
+## 2026-10-06 02:53:15 WIB batch ['Q01', 'Q02', 'Q03', 'Q04']
+Q01 detected    PROOF (a): one test's dispose throws, with the new clean-up — that test fails, no other | Test Files  1 failed (1) | Tests  1 failed | 39 passed (40) | × Live mode with the permission: /admin/users renders page-users-roles inside the shell, and its entry is the active one 128ms | expected text seen (5 s)
+Q02 detected    PROOF (a): the same throwing dispose with the OLD clean-up restored in memory — the failure cascades | Test Files  1 failed (1) | Tests  1 failed | 39 passed (40) | × Live mode with the permission: /admin/users renders page-users-roles inside the shell, and its entry is the active one 112ms (5 s)
+Q03 detected    (b): the Users & Roles body loses its page test ID (back to `ur-stub`) | Test Files  1 failed (1) | Tests  1 failed | 39 passed (40) | × Live mode with the permission: /admin/users renders page-users-roles inside the shell, and its entry is the active one 112ms | expected text seen (5 s)
+Q04 detected    (b): the Paired Devices body loses its page test ID (back to `pd-stub`) | Test Files  1 failed (1) | Tests  1 failed | 39 passed (40) | × Live mode with the permission: /admin/devices renders page-paired-devices inside the shell, and its entry is the active one 90ms | expected text seen (5 s)
+## 2026-10-06 02:53:37 WIB 4 mutations: 4 detected, 0 survived [], 0 red for another reason [], 0 not applied []; controls green [], controls red []
+## the mutated files (and watched files) in the tree, before and after: identical
+   dc099e50a448fb7d  apps/core-web/src/features/paired-devices/index.tsx
+   fd42a1bd2b6e7c83  apps/core-web/src/features/security-audit/export-file.ts
+   ca219c12d6a94fff  apps/core-web/src/features/system/live-log-export.ts
+   335cbf871ebbe528  apps/core-web/src/features/system/sim-adapter.ts
+   8aa422b6eec29121  apps/core-web/src/features/users-roles/index.tsx
+   02aa74819283ad0e  apps/core-web/src/lib/core-page-walk.ts
+   c8b5039733db3c38  apps/core-web/src/test/live-shell-admin.test.tsx
+## 2026-10-06 02:53:58 WIB batch ['Q01', 'Q02']
+Q01 detected    PROOF (a): one test's dispose throws, with the new clean-up — that test fails, no other | Test Files  1 failed (1) | Tests  1 failed | 39 passed (40) | × another operator takes the session of this browser (a sign-in in another tab): the guards run for them, without a role notice 136ms | expected text seen (5 s)
+Q02 detected    PROOF (a): the same throwing dispose with the OLD clean-up restored in memory — the failure cascades | Test Files  1 failed (1) | Tests  4 failed | 36 passed (40) | × another operator takes the session of this browser (a sign-in in another tab): the guards run for them, without a role notice 150ms (5 s)
+## 2026-10-06 02:54:08 WIB 2 mutations: 2 detected, 0 survived [], 0 red for another reason [], 0 not applied []; controls green [], controls red []
+## the mutated files (and watched files) in the tree, before and after: identical
+   fd42a1bd2b6e7c83  apps/core-web/src/features/security-audit/export-file.ts
+   ca219c12d6a94fff  apps/core-web/src/features/system/live-log-export.ts
+   335cbf871ebbe528  apps/core-web/src/features/system/sim-adapter.ts
+   02aa74819283ad0e  apps/core-web/src/lib/core-page-walk.ts
+   c8b5039733db3c38  apps/core-web/src/test/live-shell-admin.test.tsx
+## 2026-10-06 02:55:25 WIB batch ['U00', 'U01']
+U00 control ok  PROOF (control, no production change): the two injected D176 tests on the tree as it is | Test Files  1 passed (1) | Tests  21 passed (21) |  (5 s)
+U01 detected    the reads no longer need USER_ADMIN in the session (enabled while signed out: the F75-2 shape) | Test Files  1 failed (1) | Tests  5 failed | 16 passed (21) | × on a sign-out (the Core ends the session): both entries are gone and the page is left for /login 57ms | expected text seen (5 s)
+## 2026-10-06 02:55:35 WIB 2 mutations: 1 detected, 0 survived [], 0 red for another reason [], 0 not applied []; controls green ['U00'], controls red []
+## the mutated files (and watched files) in the tree, before and after: identical
+   fd42a1bd2b6e7c83  apps/core-web/src/features/security-audit/export-file.ts
+   ca219c12d6a94fff  apps/core-web/src/features/system/live-log-export.ts
+   335cbf871ebbe528  apps/core-web/src/features/system/sim-adapter.ts
+   d7b4ad48680108da  apps/core-web/src/features/users-roles/queries.ts
+   02aa74819283ad0e  apps/core-web/src/lib/core-page-walk.ts
+   73e6cccfa5f79e1c  apps/core-web/src/test/live-users-roles-page.test.tsx
+## 2026-10-06 03:10:30 WIB batch ['TK01', 'TK02', 'TK03', 'TK04', 'TK05', 'TK06', 'TS01', 'TS02', 'TS03', 'TS04', 'TS05', 'TS06', 'TS07']
+baseline (no mutation) .cache/w1/mut/vitest.mutation.config.mts exit 0 Test Files  4 passed (4) | Tests  34 passed (34) (9 s) over 4 files
+TK01 detected    TREE: a page skipped: the rows of audit page 2 are dropped | Test Files  3 failed | 1 passed (4) | Tests  8 failed | 26 passed (34) | × one POST with the reason; the file holds ALL 450 stored audit rows and ALL 450 events, read page by page, though the ring holds 100; the toast names the export ID 15169ms (37 s)
+TK02 detected    TREE: a page skipped: the events of page 2 are dropped | Test Files  2 failed | 2 passed (4) | Tests  2 failed | 32 passed (34) | × one POST with the reason; the file holds ALL 450 stored audit rows and ALL 450 events, read page by page, though the ring holds 100; the toast names the export ID 154ms (8 s)
+TK03 detected    TREE: a page skipped: the audit walk stops after its first page | Test Files  4 failed (4) | Tests  15 failed | 19 passed (34) | × reads every page in order, following the cursor, to the rows the export covers; the page counter after each page 2ms (30 s)
+TK04 detected    TREE: a page skipped: the events walk stops after its first page | Test Files  2 failed | 2 passed (4) | Tests  4 failed | 30 passed (34) | × a server that never stops handing out cursors: ENDLESS, never what was read (audit, unknown count; events) 4ms (11 s)
+TK05 detected    TREE: a page skipped: the next page is read from the first cursor again (nextCursor not followed) | Test Files  3 failed | 1 passed (4) | Tests  5 failed | 29 passed (34) | × reads every page in order, following the cursor, to the rows the export covers; the page counter after each page 2ms (37 s)
+TK06 detected    TREE: pages of 100 rows instead of the contract's 200 | Test Files  2 failed | 2 passed (4) | Tests  3 failed | 31 passed (34) | × one POST with the reason; the file holds ALL 450 stored audit rows and ALL 450 events, read page by page, though the ring holds 100; the toast names the export ID 151ms (15 s)
+TS01 detected    TREE: the signed-in check removed | Test Files  3 failed | 1 passed (4) | Tests  4 failed | 30 passed (34) | × the session ends while the walk waits for a page: no further page of 59 or 63 is asked for, no file, nothing said 140ms (8 s)
+TS02 detected    TREE: the signed-in check only before the first page | Test Files  3 failed | 1 passed (4) | Tests  3 failed | 31 passed (34) | × the session ends while the walk waits for page 1: no further page of 59 is asked for; no file; nothing said 831ms (10 s)
+TS03 detected    TREE: the signed-in check after the page is asked for (a request still leaves) | Test Files  1 failed | 3 passed (4) | Tests  2 failed | 32 passed (34) | × D176: a walk that starts signed out reads nothing and ends with the Core's own 401 (a refusal, not an outage) 2ms (10 s)
+TS04 detected    TREE: PROOF: the signed-in check removed, with the W75 proof injected | Test Files  3 failed | 1 passed (4) | Tests  4 failed | 30 passed (34) | × D176: a walk that starts signed out reads nothing and ends with the Core's own 401 (a refusal, not an outage) 2ms (9 s)
+TS05 detected    TREE: W75 call site: the session check always says signed in (with the W75 proof injected) | Test Files  1 failed | 3 passed (4) | Tests  1 failed | 33 passed (34) | × the session ends while the walk waits for page 1: no further page of 59 is asked for; no file; nothing said 810ms (10 s)
+TS06 detected    TREE: W76 call site: the session check always says signed in | Test Files  1 failed | 3 passed (4) | Tests  1 failed | 33 passed (34) | × the session ends while the walk waits for a page: no further page of 59 or 63 is asked for, no file, nothing said 128ms (9 s)
+TS07 detected    TREE: the signed-out ending is not the Core's 401 (`transport` missing: the presenter no longer reads it as a refusal) — with the W75 proof | Test Files  2 failed | 2 passed (4) | Tests  2 failed | 32 passed (34) | × the session ends while the walk waits for page 1: no further page of 59 is asked for; no file; nothing said 682ms (8 s)
+## 2026-10-06 03:14:01 WIB 13 mutations: 13 detected, 0 survived [], 0 red for another reason [], 0 not applied []; controls green [], controls red []
+## the mutated files (and watched files) in the tree, before and after: identical
+   27cf185189e3dece  apps/core-web/src/features/security-audit/export-audit-dialog.tsx
+   fd42a1bd2b6e7c83  apps/core-web/src/features/security-audit/export-file.ts
+   d911589a6a19cd66  apps/core-web/src/features/system/export-logs-dialog.tsx
+   ca219c12d6a94fff  apps/core-web/src/features/system/live-log-export.ts
+   335cbf871ebbe528  apps/core-web/src/features/system/sim-adapter.ts
+   02aa74819283ad0e  apps/core-web/src/lib/core-page-walk.ts
+## 2026-10-06 03:14:20 WIB batch ['TF01', 'TF02', 'TF03', 'TF04', 'TF05', 'TF06', 'TF07', 'TF08', 'TF09', 'TF10', 'TF11', 'TP10', 'TP11', 'TP12', 'TP13']
+TF01 detected    TREE: partial: a refused events page ends the walk with the events read so far | Test Files  2 failed | 2 passed (4) | Tests  2 failed | 32 passed (34) | × D176: a walk that starts signed out reads nothing and ends with the Core's own 401 (a refusal, not an outage) 2ms (12 s)
+TF02 detected    TREE: partial: a refused audit page ends the walk with the rows read so far | Test Files  4 failed (4) | Tests  6 failed | 28 passed (34) | × D176: a walk that starts signed out reads nothing and ends with the Core's own 401 (a refusal, not an outage) 2ms (21 s)
+TF03 detected    TREE: partial: the chain check is not run | Test Files  3 failed | 1 passed (4) | Tests  5 failed | 29 passed (34) | × a page that skips a row (a gap in the chain): no file; the page's sentence that the export was recorded; the record names CHAIN_MOVED 8145ms (21 s)
+TF04 detected    TREE: partial: a chain that fails its check returns the rows anyway | Test Files  3 failed | 1 passed (4) | Tests  5 failed | 29 passed (34) | × a page that skips a row (a gap in the chain): no file; the page's sentence that the export was recorded; the record names CHAIN_MOVED 8138ms (21 s)
+TF05 detected    TREE: partial: the count check removed | Test Files  1 failed | 3 passed (4) | Tests  1 failed | 33 passed (34) | × the count check: a list that ends early (no head known) is a moved chain, never a short file 2ms (8 s)
+TF06 detected    TREE: partial: the sequence check removed | Test Files  1 failed | 3 passed (4) | Tests  1 failed | 33 passed (34) | × the sequence check: a duplicated row in place of a missing one (right count, no head known) is a moved chain 2ms (9 s)
+TF07 detected    TREE: partial: the head check removed | Test Files  2 failed | 2 passed (4) | Tests  2 failed | 32 passed (34) | × the head check: the right count ending on another hash is a moved chain 2ms (21 s)
+TF08 detected    TREE: partial: an endless audit list returns what it read | Test Files  1 failed | 3 passed (4) | Tests  1 failed | 33 passed (34) | × a server that never stops handing out cursors: ENDLESS, never what was read (audit, unknown count; events) 3ms (9 s)
+TF09 detected    TREE: partial: an endless events list returns what it read | Test Files  1 failed | 3 passed (4) | Tests  1 failed | 33 passed (34) | × a server that never stops handing out cursors: ENDLESS, never what was read (audit, unknown count; events) 4ms (9 s)
+TF10 detected    TREE: the walk reads past the rows the export covers (the stop on the count removed) | Test Files  3 failed | 1 passed (4) | Tests  8 failed | 26 passed (34) | × reads every page in order, following the cursor, to the rows the export covers; the page counter after each page 2ms (52 s)
+TF11 detected    TREE: without a known count the walk does not stop before the export's own row | Test Files  1 failed | 3 passed (4) | Tests  1 failed | 33 passed (34) | × without a known count the walk stops before the export's own AUDIT_EXPORTED row 3ms (8 s)
+TP10 detected    TREE: the page counter is not called | Test Files  2 failed | 2 passed (4) | Tests  2 failed | 32 passed (34) | × reads every page in order, following the cursor, to the rows the export covers; the page counter after each page 3ms (16 s)
+TP11 detected    TREE: W75 error: a moved chain is not named CHAIN_MOVED | Test Files  1 failed | 3 passed (4) | Tests  1 failed | 33 passed (34) | × a chain that moved (the walk does not end on the export's head): no file; the page's toast and one record with no text 170ms (9 s)
+TP12 detected    TREE: W76 error: a moved chain is not named CHAIN_MOVED | Test Files  1 failed | 3 passed (4) | Tests  1 failed | 33 passed (34) | × a page that skips a row (a gap in the chain): no file; the page's sentence that the export was recorded; the record names CHAIN_MOVED 119ms (8 s)
+TP13 detected    TREE: a refused page loses its list name | Test Files  1 failed | 3 passed (4) | Tests  1 failed | 33 passed (34) | × a page of operation 63 that gets no answer: no partial file; the presenter, then the sentence that the export was recorded; one record 94ms (8 s)
+## 2026-10-06 03:18:12 WIB 15 mutations: 15 detected, 0 survived [], 0 red for another reason [], 0 not applied []; controls green [], controls red []
+## the mutated files (and watched files) in the tree, before and after: identical
+   fd42a1bd2b6e7c83  apps/core-web/src/features/security-audit/export-file.ts
+   ca219c12d6a94fff  apps/core-web/src/features/system/live-log-export.ts
+   335cbf871ebbe528  apps/core-web/src/features/system/sim-adapter.ts
+   02aa74819283ad0e  apps/core-web/src/lib/core-page-walk.ts

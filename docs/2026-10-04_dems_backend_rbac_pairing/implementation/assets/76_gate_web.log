@@ -1,0 +1,20 @@
+## 2026-10-06 02:18 WIB (after decision D176) $ npm run typecheck -w @dems/core-web
+> tsc -b
+
+exit=0
+## $ npm run lint -w @dems/core-web
+> oxlint
+
+exit=0 (warnings: 0)
+
+## earlier pass (02:12-02:13)
+## 2026-10-06 02:12:51 WIB $ npm run typecheck -w @dems/core-web
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0   (re-run at the next line's time to capture the code: zsh has no PIPESTATUS)
+## 02:13:06 $ npm run lint -w @dems/core-web
+exit=0
+## 02:13:06 $ npm run test -w @dems/core-web -- --maxWorkers=2 src/features/system src/test/live-system- src/test/live-strict-mode-starts.test.tsx src/test/live-pending-control.test.tsx src/test/live-runtime-static.test.tsx
+ Test Files  9 passed (9)
+      Tests  123 passed (123)

@@ -1,0 +1,6 @@
+tap 1852,1248 at 16:41:39.718
+slept 2500 ms
+swipe 1900,1250,1900,550 600 ms
+slept 1500 ms
+screencap B2_hash_integrity_0015_verified.png (721013 bytes) at 16:41:44.670
+ids: 180 nodes -> q/rt2_0015.txt

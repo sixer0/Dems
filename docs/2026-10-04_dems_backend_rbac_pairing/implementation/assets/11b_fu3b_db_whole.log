@@ -1,0 +1,155 @@
+# W11b follow-up 3, second round (decision D134): the whole `db` project of the live tree.
+# $ DEMS_TEST_STEP=w11b3 npm run test:db -w @dems/core-server -- --maxWorkers=2      (started 11:03:54, exit 0)
+# The two lines this row’s new test file prints, and the summary lines; the output of other rows is left out.
+# Three other agents were running during this window (load average 5.5 to 7.2); no test failed, so there is
+# no failure of another row to name and no second run to record (rule P11).
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2 --reporter=default --reporter=json --outputFile.json=.cache/w11b3-db-whole.json
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_w11b3_tmf1yihx_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_w11b3_tmf1yihx_tpl_schema: built in 123 ms (create 57 ms, hook 64 ms)
+[test:db] template dems_test_step_w11b3_tmf1yihx_tpl_seed: built in 176 ms (create 78 ms, hook 96 ms)
+[test:db] clone-lock: a clone waited 364 ms for the lock, then took 54 ms
+[test:db] keying: this session on the clone lock -> counted 1, keyed by the reader 0 (before it: 0 / 0)
+[test:db] quiet: waited 201 ms of its 200 ms bound while another session held the clone lock; cloned in 61 ms after a lock wait of 331 ms
+ ✓ |db| test/helpers/db/__tests__/clone-lock.db.test.ts (3 tests) 1949ms
+[test:db] quiet, nobody asked to hold the lock: {"waitedMs":0.30191599999989194,"obtained":true,"budgetMs":200}
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts (13 tests) 2321ms
+[test:db] bulk fixture: dems_test_step_w11b3_tmf1yihx_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 26e251887c667e1e...; digest e58f1ae233811851...; build 207 ms, write 1547 ms, total 1764 ms
+[test:db] bulk fixture on dems_test_step_w11b3_tmf1yihx_f02_bulk_fixture: entity -> minimum -> loaded
+[test:db]   roles                       3      3  met
+[test:db]   permissions                12     12  met
+[test:db]   role_permissions           18     18  met
+[test:db]   operators                  12     12  met
+[test:db]   operator_credentials       12     12  met
+[test:db]   auth_sessions             300    300  met
+[test:db]   pairing_codes              60     60  met
+[test:db]   paired_devices             40     40  met
+[test:db]   device_credentials         40     40  met
+[test:db]   biometric_tokens           80     83  met
+[test:db]   registry_counters           2      2  met
+[test:db]   audit_log                5000   5000  met
+[test:db]   audit_chain_head            1      1  met
+[test:db]   audit_chain_history        25     25  met
+[test:db]   events                   2500   3649  met
+[test:db]   session_history           520    520  met
+[test:db]   evidence_items            505    515  met
+[test:db]   evidence_tracks          2020   2060  met
+[test:db]   evidence_custody         1200   1220  met
+[test:db]   exports                    60     60  met
+[test:db]   alerts                    250    250  met
+[test:db]   health_snapshots         1500   1508  met
+[test:db]   engine_counters             6      6  met
+[test:db]   active_session              0      0  met
+[test:db]   storage_policy              1      1  met
+[test:db]   console_settings            1      1  met
+[test:db]   core_device                 1      1  met
+[test:db]   core_state                  1      1  met
+[test:db]   hardware_snapshot           1      1  met
+[test:db]   schema_meta                 1      1  met
+[test:db] bulk fixture: verifyAuditChain over all 5000 stored audit rows: ok (head seq 5000, hash 26e251887c667e1e...)
+[test:db] bulk fixture: dems_test_step_w11b3_tmf1yihx_f03_bulk_second_load as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 26e251887c667e1e...; digest e58f1ae233811851...; build 157 ms, write 1479 ms, total 1647 ms
+[test:db] bulk fixture: digest over a stable ordered dump of all 30 tables, template clone and second load: 61154330d52c110946361daf9a709eb0689b9f63c169337aaac61a0b616ac875 = 61154330d52c110946361daf9a709eb0689b9f63c169337aaac61a0b616ac875
+[test:db] bulk fixture size: a clone of tpl_bulk 19446 kB; a clone of tpl_seed with the fixture loaded and vacuumed 19446 kB
+[test:db] bulk fixture times: tpl_bulk built in 1879 ms (create 69 ms, hook 1807 ms); clone of tpl_bulk 81 ms (lock wait 0 ms); clone of tpl_seed 64 ms; second load 1647 ms (build 157 ms, write 1479 ms), vacuum and analyze 51 ms
+[test:db] dead run: dropped 3 database(s) of a stopped run in 457 ms (settle 150 ms)
+ ✓ |db| test/helpers/db/__tests__/dead-run.db.test.ts (7 tests) 3641ms
+[w47] denied cells per role on the stored matrix: {"INVESTIGATOR":22,"SUPERVISOR":3,"TECHNICIAN":31}; permissions every role holds: EVIDENCE_VIEW, DIAGNOSTICS_RUN (operations 39, 40, 41, 49, 50, 65)
+stdout | src/modules/demo/__tests__/reset-failures.db.test.ts > finding F-5: an AUDIT_TAMPER fault across a reload of the engine that is no process start > RUN through a failed reset: the stored chain is intact and the server is usable; what the fault list and the view say is printed; clearing the fault leaves both clean
+stdout | src/modules/demo/__tests__/reset-failures.db.test.ts > finding F-5: an AUDIT_TAMPER fault across a reload of the engine that is no process start > RUN on the engine alone (no reset, no route of this module): stop, then start in the mode resync; what the fault list and the view say is printed
+[test:db] template dems_test_step_w11b3tpl_tmf1zw6t_tpl_schema: 100 ms (create 86 ms, hook 10 ms)
+[test:db] template dems_test_step_w11b3tpl_tmf1zw6t_tpl_seed: 58 ms (create 50 ms, hook 7 ms)
+[test:db] clones of the private run: dems_test_step_w11b3tpl_tmf1zw6t_f01_from_schema 40 ms, dems_test_step_w11b3tpl_tmf1zw6t_f02_from_seed 75 ms
+ ✓ |db| test/helpers/db/__tests__/templates.db.test.ts (12 tests) 4722ms
+[test:db] nested run "throwing": exit 1; databases used dems_test_step_w11b3thr_tmf201f6_f01_throwing_test_selfcheck, dems_test_step_w11b3thr_tmf201f6_f01_throwing_hook_selfcheck; remaining 0
+[test:db] nested run "unreachable": exit 1; message: test:db needs the project's PostgreSQL on 127.0.0.1:1, and nothing answers there (ECONNREFUSED). Start it with "npm run pg:start" (state: "npm run pg:status"; first use: "npm run pg:init"). The database tests did NOT run and are NOT skipped: this run fails.
+ ✓ |db| test/helpers/db/__tests__/cleanup.db.test.ts (7 tests) 2532ms
+[test:db] nested run "convention": exit 0; templates from hook modules: tpl_schema, tpl_seed (global setup), tpl_bulk (worker)
+ ✓ |db| test/helpers/db/__tests__/nested-run.db.test.ts (3 tests) 3188ms
+[test:db] timing (one-table template, 7822 kB per database):
+ ✓ |db| test/helpers/db/__tests__/timing.db.test.ts (1 test) 3442ms
+ ✓ |db| test/helpers/db/__tests__/drop-retry.db.test.ts (7 tests) 1934ms
+ ✓ |db| test/helpers/db/__tests__/global-setup.db.test.ts (6 tests) 1297ms
+[test:db] sweep: dropped 2 (dems_test_step_w11b3dead_tmeil0hx_f01_of_dead, dems_test_step_w11b3dead_tmeil0hx_tpl_x_selftest); kept 2 of live runs, 10 of younger runs
+ ✓ |db| test/helpers/db/__tests__/sweep.db.test.ts (3 tests) 1452ms
+[test:db] guards: 7 existing database(s) outside the run were refused, 0 statements sent
+ ✓ |db| test/helpers/db/__tests__/guards.db.test.ts (5 tests) 711ms
+ ✓ |db| test/helpers/db/__tests__/limits-own.db.test.ts (5 tests) 341ms
+[test:db] isolation_a: clone dems_test_step_w11b3_tmf1yihx_f01_isolation_a in 57 ms (waited 1 ms for the clone lock)
+[test:db] isolation_a: pg_database of the run while the file runs
+[test:db] isolation_b: clone dems_test_step_w11b3_tmf1yihx_f02_isolation_b in 58 ms (waited 33 ms for the clone lock)
+[test:db] isolation_b: pg_database of the run while the file runs
+ ✓ |db| test/helpers/db/__tests__/isolation-a.db.test.ts (6 tests) 241ms
+ ✓ |db| test/helpers/db/__tests__/isolation-b.db.test.ts (6 tests) 253ms
+ ✓ |db| test/helpers/db/__tests__/limits.db.test.ts (6 tests) 3ms
+ Test Files  122 passed (122)
+      Tests  1740 passed (1740)
+   Duration  139.53s (tests 82%, import 17%, transform 1%)
+[test:db] forced drops that needed a retry: 1 (1 refusal(s) with SQLSTATE 42501 while a backend that the owner role may not end, such as an autovacuum worker, was on the database; each drop then went through)
+[test:db] teardown: dropped 8 database(s) in 461 ms; 0 remain with the run prefix dems_test_step_w11b3_tmf1yihx_

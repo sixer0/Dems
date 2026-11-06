@@ -1,0 +1,48 @@
+// CPU and RSS of the Core process (and the DEMS PostgreSQL cluster as a group) sampled every INTERVAL s for SECS s.
+// CPU% per interval = delta of cumulative CPU time (ps -o time, 10 ms resolution) / delta wall time; 100% = one core.
+//   node cpu_sample.mjs <label> <secs> [interval=1]
+import { execFileSync } from 'node:child_process'
+import { readFileSync, writeFileSync } from 'node:fs'
+const OUT = '/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/verification/assets/08_performance_realtime'
+const [label, secsArg, intArg = '1'] = process.argv.slice(2)
+const SECS = Number(secsArg), INT = Number(intArg)
+const CORE = 53551
+const PGM = Number(readFileSync('/Users/gsp-budi/Documents/DEMS/.locks/postgres.pid', 'utf8').split('\n')[0])
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const parseTime = (s) => { const [main, cs = '0'] = s.trim().split('.'); const p = main.split(':').map(Number); let sec = 0; for (const x of p) sec = sec * 60 + x; return sec + Number('0.' + cs) }
+function snap() {
+  const t = Date.now()
+  const lines = execFileSync('ps', ['-axo', 'pid=,ppid=,time=,rss=,comm='], { encoding: 'utf8' }).split('\n').filter(Boolean)
+  let core = null, pg = { cpu: 0, rss: 0, n: 0 }
+  for (const l of lines) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\d+)\s+(.*)$/.exec(l); if (!m) continue
+    const pid = +m[1], ppid = +m[2], cpu = parseTime(m[3]), rss = +m[4]
+    if (pid === CORE) core = { cpu, rss }
+    if (pid === PGM || ppid === PGM) { pg.cpu += cpu; pg.rss += rss; pg.n++ }
+  }
+  const load = execFileSync('sysctl', ['-n', 'vm.loadavg'], { encoding: 'utf8' }).replace(/[{}]/g, '').trim().split(/\s+/).map(Number)
+  return { t, core, pg, load }
+}
+const uptime = execFileSync('uptime', { encoding: 'utf8' }).trim()
+const samples = []
+let prev = snap()
+const t0 = prev.t
+while (Date.now() - t0 < SECS * 1000) {
+  await sleep(INT * 1000)
+  const s = snap()
+  const dt = (s.t - prev.t) / 1000
+  samples.push({ at: new Date(s.t).toISOString(), coreCpuPct: +(((s.core.cpu - prev.core.cpu) / dt) * 100).toFixed(1), coreRssMB: +(s.core.rss / 1024).toFixed(1), pgCpuPct: +(((s.pg.cpu - prev.pg.cpu) / dt) * 100).toFixed(1), pgRssMB: +(s.pg.rss / 1024).toFixed(1), pgProcs: s.pg.n, load1: s.load[0] })
+  prev = s
+}
+const stats = (arr) => { const a = [...arr].sort((x, y) => x - y); const mean = a.reduce((x, y) => x + y, 0) / a.length; const q = (p) => a[Math.min(a.length - 1, Math.floor(p * a.length))]; return { n: a.length, mean: +mean.toFixed(2), p50: q(0.5), p95: q(0.95), max: a[a.length - 1], min: a[0] } }
+const total = (snapEnd, snapStart, f) => +((f(snapEnd) - f(snapStart)) / ((snapEnd.t - snapStart.t) / 1000) * 100).toFixed(2)
+const first = { t: t0 }
+const summary = {
+  label, startedAt: new Date(t0).toISOString(), endedAt: new Date(prev.t).toISOString(), seconds: (prev.t - t0) / 1000, intervalS: INT, uptimeAtStart: uptime,
+  uptimeAtEnd: execFileSync('uptime', { encoding: 'utf8' }).trim(),
+  corePid: CORE, pgMasterPid: PGM,
+  coreCpuPct: stats(samples.map((s) => s.coreCpuPct)), coreRssMB: stats(samples.map((s) => s.coreRssMB)),
+  pgCpuPct: stats(samples.map((s) => s.pgCpuPct)), pgRssMB: stats(samples.map((s) => s.pgRssMB)), load1: stats(samples.map((s) => s.load1)),
+}
+writeFileSync(`${OUT}/${label}.json`, JSON.stringify({ summary, samples }, null, 1))
+console.log(JSON.stringify(summary))

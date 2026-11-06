@@ -1,0 +1,52 @@
+{
+  "at": "10:14:50.738 (epoch 1791256490.738)",
+  "waited": null,
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "table",
+    "rows": [
+      {
+        "id": "DEV-0002",
+        "state": "Paired",
+        "online": "",
+        "operator": "—",
+        "lastSeen": "2 min ago",
+        "revokeShown": true
+      },
+      {
+        "id": "DEV-0001",
+        "state": "Revoked",
+        "online": "",
+        "operator": "—",
+        "lastSeen": "7 min ago",
+        "revokeShown": false
+      }
+    ],
+    "summary": {
+      "paired": "1",
+      "online": "1",
+      "text": "1 paired · 1 online1 paired · 1 online"
+    },
+    "toasts": []
+  },
+  "screenshot": {
+    "file": "06_web_device_live_after_sign_in.png",
+    "at": "10:14:50.737 (epoch 1791256490.737)"
+  },
+  "audit": {},
+  "network": {
+    "api": [],
+    "origins": [],
+    "sockets": [],
+    "console": []
+  }
+}

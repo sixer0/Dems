@@ -1,0 +1,536 @@
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db test/acceptance --reporter=verbose
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_75_tmdp9yj3_
+[test:db] stale sweep: dropped 0; kept 6 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_75_tmdp9yj3_tpl_schema: built in 79 ms (create 29 ms, hook 49 ms)
+[test:db] template dems_test_step_75_tmdp9yj3_tpl_seed: built in 124 ms (create 44 ms, hook 79 ms)
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the journey before the first stop: the policy, a paired tablet, a code left active, the role, a recording sealed and verified 205ms
+stdout | test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 1 (the tablet was connected): every table is equal before the stop and after the start, except what the start itself writes; the epoch is the previous plus 1
+[w53] restart 1: content checksum of contract §9.6 per table, stopped -> started (30 tables: 24 equal, 6 moved)
+[w53]   table                 rows        stopped                           started                         
+[w53]   active_session        1 -> 1      3153194459a06894714198b82f6ce59c  3153194459a06894714198b82f6ce59c  equal
+[w53]   alerts                0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_chain_head      1 -> 1      642c80dd36eca75ed656aef2241fe36a  44941f301c9c766bfe8e5ba7bec4e0be  MOVED  follows the newest audit row
+[w53]   audit_chain_history   0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_log             108 -> 109  31700aeeaa0a0b65794cc3a61669fe4e  95c3fb7c4be354d3b2b36fc041e4f951  MOVED  the row the start wrote: TABLET_LINK_CHANGED (no device is connected after a start)
+[w53]   auth_sessions         5 -> 5      348f5c62971bc8da8fc6a4692ea56118  348f5c62971bc8da8fc6a4692ea56118  equal
+[w53]   biometric_tokens      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   console_settings      1 -> 1      e989d47d1011537769ee1753b4ac3e47  e989d47d1011537769ee1753b4ac3e47  equal
+[w53]   core_device           1 -> 1      ff0be292ec82bd2813a400e538383575  ff0be292ec82bd2813a400e538383575  equal
+[w53]   core_state            1 -> 1      dcc468cf8574f947229fad5bf2cb170d  66020c6624d7eea82d350017c2f258a3  MOVED  the epoch is the stored one plus 1 at every start (decision D14); `updated_at` is the start instant
+[w53]   device_credentials    1 -> 1      8e067b9094f170dd487bd7c0669a9d94  8e067b9094f170dd487bd7c0669a9d94  equal
+[w53]   engine_counters       5 -> 5      41772014bf149bac098d91fd3c8d5f71  64dbd931d995212ddc6fb4126d144171  MOVED  the counter those rows took: `event`
+[w53]   events                81 -> 82    7ccd888aa9d97cdf26f0ea036a3e82c7  86803d99e767027b0dbdd69aa8795fe9  MOVED  the events of those rows
+[w53]   evidence_custody      32 -> 32    f5db8d4dbb2600d14d6658d8ef489492  f5db8d4dbb2600d14d6658d8ef489492  equal
+[w53]   evidence_items        14 -> 14    bffd72da765ee59d2875b9c20b480f77  bffd72da765ee59d2875b9c20b480f77  equal
+[w53]   evidence_tracks       56 -> 56    6fbfd802cf6797d8e10f16062e3641ff  6fbfd802cf6797d8e10f16062e3641ff  equal
+[w53]   exports               1 -> 1      ca81ca43795f4aa758f2e06b5a96ed0f  ca81ca43795f4aa758f2e06b5a96ed0f  equal
+[w53]   hardware_snapshot     1 -> 1      fb2669dca97dbd334d7d7f2a856808e2  2e596e1cc99bce218d51332ff164a6de  MOVED  the tablet link is OFFLINE after a start, with the tablet's entry among the other devices; `written_at` is the start instant
+[w53]   health_snapshots      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   operator_credentials  3 -> 3      725fa6225fe8641e210309d832b1b061  725fa6225fe8641e210309d832b1b061  equal
+[w53]   operators             3 -> 3      7ce82d747adc7f03dd9e1376cb764d1c  7ce82d747adc7f03dd9e1376cb764d1c  equal
+[w53]   paired_devices        1 -> 1      9e41db18ccac9e2eb7c60c8fc36e29da  9e41db18ccac9e2eb7c60c8fc36e29da  equal
+[w53]   pairing_codes         2 -> 2      a20811758882acaecdc1934f6166d380  a20811758882acaecdc1934f6166d380  equal
+[w53]   permissions           12 -> 12    b6847b52dba810eeb88a6ec2beed7d7d  b6847b52dba810eeb88a6ec2beed7d7d  equal
+[w53]   registry_counters     2 -> 2      639cd43435f0715f9604d86854882677  639cd43435f0715f9604d86854882677  equal
+[w53]   role_permissions      18 -> 18    4535b3b8d2890c9d0e2adbd5c8c38df9  4535b3b8d2890c9d0e2adbd5c8c38df9  equal
+[w53]   roles                 3 -> 3      fa441157a1c8628f2f997b22a6ea34de  fa441157a1c8628f2f997b22a6ea34de  equal
+[w53]   schema_meta           1 -> 1      58befb268168a15ab0a1f0537c49d6a9  58befb268168a15ab0a1f0537c49d6a9  equal
+[w53]   session_history       14 -> 14    f544128f47982bdad1a4e39727b74824  f544128f47982bdad1a4e39727b74824  equal
+[w53]   storage_policy        1 -> 1      e89bc8b895b88bc7adc2a7ba6d779e8c  e89bc8b895b88bc7adc2a7ba6d779e8c  equal
+
+stdout | test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 1 (the tablet was connected): every table is equal before the stop and after the start, except what the start itself writes; the epoch is the previous plus 1
+[w53] restart 1: stop at +36.35 s (last committed instant +36.00 s), start at +126.35 s; epoch 1 -> 2; no backend of dems_app left after 0 poll(s), 0 ms; last row before the stop: 108 SUMMARY_ACKNOWLEDGED (OPR-001, +35.00 s); rows the start wrote: 109 TABLET_LINK_CHANGED (no actor, +126.35 s)
+
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 1 (the tablet was connected): every table is equal before the stop and after the start, except what the start itself writes; the epoch is the previous plus 1 76ms
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > what the restarted server serves through the routes is what was stored: the policy, the tablet, the active code, the role, the sealed evidence, the history 22ms
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the SUPERVISOR session of before the stop works without a new sign-in; a session that was signed out stays ended, with its reason 16ms
+stdout | test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands of the restarted process: the sealed evidence verifies; the audit chain goes on from the row the start wrote; the code of before the stop pairs a second tablet
+[w53] across restart 1: last row before the stop 108 SUMMARY_ACKNOWLEDGED (OPR-001, +35.00 s); the start wrote 109 TABLET_LINK_CHANGED (no actor, +126.35 s); first row of the next command 110 EVIDENCE_VERIFIED (OPR-002, +126.35 s)
+
+stdout | test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restarts 2 and 3, one straight after the other: only the epoch moves, twice; every read operation answers what it answered before; the epoch is the second process's plus 2
+[w53] restart 2: content checksum of contract §9.6 per table, stopped -> started (30 tables: 29 equal, 1 moved)
+[w53]   table                 rows        stopped                           started                         
+[w53]   active_session        1 -> 1      3153194459a06894714198b82f6ce59c  3153194459a06894714198b82f6ce59c  equal
+[w53]   alerts                0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_chain_head      1 -> 1      4726559ee0a592c1022bab20690b26af  4726559ee0a592c1022bab20690b26af  equal
+[w53]   audit_chain_history   0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_log             111 -> 111  c035cedb1a1cb06a82807c3151e8bdf0  c035cedb1a1cb06a82807c3151e8bdf0  equal
+[w53]   auth_sessions         5 -> 5      62208af572cc9407b9b7303cb9f8d9ff  62208af572cc9407b9b7303cb9f8d9ff  equal
+[w53]   biometric_tokens      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   console_settings      1 -> 1      e989d47d1011537769ee1753b4ac3e47  e989d47d1011537769ee1753b4ac3e47  equal
+[w53]   core_device           1 -> 1      ff0be292ec82bd2813a400e538383575  ff0be292ec82bd2813a400e538383575  equal
+[w53]   core_state            1 -> 1      66020c6624d7eea82d350017c2f258a3  38d055bd2775726c00e0e30ea6ab0b70  MOVED  the epoch is the stored one plus 1 at every start (decision D14); `updated_at` is the start instant
+[w53]   device_credentials    2 -> 2      b4cb7ab94715070f06887f8ac38d5693  b4cb7ab94715070f06887f8ac38d5693  equal
+[w53]   engine_counters       5 -> 5      a430d713d4b978039277cf2307380dd0  a430d713d4b978039277cf2307380dd0  equal
+[w53]   events                84 -> 84    72c3c818998e644d1156a2e217da4a1a  72c3c818998e644d1156a2e217da4a1a  equal
+[w53]   evidence_custody      33 -> 33    018c3483a7dfb8ae1eda2f223a91f7aa  018c3483a7dfb8ae1eda2f223a91f7aa  equal
+[w53]   evidence_items        14 -> 14    91240484aef566d85b7c14c351445f97  91240484aef566d85b7c14c351445f97  equal
+[w53]   evidence_tracks       56 -> 56    6fbfd802cf6797d8e10f16062e3641ff  6fbfd802cf6797d8e10f16062e3641ff  equal
+[w53]   exports               1 -> 1      ca81ca43795f4aa758f2e06b5a96ed0f  ca81ca43795f4aa758f2e06b5a96ed0f  equal
+[w53]   hardware_snapshot     1 -> 1      2e596e1cc99bce218d51332ff164a6de  2e596e1cc99bce218d51332ff164a6de  equal
+[w53]   health_snapshots      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   operator_credentials  3 -> 3      725fa6225fe8641e210309d832b1b061  725fa6225fe8641e210309d832b1b061  equal
+[w53]   operators             3 -> 3      7ce82d747adc7f03dd9e1376cb764d1c  7ce82d747adc7f03dd9e1376cb764d1c  equal
+[w53]   paired_devices        2 -> 2      03a227a5b165df476bd53d71e918395f  03a227a5b165df476bd53d71e918395f  equal
+[w53]   pairing_codes         2 -> 2      29338fe3b8eee42483b33aed500f3e0b  29338fe3b8eee42483b33aed500f3e0b  equal
+[w53]   permissions           12 -> 12    b6847b52dba810eeb88a6ec2beed7d7d  b6847b52dba810eeb88a6ec2beed7d7d  equal
+[w53]   registry_counters     2 -> 2      54019540536809f6651c8d1d61b61a46  54019540536809f6651c8d1d61b61a46  equal
+[w53]   role_permissions      18 -> 18    4535b3b8d2890c9d0e2adbd5c8c38df9  4535b3b8d2890c9d0e2adbd5c8c38df9  equal
+[w53]   roles                 3 -> 3      fa441157a1c8628f2f997b22a6ea34de  fa441157a1c8628f2f997b22a6ea34de  equal
+[w53]   schema_meta           1 -> 1      58befb268168a15ab0a1f0537c49d6a9  58befb268168a15ab0a1f0537c49d6a9  equal
+[w53]   session_history       14 -> 14    f544128f47982bdad1a4e39727b74824  f544128f47982bdad1a4e39727b74824  equal
+[w53]   storage_policy        1 -> 1      e89bc8b895b88bc7adc2a7ba6d779e8c  e89bc8b895b88bc7adc2a7ba6d779e8c  equal
+
+stdout | test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restarts 2 and 3, one straight after the other: only the epoch moves, twice; every read operation answers what it answered before; the epoch is the second process's plus 2
+[w53] restart 2: stop at +126.35 s (last committed instant +126.35 s), start at +216.35 s; epoch 2 -> 3; no backend of dems_app left after 0 poll(s), 0 ms; last row before the stop: 111 PAIRING_SUCCESS (no actor, +126.35 s); rows the start wrote: none
+
+stdout | test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restarts 2 and 3, one straight after the other: only the epoch moves, twice; every read operation answers what it answered before; the epoch is the second process's plus 2
+[w53] restart 3: content checksum of contract §9.6 per table, stopped -> started (30 tables: 29 equal, 1 moved)
+[w53]   table                 rows        stopped                           started                         
+[w53]   active_session        1 -> 1      3153194459a06894714198b82f6ce59c  3153194459a06894714198b82f6ce59c  equal
+[w53]   alerts                0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_chain_head      1 -> 1      4726559ee0a592c1022bab20690b26af  4726559ee0a592c1022bab20690b26af  equal
+[w53]   audit_chain_history   0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_log             111 -> 111  c035cedb1a1cb06a82807c3151e8bdf0  c035cedb1a1cb06a82807c3151e8bdf0  equal
+[w53]   auth_sessions         5 -> 5      62208af572cc9407b9b7303cb9f8d9ff  62208af572cc9407b9b7303cb9f8d9ff  equal
+[w53]   biometric_tokens      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   console_settings      1 -> 1      e989d47d1011537769ee1753b4ac3e47  e989d47d1011537769ee1753b4ac3e47  equal
+[w53]   core_device           1 -> 1      ff0be292ec82bd2813a400e538383575  ff0be292ec82bd2813a400e538383575  equal
+[w53]   core_state            1 -> 1      38d055bd2775726c00e0e30ea6ab0b70  85a2a988cc735f523c5da4395febcf14  MOVED  the epoch is the stored one plus 1 at every start (decision D14); `updated_at` is the start instant
+[w53]   device_credentials    2 -> 2      b4cb7ab94715070f06887f8ac38d5693  b4cb7ab94715070f06887f8ac38d5693  equal
+[w53]   engine_counters       5 -> 5      a430d713d4b978039277cf2307380dd0  a430d713d4b978039277cf2307380dd0  equal
+[w53]   events                84 -> 84    72c3c818998e644d1156a2e217da4a1a  72c3c818998e644d1156a2e217da4a1a  equal
+[w53]   evidence_custody      33 -> 33    018c3483a7dfb8ae1eda2f223a91f7aa  018c3483a7dfb8ae1eda2f223a91f7aa  equal
+[w53]   evidence_items        14 -> 14    91240484aef566d85b7c14c351445f97  91240484aef566d85b7c14c351445f97  equal
+[w53]   evidence_tracks       56 -> 56    6fbfd802cf6797d8e10f16062e3641ff  6fbfd802cf6797d8e10f16062e3641ff  equal
+[w53]   exports               1 -> 1      ca81ca43795f4aa758f2e06b5a96ed0f  ca81ca43795f4aa758f2e06b5a96ed0f  equal
+[w53]   hardware_snapshot     1 -> 1      2e596e1cc99bce218d51332ff164a6de  2e596e1cc99bce218d51332ff164a6de  equal
+[w53]   health_snapshots      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   operator_credentials  3 -> 3      725fa6225fe8641e210309d832b1b061  725fa6225fe8641e210309d832b1b061  equal
+[w53]   operators             3 -> 3      7ce82d747adc7f03dd9e1376cb764d1c  7ce82d747adc7f03dd9e1376cb764d1c  equal
+[w53]   paired_devices        2 -> 2      03a227a5b165df476bd53d71e918395f  03a227a5b165df476bd53d71e918395f  equal
+[w53]   pairing_codes         2 -> 2      29338fe3b8eee42483b33aed500f3e0b  29338fe3b8eee42483b33aed500f3e0b  equal
+[w53]   permissions           12 -> 12    b6847b52dba810eeb88a6ec2beed7d7d  b6847b52dba810eeb88a6ec2beed7d7d  equal
+[w53]   registry_counters     2 -> 2      54019540536809f6651c8d1d61b61a46  54019540536809f6651c8d1d61b61a46  equal
+[w53]   role_permissions      18 -> 18    4535b3b8d2890c9d0e2adbd5c8c38df9  4535b3b8d2890c9d0e2adbd5c8c38df9  equal
+[w53]   roles                 3 -> 3      fa441157a1c8628f2f997b22a6ea34de  fa441157a1c8628f2f997b22a6ea34de  equal
+[w53]   schema_meta           1 -> 1      58befb268168a15ab0a1f0537c49d6a9  58befb268168a15ab0a1f0537c49d6a9  equal
+[w53]   session_history       14 -> 14    f544128f47982bdad1a4e39727b74824  f544128f47982bdad1a4e39727b74824  equal
+[w53]   storage_policy        1 -> 1      e89bc8b895b88bc7adc2a7ba6d779e8c  e89bc8b895b88bc7adc2a7ba6d779e8c  equal
+
+stdout | test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restarts 2 and 3, one straight after the other: only the epoch moves, twice; every read operation answers what it answered before; the epoch is the second process's plus 2
+[w53] restart 3: stop at +216.35 s (last committed instant +126.35 s), start at +306.35 s; epoch 3 -> 4; no backend of dems_app left after 0 poll(s), 0 ms; last row before the stop: 111 PAIRING_SUCCESS (no actor, +126.35 s); rows the start wrote: none
+
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands of the restarted process: the sealed evidence verifies; the audit chain goes on from the row the start wrote; the code of before the stop pairs a second tablet 9ms
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restarts 2 and 3, one straight after the other: only the epoch moves, twice; every read operation answers what it answered before; the epoch is the second process's plus 2 120ms
+stdout | test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands after three restarts: the chain goes on from the last row before the second stop; the changed role decides; the tablets resolve; one is revoked
+[w53] across restarts 2 and 3: last row before the second stop 111 PAIRING_SUCCESS (no actor, +126.35 s); the two starts wrote nothing; first row of the next command 112 ACCESS_DENIED (OPR-003, +306.35 s)
+
+stdout | test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 4, after commands of a rehydrated process and with a session in CREATE: stable again; a session in CREATE is not faulted; a revoked tablet stays revoked
+[w53] restart 4: content checksum of contract §9.6 per table, stopped -> started (30 tables: 29 equal, 1 moved)
+[w53]   table                 rows        stopped                           started                         
+[w53]   active_session        1 -> 1      851b4ec2f2da11517fc6efa7a281368e  851b4ec2f2da11517fc6efa7a281368e  equal
+[w53]   alerts                0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_chain_head      1 -> 1      734526a02b5ebf9f3caccd7d3c187cb1  734526a02b5ebf9f3caccd7d3c187cb1  equal
+[w53]   audit_chain_history   0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_log             114 -> 114  401f490a64149b8554606db00492280c  401f490a64149b8554606db00492280c  equal
+[w53]   auth_sessions         5 -> 5      dceec043e6b485b97317e58de5225475  dceec043e6b485b97317e58de5225475  equal
+[w53]   biometric_tokens      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   console_settings      1 -> 1      e989d47d1011537769ee1753b4ac3e47  e989d47d1011537769ee1753b4ac3e47  equal
+[w53]   core_device           1 -> 1      ff0be292ec82bd2813a400e538383575  ff0be292ec82bd2813a400e538383575  equal
+[w53]   core_state            1 -> 1      85a2a988cc735f523c5da4395febcf14  10e9efffe6f1f7e5992b0ff8d6dcdf38  MOVED  the epoch is the stored one plus 1 at every start (decision D14); `updated_at` is the start instant
+[w53]   device_credentials    2 -> 2      b4cb7ab94715070f06887f8ac38d5693  b4cb7ab94715070f06887f8ac38d5693  equal
+[w53]   engine_counters       5 -> 5      0d86ab81e74f46cab93c6b208a762f7e  0d86ab81e74f46cab93c6b208a762f7e  equal
+[w53]   events                86 -> 86    80bd7b776dcf56d204a255d30625b851  80bd7b776dcf56d204a255d30625b851  equal
+[w53]   evidence_custody      33 -> 33    018c3483a7dfb8ae1eda2f223a91f7aa  018c3483a7dfb8ae1eda2f223a91f7aa  equal
+[w53]   evidence_items        14 -> 14    91240484aef566d85b7c14c351445f97  91240484aef566d85b7c14c351445f97  equal
+[w53]   evidence_tracks       56 -> 56    6fbfd802cf6797d8e10f16062e3641ff  6fbfd802cf6797d8e10f16062e3641ff  equal
+[w53]   exports               1 -> 1      ca81ca43795f4aa758f2e06b5a96ed0f  ca81ca43795f4aa758f2e06b5a96ed0f  equal
+[w53]   hardware_snapshot     1 -> 1      2e596e1cc99bce218d51332ff164a6de  2e596e1cc99bce218d51332ff164a6de  equal
+[w53]   health_snapshots      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   operator_credentials  3 -> 3      725fa6225fe8641e210309d832b1b061  725fa6225fe8641e210309d832b1b061  equal
+[w53]   operators             3 -> 3      7ce82d747adc7f03dd9e1376cb764d1c  7ce82d747adc7f03dd9e1376cb764d1c  equal
+[w53]   paired_devices        2 -> 2      c19ea361972a9973296ee74d49449eef  c19ea361972a9973296ee74d49449eef  equal
+[w53]   pairing_codes         2 -> 2      29338fe3b8eee42483b33aed500f3e0b  29338fe3b8eee42483b33aed500f3e0b  equal
+[w53]   permissions           12 -> 12    b6847b52dba810eeb88a6ec2beed7d7d  b6847b52dba810eeb88a6ec2beed7d7d  equal
+[w53]   registry_counters     2 -> 2      54019540536809f6651c8d1d61b61a46  54019540536809f6651c8d1d61b61a46  equal
+[w53]   role_permissions      18 -> 18    4535b3b8d2890c9d0e2adbd5c8c38df9  4535b3b8d2890c9d0e2adbd5c8c38df9  equal
+[w53]   roles                 3 -> 3      fa441157a1c8628f2f997b22a6ea34de  fa441157a1c8628f2f997b22a6ea34de  equal
+[w53]   schema_meta           1 -> 1      58befb268168a15ab0a1f0537c49d6a9  58befb268168a15ab0a1f0537c49d6a9  equal
+[w53]   session_history       14 -> 14    f544128f47982bdad1a4e39727b74824  f544128f47982bdad1a4e39727b74824  equal
+[w53]   storage_policy        1 -> 1      e89bc8b895b88bc7adc2a7ba6d779e8c  e89bc8b895b88bc7adc2a7ba6d779e8c  equal
+
+stdout | test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 4, after commands of a rehydrated process and with a session in CREATE: stable again; a session in CREATE is not faulted; a revoked tablet stays revoked
+[w53] restart 4: stop at +306.35 s (last committed instant +306.35 s), start at +396.35 s; epoch 4 -> 5; no backend of dems_app left after 0 poll(s), 0 ms; last row before the stop: 114 DEVICE_REVOKED (OPR-002, +306.35 s); rows the start wrote: none
+
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > the first commands after three restarts: the chain goes on from the last row before the second stop; the changed role decides; the tablets resolve; one is revoked 12ms
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > restart 4, after commands of a rehydrated process and with a session in CREATE: stable again; a session in CREATE is not faulted; a revoked tablet stays revoked 67ms
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > no activity is invented for the time the server was down: no stored row is stamped inside a stop, and the engine goes on from the start instant 96ms
+stdout | test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the idle and the absolute limit still apply on the server clock to sessions that came through four restarts
+[w53] SR-17: the SUPERVISOR session issued at +0.00 s in process 1 answered in processes 2 to 5 without a sign-in; idle expiry of the INVESTIGATOR session at +935.00 s (last activity +35.00 s, before the first stop); absolute expiry of the SUPERVISOR session at +28800.00 s after 47 touches in process 5
+
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > SR-17: the idle and the absolute limit still apply on the server clock to sessions that came through four restarts 35ms
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-04, SR-17: a policy change, a paired device, a role change and a sealed session, then four restarts > at the end: the chain verifies over the rows of all five processes, the tables hold what the engine serves, and no process logged an error 7ms
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+[w53] RECORDING at the stop: content checksum of contract §9.6 per table, stopped -> started (30 tables: 21 equal, 9 moved)
+[w53]   table                 rows        stopped                           started                         
+[w53]   active_session        1 -> 1      4309618ed602ecdf9d05a285062684f0  2f3ea19acaa62004cd71e3d56e40b2fb  MOVED  the restart fault: the session is in FAULT, stamped at the last committed instant
+[w53]   alerts                0 -> 1      d41d8cd98f00b204e9800998ecf8427e  7cf53ee0d507c07119d1ff38bb9fbeec  MOVED  the critical alert of the fault
+[w53]   audit_chain_head      1 -> 1      e494f6ec14c5bc3ecd0650f1718fe213  8afae2f4e8ae102985ece0f168feaac5  MOVED  follows the newest audit row
+[w53]   audit_chain_history   0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_log             92 -> 94    ea1c339edb4bdc6a2aca227dbb269aea  41bf2db14ce36bb3996d9a623ac72399  MOVED  the rows the start wrote: FAULT_RAISED (the restart fault) and TABLET_LINK_CHANGED
+[w53]   auth_sessions         2 -> 2      03e64ba60a19db92e726ac3bfeb1d1d8  03e64ba60a19db92e726ac3bfeb1d1d8  equal
+[w53]   biometric_tokens      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   console_settings      1 -> 1      e989d47d1011537769ee1753b4ac3e47  e989d47d1011537769ee1753b4ac3e47  equal
+[w53]   core_device           1 -> 1      ff0be292ec82bd2813a400e538383575  ff0be292ec82bd2813a400e538383575  equal
+[w53]   core_state            1 -> 1      04d4b4d0176788fe92f02e683969f825  c7c84d8c68ae9a8bed4c59cc051d9332  MOVED  the epoch is the stored one plus 1 at every start (decision D14); `updated_at` is the start instant
+[w53]   device_credentials    0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   engine_counters       5 -> 5      f39c752994f3550039e31ab9cbd835e5  fa94b46891c5d4caedc39efc6f728336  MOVED  the counters those rows took: `event`, and `item` for the alert
+[w53]   events                69 -> 71    85c1a53fc72666de078860232cb42fef  c2c9052c94bc4cf9d8f5ac50b9e8ef20  MOVED  the events of those rows
+[w53]   evidence_custody      28 -> 28    702e5a68c0c67047872da54deb0aeeb7  702e5a68c0c67047872da54deb0aeeb7  equal
+[w53]   evidence_items        13 -> 13    9244e475f9e1daf47d5e5887410c13a4  9244e475f9e1daf47d5e5887410c13a4  equal
+[w53]   evidence_tracks       52 -> 52    014ca4b24d76625cdbe0a9e42b090861  014ca4b24d76625cdbe0a9e42b090861  equal
+[w53]   exports               1 -> 1      ca81ca43795f4aa758f2e06b5a96ed0f  ca81ca43795f4aa758f2e06b5a96ed0f  equal
+[w53]   hardware_snapshot     1 -> 1      cdbbf2405ca9ab6f24d8eaa5d8d9e501  8445b8825252e291d17479e63cef70fc  MOVED  the slices of the power-failure fault, the tablet link (OFFLINE after a start) and `written_at`
+[w53]   health_snapshots      0 -> 1      d41d8cd98f00b204e9800998ecf8427e  fd07943d141c95b933de7f6950cf2076  MOVED  one row for the fault raise
+[w53]   operator_credentials  3 -> 3      725fa6225fe8641e210309d832b1b061  725fa6225fe8641e210309d832b1b061  equal
+[w53]   operators             3 -> 3      07ef0cc7a116293cc6ce8c2fdbae3b82  07ef0cc7a116293cc6ce8c2fdbae3b82  equal
+[w53]   paired_devices        0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   pairing_codes         0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   permissions           12 -> 12    b6847b52dba810eeb88a6ec2beed7d7d  b6847b52dba810eeb88a6ec2beed7d7d  equal
+[w53]   registry_counters     2 -> 2      caec30d02ab41cda28db7826769e1ff2  caec30d02ab41cda28db7826769e1ff2  equal
+[w53]   role_permissions      18 -> 18    4535b3b8d2890c9d0e2adbd5c8c38df9  4535b3b8d2890c9d0e2adbd5c8c38df9  equal
+[w53]   roles                 3 -> 3      fa441157a1c8628f2f997b22a6ea34de  fa441157a1c8628f2f997b22a6ea34de  equal
+[w53]   schema_meta           1 -> 1      58befb268168a15ab0a1f0537c49d6a9  58befb268168a15ab0a1f0537c49d6a9  equal
+[w53]   session_history       13 -> 13    11dfbe395c8e4992b26d0596f6b3be86  11dfbe395c8e4992b26d0596f6b3be86  equal
+[w53]   storage_policy        1 -> 1      c4260ef36eeaf0a140b3e9c19bff6621  c4260ef36eeaf0a140b3e9c19bff6621  equal
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+[w53] RECORDING at the stop: stop at +17.45 s (last committed instant +17.00 s), start at +107.45 s; epoch 1 -> 2; no backend of dems_app left after 0 poll(s), 0 ms; last row before the stop: 92 MARKER_ADDED (OPR-001, +15.00 s); rows the start wrote: 93 FAULT_RAISED (no actor, +17.00 s), 94 TABLET_LINK_CHANGED (no actor, +107.45 s)
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+[w53] FAULT at the stop: content checksum of contract §9.6 per table, stopped -> started (30 tables: 29 equal, 1 moved)
+[w53]   table                 rows        stopped                           started                         
+[w53]   active_session        1 -> 1      2f3ea19acaa62004cd71e3d56e40b2fb  2f3ea19acaa62004cd71e3d56e40b2fb  equal
+[w53]   alerts                1 -> 1      7cf53ee0d507c07119d1ff38bb9fbeec  7cf53ee0d507c07119d1ff38bb9fbeec  equal
+[w53]   audit_chain_head      1 -> 1      8afae2f4e8ae102985ece0f168feaac5  8afae2f4e8ae102985ece0f168feaac5  equal
+[w53]   audit_chain_history   0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_log             94 -> 94    41bf2db14ce36bb3996d9a623ac72399  41bf2db14ce36bb3996d9a623ac72399  equal
+[w53]   auth_sessions         2 -> 2      03e64ba60a19db92e726ac3bfeb1d1d8  03e64ba60a19db92e726ac3bfeb1d1d8  equal
+[w53]   biometric_tokens      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   console_settings      1 -> 1      e989d47d1011537769ee1753b4ac3e47  e989d47d1011537769ee1753b4ac3e47  equal
+[w53]   core_device           1 -> 1      ff0be292ec82bd2813a400e538383575  ff0be292ec82bd2813a400e538383575  equal
+[w53]   core_state            1 -> 1      c7c84d8c68ae9a8bed4c59cc051d9332  91cd410d112072347655e39d8505b483  MOVED  the epoch is the stored one plus 1 at every start (decision D14); `updated_at` is the start instant
+[w53]   device_credentials    0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   engine_counters       5 -> 5      fa94b46891c5d4caedc39efc6f728336  fa94b46891c5d4caedc39efc6f728336  equal
+[w53]   events                71 -> 71    c2c9052c94bc4cf9d8f5ac50b9e8ef20  c2c9052c94bc4cf9d8f5ac50b9e8ef20  equal
+[w53]   evidence_custody      28 -> 28    702e5a68c0c67047872da54deb0aeeb7  702e5a68c0c67047872da54deb0aeeb7  equal
+[w53]   evidence_items        13 -> 13    9244e475f9e1daf47d5e5887410c13a4  9244e475f9e1daf47d5e5887410c13a4  equal
+[w53]   evidence_tracks       52 -> 52    014ca4b24d76625cdbe0a9e42b090861  014ca4b24d76625cdbe0a9e42b090861  equal
+[w53]   exports               1 -> 1      ca81ca43795f4aa758f2e06b5a96ed0f  ca81ca43795f4aa758f2e06b5a96ed0f  equal
+[w53]   hardware_snapshot     1 -> 1      ed0d3cc4b00043521120da4a864e57de  ed0d3cc4b00043521120da4a864e57de  equal
+[w53]   health_snapshots      1 -> 1      fd07943d141c95b933de7f6950cf2076  fd07943d141c95b933de7f6950cf2076  equal
+[w53]   operator_credentials  3 -> 3      725fa6225fe8641e210309d832b1b061  725fa6225fe8641e210309d832b1b061  equal
+[w53]   operators             3 -> 3      07ef0cc7a116293cc6ce8c2fdbae3b82  07ef0cc7a116293cc6ce8c2fdbae3b82  equal
+[w53]   paired_devices        0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   pairing_codes         0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   permissions           12 -> 12    b6847b52dba810eeb88a6ec2beed7d7d  b6847b52dba810eeb88a6ec2beed7d7d  equal
+[w53]   registry_counters     2 -> 2      caec30d02ab41cda28db7826769e1ff2  caec30d02ab41cda28db7826769e1ff2  equal
+[w53]   role_permissions      18 -> 18    4535b3b8d2890c9d0e2adbd5c8c38df9  4535b3b8d2890c9d0e2adbd5c8c38df9  equal
+[w53]   roles                 3 -> 3      fa441157a1c8628f2f997b22a6ea34de  fa441157a1c8628f2f997b22a6ea34de  equal
+[w53]   schema_meta           1 -> 1      58befb268168a15ab0a1f0537c49d6a9  58befb268168a15ab0a1f0537c49d6a9  equal
+[w53]   session_history       13 -> 13    11dfbe395c8e4992b26d0596f6b3be86  11dfbe395c8e4992b26d0596f6b3be86  equal
+[w53]   storage_policy        1 -> 1      c4260ef36eeaf0a140b3e9c19bff6621  c4260ef36eeaf0a140b3e9c19bff6621  equal
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+[w53] FAULT at the stop: stop at +112.45 s (last committed instant +112.00 s), start at +202.45 s; epoch 2 -> 3; no backend of dems_app left after 0 poll(s), 0 ms; last row before the stop: 94 TABLET_LINK_CHANGED (no actor, +107.45 s); rows the start wrote: none
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+[w53] RECORDING at the stop: recording from +5.00 s, stop at +17.45 s, last committed instant +17.00 s; after the start at +107.45 s: FAULT at +17.00 s, 27333333 bytes = recordingBytes(12000 ms), not 233358333; elapsedMs as served 102450 (SIM-GAP-W34-1); after a second restart at +202.45 s: FAULT, the same instant and size, no row
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+[w53] after the recovery: content checksum of contract §9.6 per table, stopped -> started (30 tables: 29 equal, 1 moved)
+[w53]   table                 rows        stopped                           started                         
+[w53]   active_session        0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   alerts                1 -> 1      e8bac3042afb0f11e3ae7ef7ecc646b5  e8bac3042afb0f11e3ae7ef7ecc646b5  equal
+[w53]   audit_chain_head      1 -> 1      ba332d0a2d4abe3e3ff8af0f704ceeb6  ba332d0a2d4abe3e3ff8af0f704ceeb6  equal
+[w53]   audit_chain_history   0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_log             99 -> 99    381c6ee68c0936cb3b05fdfbd424dc10  381c6ee68c0936cb3b05fdfbd424dc10  equal
+[w53]   auth_sessions         2 -> 2      25f719da4d62e806cdc7a8ccccad0bf0  25f719da4d62e806cdc7a8ccccad0bf0  equal
+[w53]   biometric_tokens      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   console_settings      1 -> 1      e989d47d1011537769ee1753b4ac3e47  e989d47d1011537769ee1753b4ac3e47  equal
+[w53]   core_device           1 -> 1      ff0be292ec82bd2813a400e538383575  ff0be292ec82bd2813a400e538383575  equal
+[w53]   core_state            1 -> 1      91cd410d112072347655e39d8505b483  cdbd395fdb7533be6afec0703e470702  MOVED  the epoch is the stored one plus 1 at every start (decision D14); `updated_at` is the start instant
+[w53]   device_credentials    0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   engine_counters       5 -> 5      27dc527230bac31fc30df6da68038c3f  27dc527230bac31fc30df6da68038c3f  equal
+[w53]   events                76 -> 76    54f637b8249bc90f333276adcd712beb  54f637b8249bc90f333276adcd712beb  equal
+[w53]   evidence_custody      30 -> 30    8475031fc96cdb261f2ad822660f073b  8475031fc96cdb261f2ad822660f073b  equal
+[w53]   evidence_items        14 -> 14    27e685f6e395d45bf2cadba745427ba7  27e685f6e395d45bf2cadba745427ba7  equal
+[w53]   evidence_tracks       56 -> 56    fc305b2553caa84085342158bd9dab39  fc305b2553caa84085342158bd9dab39  equal
+[w53]   exports               1 -> 1      ca81ca43795f4aa758f2e06b5a96ed0f  ca81ca43795f4aa758f2e06b5a96ed0f  equal
+[w53]   hardware_snapshot     1 -> 1      2fd1d60c680eb008814d197ea5d9f9d6  2fd1d60c680eb008814d197ea5d9f9d6  equal
+[w53]   health_snapshots      2 -> 2      6db50eeaec8bdd55c9db7c2e49cbc2ae  6db50eeaec8bdd55c9db7c2e49cbc2ae  equal
+[w53]   operator_credentials  3 -> 3      725fa6225fe8641e210309d832b1b061  725fa6225fe8641e210309d832b1b061  equal
+[w53]   operators             3 -> 3      07ef0cc7a116293cc6ce8c2fdbae3b82  07ef0cc7a116293cc6ce8c2fdbae3b82  equal
+[w53]   paired_devices        0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   pairing_codes         0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   permissions           12 -> 12    b6847b52dba810eeb88a6ec2beed7d7d  b6847b52dba810eeb88a6ec2beed7d7d  equal
+[w53]   registry_counters     2 -> 2      caec30d02ab41cda28db7826769e1ff2  caec30d02ab41cda28db7826769e1ff2  equal
+[w53]   role_permissions      18 -> 18    4535b3b8d2890c9d0e2adbd5c8c38df9  4535b3b8d2890c9d0e2adbd5c8c38df9  equal
+[w53]   roles                 3 -> 3      fa441157a1c8628f2f997b22a6ea34de  fa441157a1c8628f2f997b22a6ea34de  equal
+[w53]   schema_meta           1 -> 1      58befb268168a15ab0a1f0537c49d6a9  58befb268168a15ab0a1f0537c49d6a9  equal
+[w53]   session_history       14 -> 14    9681479cc7e5298dc3a4ff258a589385  9681479cc7e5298dc3a4ff258a589385  equal
+[w53]   storage_policy        1 -> 1      c4260ef36eeaf0a140b3e9c19bff6621  c4260ef36eeaf0a140b3e9c19bff6621  equal
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+[w53] after the recovery: stop at +206.45 s (last committed instant +206.00 s), start at +296.45 s; epoch 3 -> 4; no backend of dems_app left after 0 poll(s), 0 ms; last row before the stop: 99 RECOVERY_COMPLETED (no actor, +205.45 s); rows the start wrote: none
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item
+[w53] RECORDING at the stop, recovery: recoverSession 202 RECOVERY: SYSTEM_BOOT (no actor), RECOVERY_STARTED (OPR-002), FAULT_CLEARED (no actor); then SESSION_INCOMPLETE (no actor), RECOVERY_COMPLETED (no actor); history INCOMPLETE 12000 ms 27333333 bytes; evidence EV-20261001-0014 RECORDED, never sealed, 4 tracks; epoch of the fourth process 4
+
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-05: RECORDING at the stop. FAULT at the last committed instant, not one byte of the stop counted; the fault survives a second restart; recoverSession ends in an INCOMPLETE entry and a RECORDED, never sealed, evidence item 311ms
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-06: FINALIZING at the stop. FAULT at the last committed instant, the recording time and size as stopped; recoverSession, then a stop DURING the recovery: the next process completes it as INCOMPLETE, evidence RECORDED, never sealed
+[w53] FINALIZING at the stop: content checksum of contract §9.6 per table, stopped -> started (30 tables: 21 equal, 9 moved)
+[w53]   table                 rows        stopped                           started                         
+[w53]   active_session        1 -> 1      5800d7f1ccc2811dbb9ac3b4fe940a9a  039aa5ffd0a7d826a705f989cafd32a4  MOVED  the restart fault: the session is in FAULT, stamped at the last committed instant
+[w53]   alerts                0 -> 1      d41d8cd98f00b204e9800998ecf8427e  808df224861c77a9708d97a1f6ea62c4  MOVED  the critical alert of the fault
+[w53]   audit_chain_head      1 -> 1      308a1cc0fb358f03e24e512f91742137  b1afa3c08bbac607c4cb748107dc3297  MOVED  follows the newest audit row
+[w53]   audit_chain_history   0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_log             93 -> 95    032380a7b70f14f222bec94676f522d7  dbe4d96e92ff02c2b36e5c55f5d01ac6  MOVED  the rows the start wrote: FAULT_RAISED (the restart fault) and TABLET_LINK_CHANGED
+[w53]   auth_sessions         2 -> 2      bda3086967ce4c1c23db4380a7ea4732  bda3086967ce4c1c23db4380a7ea4732  equal
+[w53]   biometric_tokens      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   console_settings      1 -> 1      e989d47d1011537769ee1753b4ac3e47  e989d47d1011537769ee1753b4ac3e47  equal
+[w53]   core_device           1 -> 1      ff0be292ec82bd2813a400e538383575  ff0be292ec82bd2813a400e538383575  equal
+[w53]   core_state            1 -> 1      04d4b4d0176788fe92f02e683969f825  ab2ceac04f486e602bcb87c1bffddc78  MOVED  the epoch is the stored one plus 1 at every start (decision D14); `updated_at` is the start instant
+[w53]   device_credentials    0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   engine_counters       5 -> 5      e34f74691d0deab9906c7d56fc8b09c8  8da73837aefd3ce90e26ab64cbcae9be  MOVED  the counters those rows took: `event`, and `item` for the alert
+[w53]   events                71 -> 73    c465ffc50e8673dcd80c07b9cfa966e7  1cf64aa2dc87254f704caacbb3ca5c4f  MOVED  the events of those rows
+[w53]   evidence_custody      28 -> 28    702e5a68c0c67047872da54deb0aeeb7  702e5a68c0c67047872da54deb0aeeb7  equal
+[w53]   evidence_items        13 -> 13    9244e475f9e1daf47d5e5887410c13a4  9244e475f9e1daf47d5e5887410c13a4  equal
+[w53]   evidence_tracks       52 -> 52    014ca4b24d76625cdbe0a9e42b090861  014ca4b24d76625cdbe0a9e42b090861  equal
+[w53]   exports               1 -> 1      ca81ca43795f4aa758f2e06b5a96ed0f  ca81ca43795f4aa758f2e06b5a96ed0f  equal
+[w53]   hardware_snapshot     1 -> 1      95a0225d577bcb9cca2543f5f02e4fd3  7c982e2ce0819cdc2b553efc403cdb7e  MOVED  the slices of the power-failure fault, the tablet link (OFFLINE after a start) and `written_at`
+[w53]   health_snapshots      0 -> 1      d41d8cd98f00b204e9800998ecf8427e  a09b599f4a4ace1b1bbeadd742becf29  MOVED  one row for the fault raise
+[w53]   operator_credentials  3 -> 3      725fa6225fe8641e210309d832b1b061  725fa6225fe8641e210309d832b1b061  equal
+[w53]   operators             3 -> 3      07ef0cc7a116293cc6ce8c2fdbae3b82  07ef0cc7a116293cc6ce8c2fdbae3b82  equal
+[w53]   paired_devices        0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   pairing_codes         0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   permissions           12 -> 12    b6847b52dba810eeb88a6ec2beed7d7d  b6847b52dba810eeb88a6ec2beed7d7d  equal
+[w53]   registry_counters     2 -> 2      caec30d02ab41cda28db7826769e1ff2  caec30d02ab41cda28db7826769e1ff2  equal
+[w53]   role_permissions      18 -> 18    4535b3b8d2890c9d0e2adbd5c8c38df9  4535b3b8d2890c9d0e2adbd5c8c38df9  equal
+[w53]   roles                 3 -> 3      fa441157a1c8628f2f997b22a6ea34de  fa441157a1c8628f2f997b22a6ea34de  equal
+[w53]   schema_meta           1 -> 1      58befb268168a15ab0a1f0537c49d6a9  58befb268168a15ab0a1f0537c49d6a9  equal
+[w53]   session_history       13 -> 13    11dfbe395c8e4992b26d0596f6b3be86  11dfbe395c8e4992b26d0596f6b3be86  equal
+[w53]   storage_policy        1 -> 1      c4260ef36eeaf0a140b3e9c19bff6621  c4260ef36eeaf0a140b3e9c19bff6621  equal
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-06: FINALIZING at the stop. FAULT at the last committed instant, the recording time and size as stopped; recoverSession, then a stop DURING the recovery: the next process completes it as INCOMPLETE, evidence RECORDED, never sealed
+[w53] FINALIZING at the stop: stop at +19.95 s (last committed instant +19.80 s), start at +109.95 s; epoch 1 -> 2; no backend of dems_app left after 0 poll(s), 1 ms; last row before the stop: 93 RECORDING_STOPPED (OPR-001, +17.45 s); rows the start wrote: 94 FAULT_RAISED (no actor, +19.80 s), 95 TABLET_LINK_CHANGED (no actor, +109.95 s)
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-06: FINALIZING at the stop. FAULT at the last committed instant, the recording time and size as stopped; recoverSession, then a stop DURING the recovery: the next process completes it as INCOMPLETE, evidence RECORDED, never sealed
+[w53] RECOVERY at the stop: content checksum of contract §9.6 per table, stopped -> started (30 tables: 29 equal, 1 moved)
+[w53]   table                 rows        stopped                           started                         
+[w53]   active_session        1 -> 1      4419ec239a5217dc437891e4f57256d8  4419ec239a5217dc437891e4f57256d8  equal
+[w53]   alerts                1 -> 1      d97675c53341b96b02f522b99850619a  d97675c53341b96b02f522b99850619a  equal
+[w53]   audit_chain_head      1 -> 1      d0140fe3514ab1711f95f800b561aeed  d0140fe3514ab1711f95f800b561aeed  equal
+[w53]   audit_chain_history   0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_log             98 -> 98    569536897f5b7fdfef8b31010dbab99d  569536897f5b7fdfef8b31010dbab99d  equal
+[w53]   auth_sessions         2 -> 2      42625f0349df4425ce1a14006c5c56b0  42625f0349df4425ce1a14006c5c56b0  equal
+[w53]   biometric_tokens      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   console_settings      1 -> 1      e989d47d1011537769ee1753b4ac3e47  e989d47d1011537769ee1753b4ac3e47  equal
+[w53]   core_device           1 -> 1      ff0be292ec82bd2813a400e538383575  ff0be292ec82bd2813a400e538383575  equal
+[w53]   core_state            1 -> 1      ab2ceac04f486e602bcb87c1bffddc78  80c3da30cba87606d3434a3043b99f0f  MOVED  the epoch is the stored one plus 1 at every start (decision D14); `updated_at` is the start instant
+[w53]   device_credentials    0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   engine_counters       5 -> 5      cfa49c76f61cb1fed6202fea967cd14a  cfa49c76f61cb1fed6202fea967cd14a  equal
+[w53]   events                76 -> 76    205376d1db390cd3b2d3fb31ef40a115  205376d1db390cd3b2d3fb31ef40a115  equal
+[w53]   evidence_custody      28 -> 28    702e5a68c0c67047872da54deb0aeeb7  702e5a68c0c67047872da54deb0aeeb7  equal
+[w53]   evidence_items        13 -> 13    9244e475f9e1daf47d5e5887410c13a4  9244e475f9e1daf47d5e5887410c13a4  equal
+[w53]   evidence_tracks       52 -> 52    014ca4b24d76625cdbe0a9e42b090861  014ca4b24d76625cdbe0a9e42b090861  equal
+[w53]   exports               1 -> 1      ca81ca43795f4aa758f2e06b5a96ed0f  ca81ca43795f4aa758f2e06b5a96ed0f  equal
+[w53]   hardware_snapshot     1 -> 1      56eb15c07570f23fb8f6b313b4cfd66e  56eb15c07570f23fb8f6b313b4cfd66e  equal
+[w53]   health_snapshots      2 -> 2      34e5452625ab62d3c71a117a5c213868  34e5452625ab62d3c71a117a5c213868  equal
+[w53]   operator_credentials  3 -> 3      725fa6225fe8641e210309d832b1b061  725fa6225fe8641e210309d832b1b061  equal
+[w53]   operators             3 -> 3      07ef0cc7a116293cc6ce8c2fdbae3b82  07ef0cc7a116293cc6ce8c2fdbae3b82  equal
+[w53]   paired_devices        0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   pairing_codes         0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   permissions           12 -> 12    b6847b52dba810eeb88a6ec2beed7d7d  b6847b52dba810eeb88a6ec2beed7d7d  equal
+[w53]   registry_counters     2 -> 2      caec30d02ab41cda28db7826769e1ff2  caec30d02ab41cda28db7826769e1ff2  equal
+[w53]   role_permissions      18 -> 18    4535b3b8d2890c9d0e2adbd5c8c38df9  4535b3b8d2890c9d0e2adbd5c8c38df9  equal
+[w53]   roles                 3 -> 3      fa441157a1c8628f2f997b22a6ea34de  fa441157a1c8628f2f997b22a6ea34de  equal
+[w53]   schema_meta           1 -> 1      58befb268168a15ab0a1f0537c49d6a9  58befb268168a15ab0a1f0537c49d6a9  equal
+[w53]   session_history       13 -> 13    11dfbe395c8e4992b26d0596f6b3be86  11dfbe395c8e4992b26d0596f6b3be86  equal
+[w53]   storage_policy        1 -> 1      c4260ef36eeaf0a140b3e9c19bff6621  c4260ef36eeaf0a140b3e9c19bff6621  equal
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-06: FINALIZING at the stop. FAULT at the last committed instant, the recording time and size as stopped; recoverSession, then a stop DURING the recovery: the next process completes it as INCOMPLETE, evidence RECORDED, never sealed
+[w53] RECOVERY at the stop: stop at +110.95 s (last committed instant +110.00 s), start at +200.95 s; epoch 2 -> 3; no backend of dems_app left after 0 poll(s), 0 ms; last row before the stop: 98 FAULT_CLEARED (no actor, +109.95 s); rows the start wrote: none
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-06: FINALIZING at the stop. FAULT at the last committed instant, the recording time and size as stopped; recoverSession, then a stop DURING the recovery: the next process completes it as INCOMPLETE, evidence RECORDED, never sealed
+[w53] FINALIZING at the stop: recording +5.00 s to +17.45 s, stop at +19.95 s, last committed instant +19.80 s; after the start at +109.95 s: FAULT at +19.80 s, elapsedMs 12450, 28358333 bytes; recoverSession 202: SYSTEM_BOOT (no actor), RECOVERY_STARTED (OPR-002), FAULT_CLEARED (no actor); stop in RECOVERY at +110.95 s, start at +200.95 s; first tick: 99 SESSION_INCOMPLETE (no actor, +112.95 s), 100 RECOVERY_COMPLETED (no actor, +112.95 s) (the deadline +112.95 s lies inside the stop); history INCOMPLETE 12450 ms; evidence EV-20261001-0014 RECORDED, never sealed
+
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > AC-B-06: FINALIZING at the stop. FAULT at the last committed instant, the recording time and size as stopped; recoverSession, then a stop DURING the recovery: the next process completes it as INCOMPLETE, evidence RECORDED, never sealed 248ms
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > spec §8.6: ARMED at the stop (no recording had started). FAULT, recoverSession, an INCOMPLETE entry and NO evidence item
+[w53] ARMED at the stop: content checksum of contract §9.6 per table, stopped -> started (30 tables: 21 equal, 9 moved)
+[w53]   table                 rows        stopped                           started                         
+[w53]   active_session        1 -> 1      a8fe20b742e66d310c87da88517f6916  185b4adf869a6fb327c58abc8859058d  MOVED  the restart fault: the session is in FAULT, stamped at the last committed instant
+[w53]   alerts                0 -> 1      d41d8cd98f00b204e9800998ecf8427e  bf075d0d9780a3d48e6850655266dde2  MOVED  the critical alert of the fault
+[w53]   audit_chain_head      1 -> 1      1578edc514b113287e84583b3760371d  d750d7d222296bc09895313f33910d3f  MOVED  follows the newest audit row
+[w53]   audit_chain_history   0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   audit_log             88 -> 90    660797bf1aed4977af1633f95c26f7d6  b92c0df111c4d78dca72d1fdbec49325  MOVED  the rows the start wrote: FAULT_RAISED (the restart fault) and TABLET_LINK_CHANGED
+[w53]   auth_sessions         2 -> 2      a7b8e02aade87dd3703eb223f10c3198  a7b8e02aade87dd3703eb223f10c3198  equal
+[w53]   biometric_tokens      0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   console_settings      1 -> 1      e989d47d1011537769ee1753b4ac3e47  e989d47d1011537769ee1753b4ac3e47  equal
+[w53]   core_device           1 -> 1      ff0be292ec82bd2813a400e538383575  ff0be292ec82bd2813a400e538383575  equal
+[w53]   core_state            1 -> 1      04d4b4d0176788fe92f02e683969f825  fa6bf26b69ac23011768895d93ec462f  MOVED  the epoch is the stored one plus 1 at every start (decision D14); `updated_at` is the start instant
+[w53]   device_credentials    0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   engine_counters       5 -> 5      73e4efa9422b4e0d8acc5a0037cbb5aa  341431a685b8fd1a109d43fcee4ec239  MOVED  the counters those rows took: `event`, and `item` for the alert
+[w53]   events                66 -> 68    e63cb33bfe88f941bb4bcbb801288ad8  e16bc018f13840b79116ead4be1ba5a6  MOVED  the events of those rows
+[w53]   evidence_custody      28 -> 28    702e5a68c0c67047872da54deb0aeeb7  702e5a68c0c67047872da54deb0aeeb7  equal
+[w53]   evidence_items        13 -> 13    9244e475f9e1daf47d5e5887410c13a4  9244e475f9e1daf47d5e5887410c13a4  equal
+[w53]   evidence_tracks       52 -> 52    014ca4b24d76625cdbe0a9e42b090861  014ca4b24d76625cdbe0a9e42b090861  equal
+[w53]   exports               1 -> 1      ca81ca43795f4aa758f2e06b5a96ed0f  ca81ca43795f4aa758f2e06b5a96ed0f  equal
+[w53]   hardware_snapshot     1 -> 1      b3dac6b7dbd50593276d39ae3f31e745  ffec0ee134fbfbd6fef085647fb13e87  MOVED  the slices of the power-failure fault, the tablet link (OFFLINE after a start) and `written_at`
+[w53]   health_snapshots      0 -> 1      d41d8cd98f00b204e9800998ecf8427e  38c167ee22ee5a863c4bea6fe4db4905  MOVED  one row for the fault raise
+[w53]   operator_credentials  3 -> 3      725fa6225fe8641e210309d832b1b061  725fa6225fe8641e210309d832b1b061  equal
+[w53]   operators             3 -> 3      07ef0cc7a116293cc6ce8c2fdbae3b82  07ef0cc7a116293cc6ce8c2fdbae3b82  equal
+[w53]   paired_devices        0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   pairing_codes         0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   permissions           12 -> 12    b6847b52dba810eeb88a6ec2beed7d7d  b6847b52dba810eeb88a6ec2beed7d7d  equal
+[w53]   registry_counters     2 -> 2      caec30d02ab41cda28db7826769e1ff2  caec30d02ab41cda28db7826769e1ff2  equal
+[w53]   role_permissions      18 -> 18    4535b3b8d2890c9d0e2adbd5c8c38df9  4535b3b8d2890c9d0e2adbd5c8c38df9  equal
+[w53]   roles                 3 -> 3      fa441157a1c8628f2f997b22a6ea34de  fa441157a1c8628f2f997b22a6ea34de  equal
+[w53]   schema_meta           1 -> 1      58befb268168a15ab0a1f0537c49d6a9  58befb268168a15ab0a1f0537c49d6a9  equal
+[w53]   session_history       13 -> 13    11dfbe395c8e4992b26d0596f6b3be86  11dfbe395c8e4992b26d0596f6b3be86  equal
+[w53]   storage_policy        1 -> 1      c4260ef36eeaf0a140b3e9c19bff6621  c4260ef36eeaf0a140b3e9c19bff6621  equal
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > spec §8.6: ARMED at the stop (no recording had started). FAULT, recoverSession, an INCOMPLETE entry and NO evidence item
+[w53] ARMED at the stop: stop at +5.00 s (last committed instant +5.00 s), start at +95.00 s; epoch 1 -> 2; no backend of dems_app left after 0 poll(s), 1 ms; last row before the stop: 88 PRECHECK_PASSED (OPR-001, +4.25 s); rows the start wrote: 89 FAULT_RAISED (no actor, +5.00 s), 90 TABLET_LINK_CHANGED (no actor, +95.00 s)
+
+stdout | test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > spec §8.6: ARMED at the stop (no recording had started). FAULT, recoverSession, an INCOMPLETE entry and NO evidence item
+[w53] ARMED at the stop: FAULT (from ARMED) at +5.00 s; recoverSession, then SESSION_INCOMPLETE (no actor), RECOVERY_COMPLETED (no actor); history INCOMPLETE, 0 ms, no evidence item
+
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after the start, and recoverSession closes it as INCOMPLETE > spec §8.6: ARMED at the stop (no recording had started). FAULT, recoverSession, an INCOMPLETE entry and NO evidence item 174ms
+ ✓ |db| test/acceptance/restart.test.ts > the comparison is not blind, and the server serves what PostgreSQL holds > a row changed in the stopped database, as the owner role: its table is reported as moved, and the started server serves the changed row 112ms
+[test:db] bulk fixture: dems_test_step_75_tmdp9yj3_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 26e251887c667e1e...; digest e58f1ae233811851...; build 135 ms, write 1136 ms, total 1274 ms
+stdout | test/acceptance/restart.test.ts > AC-B-04 on a Core with a long history (the bulk fixture): more audit rows than the engine holds in its ring > two restarts with a command between them: every table stable twice, every read answers the same, the view and the stored chain verify, the next row links
+[w53] long history, restart 1: content checksum of contract §9.6 per table, stopped -> started (30 tables: 29 equal, 1 moved)
+[w53]   table                 rows        stopped                           started                         
+[w53]   active_session        0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   alerts                250 -> 250  7175b3bb0af95bed6401a86f7a710613  7175b3bb0af95bed6401a86f7a710613  equal
+[w53]   audit_chain_head      1 -> 1      a30e08ef07808d59b677d0a3beab767b  a30e08ef07808d59b677d0a3beab767b  equal
+[w53]   audit_chain_history   25 -> 25    886ebd47e3b228a3ccd1789a656ae9f0  886ebd47e3b228a3ccd1789a656ae9f0  equal
+[w53]   audit_log             5002 -> 5002  6f239b9117b29482eb1856b49f1dea8e  6f239b9117b29482eb1856b49f1dea8e  equal
+[w53]   auth_sessions         301 -> 301  d96ba65d74683d566af3d8531c291d1e  d96ba65d74683d566af3d8531c291d1e  equal
+[w53]   biometric_tokens      83 -> 83    96f9901b128c6bc7a914479e00cc37b6  96f9901b128c6bc7a914479e00cc37b6  equal
+[w53]   console_settings      1 -> 1      e989d47d1011537769ee1753b4ac3e47  e989d47d1011537769ee1753b4ac3e47  equal
+[w53]   core_device           1 -> 1      ff0be292ec82bd2813a400e538383575  ff0be292ec82bd2813a400e538383575  equal
+[w53]   core_state            1 -> 1      3e2155925bd9990487768c0083890a28  c0cfc61b59b44b2a4b27f47a8b91effe  MOVED  the epoch is the stored one plus 1 at every start (decision D14); `updated_at` is the start instant
+[w53]   device_credentials    40 -> 40    11a86d24a8354d5f07957983503c7985  11a86d24a8354d5f07957983503c7985  equal
+[w53]   engine_counters       6 -> 6      8a4dcd5d50a2a38abb6cb6ddf184b913  8a4dcd5d50a2a38abb6cb6ddf184b913  equal
+[w53]   events                3651 -> 3651  6e4cee42390297ca5482762462f857e2  6e4cee42390297ca5482762462f857e2  equal
+[w53]   evidence_custody      1220 -> 1220  1993da46b93bf8d58cc797b5c27158f1  1993da46b93bf8d58cc797b5c27158f1  equal
+[w53]   evidence_items        515 -> 515  17dd17374bffefcc7f7f70471ed7ec08  17dd17374bffefcc7f7f70471ed7ec08  equal
+[w53]   evidence_tracks       2060 -> 2060  37305acfa68cf4957fa66bff2f5d642c  37305acfa68cf4957fa66bff2f5d642c  equal
+[w53]   exports               60 -> 60    363e5db1028805f26ff7c92980401797  363e5db1028805f26ff7c92980401797  equal
+[w53]   hardware_snapshot     1 -> 1      16ed341c042b60339322c3f90e61b2ce  16ed341c042b60339322c3f90e61b2ce  equal
+[w53]   health_snapshots      1508 -> 1508  33c39c7d8ac098a60086f8980f0ff3fb  33c39c7d8ac098a60086f8980f0ff3fb  equal
+[w53]   operator_credentials  12 -> 12    dbcf2022cf3f1302d12753d1662bd091  dbcf2022cf3f1302d12753d1662bd091  equal
+[w53]   operators             12 -> 12    0975d9c84cbf652290f58239b92fd71d  0975d9c84cbf652290f58239b92fd71d  equal
+[w53]   paired_devices        40 -> 40    9512a6aef78e868bb86f1bb2ebeb417e  9512a6aef78e868bb86f1bb2ebeb417e  equal
+[w53]   pairing_codes         60 -> 60    ae3cda2db8570582e9b8774d9621145d  ae3cda2db8570582e9b8774d9621145d  equal
+[w53]   permissions           12 -> 12    b6847b52dba810eeb88a6ec2beed7d7d  b6847b52dba810eeb88a6ec2beed7d7d  equal
+[w53]   registry_counters     2 -> 2      e019754be6f87feb13bff5581381ab9f  e019754be6f87feb13bff5581381ab9f  equal
+[w53]   role_permissions      18 -> 18    4535b3b8d2890c9d0e2adbd5c8c38df9  4535b3b8d2890c9d0e2adbd5c8c38df9  equal
+[w53]   roles                 3 -> 3      fa441157a1c8628f2f997b22a6ea34de  fa441157a1c8628f2f997b22a6ea34de  equal
+[w53]   schema_meta           1 -> 1      58befb268168a15ab0a1f0537c49d6a9  58befb268168a15ab0a1f0537c49d6a9  equal
+[w53]   session_history       520 -> 520  fcfeadb7df2d58d28458a496f3b5ff08  fcfeadb7df2d58d28458a496f3b5ff08  equal
+[w53]   storage_policy        1 -> 1      c4260ef36eeaf0a140b3e9c19bff6621  c4260ef36eeaf0a140b3e9c19bff6621  equal
+
+stdout | test/acceptance/restart.test.ts > AC-B-04 on a Core with a long history (the bulk fixture): more audit rows than the engine holds in its ring > two restarts with a command between them: every table stable twice, every read answers the same, the view and the stored chain verify, the next row links
+[w53] long history, restart 1: stop at +3.35 s (last committed instant +3.00 s), start at +93.35 s; epoch 67 -> 68; no backend of dems_app left after 0 poll(s), 1 ms; last row before the stop: 5002 AUTH_SUCCESS (OPR-002, +0.00 s); rows the start wrote: none
+
+stdout | test/acceptance/restart.test.ts > AC-B-04 on a Core with a long history (the bulk fixture): more audit rows than the engine holds in its ring > two restarts with a command between them: every table stable twice, every read answers the same, the view and the stored chain verify, the next row links
+[w53] long history, restart 2: content checksum of contract §9.6 per table, stopped -> started (30 tables: 29 equal, 1 moved)
+[w53]   table                 rows        stopped                           started                         
+[w53]   active_session        0 -> 0      d41d8cd98f00b204e9800998ecf8427e  d41d8cd98f00b204e9800998ecf8427e  equal
+[w53]   alerts                250 -> 250  7175b3bb0af95bed6401a86f7a710613  7175b3bb0af95bed6401a86f7a710613  equal
+[w53]   audit_chain_head      1 -> 1      cc1c89403fe9da1fe4c1fe6d2d85030c  cc1c89403fe9da1fe4c1fe6d2d85030c  equal
+[w53]   audit_chain_history   25 -> 25    886ebd47e3b228a3ccd1789a656ae9f0  886ebd47e3b228a3ccd1789a656ae9f0  equal
+[w53]   audit_log             5003 -> 5003  5187c7f63267de529dac690c69fc1bbd  5187c7f63267de529dac690c69fc1bbd  equal
+[w53]   auth_sessions         301 -> 301  f1d89848116c7ecc6d8f19f44d9e42fd  f1d89848116c7ecc6d8f19f44d9e42fd  equal
+[w53]   biometric_tokens      83 -> 83    96f9901b128c6bc7a914479e00cc37b6  96f9901b128c6bc7a914479e00cc37b6  equal
+[w53]   console_settings      1 -> 1      e989d47d1011537769ee1753b4ac3e47  e989d47d1011537769ee1753b4ac3e47  equal
+[w53]   core_device           1 -> 1      ff0be292ec82bd2813a400e538383575  ff0be292ec82bd2813a400e538383575  equal
+[w53]   core_state            1 -> 1      c0cfc61b59b44b2a4b27f47a8b91effe  5b6cb6b92f6e4d900c2d237d391f7b65  MOVED  the epoch is the stored one plus 1 at every start (decision D14); `updated_at` is the start instant
+[w53]   device_credentials    40 -> 40    11a86d24a8354d5f07957983503c7985  11a86d24a8354d5f07957983503c7985  equal
+[w53]   engine_counters       6 -> 6      0dd1a3faf283e0369928ce4c6b05b7eb  0dd1a3faf283e0369928ce4c6b05b7eb  equal
+[w53]   events                3652 -> 3652  001e205c7c42c409f868c812cb2d8881  001e205c7c42c409f868c812cb2d8881  equal
+[w53]   evidence_custody      1220 -> 1220  1993da46b93bf8d58cc797b5c27158f1  1993da46b93bf8d58cc797b5c27158f1  equal
+[w53]   evidence_items        515 -> 515  17dd17374bffefcc7f7f70471ed7ec08  17dd17374bffefcc7f7f70471ed7ec08  equal
+[w53]   evidence_tracks       2060 -> 2060  37305acfa68cf4957fa66bff2f5d642c  37305acfa68cf4957fa66bff2f5d642c  equal
+[w53]   exports               60 -> 60    363e5db1028805f26ff7c92980401797  363e5db1028805f26ff7c92980401797  equal
+[w53]   hardware_snapshot     1 -> 1      ea114f8a3e9241efb2f87ea35fc26884  ea114f8a3e9241efb2f87ea35fc26884  equal
+[w53]   health_snapshots      1508 -> 1508  33c39c7d8ac098a60086f8980f0ff3fb  33c39c7d8ac098a60086f8980f0ff3fb  equal
+[w53]   operator_credentials  12 -> 12    dbcf2022cf3f1302d12753d1662bd091  dbcf2022cf3f1302d12753d1662bd091  equal
+[w53]   operators             12 -> 12    0975d9c84cbf652290f58239b92fd71d  0975d9c84cbf652290f58239b92fd71d  equal
+[w53]   paired_devices        40 -> 40    9512a6aef78e868bb86f1bb2ebeb417e  9512a6aef78e868bb86f1bb2ebeb417e  equal
+[w53]   pairing_codes         60 -> 60    ae3cda2db8570582e9b8774d9621145d  ae3cda2db8570582e9b8774d9621145d  equal
+[w53]   permissions           12 -> 12    b6847b52dba810eeb88a6ec2beed7d7d  b6847b52dba810eeb88a6ec2beed7d7d  equal
+[w53]   registry_counters     2 -> 2      e019754be6f87feb13bff5581381ab9f  e019754be6f87feb13bff5581381ab9f  equal
+[w53]   role_permissions      18 -> 18    4535b3b8d2890c9d0e2adbd5c8c38df9  4535b3b8d2890c9d0e2adbd5c8c38df9  equal
+[w53]   roles                 3 -> 3      fa441157a1c8628f2f997b22a6ea34de  fa441157a1c8628f2f997b22a6ea34de  equal
+[w53]   schema_meta           1 -> 1      58befb268168a15ab0a1f0537c49d6a9  58befb268168a15ab0a1f0537c49d6a9  equal
+[w53]   session_history       520 -> 520  fcfeadb7df2d58d28458a496f3b5ff08  fcfeadb7df2d58d28458a496f3b5ff08  equal
+[w53]   storage_policy        1 -> 1      5fcee2b02760aa7fbc12fb45795fde9f  5fcee2b02760aa7fbc12fb45795fde9f  equal
+
+stdout | test/acceptance/restart.test.ts > AC-B-04 on a Core with a long history (the bulk fixture): more audit rows than the engine holds in its ring > two restarts with a command between them: every table stable twice, every read answers the same, the view and the stored chain verify, the next row links
+[w53] long history, restart 2: stop at +95.70 s (last committed instant +95.00 s), start at +185.70 s; epoch 68 -> 69; no backend of dems_app left after 0 poll(s), 0 ms; last row before the stop: 5003 STORAGE_POLICY_CHANGED (OPR-002, +93.35 s); rows the start wrote: none
+
+stdout | test/acceptance/restart.test.ts > AC-B-04 on a Core with a long history (the bulk fixture): more audit rows than the engine holds in its ring > two restarts with a command between them: every table stable twice, every read answers the same, the view and the stored chain verify, the next row links
+[w53] long history: 5003 audit rows stored, 1000 in the engine's view, 25 discarded chains in the lineage; epochs 67 -> 69; the command between the restarts wrote row 5003 on the hash of row 5002
+
+ ✓ |db| test/acceptance/restart.test.ts > AC-B-04 on a Core with a long history (the bulk fixture): more audit rows than the engine holds in its ring > two restarts with a command between them: every table stable twice, every read answers the same, the view and the stored chain verify, the next row links 2305ms
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  17:32:22
+   Duration  5.91s (tests 84%, transform 10%, import 5%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 89 ms; 0 remain with the run prefix dems_test_step_75_tmdp9yj3_

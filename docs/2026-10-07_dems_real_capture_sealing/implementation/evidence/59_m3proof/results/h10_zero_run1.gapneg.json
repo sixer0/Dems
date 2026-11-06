@@ -1,0 +1,63 @@
+{
+ "check": "gap (AU2-05)",
+ "run": "h10_zero_run1",
+ "files": {
+  "gapctl_intact.m4a": {
+   "decoded_samples": 985088,
+   "encoder_input_samples": 985024,
+   "decoded_minus_input": 64,
+   "count_check_alone": "PASS",
+   "beeps_decoded": 6,
+   "beeps_manifest": 6,
+   "spacing_error_samples": [
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "abs_position_error_samples": [
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024
+   ],
+   "spacing_check": "PASS",
+   "packet_grid_deltas": [
+    1024
+   ]
+  },
+  "gapneg_minus1000.m4a": {
+   "decoded_samples": 984088,
+   "encoder_input_samples": 985024,
+   "decoded_minus_input": -936,
+   "count_check_alone": "FAIL",
+   "beeps_decoded": 6,
+   "beeps_manifest": 6,
+   "spacing_error_samples": [
+    0,
+    -1000,
+    0,
+    0,
+    0
+   ],
+   "abs_position_error_samples": [
+    1024,
+    1024,
+    24,
+    24,
+    24,
+    24
+   ],
+   "spacing_check": "FAIL",
+   "packet_grid_deltas": [
+    1024
+   ]
+  }
+ },
+ "cut_at_decoded_sample": 213546,
+ "negative_control": "intact copy passes, cut copy fails",
+ "verdict": "PASS"
+}

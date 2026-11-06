@@ -1,0 +1,857 @@
+{
+  "1280:asIs:nowbr": {
+    "container": 375,
+    "table": 472,
+    "overflow": 97,
+    "cols": [
+      106,
+      187,
+      87,
+      92
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 1,
+        "actorLines": 205,
+        "detailLines": 11,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 1,
+        "actorLines": 85,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1280:A0_auto_wbr_p10:nowbr": {
+    "container": 375,
+    "table": 424,
+    "overflow": 49,
+    "cols": [
+      94,
+      175,
+      75,
+      80
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 1,
+        "actorLines": 205,
+        "detailLines": 11,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 1,
+        "actorLines": 85,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1280:A0_auto_wbr_p10:wbr": {
+    "container": 375,
+    "table": 375,
+    "overflow": 0,
+    "cols": [
+      96,
+      111,
+      77,
+      90
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 2,
+        "actorLines": 185,
+        "detailLines": 10,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 2,
+        "actorLines": 85,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1280:F1_fixed_p10:nowbr": {
+    "container": 375,
+    "table": 375,
+    "overflow": 0,
+    "cols": [
+      100,
+      112,
+      82,
+      80
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 2,
+        "actorLines": 205,
+        "detailLines": 11,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 2,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1280:F1_fixed_p10:wbr": {
+    "container": 375,
+    "table": 375,
+    "overflow": 0,
+    "cols": [
+      100,
+      112,
+      82,
+      80
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 2,
+        "actorLines": 205,
+        "detailLines": 11,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 2,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1280:F2_fixed_p8:nowbr": {
+    "container": 375,
+    "table": 375,
+    "overflow": 0,
+    "cols": [
+      96,
+      116,
+      79,
+      84
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 2,
+        "actorLines": 205,
+        "detailLines": 11,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 2,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1280:F2_fixed_p8:wbr": {
+    "container": 375,
+    "table": 375,
+    "overflow": 0,
+    "cols": [
+      96,
+      116,
+      79,
+      84
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 2,
+        "actorLines": 205,
+        "detailLines": 11,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 2,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "text": {
+    "date": 74.4,
+    "clock": 59.5,
+    "RECORDING_": 89.5,
+    "INCOMPLETE": 91.6,
+    "RECORDING_STOPPED": 154.7,
+    "SESSION_INCOMPLETE": 159.9,
+    "REVIEW_OPENED": 117.9,
+    "Pratama": 54.7,
+    "AKP_Andi_Pratama": 120.5,
+    "supervisor": 60.2,
+    "investigation": 71.7,
+    "fontAction": "600 14px / 20px \"Inter Variable\", ui-sans-serif, system-ui, sans-serif",
+    "fontActor": "14px / 20px \"Inter Variable\", ui-sans-serif, system-ui, sans-serif"
+  },
+  "1440:asIs:nowbr": {
+    "container": 441,
+    "table": 472,
+    "overflow": 31,
+    "cols": [
+      106,
+      187,
+      87,
+      92
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 1,
+        "actorLines": 205,
+        "detailLines": 11,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 1,
+        "actorLines": 85,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1440:A0_auto_wbr_p10:nowbr": {
+    "container": 441,
+    "table": 441,
+    "overflow": 0,
+    "cols": [
+      97,
+      175,
+      77,
+      93
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 1,
+        "actorLines": 165,
+        "detailLines": 8,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 1,
+        "actorLines": 85,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1440:A0_auto_wbr_p10:wbr": {
+    "container": 441,
+    "table": 441,
+    "overflow": 0,
+    "cols": [
+      105,
+      120,
+      85,
+      132
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 2,
+        "actorLines": 105,
+        "detailLines": 5,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 2,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1440:F1_fixed_p10:nowbr": {
+    "container": 441,
+    "table": 441,
+    "overflow": 0,
+    "cols": [
+      100,
+      132,
+      97,
+      112
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 2,
+        "actorLines": 145,
+        "detailLines": 7,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 2,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1440:F1_fixed_p10:wbr": {
+    "container": 441,
+    "table": 441,
+    "overflow": 0,
+    "cols": [
+      100,
+      132,
+      97,
+      112
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 2,
+        "actorLines": 145,
+        "detailLines": 7,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 2,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1440:F2_fixed_p8:nowbr": {
+    "container": 441,
+    "table": 441,
+    "overflow": 0,
+    "cols": [
+      96,
+      137,
+      93,
+      116
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 2,
+        "actorLines": 125,
+        "detailLines": 6,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 2,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1440:F2_fixed_p8:wbr": {
+    "container": 441,
+    "table": 441,
+    "overflow": 0,
+    "cols": [
+      96,
+      137,
+      93,
+      116
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 2,
+        "actorLines": 125,
+        "detailLines": 6,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 2,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1920:asIs:nowbr": {
+    "container": 631,
+    "table": 631,
+    "overflow": 0,
+    "cols": [
+      129,
+      187,
+      109,
+      206
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 1,
+        "actorLines": 85,
+        "detailLines": 3,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1920:A0_auto_wbr_p10:nowbr": {
+    "container": 631,
+    "table": 631,
+    "overflow": 0,
+    "cols": [
+      124,
+      175,
+      104,
+      228
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 2,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1920:A0_auto_wbr_p10:wbr": {
+    "container": 631,
+    "table": 631,
+    "overflow": 0,
+    "cols": [
+      129,
+      143,
+      109,
+      251
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 2,
+        "actorLines": 65,
+        "detailLines": 2,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 2,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1920:F1_fixed_p10:nowbr": {
+    "container": 631,
+    "table": 631,
+    "overflow": 0,
+    "cols": [
+      100,
+      189,
+      139,
+      203
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 1,
+        "actorLines": 85,
+        "detailLines": 3,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1920:F1_fixed_p10:wbr": {
+    "container": 631,
+    "table": 631,
+    "overflow": 0,
+    "cols": [
+      100,
+      189,
+      139,
+      203
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 1,
+        "actorLines": 85,
+        "detailLines": 3,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1920:F2_fixed_p8:nowbr": {
+    "container": 631,
+    "table": 631,
+    "overflow": 0,
+    "cols": [
+      96,
+      196,
+      133,
+      207
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 1,
+        "actorLines": 85,
+        "detailLines": 3,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  },
+  "1920:F2_fixed_p8:wbr": {
+    "container": 631,
+    "table": 631,
+    "overflow": 0,
+    "cols": [
+      96,
+      196,
+      133,
+      207
+    ],
+    "rows": [
+      {
+        "action": "SEALED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STOPPED",
+        "actionLines": 1,
+        "actorLines": 85,
+        "detailLines": 3,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      },
+      {
+        "action": "RECORDING_STARTED",
+        "actionLines": 1,
+        "actorLines": 65,
+        "detailLines": 1,
+        "dateRects": 1,
+        "clockRects": 1,
+        "overflowingCells": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,328 @@
+> @dems/core-server@0.2.0 test
+> vitest run --project unit src/plugins/permission-guard src/modules/rbac src/modules/pairing/__tests__/routes.test.ts test/static --maxWorkers=2 --reporter=verbose
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the answer of a refusal (spec §7.2) > a missing permission: 403 NOT_PERMITTED with operationId, permission and role in details 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the answer of a refusal (spec §7.2) > the any-of: the same three details, the permission as one code (the text the contract example must use) 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the answer of a refusal (spec §7.2) > RB-5: exportEvidence keeps the code FORBIDDEN; the audit export and the log export answer NOT_PERMITTED 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the answer of a refusal (spec §7.2) > no principal: 401 NOT_SIGNED_IN, worded for an operator or for a device, without details 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the answer of a refusal (spec §7.2) > a retired device: 403 DEVICE_REVOKED with details.reason, the answer the identity module gives as well 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the answer of a refusal (spec §7.2) > DEVICE_NOT_PAIRED: the sign-in text without a console identity, another text for a device-only operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the answer of a refusal (spec §7.2) > CPS1-3: the device's own credential is needed: 403 DEVICE_NOT_PAIRED with the contract's text and details.reason; no row; a web console session keeps the marker's answer, without the reason 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the answer of a refusal (spec §7.2) > DEMO_DISABLED: 403 for a permitted caller while the flag is off 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the answer of a refusal (spec §7.2) > every answer is an error envelope of the contract, and a status the operation documents 12ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the row of an audited refusal (RB-4, RB-6; spec §13.1) > a missing permission: ACCESS_DENIED naming the actor, the operation, the permission and the role; no event 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the row of an audited refusal (RB-4, RB-6; spec §13.1) > names the device of a device session; the any-of names both permissions as one code and in words 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the row of an audited refusal (RB-4, RB-6; spec §13.1) > a retired device: ACCESS_DENIED with no actor, the device ID and reason DEVICE_REVOKED 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the row of an audited refusal (RB-4, RB-6; spec §13.1) > the refusals that are not audited have no row: 401, DEVICE_NOT_PAIRED, DEMO_DISABLED 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > the row of an audited refusal (RB-4, RB-6; spec §13.1) > for every operation and every role: an audited refusal has a row, the row passes the audit writer list for its type, and it holds no credential form 5ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > RB-5: the export refusals keep the simulator row and event > exportEvidence: the same type, severity, message, actor, evidence ID, event and params; the details gain operationId and permission 8ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > RB-5: the export refusals keep the simulator row and event > exportAudit: the same row and event, with scope AUDIT 3ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > RB-5: the export refusals keep the simulator row and event > exportLogs: the same row and event, with scope LOGS 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/denial.test.ts > RB-5: the export refusals keep the simulator row and event > an export whose path names no evidence ID of the right form writes the row without one: nothing of the path is stored 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > the app without the domain modules is ready: every registered route is a registry operation with its rule, none twice, and all are of the three real units 43ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > a route without an access rule and an audit rule stops the boot, by name, with one log line and one entry in the error log 5ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > a made-up operationId gives a route no rule either 3ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > a route that names a PUBLIC registry operation on a path of its own is refused: it cannot borrow the rule 3ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > a registry route without config.operationId, or with another one, is refused: stages 2 and 5 read that member too 5ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > every route without a rule is named, not only the first 3ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > EVERY operation of the registry can be registered under the guard: the real route where a real unit has one, a stand-in for each of the rest, and the socket route 8ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > a test that takes stage 6 out before ready() gets its scratch routes: the check is skipped with one warn line 9ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > permissionGuard(app) is not there before ready() 5ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > a route that was added before the plugins ran (decision D82, condition 4) > is not shown to the boot check of ready(): the app becomes ready, and the route is refused at its first request with 500, logged with the code 6ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > a route that was added before the plugins ran (decision D82, condition 4) > checkRouter, the first thing the boot step does, finds it in the router and stops the boot before the listener 3ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > a route that was added before the plugins ran (decision D82, condition 4) > the boot step rbac.matrix runs checkRouter: the boot stops there even on a database that would pass 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > a route that was added before the plugins ran (decision D82, condition 4) > a registry operation that was added early passes checkRouter, gets its registry rule at its first request and is guarded 8ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > a route that was added before the plugins ran (decision D82, condition 4) > what checkRouter cannot see: the operationId of an early route. A registry path with a wrong one passes the walk and is refused at its request 3ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > a route that was added before the plugins ran (decision D82, condition 4) > the printed route table gives back exactly the routes the guard was shown: every operation of the registry and the socket 6ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > a route that was added before the plugins ran (decision D82, condition 4) > checkRouter does nothing but warn when a test took stage 6 out 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > the printed route table (router-table.ts) > reads the radix tree: fragments from the root to the node, one route per method 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > the printed route table (router-table.ts) > refuses a table it cannot read rather than skip a line of it 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > a denied call answers 403 and commits exactly one row in one unit; an allowed call commits none and reaches the handler 4ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > a 401 writes no row, runs no unit and takes no place in the denial budget 3ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > DEVICE_NOT_PAIRED and DEMO_DISABLED write no row and take no place; each is one warn line 6ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > the console rule ID-1 is applied by the stage itself: signIn without a console identity is refused here, with the stage's own line 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > CPS1-3: an operation that needs the device's own credential refuses the session of an operator on the device: 403 DEVICE_NOT_PAIRED with its reason, no row, no unit, no place in the budget; the device itself reaches the handler 3ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > with the demo flag on, a holder of DEMO_CONTROL reaches the demo operation 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > SR-71: the place in the budget is taken before the row: with the budget used up the answer is 429 and no unit runs 14ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > 100 denied calls at once write exactly 20 rows: the calls that pass stage 5 together are held back by the place they must take first 19ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > a denial whose row cannot be written is still refused, never let through: 503 without a database, 500 when the insert itself fails 8ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > a denial is decided before the body is read: an oversized and a malformed body answer 403 or 401, and the permitted caller gets 413, 400 and 422 8ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > the log of a refusal holds codes and identifiers and nothing a caller sent 3ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/guard.test.ts > passScratchRoutes (test support; decision D82, condition 3) > lets a route that is no registry operation pass, and leaves the real guard on every registry operation 3ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/registered-routes.test.ts > the routes the server registers, whichever modules have landed > every one is a registry operation at its registry route, with the rule of its registry entry, and none is there twice 4ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/registered-routes.test.ts > the routes the server registers, whichever modules have landed > the walk of the router finds exactly the routes the boot check was shown, and passes 4ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/registered-routes.test.ts > stage 6 stands in front of every registered route (decided before the handler) > nobody: every operation that needs a principal answers 401 NOT_SIGNED_IN, with no row; a PUBLIC one is not refused for the principal 19ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/registered-routes.test.ts > stage 6 stands in front of every registered route (decided before the handler) > a role without the permission: every operation that names one answers 403 with the three details and writes exactly one row; the handler is not reached 37ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/registered-routes.test.ts > stage 6 stands in front of every registered route (decided before the handler) > a role with the permission passes stage 6 on every command that names one: a body that is no JSON answers 400 from stage 7, not 403, and no row is written 12ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/registered-routes.test.ts > stage 6 stands in front of every registered route (decided before the handler) > a retired device is refused with 403 DEVICE_REVOKED and one row on every operation that refuses it; health stays open 36ms
+stdout | src/modules/pairing/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > registers operations 15 to 23 with the method, the path and the operation ID of the registry, and nothing else under /api/v1/pairing
+[w32] MODG routes of src/modules/pairing:
+  POST /api/v1/pairing/code issuePairingCode
+  GET /api/v1/pairing/code getPairingCodeStatus
+  POST /api/v1/pairing/code/cancel cancelPairingCode
+  POST /api/v1/pairing/redeem redeemPairingCode
+  GET /api/v1/pairing/devices listPairedDevices
+  POST /api/v1/pairing/devices/{id}/revoke revokeDevice
+  GET /api/v1/pairing/device getDeviceRegistration
+  POST /api/v1/pairing/device/unpair unpairDevice
+  POST /api/v1/pairing/device/credential rotateDeviceCredential
+[w32] MODG registry, operations 15 to 23:
+  POST /api/v1/pairing/code issuePairingCode
+  GET /api/v1/pairing/code getPairingCodeStatus
+  POST /api/v1/pairing/code/cancel cancelPairingCode
+  POST /api/v1/pairing/redeem redeemPairingCode
+  GET /api/v1/pairing/devices listPairedDevices
+  POST /api/v1/pairing/devices/{id}/revoke revokeDevice
+  GET /api/v1/pairing/device getDeviceRegistration
+  POST /api/v1/pairing/device/unpair unpairDevice
+  POST /api/v1/pairing/device/credential rotateDeviceCredential
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > registers operations 15 to 23 with the method, the path and the operation ID of the registry, and nothing else under /api/v1/pairing 51ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > the area is the module's whole: nine operations, numbered 15 to 23 in the registry 0ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > the rule the guard applies to each route is the registry's: PAIRING_MANAGE for the portal, PUBLIC for the redeem, DEVICE for a device's own operations 6ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operations it owns > no route carries a check of its own: no hook beside the stage hook; only the revoke attaches its validation, to answer INVALID_REASON 6ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > who may call is stage 6: one refused call per operation, before the body is read and without the database > nobody without a principal: 401 on eight operations; the redeem is PUBLIC and reaches its handler 20ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > who may call is stage 6: one refused call per operation, before the body is read and without the database > a paired device without an operator: 401 on the five portal operations; it reaches its own three 7ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > who may call is stage 6: one refused call per operation, before the body is read and without the database > an operator on the web console: 403 DEVICE_NOT_PAIRED on the three device operations, whatever the role, and no query 10ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > who may call is stage 6: one refused call per operation, before the body is read and without the database > only SUPERVISOR holds PAIRING_MANAGE in the shared matrix 0ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the reads, with a pool that answers > 16 getPairingCodeStatus: the active code without the code; attemptsRemaining is 5 minus the failed redeems; null when none is active 7ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the reads, with a pool that answers > 19 listPairedDevices: the rows in the contract shape; online only for a PAIRED device with an open socket 8ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the reads, with a pool that answers > 21 getDeviceRegistration: the device of the principal, through its credential or through an operator's session on it 6ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the reads, with a pool that answers > a stored value outside the contract never leaves the server: the response schema refuses the answer (500) 6ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the reads, with a pool that answers > a read that fails answers 503 NOT_READY; the error is logged as { err } with its code, and nothing of its message or its parameters reaches the log or the answer 12ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the device resolver without a database > a value that has not the form of its kind is answered without a query; a value that has it is looked up by a hash, never by itself 4ms
+ ✓ |unit| src/modules/pairing/__tests__/routes.test.ts > the device resolver without a database > fails closed: a credential that is still the pending one after its promotion ran resolves to nothing 6ms
+stdout | src/modules/rbac/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operation it owns > registers operation 10 with the method, the path and the operation ID of the registry, and nothing else under /api/v1/rbac
+[w28] MODG routes of src/modules/rbac: GET /api/v1/rbac/matrix getRoleMatrix
+[w28] MODG registry, operation 10:     GET /api/v1/rbac/matrix getRoleMatrix
+ ✓ |unit| src/modules/rbac/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operation it owns > registers operation 10 with the method, the path and the operation ID of the registry, and nothing else under /api/v1/rbac 52ms
+ ✓ |unit| src/modules/rbac/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operation it owns > the area has five operations in the registry: 10 is this module's, 11 to 14 are the administration row's (W33) 0ms
+ ✓ |unit| src/modules/rbac/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operation it owns > operation 10 is AUTHENTICATED, a read, with no body: the registry rule the guard applies 8ms
+ ✓ |unit| src/modules/rbac/__tests__/routes.test.ts > MODG: the route list of the module equals the registry operation it owns > the route carries no check of its own: no onRequest hook beside the stage hook, and the module adds one boot step 9ms
+ ✓ |unit| src/modules/rbac/__tests__/routes.test.ts > operation 10 getRoleMatrix > answers what the one statement reads, in the contract shape, with editable false; every role may read it 16ms
+ ✓ |unit| src/modules/rbac/__tests__/routes.test.ts > operation 10 getRoleMatrix > who may call is the guard's: nobody without a session (401), a paired device without an operator (401), a retired device (403) 6ms
+ ✓ |unit| src/modules/rbac/__tests__/routes.test.ts > operation 10 getRoleMatrix > a stored name outside the shared vocabulary never leaves the server: the response schema refuses the answer (500) 6ms
+ ✓ |unit| src/modules/rbac/__tests__/routes.test.ts > operation 10 getRoleMatrix > a read that fails answers 503 NOT_READY, is logged by its code only and probes the database 10ms
+ ✓ |unit| src/modules/rbac/__tests__/routes.test.ts > operation 10 getRoleMatrix > an unseeded database answers three empty lists, not an error 5ms
+ ✓ |unit| src/modules/rbac/__tests__/routes.test.ts > the boot step rbac.matrix on a database that does not hold the vocabulary > reloadMatrix refuses an empty matrix, names what is missing, logs the problems and keeps nothing 5ms
+ ✓ |unit| src/modules/rbac/__tests__/routes.test.ts > the boot step rbac.matrix on a database that does not hold the vocabulary > decision D88: reloadMatrix refuses a matrix whose grants are not the shared role table, and passes the one that is 11ms
+ ✓ |unit| src/modules/rbac/__tests__/routes.test.ts > the boot step rbac.matrix on a database that does not hold the vocabulary > reloadMatrix hands a driver failure on, logged by its code only 3ms
+ ✓ |unit| test/static/credentials.test.ts > the scan itself > reads the server sources, the tests and the manifest, and no dependency 2ms
+ ✓ |unit| test/static/credentials.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 1ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (a): the superuser password file > is named by no file under apps/ and packages/ 10ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > apps/core-server holds no a password variable of the driver 3ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > apps/core-server holds no a connection-URL variable 2ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > apps/core-server holds no the Node option that loads an env file 2ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > apps/core-server holds no a connection URL with a user part 5ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > apps/core-server holds no a shell that sources a file of the data directory 21ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > no npm script of the workspace carries a secret or reads the data directory 0ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > the server runtime starts no child process, so no secret can become a process argument 1ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (c): the owner-role file > is named under src/ only by the reset routine and the command folder 3ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (c): the owner-role file > the scaffold of plan row W08 names neither of the two other credential files 1ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (c): the owner-role file > the loader opens exactly one file of the data directory 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/boot-registry.test.ts > AC-B-12: a registered route whose registry entry lacks a rule > the unchanged registry boots (control) 36ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/boot-registry.test.ts > AC-B-12: a registered route whose registry entry lacks a rule > getRoleMatrix without an ACCESS rule: app.ready() rejects and names the operation 3ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/boot-registry.test.ts > AC-B-12: a registered route whose registry entry lacks a rule > signIn without an ACCESS rule: app.ready() rejects and names the operation 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/boot-registry.test.ts > AC-B-12: a registered route whose registry entry lacks a rule > getServiceHealth without an ACCESS rule: app.ready() rejects and names the operation 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/boot-registry.test.ts > AC-B-12: a registered route whose registry entry lacks a rule > getRoleMatrix without an AUDIT rule: app.ready() rejects and names the operation 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/boot-registry.test.ts > AC-B-12: a registered route whose registry entry lacks a rule > touchSession without an AUDIT rule: app.ready() rejects and names the operation 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/boot-registry.test.ts > AC-B-12: a registered route whose registry entry lacks a rule > getServiceHealth without an AUDIT rule: app.ready() rejects and names the operation 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/boot-registry.test.ts > AC-B-12: a registered route whose registry entry lacks a rule > an entry of an operation whose route is NOT registered does not stop the boot: later rows add their routes one by one 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/boot-registry.test.ts > AC-B-12: a registered route whose registry entry lacks a rule > and on the day its route arrives, the boot stops: the same entry with a route 5ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/boot-registry.test.ts > AC-B-12: a registered route whose registry entry lacks a rule > an operation that was removed from the registry leaves its route without rules 2ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > finds each statement when it is present, across a line break and in lower case (positive control) 1ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > no file under apps/core-server switches a trigger off 4ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > no file under apps/core-server drops a trigger 5ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > no file under apps/core-server changes a server setting 5ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > the session setting that skips triggers appears only in the database tests that expect its refusal 5ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > a function or a trigger is replaced only by a migration 6ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > a database is dropped only by the reset routine, the test helper and the test support of the reset routine 5ms
+ ✓ |unit| test/static/audit-protection.test.ts > NL-5: the PostgreSQL log never quotes bound parameters > finds the setting when it is present, in any case and in any kind of file (positive control) 0ms
+ ✓ |unit| test/static/audit-protection.test.ts > NL-5: the PostgreSQL log never quotes bound parameters > the setting that logs the parameters of a failed statement appears only in the database tests 3ms
+ ✓ |unit| test/static/network.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 2ms
+ ✓ |unit| test/static/network.test.ts > the scan itself > leaves comments out and keeps strings and line numbers 1ms
+ ✓ |unit| test/static/network.test.ts > SR-01: one listener, on loopback > only src/index.ts listens 23ms
+ ✓ |unit| test/static/network.test.ts > SR-01: one listener, on loopback > the entry point binds the constant host and the configured port, and the constant is 127.0.0.1 0ms
+ ✓ |unit| test/static/network.test.ts > SR-01: one listener, on loopback > no production source names the wildcard address 0ms
+ ✓ |unit| test/static/network.test.ts > SR-01: one listener, on loopback > the environment is read by the entry point only 1ms
+ ✓ |unit| test/static/network.test.ts > D26, F27: the database endpoint has no default > PostgreSQL's default port appears once: in src/config.ts, where it is refused 1ms
+ ✓ |unit| test/static/network.test.ts > D26, F27: the database endpoint has no default > no production source names a variable that the driver reads on its own 1ms
+ ✓ |unit| test/static/network.test.ts > SR-04, OR-5, OR-7: no CORS, no localhost origin > nothing under apps/core-server imports the CORS plugin, and the manifest does not list it 1ms
+ ✓ |unit| test/static/network.test.ts > SR-04, OR-5, OR-7: no CORS, no localhost origin > no production source sets a CORS header 1ms
+ ✓ |unit| test/static/network.test.ts > SR-04, OR-5, OR-7: no CORS, no localhost origin > no production source holds a localhost origin 1ms
+ ✓ |unit| test/static/network.test.ts > SR-03, P5, P21: nothing leaves the process, nothing comes from mock-core > the server runtime calls no global fetch and imports no outbound client 1ms
+ ✓ |unit| test/static/network.test.ts > SR-03, P5, P21: nothing leaves the process, nothing comes from mock-core > nothing under apps/core-server imports from mock-core 11ms
+ ✓ |unit| test/static/log-calls.test.ts > the scan itself > finds the log calls of a text and the members of the objects they log (positive control) 2ms
+ ✓ |unit| test/static/log-calls.test.ts > the scan itself > knows a value that is fixed in the source from one that could have been caught 0ms
+ ✓ |unit| test/static/log-calls.test.ts > the scan itself > finds a child logger 0ms
+ ✓ |unit| test/static/log-calls.test.ts > the scan itself > reads the production sources of the server, the module folders included 12ms
+ ✓ |unit| test/static/log-calls.test.ts > CPB1-2: an error is logged as { err } > the list of exceptions is explicit, and it is empty: the one hold name of the foundation is logged under the key hold now 0ms
+ ✓ |unit| test/static/log-calls.test.ts > CPB1-2: an error is logged as { err } > no log call of a production source holds a member named error, cause, e or reason 2ms
+ ✓ |unit| test/static/log-calls.test.ts > CPB1-2: an error is logged as { err } > no production source creates a child logger 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the scan itself > reads the production sources of the two folders 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the guard and the RBAC module > read no system time and start no timer: every instant is app.clock 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the guard and the RBAC module > write nothing to the console, read no environment and never listen 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the guard and the RBAC module > SR-44: read no body, no query string, no header, no cookie and no raw URL of a request 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the guard and the RBAC module > read a path parameter in exactly one place: the evidence ID of an export refusal, checked against the registry pattern 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the guard and the RBAC module > append the denial row through the unit of work, and take the place in the budget before it 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the guard and the RBAC module > send one statement to the database, a read with no parameter: the three tables of the matrix 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the guard and the RBAC module > decision D88: the grants the stored matrix is compared with have ONE source, the shared role table, and are typed nowhere in the two folders 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the guard and the RBAC module > the RBAC module names no permission and reads none: who may call is the access rule of the registry 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the whole server (decision D82) > no production file replaces a stage or a seam: a test alone can take stage 6 out of the pipeline 12ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the whole server (decision D82) > no production file imports from a __tests__ folder: the test support of the guard cannot reach the server 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the whole server (decision D82) > no file that is loaded before the guard registers a route: every route of the server is shown to its boot check 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/static.test.ts > the whole server (decision D82) > routes are registered by the modules and nowhere else; the guard is loaded before all of them 2ms
+ ✓ |unit| test/static/search-path.test.ts > the scan itself > finds each forbidden text when it is present, in any case, in code and in strings (positive control) 3ms
+ ✓ |unit| test/static/search-path.test.ts > the scan itself > reads the production sources of the server: TypeScript and SQL, the module folders included 1ms
+ ✓ |unit| test/static/search-path.test.ts > finding F53: nothing but the places that pin the path names a temporary object or the path > the list of places is exact 14ms
+ ✓ |unit| test/static/search-path.test.ts > finding F53: nothing but the places that pin the path names a temporary object or the path > each listed place holds what the list says it does 1ms
+ ✓ |unit| test/static/logging.test.ts > SR-48, SR-49: one way into the log > finds each forbidden text when it is present (positive control) 1ms
+ ✓ |unit| test/static/logging.test.ts > SR-48, SR-49: one way into the log > the server runtime makes no console call 8ms
+ ✓ |unit| test/static/logging.test.ts > SR-48, SR-49: one way into the log > only the logger and the error envelope read the raw request URL 1ms
+ ✓ |unit| test/static/imports.test.ts > the scan itself > finds the relative imports of a source in every form, and no package (positive control) 1ms
+ ✓ |unit| test/static/imports.test.ts > the scan itself > knows the unit of a path 0ms
+ ✓ |unit| test/static/imports.test.ts > the scan itself > reports an import of test code and a deep import into a closed unit, and nothing else (positive control) 1ms
+ ✓ |unit| test/static/imports.test.ts > the scan itself > reads the production sources of the server, the module folders included, and sees their imports 1ms
+ ✓ |unit| test/static/imports.test.ts > the scan itself > every closed unit exists and has an index 1ms
+ ✓ |unit| test/static/imports.test.ts > CPB1-12: no production source imports test code > nothing from a __tests__ folder, from test/ (test/support and the database helper included) or from a test file 1ms
+ ✓ |unit| test/static/imports.test.ts > CPB1-12: the neutral test support stands on its own > finds a cycle when there is one (positive control) 0ms
+ ✓ |unit| test/static/imports.test.ts > CPB1-12: the neutral test support stands on its own > the folder holds the shared helpers, and no file of it imports a __tests__ folder of a row 0ms
+ ✓ |unit| test/static/imports.test.ts > CPB1-12: the neutral test support stands on its own > its files import each other without a cycle: the guard support imports the identity support, never the other way round 0ms
+ ✓ |unit| test/static/imports.test.ts > CPB1-16, CPB1-11: a closed unit is imported through its index > no production source of another unit names a file inside the core, the engine, the realtime channel, a plugin, the mapping or the store 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > the rule book of the contract registry > compiles a rule for every one of the 75 operations: none lacks an access rule or an audit rule 2ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > the rule book of the contract registry > holds 4 PUBLIC, 5 DEVICE, 25 AUTHENTICATED, 40 with one permission and 1 any-of (spec §7, D13) 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > the rule book of the contract registry > takes method, path, permissions and conditions from the registry entry, and nothing from anywhere else 3ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > the rule book of the contract registry > the conditions are those of the registry, in its order: CONSOLE_IDENTITY on signIn, DEVICE_SESSION on setBiometricEnrollment, DEVICE_CREDENTIAL on rotateDeviceCredential, DEMO_FLAG on the five demo operations 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > the rule book of the contract registry > RB-5: the three exports are refused with EXPORT_DENIED, exportEvidence alone with the code FORBIDDEN 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > the rule book of the contract registry > only exportEvidence carries the pattern of its path ID into the rule that writes a row with it 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > spec §6.6: what a retired device may still call > is health and the pairing redeem, both PUBLIC; every other operation refuses it 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > spec §6.6: what a retired device may still call > agrees with the contract: a PUBLIC operation documents 403 DEVICE_REVOKED exactly when its rule refuses a retired device 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > details.permission of a denial (decision D64 DN-12, ruled here) > is the permission of the rule; for the any-of its alternatives in registry order joined with _OR_ 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > details.permission of a denial (decision D64 DN-12, ruled here) > splits back into the permissions: no permission of the vocabulary holds the separator 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > details.permission of a denial (decision D64 DN-12, ruled here) > is a value the audit writer accepts for ACCESS_DENIED, for every rule; the marker ANY-OF(A, B) is not 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > which route gets which rule (RB-1: deny by default) > a route that is a registry operation by method, path and operation ID gets that operation rule 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > which route gets which rule (RB-1: deny by default) > the method is matched whatever its letter case; the path is matched exactly 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > which route gets which rule (RB-1: deny by default) > a route that is no registry operation has no rule, whatever it says about itself 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > which route gets which rule (RB-1: deny by default) > a route cannot borrow a rule by naming a registry operation on another path or method 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > which route gets which rule (RB-1: deny by default) > a registry route whose config.operationId is missing or names another operation is refused 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > which route gets which rule (RB-1: deny by default) > the one route outside the registry is the socket, GET /ws: open at the handshake, no permission, no row, a retired device included 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > which route gets which rule (RB-1: deny by default) > ruleAt holds a route to the registry by method and path alone, for a route whose configuration cannot be read 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > which route gets which rule (RB-1: deny by default) > routePatternOf turns the registry path into the router pattern 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > no access rule: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > no audit rule: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > an access rule that is no object: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > an unknown access kind: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > an access rule without a kind: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > a permission outside the vocabulary: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > a permission rule without a permission: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > an any-of with one permission: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > an any-of that names an unknown permission: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > an unknown condition: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > a success rule that is no audit type and no marker: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > no denial type: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > a denial type the guard cannot write: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > EXPORT_DENIED on an operation that is no export: no rule, and the problem names the operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > a book built from a defective table refuses the route of the defective entry and keeps every other rule 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/access-rules.test.ts > a registry entry that cannot be compiled (AC-B-12, at the level of the entry) > an AccessRuleError carries the code of its first problem and every problem; its text names operations and routes only 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > are four stage plugins, core, engine, realtime, thirteen stubbed modules and health 1ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/origin-guard/index.ts exports originGuardPlugin (owner W23) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/throttle/index.ts exports throttlePlugin (owner W23) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/authenticate/index.ts exports authenticatePlugin (owner W24) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/permission-guard/index.ts exports permissionGuardPlugin (owner W28) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/core/index.ts exports corePlugin (owner W21) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/engine/index.ts exports enginePlugin (owner W26) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/realtime/index.ts exports realtimePlugin (owner W42) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/identity/index.ts exports identityModule (owner W24) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/rbac/index.ts exports rbacModule (owner W28) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/admin/index.ts exports adminModule (owner W33) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/pairing/index.ts exports pairingModule (owner W32) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/sessions/index.ts exports sessionsModule (owner W34) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/evidence/index.ts exports evidenceModule (owner W35) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/devices/index.ts exports devicesModule (owner W36) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/storage/index.ts exports storageModule (owner W37) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/network-time/index.ts exports networkTimeModule (owner W37) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/security-audit/index.ts exports securityAuditModule (owner W39) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/system/index.ts exports systemModule (owner W40) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/alerts/index.ts exports alertsModule (owner W40) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/demo/index.ts exports demoModule (owner W43) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/health/index.ts exports healthModule (owner W08) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/plugins/origin-guard statically and registers originGuardPlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/plugins/throttle statically and registers throttlePlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/plugins/authenticate statically and registers authenticatePlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/plugins/permission-guard statically and registers permissionGuardPlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/core statically and registers corePlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/engine statically and registers enginePlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/realtime statically and registers realtimePlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/identity statically and registers identityModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/rbac statically and registers rbacModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/admin statically and registers adminModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/pairing statically and registers pairingModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/sessions statically and registers sessionsModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/evidence statically and registers evidenceModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/devices statically and registers devicesModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/storage statically and registers storageModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/network-time statically and registers networkTimeModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/security-audit statically and registers securityAuditModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/system statically and registers systemModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/alerts statically and registers alertsModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/demo statically and registers demoModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/health statically and registers healthModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/config has an index.ts 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/logger has an index.ts 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/error-envelope has an index.ts 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/response-headers has an index.ts 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/db has an index.ts 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/readiness has an index.ts 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > the factory loads nothing dynamically 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > the factory does not listen and reads no environment 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > an anonymous caller: every operation answers what its access rule and the role matrix say 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > a retired device: every operation answers what its access rule and the role matrix say 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > a paired device, signed out: every operation answers what its access rule and the role matrix say 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > INVESTIGATOR on the web console: every operation answers what its access rule and the role matrix say 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > SUPERVISOR on the web console: every operation answers what its access rule and the role matrix say 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > TECHNICIAN on the web console: every operation answers what its access rule and the role matrix say 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > INVESTIGATOR on a paired device: every operation answers what its access rule and the role matrix say 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > SUPERVISOR on a paired device: every operation answers what its access rule and the role matrix say 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > TECHNICIAN on a paired device: every operation answers what its access rule and the role matrix say 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > the cells are 75 x 9 = 675; the denied cells of an operator are 22 (INVESTIGATOR), 3 (SUPERVISOR) and 31 (TECHNICIAN), as spec AC-B-16 counts them 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > AC-B-16, unit form: all 75 operations for nine callers > what the plain-language table of spec §4.5 says of each role 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > RB-3: the permissions of the principal are the one truth of the decision > a role that holds a permission in the shared table is still refused when the principal of this request does not carry it 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > RB-3: the permissions of the principal are the one truth of the decision > a role that lacks a permission in the shared table is allowed when the principal of this request carries it 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > RB-3: the permissions of the principal are the one truth of the decision > an operator without any permission passes exactly the operations that name none 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > RB-3: the permissions of the principal are the one truth of the decision > F-8 of the contract row: EVIDENCE_VIEW and DIAGNOSTICS_RUN are held by every seeded role, and their six operations are refused once the grant is gone 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > RB-3: the permissions of the principal are the one truth of the decision > gives the same answer for the same arguments, however often it is asked: nothing is kept between two decisions 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > the any-of rule (setStoragePolicy) > lets a holder of either permission through, and of both 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > the any-of rule (setStoragePolicy) > refuses a holder of neither, and the refusal names both permissions as one code 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > what a refusal says, and which refusals are audited (RB-4, RB-6) > a missing permission names the operator, the role, the session device and the denial of the rule 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > what a refusal says, and which refusals are audited (RB-4, RB-6) > a retired device names its device ID; a 401 says whether an operator or a device is asked for 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > what a refusal says, and which refusals are audited (RB-4, RB-6) > exactly two refusals are audited: a missing permission and a retired device 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > what a refusal says, and which refusals are audited (RB-4, RB-6) > a retired device is an anonymous caller on what it may still call: health and the pairing redeem pass, and it is still not signed in 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > the conditions of a rule (spec §7.3 line 7) > CONSOLE_IDENTITY: signIn without a console identity answers 403 DEVICE_NOT_PAIRED, whoever the caller is 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > the conditions of a rule (spec §7.3 line 7) > DEVICE_SESSION: setBiometricEnrollment needs a session that is bound to a device 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > the conditions of a rule (spec §7.3 line 7) > a DEVICE operation called by a web console session answers 403 DEVICE_NOT_PAIRED; the device is allowed, and so is an operator on the device unless the rule needs the device's own credential 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > the conditions of a rule (spec §7.3 line 7) > DC-1, DC-2: the permission is decided before the demo flag; a permitted caller gets DEMO_DISABLED while the flag is off 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > the conditions of a rule (spec §7.3 line 7) > the socket handshake is open to every caller, a retired device included: the channel decides what a socket may see 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > the conditions of a rule (spec §7.3 line 7) > a rule that names a permission and has none to check lets nobody through: it throws 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > DEVICE_CREDENTIAL: an operation that needs the device's own credential (finding CPS1-3; decisions D113, D118) > operation 23 carries it, and every operation that carries it is a DEVICE operation 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > DEVICE_CREDENTIAL: an operation that needs the device's own credential (finding CPS1-3; decisions D113, D118) > the device itself holds it; the session of an operator who is signed in on the device does not, whatever the role and whatever it is granted; the refusal is not audited 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > DEVICE_CREDENTIAL: an operation that needs the device's own credential (finding CPS1-3; decisions D113, D118) > the order of stage 6 is unchanged: a retired device, a caller without a principal and a web console session are answered by the marker, before the condition 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > DEVICE_CREDENTIAL: an operation that needs the device's own credential (finding CPS1-3; decisions D113, D118) > nothing else is asked: the console identity and the demo flag change no answer 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > DEVICE_CREDENTIAL: an operation that needs the device's own credential (finding CPS1-3; decisions D113, D118) > decision D118: the evaluation names no operation. Any other DEVICE rule that is given the condition is decided the same way, with no change of the source 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/decision.test.ts > DEVICE_CREDENTIAL: an operation that needs the device's own credential (finding CPS1-3; decisions D113, D118) > a condition that stage 6 does not evaluate lets nobody through: it throws, and the refusals of the marker still come first 0ms
+ ✓ |unit| test/static/routes.test.ts > the scan itself > finds each other way of registering a route when it is present (positive control) 2ms
+ ✓ |unit| test/static/routes.test.ts > CPB1-17: the routes of the identity core and of the health module > are built with routeOfOperation from their registry entries, by no other way, and carry no hook of their own 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/matrix.test.ts > the stored matrix that passes > is the shared vocabulary with exactly the 18 grants of the shared role table, for the rules of all 75 operations 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/matrix.test.ts > the stored matrix that passes > whatever the order the grants are stored in 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/matrix.test.ts > decision D88: the stored grants must be exactly the shared role table > a stored grant the shared table lacks: STORED_GRANTS_MISMATCH, naming the direction, the role and the permission, and nothing else 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/matrix.test.ts > decision D88: the stored grants must be exactly the shared role table > a grant of the shared table that is not stored: the same code, direction missing 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/matrix.test.ts > decision D88: the stored grants must be exactly the shared role table > only the FIRST difference is named: a missing grant before an extra one, by role and then by permission in the order of the vocabulary 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/matrix.test.ts > decision D88: the stored grants must be exactly the shared role table > every single grant of the shared table is needed, and every single other pair is refused 1ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/matrix.test.ts > decision D88: the stored grants must be exactly the shared role table > a grant of a role or a permission the vocabulary does not hold is an extra one 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/matrix.test.ts > decision D88: the stored grants must be exactly the shared role table > the grants are compared only once the vocabulary is the shared one: a missing permission or role is the cause, and is what is reported 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/matrix.test.ts > the other two checks, as before > a permission that the rule of a route names is not stored: one problem per route and permission, naming the operation, then the mismatch 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/matrix.test.ts > the other two checks, as before > a stored name the server does not know, and an empty matrix 0ms
+ ✓ |unit| src/plugins/permission-guard/__tests__/matrix.test.ts > the other two checks, as before > roleMatrixOf hands the stored lists on in their order, with editable false 0ms
+ Test Files  19 passed (19)
+      Tests  297 passed (297)
+   Start at  19:48:14
+   Duration  4.39s (import 66%, transform 20%, tests 14%, worker 1%)

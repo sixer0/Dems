@@ -1,0 +1,291 @@
+// W82 device check: Settings across the LIVE boundary and in LIVE mode, on the phone of lane 1, in one sitting.
+//   node --import tsx device_flow.mts <serial> <out> <T0>
+// Rules (D164 DN-7, D162, D125, P19; the W82 brief):
+// - Launched by the caller with `demsdemo:///login?core=SIMULATED&motion=off`; screens are reached by deep
+//   links (`demsdemo:///settings/...`); the mode changes ONLY through the Settings segment and its dialog.
+// - Login, Summary and Home are never dumped: W60's fixed Login coordinates; the app's biometric offer is
+//   detected by its pixels (W66's `pixels.py offer`) and only ever DECLINED ("Not now", 540,1444).
+// - `uiautomator dump` only on Settings screens (motion off), each with a 20 s limit; one dump file.
+// - The demo password is read from the shared dataset constant and never printed; it is only ever the
+//   argument of one `adb shell input text` into the APP's own password field.
+// - Never pressed: a demo fault, a scenario load, Reset, Recover, Install, Run diagnostics, the biometric
+//   switch. Nothing is typed or tapped unless the app has the focus and no keyguard shows (exit 77).
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../packages/shared/src/sim/dataset';
+
+const [serial, out, t0] = process.argv.slice(2);
+if (!serial || !out || !t0) {
+  console.error('usage: device_flow.mts <serial> <out> <T0>');
+  process.exit(64);
+}
+const ROOT = '/Users/gsp-budi/Documents/DEMS';
+const DUMP = '/sdcard/w82.xml';
+const BIG = { encoding: 'utf8' as const, maxBuffer: 256 * 1024 * 1024 };
+const adb = (...a: string[]): string => execFileSync('adb', ['-s', serial, ...a], BIG);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const jsLog = (since = t0): string => adb('logcat', '-d', '-T', since, '-s', 'ReactNativeJS:V');
+const deviceNow = (): string => adb('shell', "date '+%m-%d %H:%M:%S.000'").trim();
+const say = (text: string) => console.log(`-- ${new Date().toTimeString().slice(0, 8)} ${text}`);
+class Locked extends Error {
+  readonly code = 77;
+}
+let failures = 0;
+function check(ok: boolean, what: string): void {
+  say(`${ok ? 'OK  ' : 'FAIL'} ${what}`);
+  if (!ok) failures += 1;
+}
+
+function guard(): void {
+  const w = adb('shell', 'dumpsys', 'window');
+  if (!/isKeyguardShowing=false/.test(w) || !/mCurrentFocus=.*com\.dems\.demo\.tablet/.test(w)) throw new Locked('app not focused / keyguard');
+}
+function tapAt(x: number, y: number, what: string): void {
+  guard();
+  adb('shell', 'input', 'tap', String(x), String(y));
+  say(`tapped ${what} at ${x},${y}`);
+}
+function shot(name: string): string {
+  const png = execFileSync('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], { maxBuffer: BIG.maxBuffer });
+  const path = `${out}/82_${name}.png`;
+  writeFileSync(path, png);
+  say(`screencap 82_${name}.png (${png.length} bytes)`);
+  return path;
+}
+function core(pattern: RegExp, since = t0): string[] {
+  return jsLog(since)
+    .split('\n')
+    .map((line) => /DEMS-LIVE\] (.*)$/.exec(line)?.[1] ?? '')
+    .filter((line) => line !== '' && pattern.test(line))
+    .map((line) => line.replace(/ [0-9a-f]{8}-[0-9a-f-]{27}$/, ''));
+}
+async function waitCore(pattern: RegExp, seconds: number, since = t0): Promise<string[]> {
+  for (let waited = 0; waited < seconds; waited += 1) {
+    const lines = core(pattern, since);
+    if (lines.length > 0) return lines;
+    await sleep(1000);
+  }
+  return [];
+}
+async function waitLog(marker: string, seconds: number, since: string): Promise<boolean> {
+  for (let waited = 0; waited < seconds; waited += 1) {
+    if (jsLog(since).includes(marker)) return true;
+    await sleep(1000);
+  }
+  return false;
+}
+
+interface Node { box: { l: number; t: number; r: number; b: number }; text: string; selected: boolean; checked: boolean; enabled: boolean }
+interface Dump { ids: Map<string, Node>; texts: { text: string; box: Node['box'] }[] }
+/** One dump of a Settings screen; null when it does not go idle in 20 s. */
+function dump(): Dump | null {
+  try {
+    execFileSync('adb', ['-s', serial, 'shell', 'uiautomator', 'dump', DUMP], { ...BIG, timeout: 20_000 });
+  } catch {
+    say('dump: no idle state in 20 s');
+    return null;
+  }
+  const xml = adb('exec-out', 'cat', DUMP);
+  const ids = new Map<string, Node>();
+  const texts: Dump['texts'] = [];
+  for (const [node] of xml.matchAll(/<node\b[^>]*>/g)) {
+    const bounds = / bounds="\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]"/.exec(node);
+    if (!bounds) continue;
+    const box = { l: Number(bounds[1]), t: Number(bounds[2]), r: Number(bounds[3]), b: Number(bounds[4]) };
+    const id = / resource-id="([^"]*)"/.exec(node)?.[1]?.replace(/^.*:id\//, '');
+    const text = (/ text="([^"]*)"/.exec(node)?.[1] ?? '') || (/ content-desc="([^"]*)"/.exec(node)?.[1] ?? '');
+    if (text) texts.push({ text: text.replace(/&apos;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&'), box });
+    const flag = (name: string) => new RegExp(` ${name}="true"`).test(node);
+    if (id && !ids.has(id)) ids.set(id, { box, text, selected: flag('selected'), checked: flag('checked'), enabled: flag('enabled') });
+  }
+  return { ids, texts };
+}
+async function tapId(id: string, tries = 4): Promise<boolean> {
+  for (let attempt = 0; attempt < tries; attempt += 1) {
+    const d = dump();
+    const node = d?.ids.get(id);
+    if (d && node && node.box.b > node.box.t && node.box.t >= 0) {
+      tapAt(Math.round((node.box.l + node.box.r) / 2), Math.round((node.box.t + node.box.b) / 2), id);
+      return true;
+    }
+    await sleep(1000);
+  }
+  say(`no visible node ${id}`);
+  return false;
+}
+const textsOf = (d: Dump | null, pattern: RegExp): string[] => (d === null ? [] : d.texts.filter(({ text }) => pattern.test(text)).map(({ text, box }) => `"${text}" [${box.l},${box.t}][${box.r},${box.b}]`));
+
+/** W60's sign-in on the app's own Login form, fixed coordinates (phone portrait 1080 x 2424). */
+async function signIn(username: string): Promise<void> {
+  const USER: [number, number] = [540, 1105];
+  const PASS: [number, number] = [540, 1265];
+  tapAt(...USER, 'the username field');
+  await sleep(1200);
+  tapAt(540, 2338, "the handwriting coach's Cancel (empty space when none)");
+  await sleep(800);
+  tapAt(...USER, 'the username field');
+  await sleep(600);
+  guard();
+  adb('shell', 'input', 'text', username);
+  say(`typed the operator username (${username})`);
+  await sleep(400);
+  tapAt(...PASS, 'the password field');
+  await sleep(600);
+  guard();
+  adb('shell', 'input', 'text', DEMO_OPERATOR_PASSWORD); // never printed
+  say('typed the demo password (not shown)');
+  await sleep(400);
+  guard();
+  adb('shell', 'input', 'keyevent', '66');
+  say("pressed the keypad's go key");
+}
+function link(url: string): void {
+  guard();
+  adb('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', url, 'com.dems.demo.tablet');
+  say(`deep link ${url}`);
+}
+/** Declines the app's biometric offer only when its pixels show (W66's detector); touches nothing otherwise. */
+async function declineOffer(name: string): Promise<void> {
+  const png = shot(`${name}_offer_check`);
+  const seen = execFileSync('python3', [`${ROOT}/.cache/w66/pixels.py`, 'offer', png], BIG).trim();
+  if (seen === 'offer') {
+    tapAt(540, 1444, 'the app\'s biometric offer: "Not now"');
+    await sleep(2000);
+  } else {
+    say('the app\'s biometric offer: not shown, nothing tapped');
+  }
+}
+function segments(d: Dump | null): string {
+  if (d === null) return 'no dump';
+  return ['SIMULATED', 'HEARTBEAT', 'LIVE']
+    .map((source) => {
+      const node = d.ids.get(`settings-core-link-${source}`);
+      return node ? `${source} [${node.box.l},${node.box.t}][${node.box.r},${node.box.b}]${node.selected ? ' selected' : ''}` : `${source} missing`;
+    })
+    .join('; ');
+}
+
+async function run(): Promise<number> {
+  const investigator = OPERATORS.find((o) => o.role === 'INVESTIGATOR');
+  const supervisor = OPERATORS.find((o) => o.role === 'SUPERVISOR');
+  if (!investigator || !supervisor) throw new Error('the dataset lacks an operator');
+
+  say('== A. SIMULATED, then the segment LIVE: the dialog, the simulator\'s sign-out, LIVE Login ==');
+  await sleep(5000);
+  shot('a1_simulated_login');
+  if (!(process.env.SIM_AUTH?.includes('SIGNED_IN') ?? false)) {
+    await signIn(investigator.username);
+    await sleep(6000);
+    await declineOffer('a2_simulated_after_signin');
+  } else {
+    say('the simulator is already signed in (stored state): no sign-in typed');
+  }
+  link('demsdemo:///settings/preferences');
+  await sleep(3000);
+  let d = dump();
+  say(`segments: ${segments(d)}`);
+  say(`labels: ${textsOf(d, /^(Simulated|mock-core heartbeat|Live)$/).join(', ')}`);
+  say(`hint: ${textsOf(d, /adb reverse/).join(' | ')}`);
+  check(d?.ids.get('settings-core-link-SIMULATED')?.selected === true, 'SIMULATED is the selected segment');
+  shot('a3_simulated_preferences');
+  if (!(await tapId('settings-core-link-LIVE'))) return 1;
+  await sleep(1500);
+  d = dump();
+  check(d?.ids.has('settings-core-mode-dialog') === true, 'the §3.3 dialog is open');
+  say(`dialog: ${textsOf(d, /^(Switch to|You will be signed out|Cancel)/).join(' | ')}`);
+  shot('a4_dialog_to_live');
+  const tSwitch = deviceNow();
+  if (!(await tapId('settings-core-mode-confirm'))) return 1;
+  check(await waitLog('runtime.live.ready', 40, tSwitch), 'the Live source mounted after the confirm (runtime.live.ready)');
+  check(await waitLog('settings.coreLink.switch', 5, tSwitch), 'the switch was logged (settings.coreLink.switch)');
+  const loginStatus = await waitCore(/GET \/api\/v1\/auth\/status/, 20, tSwitch);
+  say(`LIVE Login mounted (its sign-in status request): ${loginStatus.join(' | ') || 'NOT SEEN'}`);
+  check(loginStatus.length > 0, 'landed on the LIVE Login (it asks for the sign-in status at mount)');
+  check(core(/sign-out/, tSwitch).length === 0, 'no Core sign-out for the SIMULATED -> LIVE switch (the simulator signed out locally)');
+  await sleep(4000);
+  shot('a5_live_login_after_switch');
+
+  say('== B. LIVE: sign-in, Settings ==');
+  await signIn(supervisor.username);
+  say(`the app's sign-in: ${(await waitCore(/POST \/api\/v1\/auth\/sign-in/, 30, tSwitch)).join(' | ') || 'NOT SEEN'}`);
+  await sleep(6000);
+  await declineOffer('b1_live_after_signin');
+  link('demsdemo:///settings/preferences');
+  await sleep(3000);
+  d = dump();
+  say(`segments: ${segments(d)}`);
+  say(`labels: ${textsOf(d, /^(Simulated|mock-core heartbeat|Live)$/).join(', ')}`);
+  check(d?.ids.get('settings-core-link-LIVE')?.selected === true, 'LIVE is the selected segment');
+  shot('b2_live_preferences');
+
+  link('demsdemo:///settings/security');
+  await sleep(3000);
+  d = dump();
+  const bio = d?.ids.get('settings-biometric');
+  say(`biometric switch: ${bio ? `checked=${bio.checked} enabled=${bio.enabled}` : 'missing'}`);
+  const bioTexts = textsOf(d, /biometric|screen-lock|Fingerprint|identity binding/i);
+  say(`biometric texts: ${bioTexts.join(' | ')}`);
+  check(bioTexts.some((text) => text.includes("screen-lock check")), 'the LIVE wording of the switch (screen-lock sentence)');
+  check(!bioTexts.some((text) => /Simulated identity binding/.test(text)), 'no "Simulated identity binding" in LIVE');
+  shot('b3_live_security');
+
+  link('demsdemo:///settings/maintenance');
+  await sleep(3000);
+  if (!(await tapId('settings-demo-trigger'))) return 1;
+  await sleep(1500);
+  d = dump();
+  check(d?.ids.has('settings-demo-body') === true, 'the Demo controls panel is shown (DEMO_CONTROL and the demo flag)');
+  say(`maintenance texts: ${textsOf(d, /^(DEMO|Demo only|Eight health checks|The Core server runs|Install update|Demo controls)/).join(' | ')}`);
+  say(`texts that say "simulat" on this screen: ${textsOf(d, /simulat/i).join(' | ') || 'none'}`);
+  shot('b4_live_maintenance_demo');
+
+  link('demsdemo:///settings');
+  await sleep(2500);
+  if (await tapId('settings-account-row')) {
+    await sleep(2500);
+    d = dump();
+    say(`profile: ${textsOf(d, /^(Permissions|The Core server checks|Role:)/).join(' | ')}`);
+    say(`permission rows: ${[...(d?.ids.keys() ?? [])].filter((id) => id.startsWith('settings-profile-permission-')).map((id) => id.replace('settings-profile-permission-', '')).join(', ')}`);
+    shot('b5_live_profile');
+    await tapId('settings-profile-sheet-close', 2);
+    await sleep(1200);
+  }
+
+  say('== C. the segment SIMULATED: the dialog, the Core\'s sign-out, SIMULATED Login (the last mode) ==');
+  link('demsdemo:///settings/preferences');
+  await sleep(3000);
+  if (!(await tapId('settings-core-link-SIMULATED'))) return 1;
+  await sleep(1500);
+  d = dump();
+  check(d?.ids.has('settings-core-mode-dialog') === true, 'the §3.3 dialog is open');
+  say(`dialog: ${textsOf(d, /^(Switch to|You will be signed out|Cancel)/).join(' | ')}`);
+  shot('c1_dialog_to_simulated');
+  const tBack = deviceNow();
+  if (!(await tapId('settings-core-mode-confirm'))) return 1;
+  const signOut = await waitCore(/POST \/api\/v1\/auth\/sign-out/, 20, tBack);
+  say(`the Core's sign-out: ${signOut.join(' | ') || 'NOT SEEN'}`);
+  check(signOut.some((line) => / 204\b/.test(line)), 'the Core answered the sign-out (204) before the switch');
+  check(await waitLog('runtime.sim.hydrated', 40, tBack), 'the simulator mounted after the sign-out (runtime.sim.hydrated)');
+  await sleep(4000);
+  shot('c2_simulated_login_after_switch');
+  check(core(/\/api\/v1\//, deviceNow()).length === 0, 'nothing more goes to the Core server in SIMULATED');
+
+  const log = jsLog();
+  check(log.split('\n').filter((l) => /dvc_|ses_|bio_/.test(l)).length === 0, 'credential/token lines in the JS log: 0');
+  check(core(/\/api\/v1\/demo\//).length === 0, 'demo operations sent: 0 (nothing was pressed in the panel)');
+  check(core(/biometric/).length === 0, 'biometric enrolment requests: 0 (the switch was not pressed)');
+  say(`checks failed: ${failures}`);
+  return failures === 0 ? 0 : 1;
+}
+
+run().then(
+  (status) => process.exit(status),
+  (error: unknown) => {
+    if (error instanceof Locked) {
+      say(`LOCKED: ${error.message} - stop, report`);
+      process.exit(77);
+    }
+    console.error(`-- failed: ${error instanceof Error ? error.message : 'unknown'}`);
+    process.exit(1);
+  },
+);

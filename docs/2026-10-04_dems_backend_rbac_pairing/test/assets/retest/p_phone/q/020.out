@@ -1,0 +1,31 @@
+12:53:33.609 declared screen settings
+12:53:33.652 tapid settings-row-devices at 540,1512 "Device Settings"
+12:53:36.220 slept 2500 ms
+12:53:38.747 declared screen settings-devices
+12:53:38.770 screencap 37_settings_device_settings.png 12:53:38.770..12:53:38.956
+12:53:39.019 key 4
+12:53:39.093 slept 2000 ms
+12:53:41.130 declared screen settings
+12:53:41.163 tapid settings-row-storage: not found (or no dump)
+12:53:49.837 slept 2500 ms
+12:53:52.378 declared screen settings-storage
+12:53:52.413 screencap 38_settings_storage_management.png 12:53:52.413..12:53:52.896
+12:53:52.985 key 4
+12:53:53.100 slept 2000 ms
+12:53:55.153 declared screen settings
+12:53:55.208 tapid settings-row-network-time: not found (or no dump)
+12:54:04.108 slept 2500 ms
+12:54:06.704 declared screen settings-network
+12:54:06.748 screencap 39_settings_network_time.png 12:54:06.748..12:54:07.117
+12:54:07.219 key 4
+12:54:07.349 slept 2000 ms
+12:54:09.402 declared screen settings
+12:54:09.451 tapid settings-row-maintenance at 540,2003 "System Maintenance"
+12:54:12.013 slept 2500 ms
+12:54:14.592 declared screen settings-maintenance
+12:54:14.632 screencap 40_settings_maintenance_budi_investigator.png 12:54:14.632..12:54:14.887
+12:54:14.985 swipe 540,1900,540,900 600 ms
+12:54:15.698 slept 1200 ms
+12:54:16.926 screencap 40b_settings_maintenance_budi_investigator_scrolled.png 12:54:16.926..12:54:17.079
+12:54:17.153 ids(6): settings-update@540,1083 ; settings-update-chip@927,830 "DEMO" ; settings-update-body@540,968 "v2.5.0 available" ; settings-update-live-note@540,1067 "The Core server runs a demonstration update: no software is installed." ; settings-update-install@540,1215 "Install update" ; settings-update-install-locked@540,1340 "Requires the Technician role"
+12:54:19.503 warnlog since 10-06 12:53:33.000 (0): 

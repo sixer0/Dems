@@ -1,0 +1,6 @@
+press sm-action-end: true at 12:47:38.875
+wait sm-end-dialog: true at 12:47:38.878
+slept 600
+typed into sm-end-reason: Interview completed (R-T web stop by supervisor)
+slept 400
+shot J16_web_end_dialog.png at 12:47:40.066

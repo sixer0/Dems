@@ -1,0 +1,108 @@
+## 2026-10-05 23:02:16 WIB 23:02  2 users, load averages: 5.64 5.13 4.86
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+PASS src/features/session-new/live-session-new-handoff.test.tsx
+PASS src/features/evidence/evidence-detail.test.tsx (8.975 s)
+PASS src/features/pairing/pairing-live.test.tsx (11.141 s)
+PASS src/features/dashboard/dashboard-screen.test.tsx
+PASS src/features/session-live/session-live-screen.test.tsx (8.389 s)
+PASS src/navigation/__tests__/guard.test.tsx (7.256 s)
+PASS src/features/more/use-core-link-chip.test.tsx
+PASS src/navigation/__tests__/routes.test.tsx (7.72 s)
+PASS src/features/login/login.test.tsx (6.061 s)
+PASS src/navigation/__tests__/pairing-gate.test.tsx
+PASS src/features/session-new/session-new-screen.test.tsx (6.465 s)
+PASS src/features/dashboard/home-live.test.tsx
+PASS src/features/sessions/sessions-screen.test.tsx (5.793 s)
+PASS src/navigation/__tests__/chrome.test.tsx (6.575 s)
+PASS src/features/evidence/evidence-list.test.tsx
+PASS src/features/audit/audit-screen.test.tsx
+PASS src/features/evidence/play-sheet.test.tsx
+PASS src/features/pairing/pairing-screen.test.tsx
+PASS src/features/session-summary/session-summary-screen.test.tsx
+PASS src/features/devices/devices-screen.test.tsx
+PASS src/features/storage/storage-screen.test.tsx
+PASS src/features/session-live/back-guard.test.tsx
+PASS src/features/more/more-live.test.tsx
+PASS src/auth/live-auth.test.tsx
+PASS src/features/dashboard/dashboard-route.test.tsx
+PASS src/features/network-time/network-time-screen.test.tsx
+PASS src/features/session-recovery/session-recovery-screen.test.tsx
+PASS src/features/login/login-model.test.ts
+PASS src/features/login/live-login.test.tsx
+PASS src/features/session-new/precheck.test.tsx
+PASS src/runtime/live-screens.test.tsx
+PASS src/features/more/more-screen.test.tsx
+PASS src/features/home/home-screen.test.tsx
+PASS src/features/pairing/pairing-live-model.test.ts
+PASS src/features/settings/settings-screen.test.tsx
+PASS src/features/devices/devices-model.test.ts
+PASS src/features/session-finalizing/session-finalizing-screen.test.tsx
+PASS src/features/pairing/pairing-model.test.ts
+PASS src/navigation/__tests__/pairing-gate-live.test.tsx
+PASS src/runtime/live-runtime.test.tsx
+PASS src/features/pairing/stack-check-service-name.test.tsx
+PASS src/motion/policy.test.tsx
+PASS src/runtime/live-device.test.tsx
+PASS src/runtime/runtime.test.tsx
+PASS src/navigation/__tests__/back-guard.test.tsx
+PASS src/runtime/live-health.test.tsx
+PASS src/features/settings/heartbeat-release-gate.test.tsx
+PASS src/features/dashboard/home-model.test.ts
+PASS src/components/media/media.test.tsx
+PASS src/components/composed/session-timeline.test.tsx
+PASS src/components/media/camera-feed-video.test.tsx
+PASS src/auth/auth-provider.test.tsx
+PASS src/runtime/live-settings.test.tsx
+PASS src/features/dashboard/panel-boundary.test.tsx
+PASS src/components/composed/dbfs-meter.test.tsx
+PASS src/features/settings/settings-model.test.ts
+PASS src/navigation/__tests__/navigation-units.test.ts
+PASS src/features/evidence/evidence-model.test.ts
+PASS src/components/kit/kit.test.tsx
+PASS src/runtime/route-sync.test.ts
+PASS src/runtime/sim-adapters.test.ts
+PASS src/providers/app-providers.test.tsx
+PASS src/runtime/use-audio-shared-values.test.tsx
+PASS src/runtime/live-core-errors.test.tsx
+PASS src/features/sessions/sessions-model.test.ts
+PASS src/runtime/live-core-link.test.tsx
+PASS src/features/session-new/session-new-model.test.ts
+PASS src/runtime/session-route-sync.test.tsx
+PASS src/auth/live-auth-model.test.ts
+PASS src/features/audit/audit-model.test.ts
+PASS src/auth/live-biometric.test.ts
+PASS src/features/login/login-live-model.test.ts
+PASS src/auth/biometric.test.ts
+PASS src/runtime/log.test.ts
+PASS src/motion/haptics.test.ts
+PASS src/providers/runtime-contract.test.tsx
+PASS src/components/composed/stepper.test.tsx
+PASS src/components/composed/glow-ring.test.tsx
+PASS src/components/media/brand-media.test.ts
+PASS src/runtime/live-no-raw-fetch.test.tsx
+PASS src/runtime/secure-credentials.test.ts
+PASS src/runtime/link-notice.test.ts
+PASS src/motion/glow-layer.test.tsx
+PASS src/components/composed/rolling-number.test.tsx
+PASS src/motion/builders.test.ts
+PASS src/layout/layout.test.tsx
+PASS src/features/storage/storage-model.test.ts
+PASS src/runtime/secure-store-import.test.ts
+PASS src/features/network-time/network-time-model.test.ts
+PASS src/features/dashboard/use-held-value.test.tsx
+PASS src/features/pairing/pairing-live-static.test.ts
+PASS src/features/session-recovery/recovery.model.test.ts
+PASS src/runtime/link-notice-static.test.ts
+PASS src/features/dashboard/home-more-live-static.test.ts
+PASS src/i18n/i18n.test.ts
+PASS src/features/session-live/session-live.math.test.ts
+PASS src/auth/live-auth-static.test.ts
+PASS src/layout/use-layout-class.test.ts
+PASS src/features/session-summary/summary.model.test.ts
+PASS src/motion/debug-overlay.test.tsx
+PASS src/features/session-finalizing/finalizing.model.test.ts
+Test Suites: 101 passed, 101 total
+Tests:       1290 passed, 1290 total
+Snapshots:   0 total
+Time:        92.76 s
+exit=0

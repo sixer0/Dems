@@ -1,0 +1,13 @@
+13:20:50.857 mark k03 at 13:20:50.857
+13:20:50.902 declared screen home
+13:20:50.949 device-host clock offset ms: -335, -336, -336, -337, -335
+13:20:51.115 screenrecord p5_deeplink started (pid 2772) at 13:20:51.716
+13:20:51.785 deep link demsdemo:///session/new
+13:20:51.971 slept 10000 ms
+13:21:02.083 screenrecord p5_deeplink pulled; every frame extracted (passthrough)
+13:21:04.670 declared screen home
+13:21:04.726 screencap 100_p5_rina_after_deeplink_session_new.png 13:21:04.726..13:21:05.390
+13:21:05.521 jslog (2): 13:20:51.717   source: 'features.sessionNew.entryRefused', | 13:20:51.717   message: 'Start Session refused: the role lacks SESSION_START',
+13:21:05.686 warnlog since 10-06 13:20:50.000 (0): 
+13:21:05.826 serverlog since k03 (0):
+    

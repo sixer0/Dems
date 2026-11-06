@@ -1,0 +1,72 @@
+{
+  "name": "dems-demo",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@11.19.1",
+  "engines": {
+    "node": ">=26.8.2 <27"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-test-renderer": "19.2.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@scalar/json-magic": {
+      "undici": "7.29.1"
+    }
+  },
+  "scripts": {
+    "postinstall": "sh apps/mobile/scripts/apply-patches.sh",
+    "theme:gen": "npm run build -w @dems/shared",
+    "dev:mock": "npm run dev -w @dems/mock-core",
+    "dev:web": "npm run dev -w @dems/core-web",
+    "dev:mobile": "npm run dev -w @dems/mobile",
+    "android": "npm run android -w @dems/mobile",
+    "emulator": "emulator -avd dems2_tablet -no-metrics -gpu host -no-boot-anim",
+    "emulator:phone": "emulator -avd dems2_phone -no-metrics -gpu host -no-boot-anim",
+    "mobile:reverse": "npm run reverse -w @dems/mobile",
+    "probe:ws": "npm run probe:ws -w @dems/mock-core --",
+    "build": "npm run build -w @dems/shared -w @dems/mock-core -w @dems/core-web",
+    "build:android": "npm run build -w @dems/mobile",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "dev:server": "npm run dev -w @dems/core-server --",
+    "start:server": "npm run start -w @dems/core-server --",
+    "db:create": "npm run db:create -w @dems/core-server --",
+    "db:migrate": "npm run db:migrate -w @dems/core-server --",
+    "db:seed": "npm run db:seed -w @dems/core-server --",
+    "db:reset": "npm run db:reset -w @dems/core-server --",
+    "db:status": "npm run db:status -w @dems/core-server --",
+    "test:db": "npm run test:db -w @dems/core-server --",
+    "pg:init": "node scripts/pg/init.mjs",
+    "pg:start": "node scripts/pg/start.mjs",
+    "pg:stop": "node scripts/pg/stop.mjs",
+    "pg:status": "node scripts/pg/status.mjs",
+    "pg:remove-data": "node scripts/pg/remove-data.mjs",
+    "pg:remove": "node scripts/pg/remove.mjs",
+    "test:pg-scripts": "node --test scripts/pg/",
+    "test:host-helper": "python3 -I -B scripts/host/netalias/test_dems_core_netalias.py",
+    "test:seal-e2e": "DEMS_SEAL_E2E=1 /usr/bin/lockf -k -t 1800 .locks/heavy-host.lock /usr/bin/lockf -k .locks/db-migrate.lock vitest run --root apps/core-server --project db --maxWorkers=1 src/sealing-host/__tests__/e2e/seal-e2e.db.test.ts",
+    "test:dev-session-e2e": "env -u DEMS_LOCAL_SESSION_ATTENDED -u DEMS_USER_ATTENDED DEMS_DEV_SESSION_E2E=1 /usr/bin/lockf -k -t 1800 .locks/heavy-host.lock /usr/bin/lockf -k .locks/db-migrate.lock vitest run --root apps/core-server --project db --maxWorkers=1 src/capture/fence/__tests__/e2e/development-session-e2e.db.test.ts",
+    "test:kill-matrix": "sh scripts/test/kill-matrix.sh",
+    "test:capture-worker": "make -C apps/capture-worker",
+    "test:capture-worker-e2e": "make -C apps/capture-worker e2e",
+    "test:regression": "sh scripts/test/regression.sh",
+    "capture:dev-setup": "node scripts/capture/dev-setup.mjs",
+    "evidence:verify-export": "npm run evidence:verify-export -w @dems/core-server --"
+  },
+  "devDependencies": {
+    "embedded-postgres": "18.4.0-beta.17",
+    "pg": "8.23.1"
+  },
+  "allowScripts": {
+    "@shopify/react-native-skia@2.6.2": true,
+    "@embedded-postgres/darwin-arm64@18.4.0-beta.17": true
+  }
+}

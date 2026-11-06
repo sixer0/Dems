@@ -1,0 +1,604 @@
+[
+ {
+  "id": "M01",
+  "file": "src/modules/system/status.ts",
+  "from": "    device: state.device,",
+  "to": "    device: { ...state.device, softwareVersion: '0.0.0' },",
+  "note": "64: the device slice is altered in the answer"
+ },
+ {
+  "id": "M02",
+  "file": "src/modules/system/status.ts",
+  "from": "    services: state.services,",
+  "to": "    services: [],",
+  "note": "64: the services are left out"
+ },
+ {
+  "id": "M03",
+  "file": "src/modules/system/status.ts",
+  "from": "    update: state.update,",
+  "to": "    update: { ...state.update, state: 'IDLE' as const },",
+  "note": "64: the update always reads IDLE"
+ },
+ {
+  "id": "M04",
+  "file": "src/modules/system/status.ts",
+  "from": "    diagnostics: state.diagnostics,",
+  "to": "    diagnostics: null,",
+  "note": "64: the diagnostics run is never shown"
+ },
+ {
+  "id": "M05",
+  "file": "src/modules/system/status.ts",
+  "from": "    settings: state.settings,",
+  "to": "    settings: { ...state.settings, timeFormat: '24' as const },",
+  "note": "64: the time format always reads 24"
+ },
+ {
+  "id": "M06",
+  "file": "src/modules/system/settings.ts",
+  "from": "  if (body.timeFormat !== undefined) patch.timeFormat = body.timeFormat;\n",
+  "to": "",
+  "note": "68: the time format of a body never reaches the action"
+ },
+ {
+  "id": "M07",
+  "file": "src/modules/system/settings.ts",
+  "from": "  if (body.notifySound !== undefined) patch.notifySound = body.notifySound;",
+  "to": "  patch.notifySound = body.notifySound ?? false;",
+  "note": "68: a body without notifySound switches it off"
+ },
+ {
+  "id": "M08",
+  "file": "src/modules/system/settings.ts",
+  "from": "  if (body.presentationMode !== undefined) patch.presentationMode = body.presentationMode;",
+  "to": "  if (body.presentationMode) patch.presentationMode = body.presentationMode;",
+  "note": "68: a member is taken by truth, not by presence (false is dropped)"
+ },
+ {
+  "id": "M09",
+  "file": "src/modules/system/settings.ts",
+  "from": "  if (body.notifyWarnings !== undefined) patch.notifyWarnings = body.notifyWarnings;",
+  "to": "  if (body.notifyWarnings !== undefined) patch.notifyWarnings = !body.notifyWarnings;",
+  "note": "68: notifyWarnings is inverted"
+ },
+ {
+  "id": "M10",
+  "file": "src/modules/system/settings.ts",
+  "from": ".filter((key) => before[key] !== after[key]).sort();",
+  "to": ".filter((key) => before[key] !== after[key]);",
+  "note": "68: the changed names are not sorted"
+ },
+ {
+  "id": "M11",
+  "file": "src/modules/system/settings.ts",
+  "from": ".filter((key) => before[key] !== after[key]).sort();",
+  "to": ".filter(() => true).sort();",
+  "note": "68: every setting is named as changed"
+ },
+ {
+  "id": "M12",
+  "file": "src/modules/system/settings.ts",
+  "from": ".filter((key) => before[key] !== after[key]).sort();",
+  "to": ".filter((key) => before[key] === after[key]).sort();",
+  "note": "68: the unchanged settings are named"
+ },
+ {
+  "id": "M13",
+  "file": "src/modules/system/settings.ts",
+  "from": "return { operatorId: caller.kind === 'OPERATOR' ? caller.operatorId : null, changedKeys };",
+  "to": "return { operatorId: null, changedKeys };",
+  "note": "68: the line has no operator ID"
+ },
+ {
+  "id": "M14",
+  "file": "src/modules/system/settings.ts",
+  "from": "return { operatorId: caller.kind === 'OPERATOR' ? caller.operatorId : null, changedKeys };",
+  "to": "return { operatorId: caller.kind === 'OPERATOR' ? caller.sessionId : null, changedKeys };",
+  "note": "68: the line names the session, not the operator"
+ },
+ {
+  "id": "M15",
+  "file": "src/modules/system/settings.ts",
+  "from": "return { operatorId: caller.kind === 'OPERATOR' ? caller.operatorId : null, changedKeys };",
+  "to": "return { operatorId: caller.kind === 'OPERATOR' ? caller.operatorId : null, changedKeys, role: caller.kind === 'OPERATOR' ? caller.role : null } as SettingsChangeLine;",
+  "note": "68: the line also holds the role"
+ },
+ {
+  "id": "M16",
+  "file": "src/modules/system/settings.ts",
+  "from": "export const SETTINGS_CHANGED_MESSAGE = 'settings changed';",
+  "to": "export const SETTINGS_CHANGED_MESSAGE = 'settings updated';",
+  "note": "68: another message text"
+ },
+ {
+  "id": "M17",
+  "file": "src/modules/system/settings.ts",
+  "from": "export const SETTINGS_UNIT_LABEL = 'system.updateSettings';",
+  "to": "export const SETTINGS_UNIT_LABEL = 'engine.updateSettings';",
+  "note": "68: another unit label"
+ },
+ {
+  "id": "M18",
+  "file": "src/modules/system/operations.ts",
+  "from": "  runDiagnostics: 'runDiagnostics',",
+  "to": "  runDiagnostics: 'restartServices',",
+  "note": "65 runs another hosted action"
+ },
+ {
+  "id": "M19",
+  "file": "src/modules/system/operations.ts",
+  "from": "  restartServices: 'restartServices',",
+  "to": "  restartServices: 'runDiagnostics',",
+  "note": "66 runs another hosted action"
+ },
+ {
+  "id": "M20",
+  "file": "src/modules/system/operations.ts",
+  "from": "  startSoftwareUpdate: 'startSoftwareUpdate',",
+  "to": "  startSoftwareUpdate: 'restartServices',",
+  "note": "67 runs another hosted action"
+ },
+ {
+  "id": "M21",
+  "file": "src/modules/system/operations.ts",
+  "from": "  updateSettings: 'updateSettings',",
+  "to": "  updateSettings: 'setPresentationMode',",
+  "note": "68 runs setPresentationMode with the whole patch"
+ },
+ {
+  "id": "M22",
+  "file": "src/modules/system/index.ts",
+  "from": "handler: async (): Promise<SystemStatus> => systemStatusOf(app.engine.state()),",
+  "to": "handler: async (): Promise<SystemStatus> => systemStatusOf({ ...app.engine.state(), settings: app.engine.slice('settings') }),",
+  "note": "64: the answer is put together from two reads of the engine"
+ },
+ {
+  "id": "M23",
+  "file": "src/modules/system/index.ts",
+  "from": "      void reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision).code(202);\n      return { runId };",
+  "to": "      void reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision).code(200);\n      return { runId };",
+  "note": "65 answers 200, not 202"
+ },
+ {
+  "id": "M24",
+  "file": "src/modules/system/index.ts",
+  "from": "      void reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision).code(202);\n      return { runId };",
+  "to": "      void reply.code(202);\n      return { runId };",
+  "note": "65: no epoch and revision headers"
+ },
+ {
+  "id": "M25",
+  "file": "src/modules/system/index.ts",
+  "from": "      return { runId };",
+  "to": "      return { runId: 'DIAG-000001' };",
+  "note": "65: a fixed run ID"
+ },
+ {
+  "id": "M26",
+  "file": "src/modules/system/index.ts",
+  "from": "      void reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision);\n      return { restarted };",
+  "to": "      void reply.header(EPOCH_HEADER_NAME, revision).header(REVISION_HEADER_NAME, epoch);\n      return { restarted };",
+  "note": "66: the two headers swapped"
+ },
+ {
+  "id": "M27",
+  "file": "src/modules/system/index.ts",
+  "from": "      return { restarted };",
+  "to": "      return { restarted: 16 };",
+  "note": "66: a fixed number of services"
+ },
+ {
+  "id": "M28",
+  "file": "src/modules/system/index.ts",
+  "from": "const { epoch, revision } = await app.engine.command(request.principal, SYSTEM_ACTION_OF_OPERATION.startSoftwareUpdate);",
+  "to": "const { epoch, revision } = app.engine;",
+  "note": "67: the hosted action is not run"
+ },
+ {
+  "id": "M29",
+  "file": "src/modules/system/index.ts",
+  "from": "return reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision).code(202).send();",
+  "to": "return reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision).code(204).send();",
+  "note": "67 answers 204, not 202"
+ },
+ {
+  "id": "M30",
+  "file": "src/modules/system/index.ts",
+  "from": "return reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision).code(202).send();",
+  "to": "return reply.code(202).send();",
+  "note": "67: no epoch and revision headers"
+ },
+ {
+  "id": "M31",
+  "file": "src/modules/system/index.ts",
+  "from": "return reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision).code(202).send();",
+  "to": "return reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision).code(202).send({ started: true });",
+  "note": "67 answers a body"
+ },
+ {
+  "id": "M32",
+  "file": "src/modules/system/index.ts",
+  "from": "      const caller = request.principal;\n      const patch",
+  "to": "      const caller = { ...request.principal };\n      const patch",
+  "note": "68: a copy of the principal is handed on"
+ },
+ {
+  "id": "M33",
+  "file": "src/modules/system/index.ts",
+  "from": "      const patch = settingsPatchOf(request.body);",
+  "to": "      const patch = settingsPatchOf(request.body);\n      if (caller.kind === 'OPERATOR' && caller.role === 'INVESTIGATOR') return app.engine.slice('settings');",
+  "note": "68: a role check in the handler (an INVESTIGATOR changes nothing)"
+ },
+ {
+  "id": "M34",
+  "file": "src/modules/system/index.ts",
+  "from": "      const patch = settingsPatchOf(request.body);",
+  "to": "      const patch = request.body;",
+  "note": "68: the validated body itself is the patch (equal for every body the schema lets through)"
+ },
+ {
+  "id": "M35",
+  "file": "src/modules/system/index.ts",
+  "from": "        const before = scope.pending().settings;\n        await scope.command(caller, SYSTEM_ACTION_OF_OPERATION.updateSettings, patch);",
+  "to": "        await scope.command(caller, SYSTEM_ACTION_OF_OPERATION.updateSettings, patch);\n        const before = scope.pending().settings;",
+  "note": "68: the settings are read after the action, not before"
+ },
+ {
+  "id": "M36",
+  "file": "src/modules/system/index.ts",
+  "from": "        return changedSettingsKeys(before, scope.pending().settings);",
+  "to": "        return Object.keys(patch).sort();",
+  "note": "68: the names come from the body, not from what changed"
+ },
+ {
+  "id": "M37",
+  "file": "src/modules/system/index.ts",
+  "from": "        return changedSettingsKeys(before, scope.pending().settings);",
+  "to": "        return changedSettingsKeys(before, before);",
+  "note": "68: nothing is ever seen as changed"
+ },
+ {
+  "id": "M38",
+  "file": "src/modules/system/index.ts",
+  "from": "        await scope.command(caller, SYSTEM_ACTION_OF_OPERATION.updateSettings, patch);\n",
+  "to": "",
+  "note": "68: the hosted action is not run"
+ },
+ {
+  "id": "M39",
+  "file": "src/modules/system/index.ts",
+  "from": "      if (changedKeys.length > 0) request.log.info(",
+  "to": "      request.log.info(",
+  "note": "68: a line also for a call that changed nothing"
+ },
+ {
+  "id": "M40",
+  "file": "src/modules/system/index.ts",
+  "from": "      if (changedKeys.length > 0) request.log.info(",
+  "to": "      if (changedKeys.length > 1) request.log.info(",
+  "note": "68: no line when exactly one setting changed"
+ },
+ {
+  "id": "M41",
+  "file": "src/modules/system/index.ts",
+  "from": "      if (changedKeys.length > 0) request.log.info(settingsChangeLine(caller, changedKeys), SETTINGS_CHANGED_MESSAGE);\n",
+  "to": "",
+  "note": "68: no line at all"
+ },
+ {
+  "id": "M42",
+  "file": "src/modules/system/index.ts",
+  "from": "request.log.info(settingsChangeLine(caller, changedKeys), SETTINGS_CHANGED_MESSAGE);",
+  "to": "request.log.info({ ...settingsChangeLine(caller, changedKeys), settings: patch }, SETTINGS_CHANGED_MESSAGE);",
+  "note": "68: the line also holds the values of the patch"
+ },
+ {
+  "id": "M43",
+  "file": "src/modules/system/index.ts",
+  "from": "request.log.info(settingsChangeLine(caller, changedKeys), SETTINGS_CHANGED_MESSAGE);",
+  "to": "request.log.info({ ...settingsChangeLine(caller, changedKeys), after: app.engine.slice('settings') }, SETTINGS_CHANGED_MESSAGE);",
+  "note": "68: the line also holds the settings slice"
+ },
+ {
+  "id": "M44",
+  "file": "src/modules/system/index.ts",
+  "from": "request.log.info(settingsChangeLine(caller, changedKeys), SETTINGS_CHANGED_MESSAGE);",
+  "to": "request.log.warn(settingsChangeLine(caller, changedKeys), SETTINGS_CHANGED_MESSAGE);",
+  "note": "68: the line is written at level warn"
+ },
+ {
+  "id": "M45",
+  "file": "src/modules/system/index.ts",
+  "from": "request.log.info(settingsChangeLine(caller, changedKeys), SETTINGS_CHANGED_MESSAGE);",
+  "to": "app.log.info(settingsChangeLine(caller, changedKeys), SETTINGS_CHANGED_MESSAGE);",
+  "note": "68: the line is written without the request ID"
+ },
+ {
+  "id": "M46",
+  "file": "src/modules/system/index.ts",
+  "from": "request.log.info(settingsChangeLine(caller, changedKeys), SETTINGS_CHANGED_MESSAGE);",
+  "to": "request.log.info(settingsChangeLine(caller, changedKeys), SETTINGS_CHANGED_MESSAGE);\n      request.log.info(settingsChangeLine(caller, changedKeys), SETTINGS_CHANGED_MESSAGE);",
+  "note": "68: two lines per change"
+ },
+ {
+  "id": "M47",
+  "file": "src/modules/system/index.ts",
+  "from": "      if (changedKeys.length > 0) request.log.info(settingsChangeLine(caller, changedKeys), SETTINGS_CHANGED_MESSAGE);\n      const committed = app.engine.slice('settings');",
+  "to": "      const committed = app.engine.slice('settings');\n      if (changedKeys.length > 0) request.log.info(settingsChangeLine(caller, changedKeys), SETTINGS_CHANGED_MESSAGE);",
+  "note": "68: the line is written after the read of the committed slice (lost when the engine stops in between)"
+ },
+ {
+  "id": "M48",
+  "file": "src/modules/system/index.ts",
+  "from": "      const committed = app.engine.slice('settings');",
+  "to": "      const committed = { ...app.engine.slice('settings'), ...patch };",
+  "note": "68: the answer is the slice with the patch over it (equal after a commit)"
+ },
+ {
+  "id": "M49",
+  "file": "src/modules/system/index.ts",
+  "from": "      const committed = app.engine.slice('settings');",
+  "to": "      const committed = { ...app.engine.slice('settings'), presentationMode: false };",
+  "note": "68: the answer always says presentation mode is off"
+ },
+ {
+  "id": "M50",
+  "file": "src/modules/system/index.ts",
+  "from": "      void reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision);\n      return committed;",
+  "to": "      return committed;",
+  "note": "68: no epoch and revision headers"
+ },
+ {
+  "id": "M51",
+  "file": "src/modules/system/index.ts",
+  "from": "schema: { body: SettingsUpdateRequestSchema, response: { 200: SettingsSliceSchema } },",
+  "to": "schema: { response: { 200: SettingsSliceSchema } },",
+  "note": "68: no body schema (a wrong type reaches the action)"
+ },
+ {
+  "id": "M52",
+  "file": "src/modules/system/index.ts",
+  "from": "schema: { response: { 200: SystemStatusSchema } },",
+  "to": "schema: {},",
+  "note": "64: no response schema"
+ },
+ {
+  "id": "M53",
+  "file": "src/modules/system/index.ts",
+  "from": "...routeOfOperation(registryEntry('restartServices')),",
+  "to": "...routeOfOperation(registryEntry('startSoftwareUpdate')),",
+  "note": "66 is registered under the entry of 67 (a route twice, one missing)"
+ },
+ {
+  "id": "M54",
+  "file": "src/modules/alerts/index.ts",
+  "from": "handler: async (): Promise<AlertList> => ({ alerts: app.engine.slice('alerts') }),",
+  "to": "handler: async (): Promise<AlertList> => ({ alerts: app.engine.slice('alerts').filter((alert) => alert.active) }),",
+  "note": "69: resolved alerts are left out"
+ },
+ {
+  "id": "M55",
+  "file": "src/modules/alerts/index.ts",
+  "from": "handler: async (): Promise<AlertList> => ({ alerts: app.engine.slice('alerts') }),",
+  "to": "handler: async (): Promise<AlertList> => ({ alerts: app.engine.slice('alerts').filter((alert) => !alert.acknowledged) }),",
+  "note": "69: acknowledged alerts are left out"
+ },
+ {
+  "id": "M56",
+  "file": "src/modules/alerts/index.ts",
+  "from": "handler: async (): Promise<AlertList> => ({ alerts: app.engine.slice('alerts') }),",
+  "to": "handler: async (): Promise<AlertList> => ({ alerts: [...app.engine.slice('alerts')].reverse() }),",
+  "note": "69: newest first"
+ },
+ {
+  "id": "M57",
+  "file": "src/modules/alerts/index.ts",
+  "from": "handler: async (): Promise<AlertList> => ({ alerts: app.engine.slice('alerts') }),",
+  "to": "handler: async (): Promise<AlertList> => ({ alerts: app.engine.slice('alerts').slice(-50) }),",
+  "note": "69: only the newest 50"
+ },
+ {
+  "id": "M58",
+  "file": "src/modules/alerts/index.ts",
+  "from": "handler: async (): Promise<AlertList> => ({ alerts: app.engine.slice('alerts') }),",
+  "to": "handler: async (): Promise<AlertList> => ({ alerts: app.engine.state().alerts.map((alert) => ({ ...alert, acknowledged: false })) }),",
+  "note": "69: every alert reads as not acknowledged"
+ },
+ {
+  "id": "M59",
+  "file": "src/modules/alerts/index.ts",
+  "from": "return z.object({ id: z.string().regex(operation.pathParam.pattern) });",
+  "to": "return z.object({ id: z.string() });",
+  "note": "70: the {id} is not held to the registry's pattern"
+ },
+ {
+  "id": "M60",
+  "file": "src/modules/alerts/index.ts",
+  "from": "return reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision).code(204).send();",
+  "to": "return reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision).code(200).send();",
+  "note": "70 answers 200, not 204"
+ },
+ {
+  "id": "M61",
+  "file": "src/modules/alerts/index.ts",
+  "from": "return reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision).code(204).send();",
+  "to": "return reply.code(204).send();",
+  "note": "70: no epoch and revision headers"
+ },
+ {
+  "id": "M62",
+  "file": "src/modules/alerts/index.ts",
+  "from": "return reply.header(EPOCH_HEADER_NAME, epoch).header(REVISION_HEADER_NAME, revision).code(204).send();",
+  "to": "return reply.header(EPOCH_HEADER_NAME, revision).header(REVISION_HEADER_NAME, epoch).code(204).send();",
+  "note": "70: the two headers swapped"
+ },
+ {
+  "id": "M63",
+  "file": "src/modules/alerts/index.ts",
+  "from": "      if (acknowledged) request.log.info(",
+  "to": "      request.log.info(",
+  "note": "70: a line also for a call that changed nothing"
+ },
+ {
+  "id": "M64",
+  "file": "src/modules/alerts/index.ts",
+  "from": "      if (acknowledged) request.log.info(",
+  "to": "      if (!acknowledged) request.log.info(",
+  "note": "70: a line only for a call that changed nothing"
+ },
+ {
+  "id": "M65",
+  "file": "src/modules/alerts/index.ts",
+  "from": "      if (acknowledged) request.log.info(acknowledgementLine(caller, alertId), ALERT_ACKNOWLEDGED_MESSAGE);\n",
+  "to": "",
+  "note": "70: no line at all"
+ },
+ {
+  "id": "M66",
+  "file": "src/modules/alerts/index.ts",
+  "from": "request.log.info(acknowledgementLine(caller, alertId), ALERT_ACKNOWLEDGED_MESSAGE);",
+  "to": "request.log.info({ ...acknowledgementLine(caller, alertId), alert: app.engine.slice('alerts').find((alert) => alert.id === alertId) }, ALERT_ACKNOWLEDGED_MESSAGE);",
+  "note": "70: the line also holds the whole alert"
+ },
+ {
+  "id": "M67",
+  "file": "src/modules/alerts/index.ts",
+  "from": "request.log.info(acknowledgementLine(caller, alertId), ALERT_ACKNOWLEDGED_MESSAGE);",
+  "to": "request.log.debug(acknowledgementLine(caller, alertId), ALERT_ACKNOWLEDGED_MESSAGE);",
+  "note": "70: the line is written at level debug (not written at the server's level)"
+ },
+ {
+  "id": "M68",
+  "file": "src/modules/alerts/index.ts",
+  "from": "request.log.info(acknowledgementLine(caller, alertId), ALERT_ACKNOWLEDGED_MESSAGE);",
+  "to": "app.log.info(acknowledgementLine(caller, alertId), ALERT_ACKNOWLEDGED_MESSAGE);",
+  "note": "70: the line is written without the request ID"
+ },
+ {
+  "id": "M69",
+  "file": "src/modules/alerts/index.ts",
+  "from": "request.log.info(acknowledgementLine(caller, alertId), ALERT_ACKNOWLEDGED_MESSAGE);",
+  "to": "request.log.info(acknowledgementLine(caller, alertId), ALERT_ACKNOWLEDGED_MESSAGE);\n      request.log.info(acknowledgementLine(caller, alertId), ALERT_ACKNOWLEDGED_MESSAGE);",
+  "note": "70: two lines per acknowledgement"
+ },
+ {
+  "id": "M70",
+  "file": "src/modules/alerts/index.ts",
+  "from": "        await scope.command(caller, ACKNOWLEDGE_ACTION, alertId);\n",
+  "to": "",
+  "note": "70: the hosted action is not run"
+ },
+ {
+  "id": "M71",
+  "file": "src/modules/alerts/index.ts",
+  "from": "        await scope.command(caller, ACKNOWLEDGE_ACTION, alertId);",
+  "to": "        await scope.command(caller, ACKNOWLEDGE_ACTION, scope.pending().alerts[0]?.id ?? alertId);",
+  "note": "70: the oldest alert is acknowledged, whatever the path says"
+ },
+ {
+  "id": "M72",
+  "file": "src/modules/alerts/index.ts",
+  "from": "        const before = scope.pending().alerts;\n        await scope.command(caller, ACKNOWLEDGE_ACTION, alertId);",
+  "to": "        await scope.command(caller, ACKNOWLEDGE_ACTION, alertId);\n        const before = scope.pending().alerts;",
+  "note": "70: the alerts are read after the action, not before"
+ },
+ {
+  "id": "M73",
+  "file": "src/modules/alerts/index.ts",
+  "from": "        const before = scope.pending().alerts;",
+  "to": "        const before = scope.pending().alerts;\n        if (!before.some((alert) => alert.id === alertId)) throw Object.assign(new Error('unknown alert'), { statusCode: 404 });",
+  "note": "70: an unknown alert is an error, not a 204"
+ },
+ {
+  "id": "M74",
+  "file": "src/modules/alerts/index.ts",
+  "from": "      const caller = request.principal;",
+  "to": "      const caller = { ...request.principal };",
+  "note": "70: a copy of the principal is handed on"
+ },
+ {
+  "id": "M75",
+  "file": "src/modules/alerts/index.ts",
+  "from": "      const alertId = request.params.id;",
+  "to": "      const alertId = request.params.id;\n      if (caller.kind === 'OPERATOR' && caller.role === 'TECHNICIAN') return reply.code(204).send();",
+  "note": "70: a role check in the handler (a TECHNICIAN acknowledges nothing)"
+ },
+ {
+  "id": "M76",
+  "file": "src/modules/alerts/index.ts",
+  "from": "export const ACKNOWLEDGE_ACTION = 'acknowledgeAlert';",
+  "to": "export const ACKNOWLEDGE_ACTION = 'resetClip';",
+  "note": "70 runs another hosted action"
+ },
+ {
+  "id": "M77",
+  "file": "src/modules/alerts/index.ts",
+  "from": "schema: { response: { 200: AlertListSchema } },",
+  "to": "schema: {},",
+  "note": "69: no response schema"
+ },
+ {
+  "id": "M78",
+  "file": "src/modules/alerts/acknowledge.ts",
+  "from": "return isAcknowledged(after, alertId) && !isAcknowledged(before, alertId);",
+  "to": "return isAcknowledged(after, alertId);",
+  "note": "70: a repeated acknowledgement counts as one"
+ },
+ {
+  "id": "M79",
+  "file": "src/modules/alerts/acknowledge.ts",
+  "from": "return isAcknowledged(after, alertId) && !isAcknowledged(before, alertId);",
+  "to": "return !isAcknowledged(before, alertId);",
+  "note": "70: an unknown alert counts as acknowledged"
+ },
+ {
+  "id": "M80",
+  "file": "src/modules/alerts/acknowledge.ts",
+  "from": "alerts.some((alert) => alert.id === alertId && alert.acknowledged);",
+  "to": "alerts.some((alert) => alert.acknowledged);",
+  "note": "70: any acknowledged alert counts, whatever its ID"
+ },
+ {
+  "id": "M81",
+  "file": "src/modules/alerts/acknowledge.ts",
+  "from": "alerts.some((alert) => alert.id === alertId && alert.acknowledged);",
+  "to": "alerts.some((alert) => alert.id === alertId);",
+  "note": "70: the alert's presence counts, not its acknowledgement"
+ },
+ {
+  "id": "M82",
+  "file": "src/modules/alerts/acknowledge.ts",
+  "from": "return { operatorId: caller.kind === 'OPERATOR' ? caller.operatorId : null, alertId };",
+  "to": "return { operatorId: null, alertId };",
+  "note": "70: the line has no operator ID"
+ },
+ {
+  "id": "M83",
+  "file": "src/modules/alerts/acknowledge.ts",
+  "from": "return { operatorId: caller.kind === 'OPERATOR' ? caller.operatorId : null, alertId };",
+  "to": "return { operatorId: caller.kind === 'OPERATOR' ? caller.sessionId : null, alertId };",
+  "note": "70: the line names the session, not the operator"
+ },
+ {
+  "id": "M84",
+  "file": "src/modules/alerts/acknowledge.ts",
+  "from": "return { operatorId: caller.kind === 'OPERATOR' ? caller.operatorId : null, alertId };",
+  "to": "return { operatorId: caller.kind === 'OPERATOR' ? caller.operatorId : null } as AcknowledgementLine;",
+  "note": "70: the line has no alert ID"
+ },
+ {
+  "id": "M85",
+  "file": "src/modules/alerts/acknowledge.ts",
+  "from": "export const ALERT_ACKNOWLEDGED_MESSAGE = 'alert acknowledged';",
+  "to": "export const ALERT_ACKNOWLEDGED_MESSAGE = 'alert updated';",
+  "note": "70: another message text"
+ },
+ {
+  "id": "M86",
+  "file": "src/modules/alerts/acknowledge.ts",
+  "from": "export const ACKNOWLEDGE_UNIT_LABEL = 'alerts.acknowledgeAlert';",
+  "to": "export const ACKNOWLEDGE_UNIT_LABEL = 'engine.acknowledgeAlert';",
+  "note": "70: another unit label"
+ }
+]

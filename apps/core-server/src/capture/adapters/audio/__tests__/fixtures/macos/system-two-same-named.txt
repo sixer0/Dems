@@ -1,0 +1,27 @@
+{
+  "SPAudioDataType" : [
+    {
+      "_items" : [
+        {
+          "_name" : "USB Audio Device",
+          "coreaudio_device_input" : 1,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_usb"
+        },
+        {
+          "_name" : "DEMS Solo 1",
+          "coreaudio_device_input" : 1,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_usb"
+        },
+        {
+          "_name" : "USB Audio Device",
+          "coreaudio_device_input" : 2,
+          "coreaudio_device_srate" : 44100,
+          "coreaudio_device_transport" : "coreaudio_device_type_usb"
+        }
+      ],
+      "_name" : "coreaudio_device"
+    }
+  ]
+}

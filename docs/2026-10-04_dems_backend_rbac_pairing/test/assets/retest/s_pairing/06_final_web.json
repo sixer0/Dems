@@ -1,0 +1,500 @@
+{
+  "at": "13:13:03.320 (epoch 1791267183.320)",
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "table",
+    "rows": [
+      {
+        "id": "DEV-0003",
+        "state": "Paired",
+        "online": "Online",
+        "operator": "—",
+        "lastSeen": "4 min ago",
+        "revokeShown": true
+      },
+      {
+        "id": "DEV-0002",
+        "state": "Revoked",
+        "online": "Offline",
+        "operator": "—",
+        "lastSeen": "26 min ago",
+        "revokeShown": false
+      },
+      {
+        "id": "DEV-0001",
+        "state": "Revoked",
+        "online": "Offline",
+        "operator": "—",
+        "lastSeen": "3 h ago",
+        "revokeShown": false
+      }
+    ],
+    "summary": {
+      "paired": "1",
+      "online": "1",
+      "text": "1 paired · 1 online1 paired · 1 online"
+    },
+    "toasts": []
+  },
+  "registry": {
+    "status": 200,
+    "devices": [
+      {
+        "id": "DEV-0003",
+        "state": "PAIRED",
+        "online": true,
+        "signedInOperatorId": null,
+        "revokedAt": null
+      },
+      {
+        "id": "DEV-0002",
+        "state": "REVOKED",
+        "online": false,
+        "signedInOperatorId": null,
+        "revokedAt": "2026-10-06T05:49:21.176Z"
+      },
+      {
+        "id": "DEV-0001",
+        "state": "REVOKED",
+        "online": false,
+        "signedInOperatorId": null,
+        "revokedAt": "2026-10-06T03:08:24.580Z"
+      }
+    ]
+  },
+  "audit": {
+    "DEVICE_REVOKED": {
+      "status": 200,
+      "total": 182,
+      "rows": [
+        {
+          "seq": 176,
+          "id": "AUD-000176",
+          "at": "2026-10-06T05:49:21.180Z",
+          "atMs": 1791265761180,
+          "type": "DEVICE_REVOKED",
+          "category": "PAIRING",
+          "severity": "WARNING",
+          "actorId": "OPR-002",
+          "deviceId": "DEV-0002",
+          "sessionId": null,
+          "message": "Device DEV-0002 revoked",
+          "details": {
+            "reason": "R-S re-test",
+            "sessionsEnded": 0
+          }
+        },
+        {
+          "seq": 142,
+          "id": "AUD-000142",
+          "at": "2026-10-06T03:08:24.583Z",
+          "atMs": 1791256104583,
+          "type": "DEVICE_REVOKED",
+          "category": "PAIRING",
+          "severity": "WARNING",
+          "actorId": "OPR-002",
+          "deviceId": "DEV-0001",
+          "sessionId": null,
+          "message": "Device DEV-0001 revoked",
+          "details": {
+            "reason": "E2E-S check: revoke the reserved phone2 pairing",
+            "sessionsEnded": 1
+          }
+        }
+      ]
+    },
+    "PAIRING_CODE_ISSUED": {
+      "status": 200,
+      "total": 182,
+      "rows": [
+        {
+          "seq": 178,
+          "id": "AUD-000178",
+          "at": "2026-10-06T06:01:10.948Z",
+          "atMs": 1791266470948,
+          "type": "PAIRING_CODE_ISSUED",
+          "category": "PAIRING",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Pairing code PCD-000003 issued",
+          "details": {
+            "codeId": "PCD-000003",
+            "expiresAt": 1791266770941
+          }
+        },
+        {
+          "seq": 145,
+          "id": "AUD-000145",
+          "at": "2026-10-06T03:12:00.777Z",
+          "atMs": 1791256320777,
+          "type": "PAIRING_CODE_ISSUED",
+          "category": "PAIRING",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Pairing code PCD-000002 issued",
+          "details": {
+            "codeId": "PCD-000002",
+            "expiresAt": 1791256620774
+          }
+        },
+        {
+          "seq": 93,
+          "id": "AUD-000093",
+          "at": "2026-10-06T02:49:02.602Z",
+          "atMs": 1791254942602,
+          "type": "PAIRING_CODE_ISSUED",
+          "category": "PAIRING",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Pairing code PCD-000001 issued",
+          "details": {
+            "codeId": "PCD-000001",
+            "expiresAt": 1791255242596
+          }
+        }
+      ]
+    },
+    "PAIRING_SUCCESS": {
+      "status": 200,
+      "total": 182,
+      "rows": [
+        {
+          "seq": 179,
+          "id": "AUD-000179",
+          "at": "2026-10-06T06:01:16.469Z",
+          "atMs": 1791266476469,
+          "type": "PAIRING_SUCCESS",
+          "category": "PAIRING",
+          "severity": "INFO",
+          "actorId": null,
+          "deviceId": "DEV-0003",
+          "sessionId": null,
+          "message": "Device DEV-0003 paired with DEMS-IR-01",
+          "details": {
+            "codeId": "PCD-000003",
+            "coreDeviceId": "DEMS-IR-01",
+            "certificateFingerprint": "76:0B:E9:29:6D:40:F7:D8:93:20:FD:C6:5F:76:7A:4B"
+          }
+        },
+        {
+          "seq": 146,
+          "id": "AUD-000146",
+          "at": "2026-10-06T03:12:06.267Z",
+          "atMs": 1791256326267,
+          "type": "PAIRING_SUCCESS",
+          "category": "PAIRING",
+          "severity": "INFO",
+          "actorId": null,
+          "deviceId": "DEV-0002",
+          "sessionId": null,
+          "message": "Device DEV-0002 paired with DEMS-IR-01",
+          "details": {
+            "codeId": "PCD-000002",
+            "coreDeviceId": "DEMS-IR-01",
+            "certificateFingerprint": "76:0B:E9:29:6D:40:F7:D8:93:20:FD:C6:5F:76:7A:4B"
+          }
+        },
+        {
+          "seq": 94,
+          "id": "AUD-000094",
+          "at": "2026-10-06T02:49:08.369Z",
+          "atMs": 1791254948369,
+          "type": "PAIRING_SUCCESS",
+          "category": "PAIRING",
+          "severity": "INFO",
+          "actorId": null,
+          "deviceId": "DEV-0001",
+          "sessionId": null,
+          "message": "Device DEV-0001 paired with DEMS-IR-01",
+          "details": {
+            "codeId": "PCD-000001",
+            "coreDeviceId": "DEMS-IR-01",
+            "certificateFingerprint": "76:0B:E9:29:6D:40:F7:D8:93:20:FD:C6:5F:76:7A:4B"
+          }
+        }
+      ]
+    },
+    "AUTH_SUCCESS": {
+      "status": 200,
+      "total": 182,
+      "rows": [
+        {
+          "seq": 181,
+          "id": "AUD-000181",
+          "at": "2026-10-06T06:06:28.538Z",
+          "atMs": 1791266788538,
+          "type": "AUTH_SUCCESS",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": "DEV-0003",
+          "sessionId": null,
+          "message": "Operator signed in (AKP Budi Santoso) via password",
+          "details": {
+            "method": "PASSWORD"
+          }
+        },
+        {
+          "seq": 175,
+          "id": "AUD-000175",
+          "at": "2026-10-06T05:47:53.583Z",
+          "atMs": 1791265673583,
+          "type": "AUTH_SUCCESS",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed in (AKP Andi Pratama) via password",
+          "details": {
+            "method": "PASSWORD"
+          }
+        },
+        {
+          "seq": 168,
+          "id": "AUD-000168",
+          "at": "2026-10-06T03:17:16.762Z",
+          "atMs": 1791256636762,
+          "type": "AUTH_SUCCESS",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-003",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed in (Rina Wijaya) via password",
+          "details": {
+            "method": "PASSWORD"
+          }
+        }
+      ]
+    },
+    "AUTH_SIGNED_OUT": {
+      "status": 200,
+      "total": 182,
+      "rows": [
+        {
+          "seq": 182,
+          "id": "AUD-000182",
+          "at": "2026-10-06T06:08:23.168Z",
+          "atMs": 1791266903168,
+          "type": "AUTH_SIGNED_OUT",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": "DEV-0003",
+          "sessionId": null,
+          "message": "Operator signed out",
+          "details": {
+            "reason": "USER"
+          }
+        },
+        {
+          "seq": 170,
+          "id": "AUD-000170",
+          "at": "2026-10-06T03:18:04.735Z",
+          "atMs": 1791256684735,
+          "type": "AUTH_SIGNED_OUT",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed out",
+          "details": {
+            "reason": "USER"
+          }
+        },
+        {
+          "seq": 169,
+          "id": "AUD-000169",
+          "at": "2026-10-06T03:17:41.668Z",
+          "atMs": 1791256661668,
+          "type": "AUTH_SIGNED_OUT",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-003",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed out",
+          "details": {
+            "reason": "USER"
+          }
+        }
+      ]
+    },
+    "TABLET_LINK_CHANGED": {
+      "status": 200,
+      "total": 182,
+      "rows": [
+        {
+          "seq": 180,
+          "id": "AUD-000180",
+          "at": "2026-10-06T06:01:19.179Z",
+          "atMs": 1791266479179,
+          "type": "TABLET_LINK_CHANGED",
+          "category": "DEVICE",
+          "severity": "INFO",
+          "actorId": null,
+          "deviceId": "TABLET",
+          "sessionId": null,
+          "message": "Tablet control connected",
+          "details": {
+            "state": "CONNECTED"
+          }
+        },
+        {
+          "seq": 177,
+          "id": "AUD-000177",
+          "at": "2026-10-06T05:49:21.197Z",
+          "atMs": 1791265761197,
+          "type": "TABLET_LINK_CHANGED",
+          "category": "DEVICE",
+          "severity": "WARNING",
+          "actorId": null,
+          "deviceId": "TABLET",
+          "sessionId": null,
+          "message": "Tablet control offline — recording continues",
+          "details": {
+            "state": "OFFLINE"
+          }
+        },
+        {
+          "seq": 174,
+          "id": "AUD-000174",
+          "at": "2026-10-06T05:46:04.179Z",
+          "atMs": 1791265564179,
+          "type": "TABLET_LINK_CHANGED",
+          "category": "DEVICE",
+          "severity": "INFO",
+          "actorId": null,
+          "deviceId": "TABLET",
+          "sessionId": null,
+          "message": "Tablet control connected",
+          "details": {
+            "state": "CONNECTED"
+          }
+        }
+      ]
+    }
+  },
+  "signOut": {
+    "status": 204,
+    "loginShown": true,
+    "sessionAfter": 401
+  },
+  "screenshot": {
+    "file": "06_web_signed_out_login.png",
+    "at": "13:13:03.315 (epoch 1791267183.315)"
+  },
+  "network": {
+    "api": [
+      {
+        "sent": "13:13:02.307 (epoch 1791267182.307)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "13:13:02.319 (epoch 1791267182.319)"
+      },
+      {
+        "sent": "13:13:02.335 (epoch 1791267182.335)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "13:13:02.340 (epoch 1791267182.340)"
+      },
+      {
+        "sent": "13:13:02.342 (epoch 1791267182.342)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "13:13:02.346 (epoch 1791267182.346)"
+      },
+      {
+        "sent": "13:13:02.347 (epoch 1791267182.347)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "13:13:02.351 (epoch 1791267182.351)"
+      },
+      {
+        "sent": "13:13:02.352 (epoch 1791267182.352)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "13:13:02.356 (epoch 1791267182.356)"
+      },
+      {
+        "sent": "13:13:02.358 (epoch 1791267182.358)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "13:13:02.363 (epoch 1791267182.363)"
+      },
+      {
+        "sent": "13:13:02.364 (epoch 1791267182.364)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "13:13:02.368 (epoch 1791267182.368)"
+      },
+      {
+        "sent": "13:13:02.370 (epoch 1791267182.370)",
+        "method": "POST",
+        "path": "/api/v1/auth/sign-out",
+        "status": 204,
+        "done": "13:13:02.421 (epoch 1791267182.421)"
+      },
+      {
+        "sent": "13:13:02.429 (epoch 1791267182.429)",
+        "method": "GET",
+        "path": "/api/v1/auth/status",
+        "status": 200,
+        "done": "13:13:02.435 (epoch 1791267182.435)"
+      },
+      {
+        "sent": "13:13:02.759 (epoch 1791267182.759)",
+        "method": "GET",
+        "path": "/api/v1/health",
+        "status": 200,
+        "done": "13:13:02.782 (epoch 1791267182.782)"
+      },
+      {
+        "sent": "13:13:03.316 (epoch 1791267183.316)",
+        "method": "GET",
+        "path": "/api/v1/auth/session",
+        "status": 401,
+        "done": "13:13:03.319 (epoch 1791267183.319)"
+      }
+    ],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [
+      {
+        "url": "ws://127.0.0.1:5173/ws",
+        "status": 101,
+        "frames": 3,
+        "types": [
+          "heartbeat",
+          "hello"
+        ]
+      }
+    ],
+    "console": []
+  }
+}

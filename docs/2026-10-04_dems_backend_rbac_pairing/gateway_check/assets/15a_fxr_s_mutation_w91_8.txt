@@ -1,0 +1,12 @@
+FXR-S W91-8 / HBX-4 rotation test, mutation checks (2026-10-07 ~06:25)
+Command each time: npx vitest run --project unit src/plugins/logger/__tests__/error-log-rotation.test.ts
+m1 rotatedErrorLogFile set back to `file.replace(/\.log$/, '.1.log')` (the latent no-op rename)
+     × a path that does not end in `.log` still rotates, to `<path>.1` (the latent no-op rename) 2ms
+      Tests  1 failed | 7 passed (8)
+m2 rotation disabled (size compared with +Infinity)
+     × a file at the limit is moved to the one older generation and a new file starts with the entry 6ms
+     × keeps ONE generation: a second rotation replaces the older file 3ms
+     × a path that does not end in `.log` still rotates, to `<path>.1` (the latent no-op rename) 1ms
+     × an existing file with a wider mode is set to 0600 by the first append of the process, and after a rotation 1ms
+      Tests  4 failed | 4 passed (8)
+Restored: Tests  8 passed (8); src/plugins/logger unit: Test Files 4 passed, Tests 59 passed

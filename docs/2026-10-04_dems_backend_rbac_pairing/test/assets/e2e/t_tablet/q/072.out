@@ -1,0 +1,6 @@
+mark B2 tablet Next (create + precheck) at 10:33:22.484
+tap 1178,1455 at 10:33:22.700
+create 201 (10-06 10:33:22.579 POST /api/v1/session 201)
+precheck 202 (10-06 10:33:22.763 POST /api/v1/session/{id}/precheck 202)
+slept 4000 ms
+screencap B05_wizard_step2_devices_check.png (701633 bytes) at 10:33:29.113

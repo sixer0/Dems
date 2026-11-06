@@ -1,0 +1,16 @@
+## 2026-10-04 10:32:07 WIB
+$ npx jest --config apps/mobile/jest.config.js --roots "$PWD/.cache/w31/jest-microtask" --maxWorkers=2
+  console.log
+    {"beforeAdvance":["promise job"],"afterAdvance":["promise job","queueMicrotask"]}
+
+      at Object.log (../../.cache/w31/jest-microtask/microtask.test.ts:16:11)
+
+PASS .cache/w31/jest-microtask/microtask.test.ts (5.092 s)
+  ✓ under jest.useFakeTimers(): a promise job runs, a queueMicrotask callback waits for the fake timers (9 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       1 passed, 1 total
+Snapshots:   0 total
+Time:        5.507 s
+Ran all test suites.
+exit=0

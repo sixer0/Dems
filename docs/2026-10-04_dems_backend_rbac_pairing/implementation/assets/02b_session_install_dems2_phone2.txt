@@ -1,0 +1,29 @@
+== W02b step 8 phone2 2026-10-04 10:43:26 WIB
+$ NO_METRO=1 DEVICE_SESSION_MAX_SECONDS=600 apps/mobile/scripts/device-session.sh phone2 "/bin/sh '<assets>/02b_install.sh'"
+[device-session phone2 10:43:26] lock held; hard cap 600 s, until 10:53:26 (watchdog PID 72984)
+[device-session phone2 10:43:26] session serial: emulator-5558 (dems2_phone2)
+[device-session phone2 10:43:27] emulator-5558: screen awake, no keyguard
+[device-session phone2 10:43:27] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5558
+== dems2_phone2 emulator-5558 10:43:27
+emu avd name: dems2_phone2
+isKeyguardShowing=false
+State: RUNNING_UNLOCKED
+host APK: 324537405 bytes, sha256 d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec
+package before: []
+-- INSTALL_START 10:43:28: adb -s emulator-5558 install <app-debug.apk>
+Performing Streamed Install
+Success
+-- INSTALL_END 10:43:33
+package after: [package:com.dems.demo.tablet]
+versionCode=100 minSdk=24 targetSdk=36
+versionName=0.1.0
+lastUpdateTime=2026-10-04 10:43:32
+signatures=PackageSignatures{92f3d5c version:2, signatures:[51ed3f60], past signatures:[]}
+firstInstallTime=2026-10-04 10:43:32
+base.apk on the device: d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec
+base.apk: MATCH (= host APK)
+app process after install (not started by this script): []
+== dems2_phone2 end 10:43:34
+[device-session phone2 10:43:34] session ended with status 0
+session exit=0
+reverse rules AFTER the session: [;]

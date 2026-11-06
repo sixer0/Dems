@@ -1,0 +1,22 @@
+## 2026-10-06 05:19:21 WIB final gate
+$ npm run test -w @dems/core-web -- --maxWorkers=2  (05:16:12-05:18:25)
+ Test Files  101 passed (101)
+      Tests  1384 passed (1384)
+exit=0
+$ npm run typecheck -w @dems/core-web
+exit=0
+$ npm run lint -w @dems/core-web
+> @dems/core-web@0.1.0 lint
+> oxlint
+exit=0
+$ npm run test -w @dems/shared -- --maxWorkers=2  (05:18:59)
+ Test Files  69 passed (69)
+      Tests  1840 passed (1840)
+exit=0
+$ shasum -a 256 -c .cache/w84/protected.pre.sha256
+apps/core-web/src/test/routes.test.tsx: OK
+apps/core-web/src/test/sim-fetch.test.ts: OK
+apps/core-web/src/features/storage/__tests__/storage-page.test.tsx: OK
+apps/core-web/src/lib/__tests__/core-endpoint.test.tsx: OK
+apps/core-web/src/lib/__tests__/packaged-csp.test.ts: OK
+apps/core-web/src/test/scalar-config.test.ts: OK

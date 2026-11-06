@@ -1,0 +1,20 @@
+## 2026-10-04 18:45:06 WIB $ npm run typecheck -w @dems/core-server
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+test/acceptance/shared-state.support.ts(409,41): error TS2353: Object literal may only specify known properties, and 'headers' does not exist in type 'string[]'.
+test/acceptance/shared-state.support.ts(887,7): error TS2322: Type 'LiveSim<LiveClient>' is not assignable to type 'LiveSim<CoreClient<readonly [{ readonly operationId: "getServiceHealth"; readonly method: "get"; readonly path: "/api/v1/health"; readonly tag: 
+  Type 'LiveClient' is missing the following properties from type 'CoreClient<readonly [{ readonly operationId: "getServiceHealth"; readonly method: "get"; readonly path: "/api/v1/health"; readonly tag: "Service"; readonly mode: "live"; readonly summary: "Serv
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 2
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c tsc --noEmit
+## exit 2; errors by file:
+   2 test/acceptance/shared-state.support.ts
+## errors in test/acceptance/pairing-lifecycle.test.ts: 0
+## 18:45:13 $ npm run lint -w @dems/core-server
+> @dems/core-server@0.2.0 lint
+> oxlint
+## exit 0; warnings in test/acceptance/pairing-lifecycle.test.ts: 0

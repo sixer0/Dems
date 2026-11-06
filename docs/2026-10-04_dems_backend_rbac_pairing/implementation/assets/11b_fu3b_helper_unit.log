@@ -1,0 +1,17 @@
+# W11b follow-up 3, second round (decision D134): the database-free project, the helper folder only.
+# $ DEMS_TEST_STEP=w11b3 npm run test -w @dems/core-server -- --maxWorkers=2 test/helpers/db      (exit 0)
+
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 test/helpers/db
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+
+ Test Files  11 passed (11)
+      Tests  394 passed (394)
+   Start at  11:09:41
+   Duration  1.03s (tests 66%, import 20%, transform 13%, worker 1%)
+
+exit=0

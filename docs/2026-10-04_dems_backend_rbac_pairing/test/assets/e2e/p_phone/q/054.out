@@ -1,0 +1,18 @@
+10:21:45.394 mark b01 at 10:21:45.394
+10:21:45.479 press sn-scan ok at 10:21:45.504
+10:21:45.574 slept 800 ms
+10:21:46.451 press sn-subject-TERSANGKA ok at 10:21:46.456
+10:21:46.531 slept 300 ms
+10:21:46.906 type into [data-testid="sn-subject-name"]: "input SC3 Web Start"
+10:21:47.008 slept 500 ms
+10:21:47.578 js => "LP/2026/1006-0015"
+10:21:47.691 screenshot 51_sc3_web_step1_filled.png 10:21:47.691..10:21:47.794
+10:21:47.931 press sn-next ok at 10:21:47.932
+10:21:47.991 slept 3000 ms
+10:21:51.153 screenshot 52_sc3_web_step2_gate.png 10:21:51.154..10:21:51.295
+10:21:51.395 ids => ["sn-header-session","sn-step-position","sn-step-devices","sn-gate-outcome","sn-gate-progress","sn-checks","sn-check-CORE","sn-check-chip","sn-check-LENS_1","sn-check-LENS_2","sn-check-MIC_1","sn-check-MIC_2","sn-check-STORAGE","sn-check-TIME","sn-check-SECURITY","sn-policy","sn-cancel","sn-back","sn-next"]
+10:21:51.474 screencap 52p_sc3_phone_after_web_create.png 10:21:51.475..10:21:52.212
+10:21:52.277 serverlog since b01 (3):
+    10:21:45.532 POST /api/v1/session/case-number 200 operator:OPR-002
+    10:21:48.249 POST /api/v1/session 201 operator:OPR-002
+    10:21:48.276 POST /api/v1/session/:id/precheck 202 operator:OPR-002

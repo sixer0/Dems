@@ -1,0 +1,57 @@
+// Compile-time probe for plan row W31: `@dems/shared/live/testing` under a client's own compiler
+// options. Nothing here runs. It lives under the git-ignored .cache/ folder.
+import { CORE_API_OPERATIONS } from '@dems/shared/api';
+import { createCoreClient, type CoreFetch } from '@dems/shared/client';
+import { createHeartbeatClient, createLiveSocketClient, type LiveSocketFactory, type LiveSocketTimers, type SocketFactory, type SocketLike } from '@dems/shared/realtime';
+import {
+  FAKE_CREDENTIALS,
+  FakeTransportError,
+  FakeTransportRequestError,
+  clockFromTimers,
+  createFakeTransport,
+  exampleAnswer,
+  installFakeTransport,
+  rateLimited,
+  withFakeTransport,
+  type FakeAnswer,
+  type FakeClock,
+  type FakeConnection,
+  type FakeHttpCall,
+  type FakeTransport,
+  type ManualFakeClock,
+} from '@dems/shared/live/testing';
+
+const fake = createFakeTransport();
+
+// The two transports have the shapes the clients take by injection.
+const asCoreFetch: CoreFetch = fake.fetch;
+const asSocketFactory: SocketFactory = fake.socketFactory;
+const asLiveSocketFactory: LiveSocketFactory = fake.socketFactory;
+const asLiveSocketTimers: LiveSocketTimers = fake.clock.timers;
+const asSocketLike: SocketLike = new fake.WebSocket('ws://127.0.0.1:4420/ws', undefined, { headers: { Authorization: `Bearer ${FAKE_CREDENTIALS.sessionToken}` } });
+const manual: ManualFakeClock = fake.clock;
+
+export const typed = createCoreClient({ baseUrl: 'http://127.0.0.1:4420', credentials: 'browser-cookie', fetch: fake.fetch });
+export const loose = createCoreClient({ baseUrl: '', credentials: () => FAKE_CREDENTIALS.deviceCredential, fetch: asCoreFetch, operations: CORE_API_OPERATIONS });
+export const heartbeat = createHeartbeatClient({ url: 'ws://127.0.0.1:4420/ws', socketFactory: asSocketFactory, now: fake.clock.now });
+export const live = createLiveSocketClient({ url: 'ws://127.0.0.1:4420/ws', socketFactory: asLiveSocketFactory, timers: asLiveSocketTimers, now: manual.now });
+
+// Operation IDs of the registry are offered and checked; an ID of another table is still a string.
+fake.answer('getDeviceHealth', exampleAnswer('getDeviceHealth'));
+fake.answerOnce('stopSession', rateLimited(5));
+fake.answerFromExample('getAuthSession', 401);
+const held = fake.hold('createSession');
+held.release({ status: 201, body: {} } satisfies FakeAnswer);
+const call: FakeHttpCall | undefined = fake.calls[0];
+const connection: FakeConnection = fake.connection();
+connection.startAnonymous().heartbeat().close(1001);
+const first: FakeTransportError | undefined = fake.violations[0];
+export const isRequestError: boolean = first instanceof FakeTransportRequestError;
+
+// A clock on timer functions that are passed in.
+const timed: FakeTransport<FakeClock> = createFakeTransport({
+  clock: clockFromTimers({ now: () => Date.now(), setTimeout: (task, ms) => setTimeout(task, ms), clearTimeout: (handle) => clearTimeout(handle) }),
+});
+export const restore: () => void = installFakeTransport(timed);
+export const done: Promise<number> = withFakeTransport(async (inner) => inner.calls.length);
+export const kept = [asSocketLike.readyState, call?.operationId, connection.id];

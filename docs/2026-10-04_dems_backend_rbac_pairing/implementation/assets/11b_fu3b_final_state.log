@@ -1,0 +1,40 @@
+# W11b follow-up 3, second round: end state. 2026-10-05 WIB.
+# Part 1: assets/11b_fu3b_final_state.mts.txt (reads only, as dems_owner). Two digests of pg_settings are printed
+#   there and neither compares with an earlier row: the digest depends on the session that asks, because
+#   `application_name` and, in the helper’s session, `lock_timeout` are settings too. Part 2 is the reset row’s
+#   own read-only script (assets/29_cluster_state.ts.txt), whose digest does compare.
+# Part 3: the files this row could have touched but did not.
+
+## 1. this row’s read-only script
+session         dems_owner (superuser false) on 127.0.0.1:4432, PostgreSQL 18.4, postmaster started 2026-10-04 07:14:26 WIB
+pg_database     7 row(s): dems_demo (dems_owner), dems_lane_1 (dems_owner), dems_lane_2 (dems_owner), dems_lane_3 (dems_owner), postgres (dems_admin), template0 (dems_admin), template1 (dems_admin)
+databases with the prefix dems_test_step_w11b3: 0
+databases with the prefix dems_test_step_w11b3m: 0
+test databases in total: 0; run prefixes seen: none
+role            {"role":"dems_app","rolsuper":false,"rolcreatedb":false,"rolcreaterole":false,"signal_backend":false,"read_all_stats":false}
+role            {"role":"dems_owner","rolsuper":false,"rolcreatedb":true,"rolcreaterole":false,"signal_backend":false,"read_all_stats":false}
+pg_roles        3 role(s) outside pg_*
+HELPER SESSION  375 visible setting(s), digest f2d4f70a56ab958dbcc35c4c3a209cad; pg_db_role_setting 0 row(s)
+settings named  autovacuum=on, autovacuum_naptime=60, max_connections=100
+backends on databases with the prefix dems_test_step_w11b3: 0
+backends on databases with the prefix dems_test_step_w11b3m: 0
+clone lock (442002, 0): free
+liveness locks held: 0
+PLAIN SESSION   375 visible setting(s), digest ad81a853efd910372ca2cbc4b90dc870; pg_db_role_setting 0 row(s)
+
+## 2. the reset row’s script, for a comparable digest
+session        dems_owner (superuser false) on 127.0.0.1:4432, PostgreSQL 18.4, postmaster started 2026-10-04 07:14:26 WIB
+pg_database    7 row(s)
+pg_roles       3 role(s) outside pg_*
+pg_settings    375 visible setting(s), digest 6373391cbc111bce33dc5cf487c0c1e8; pg_db_role_setting 0 row(s)
+client sessions 1 group(s)
+advisory locks 0
+
+## 3. files of the workspace this row did not write (their modification times, for the record)
+# apps/core-server/package.json and apps/core-server/test/drop-dead-run.ts carry 10:51 of today: another agent
+# added the npm script test:db:drop-run (decision FU-DN-3 of follow-up 2) while this row worked. This row wrote
+# nothing outside apps/core-server/test/helpers/db/**, its own assets, its document and its progress file.
+Oct  5 10:51 apps/core-server/package.json
+Oct  4 06:33 apps/core-server/vitest.config.ts
+Oct  4 06:36 package.json
+Oct  4 07:47 apps/core-server/test/global-setup.db.ts

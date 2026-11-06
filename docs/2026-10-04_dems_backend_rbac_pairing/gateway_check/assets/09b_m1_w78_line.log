@@ -1,0 +1,18 @@
+## control (W78 copy as it is): exit=0
+PASS src/features/devices/devices-live-static.test.ts
+PASS src/features/devices/devices-model.test.ts
+PASS src/features/devices/devices-screen.test.tsx
+PASS src/features/devices/live-devices-sites.test.tsx
+Test Suites: 4 passed, 4 total
+Tests:       51 passed, 51 total
+## W78 copy replaced IN MEMORY by the one-line re-export: exit=0
+PASS src/features/devices/devices-screen.test.tsx
+PASS src/features/devices/devices-model.test.ts
+PASS src/features/devices/devices-live-static.test.ts
+PASS src/features/devices/live-devices-sites.test.tsx
+Test Suites: 4 passed, 4 total
+Tests:       51 passed, 51 total
+## sanity (a throwing replacement, in memory): exit=1
+FAIL src/features/devices/live-devices-sites.test.tsx
+Tests:       22 failed, 22 total
+sanity message seen: True

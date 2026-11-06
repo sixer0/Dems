@@ -1,0 +1,55 @@
+#!/bin/sh
+# E2E-S step 1: the app in LIVE mode with NO device credential shows only the Pair screen and Stack Check.
+# Device: emulator-5558 (dems2_phone2) ONLY. Read-only queries, deep-link launches, screencaps.
+# No lock, PIN, fingerprint or settings change. No uiautomator dump while Login/Summary/Home shows.
+#   sh 01_step1_unpaired.sh.txt <out folder>
+set -u
+OUT=$1
+S=emulator-5558
+APP=com.dems.demo.tablet
+a() { adb -s "$S" "$@"; }
+now() { python3 -c 'import time; print("%.3f" % time.time())'; }
+kg() { a shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1; }
+focus() { a shell dumpsys window 2>/dev/null | tr -d '\r' | grep -m 1 'mCurrentFocus' | sed 's/^ *//'; }
+shot() { a exec-out screencap -p >"$OUT/$1"; echo "-- screencap $1 ($(wc -c <"$OUT/$1" | tr -d ' ') bytes) host $(now) $(date '+%H:%M:%S'); $(kg); focus: $(focus)"; }
+launch() { echo "-- host $(now) am start -W -d '$1'"; a shell "am start -W -a android.intent.action.VIEW -d '$1' $APP" 2>&1 | tr -d '\r' | grep -E "Status|LaunchState|Activity|Error|TotalTime" | sed 's/^/   /'; }
+T0=$(a shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+echo "== step 1 — device time T0 $T0; host $(now) $(date '+%H:%M:%S')"
+echo "-- $(kg); secure-store entries before: $(a shell "run-as $APP sh -c 'grep -c \"<string\" shared_prefs/SecureStore.xml'" | tr -d '\r')"
+js() { a logcat -d -v epoch -T "$T0" -s ReactNativeJS:V 2>/dev/null; }
+wait_for() { i=0; until js | grep -q -- "$1" || [ "$i" -ge "$2" ]; do i=$((i + 1)); sleep 1; done; echo "-- waited $i s for: $1"; }
+
+echo
+echo "== 1a. cold launch demsdemo:///login?core=LIVE&motion=off (no credential): the gate must show /pair"
+launch 'demsdemo:///login?core=LIVE&motion=off'
+wait_for 'runtime.live.ready' 180
+sleep 6
+shot 01_unpaired_pair.png
+echo "-- the runtime's own records since T0 (boot router, core source, live ready):"
+js | grep -E 'runtime\.(debug\.core|live\.ready|sim\.hydrated)|routeSync|DEMS-LIVE' | sed -E 's/^ *([0-9.]+) .*ReactNativeJS: /   \1 /' | cut -c1-220
+echo "-- prefs after the LIVE launch: $(a shell "run-as $APP sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" | tr -d '\r')"
+echo "-- try a UI dump on the Pair screen (allowed here; may be empty on animated screens, W60 F-1):"
+a shell uiautomator dump /sdcard/e2e_s_pair.xml >/dev/null 2>&1; a shell cat /sdcard/e2e_s_pair.xml >"$OUT/01_ui_pair.xml" 2>/dev/null; a shell rm -f /sdcard/e2e_s_pair.xml
+echo "   bytes $(wc -c <"$OUT/01_ui_pair.xml" | tr -d ' '); screen ids: $(grep -o 'id/screen-[a-z-]*' "$OUT/01_ui_pair.xml" | sort -u | tr '\n' ' ')"
+
+echo
+echo "== 1b. Stack Check is the other reachable screen: demsdemo:///stack-check"
+launch 'demsdemo:///stack-check'
+sleep 6
+shot 01_unpaired_stack_check.png
+
+echo
+echo "== 1c. a guarded route while unpaired: demsdemo:///home must land back on /pair"
+launch 'demsdemo:///home'
+sleep 6
+shot 01_unpaired_home_blocked.png
+
+echo
+echo "== 1d. back to the Pair screen for step 2: demsdemo:///pair"
+launch 'demsdemo:///pair'
+sleep 5
+shot 01_unpaired_pair_ready.png
+echo "-- app requests to the Core since T0 ([DEMS-LIVE] method path status; request IDs cut):"
+js | grep -o 'DEMS-LIVE\] .*' | sed -E 's/ [0-9a-f]{8}-[0-9a-f-]{27}$//' | sort | uniq -c | sed 's/^/   /'
+echo "-- credential/token lines in the device JS log (must be 0): $(js | grep -c -E 'dvc_|ses_|bio_')"
+echo "-- end $(now) $(date '+%H:%M:%S'); $(kg)"

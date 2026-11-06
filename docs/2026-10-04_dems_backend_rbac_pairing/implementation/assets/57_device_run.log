@@ -1,0 +1,276 @@
+
+== 21:14:14 0. before: run id w57x211414; listeners on 4422 and on the Metro port 8083; dems_lane_2 as it is (not reset)
+(no listener on 4422, none on 8083)
+21:14  up 3 days,  4:27, 1 user, load averages: 2.91 3.08 3.74
+   audit_log                82
+   biometric_tokens         0
+   device_credentials       0
+   paired_devices           0
+   pairing_codes            0
+   db:status: OK: dems_lane_2 is at the schema version this code expects and the ledger matches the files.
+
+== 21:14:15 1. start the lane backend from the tree: DEMS_CORE_PORT=4422 npm run start:server (demo flag off)
+npm PID 23421, listener PID 23467 (recorded in .locks/core-server.lane2.pid), attempt 1
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    23467 gsp-budi   18u  IPv4 0x5b130bbc0cb69079      0t0  TCP 127.0.0.1:4422 (LISTEN)
+"port":4422,"database":"dems_lane_2","demoControls":false
+
+== 21:14:16 2. the server's health, from the host (curl)
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-04T14:14:16.296Z","uptimeMs":254,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+HTTP/1.1 200 OK
+cache-control: no-store
+server log lines before the device session: 22
+
+== 21:14:16 3. device session: tablet (emulator-5556), Metro 8083, device tcp:4420 -> host tcp:4422
+[device-session tablet 21:14:16] lock held; hard cap 840 s, until 21:28:16 (watchdog PID 23517)
+[device-session tablet 21:14:16] session serial: emulator-5556 (dems2_tablet)
+[device-session tablet 21:14:16] emulator-5556: screen awake, no keyguard
+[device-session tablet 21:14:16] Metro PID 23553 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session tablet 21:14:19] emulator-5556: bundler location set to localhost:8081 (H-MB-09)
+[device-session tablet 21:14:19] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5556
+[device-session tablet 21:14:19] Core server: device tcp:4420 -> host tcp:4422 on emulator-5556
+-- serial emulator-5556 (dems2_tablet), app com.dems.demo.tablet, Metro port 8083, run w57x211414
+-- adb reverse --list (start of commands):
+host-16 tcp:8081 tcp:8083
+host-16 tcp:4400 tcp:4400
+host-16 tcp:4420 tcp:4422
+
+-- lock state (start of the session; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: PIN
+   fingerprints enrolled: "count":1
+-- app data (before the first launch): AsyncStorage keys with the length of each value; names of the secure-store entries
+   key: dems.mobile.log.v1|557
+   key: dems.sim.v1|119881
+   secure-store entries (entry names of shared_prefs/SecureStore.xml; none listed = none stored):
+-- dems.mobile.prefs.v1 (before the first launch; absent = the default source, SIMULATED): 
+-- installed build:
+    versionCode=100 minSdk=24 targetSdk=36
+    versionName=0.1.0
+    lastUpdateTime=2026-10-04 10:43:24
+-- display at the start: 2560x1600 (landscape); the emulator is turned back to this pose at the end
+-- device time at the first launch: 10-04 21:13:20.000
+
+== A. cold start in LIVE mode on the Pair screen, NOT paired: demsdemo:///pair?core=LIVE
+-- am start -W -a android.intent.action.VIEW -d 'demsdemo:///pair?core=LIVE' com.dems.demo.tablet
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+   Activity: com.dems.demo.tablet/.MainActivity
+-- waited 6 s for: runtime.live.ready
+-- waited 0 s for: DEMS-LIVE\] GET /api/v1/auth/session
+-- dems.mobile.prefs.v1 (after the launch with core=LIVE; absent = the default source, SIMULATED): {"coreLinkSource":"LIVE"}
+
+-- screencap: 57_tablet_landscape_unpaired.png (448371 bytes), display 2560x1600, focus: mCurrentFocus=Window{aaa633a u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- UI dump of that screen (test IDs, bounds, texts):
+   display 2560x1600; 129 nodes in the dump
+   screen-pair                 [0,0][2560,1600] 2560x1600 inside the display: yes
+   pairing-header              [0,48][2560,176] 2560x128  inside the display: yes
+   pane-connection             [200,192][1432,1536] 1232x1344 inside the display: yes
+   pane-code                   [1480,192][2360,1536]  880x1344 inside the display: yes
+   pairing-connection          [200,192][1432,1536] 1232x1344 inside the display: yes
+   pairing-state-chip          [1248,224][1400,264]  152x40   inside the display: yes  "Not paired"
+   pairing-status-line         [232,800][1400,840] 1168x40   inside the display: yes  "Not paired. The Core identity is shown after pairing."
+   pairing-stepper             [232,904][1400,1246] 1168x342  inside the display: yes
+   pairing-identity-server     [232,1270][1400,1374] 1168x104  inside the display: yes  "Core server, This computer, through adb reverse"
+   pairing-identity-link       [232,1375][1400,1479] 1168x104  inside the display: yes  "Link, Connected"
+   pairing-identity-tablet     [232,1480][1400,1536] 1168x56   inside the display: yes  "This tablet, Not paired"
+   pairing-code-card           [1480,192][2360,808]  880x616  inside the display: yes
+   pairing-pair                [1512,528][2328,640]  816x112  inside the display: yes  "Pair"
+   pairing-use-simulated       [1512,664][2328,776]  816x112  inside the display: yes  "Use Simulated mode"
+   the two panes: side by side; connection 1232 px wide, code 880 px wide; gap 48 px
+   says "simulat…" anywhere but on the mode switch: 0 texts
+-- the other orientation:
+-- adb emu rotate x1 -> display 1600x2560 (portrait)
+-- screencap: 57_tablet_portrait_unpaired.png (427018 bytes), display 1600x2560, focus: mCurrentFocus=Window{aaa633a u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- UI dump of that screen (test IDs, bounds, texts):
+   display 1600x2560; 116 nodes in the dump
+   screen-pair                 [0,0][1600,2560] 1600x2560 inside the display: yes
+   pairing-header              [0,48][1600,176] 1600x128  inside the display: yes
+   pane-connection             [48,192][336,2496]  288x2304 inside the display: yes
+   pane-code                   [384,192][1552,2496] 1168x2304 inside the display: yes
+   pairing-connection          [48,192][336,2496]  288x2304 inside the display: yes
+   pairing-state-chip          [152,224][304,264]  152x40   inside the display: yes  "Not paired"
+   pairing-status-line         [80,1088][304,1248]  224x160  inside the display: yes  "Not paired. The Core identity is shown after pairing."
+   pairing-stepper             [80,1312][304,2334]  224x1022 inside the display: yes
+   pairing-identity-server     [80,2358][304,2496]  224x138  inside the display: yes  "Core server, This computer, through adb reverse"
+   pairing-code-card           [384,192][1552,808] 1168x616  inside the display: yes
+   pairing-pair                [416,528][1520,640] 1104x112  inside the display: yes  "Pair"
+   pairing-use-simulated       [416,664][1520,776] 1104x112  inside the display: yes  "Use Simulated mode"
+   the two panes: side by side; connection 288 px wide, code 1168 px wide; gap 48 px
+   says "simulat…" anywhere but on the mode switch: 0 texts
+-- adb emu rotate x3 -> display 2560x1600 (landscape); turns in all: 4 (a multiple of 4 = the start pose)
+
+== B. pair: one tap on the app's code field, then the code issued by the lane backend, typed into the app
+-- focus before the tap: mCurrentFocus=Window{aaa633a u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- adb shell input tap 1644 440   (the centre of the app's code field)
+-- before the issue: isKeyguardShowing=false; mCurrentFocus=Window{aaa633a u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- sign-in as the seeded SUPERVISOR (OPR-002): 200
+-- issuePairingCode: 201
+-- sign-out of the SUPERVISOR: 204
+-- issued: codeId PCD-000001, valid 300 s, 5 failed redeems close it; the code has 6 characters, all digits: true (not shown)
+-- before typing: isKeyguardShowing=false; mCurrentFocus=Window{aaa633a u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- typed the code into the focused field of the app: adb shell input text <not shown>
+-- pressed the keypad's submit key (KEYCODE_ENTER) in the app
+-- the app's redeem request, from the device log: status 201, request ID 989c0220-1c59-4bf3-bc14-0a14fb049e98
+-- the issued code, counted (must be 0 everywhere): device JS log 0; whole device log (every tag) 0; AsyncStorage values 0; backend log 0; this check's output files 0
+   searched: 29 JS log lines, 145839 device log lines, AsyncStorage keys [dems.sim.v1, dems.mobile.prefs.v1, dems.mobile.log.v1], 37 backend log lines
+-- lines with a credential or a token (dvc_, ses_, bio_): device JS log 0; AsyncStorage values 0; backend log 0
+-- sign-in as the seeded SUPERVISOR (OPR-002): 200
+-- listPairedDevices: 200
+   device undefined: state PAIRED, online true, name "sdk_gphone64_arm64", platform android, app 0.1.0
+   devices in the registry: 1
+-- getPairingCodeStatus: no code is active (the issued one was redeemed or closed)
+-- sign-out of the SUPERVISOR: 204
+-- pairing step exit: 0 (0 = the Core answered 201 and the issued code was found nowhere)
+-- focus after the hand-off: mCurrentFocus=Window{aaa633a u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+
+== C. the Pair screen of the PAIRED tablet, by a deep link into the running app: demsdemo:///pair
+-- am start -W -a android.intent.action.VIEW -d 'demsdemo:///pair' com.dems.demo.tablet
+   Warning: Activity not started, intent has been delivered to currently running top-most instance.
+   Status: ok
+   LaunchState: UNKNOWN (0)
+   Activity: com.dems.demo.tablet/.MainActivity
+   TotalTime: 0
+-- screencap: 57_tablet_landscape_paired.png (463560 bytes), display 2560x1600, focus: mCurrentFocus=Window{aaa633a u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- UI dump of that screen (test IDs, bounds, texts):
+   display 2560x1600; 131 nodes in the dump
+   screen-pair                 [0,0][2560,1600] 2560x1600 inside the display: yes
+   pairing-header              [0,48][2560,176] 2560x128  inside the display: yes
+   pairing-back                [32,56][144,168]  112x112  inside the display: yes  "Back"
+   pane-connection             [200,192][1432,1536] 1232x1344 inside the display: yes
+   pane-code                   [1480,192][2360,1536]  880x1344 inside the display: yes
+   pairing-connection          [200,192][1432,1536] 1232x1344 inside the display: yes
+   pairing-state-chip          [1295,224][1400,264]  105x40   inside the display: yes  "Paired"
+   pairing-status-line         [232,800][1400,840] 1168x40   inside the display: yes  "Paired with DEMS-IR-01 as DEV-0001."
+   pairing-stepper             [232,904][1400,1246] 1168x342  inside the display: yes
+   pairing-identity-device     [232,1270][1400,1374] 1168x104  inside the display: yes  "Core device, DEMS-IR-01"
+   pairing-identity-room       [232,1375][1400,1479] 1168x104  inside the display: yes  "Core name, Interview Room 1"
+   pairing-identity-tablet     [232,1480][1400,1536] 1168x56   inside the display: yes  "This tablet, DEV-0001"
+   pairing-identity-paired-at  [232,1585][1400,1536] 1168x-49  inside the display: NO  "Paired at, 4 Oct 2026 21:15:24"
+   pairing-paired-card         [1480,192][2360,656]  880x464  inside the display: yes
+   pairing-continue            [1512,376][2328,488]  816x112  inside the display: yes  "Continue to sign-in"
+   pairing-unpair              [1512,512][2328,624]  816x112  inside the display: yes  "Unpair"
+   the two panes: side by side; connection 1232 px wide, code 880 px wide; gap 48 px
+   says "simulat…" anywhere but on the mode switch: 0 texts
+-- the other orientation:
+-- adb emu rotate x1 -> display 1600x2560 (portrait)
+-- screencap: 57_tablet_portrait_paired.png (438974 bytes), display 1600x2560, focus: mCurrentFocus=Window{aaa633a u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- UI dump of that screen (test IDs, bounds, texts):
+   display 1600x2560; 120 nodes in the dump
+   screen-pair                 [0,0][1600,2560] 1600x2560 inside the display: yes
+   pairing-header              [0,48][1600,176] 1600x128  inside the display: yes
+   pairing-back                [32,56][144,168]  112x112  inside the display: yes  "Back"
+   pane-connection             [48,192][336,2496]  288x2304 inside the display: yes
+   pane-code                   [384,192][1552,2496] 1168x2304 inside the display: yes
+   pairing-connection          [48,192][336,2496]  288x2304 inside the display: yes
+   pairing-state-chip          [199,224][304,264]  105x40   inside the display: yes  "Paired"
+   pairing-status-line         [80,944][304,1064]  224x120  inside the display: yes  "Paired with DEMS-IR-01 as DEV-0001."
+   pairing-stepper             [80,1128][304,2150]  224x1022 inside the display: yes
+   pairing-identity-device     [80,2174][304,2438]  224x264  inside the display: yes  "Core device, DEMS-IR-01"
+   pairing-identity-room       [80,2439][304,2496]  224x57   inside the display: yes  "Core name, Interview Room 1"
+   pairing-paired-card         [384,192][1552,656] 1168x464  inside the display: yes
+   pairing-continue            [416,376][1520,488] 1104x112  inside the display: yes  "Continue to sign-in"
+   pairing-unpair              [416,512][1520,624] 1104x112  inside the display: yes  "Unpair"
+   the two panes: side by side; connection 288 px wide, code 1168 px wide; gap 48 px
+   says "simulat…" anywhere but on the mode switch: 0 texts
+-- adb emu rotate x3 -> display 2560x1600 (landscape); turns in all: 8 (a multiple of 4 = the start pose)
+
+-- the app's request lines in the device log ([DEMS-LIVE] method, path template, status, request ID):
+  2 x DEMS-LIVE] GET /api/v1/auth/status 200
+  1 x DEMS-LIVE] POST /api/v1/pairing/redeem 201
+  1 x DEMS-LIVE] GET /api/v1/auth/session 401
+   request lines in all: 4
+-- the redeem and what followed it, in order (with request IDs):
+   2:DEMS-LIVE] GET /api/v1/auth/status 200 8b740e59-deb7-482a-b47e-572cec481d2e
+   3:DEMS-LIVE] POST /api/v1/pairing/redeem 201 989c0220-1c59-4bf3-bc14-0a14fb049e98
+   4:DEMS-LIVE] GET /api/v1/auth/status 200 dec0232b-2beb-44d6-bbce-2f4fb1cb58fa
+-- runtime records of this run in the device log (the pairing screen, the Live source):
+  source: 'runtime.debug.core',
+  source: 'runtime.live.ready',
+-- 'live.misuse' reports in the device log (must be 0): 0
+-- lines with a credential or a bearer value in the device log of this run (must be 0): 0
+-- app data (PAIRED, in LIVE mode): AsyncStorage keys with the length of each value; names of the secure-store entries
+   key: dems.mobile.log.v1|944
+   key: dems.mobile.prefs.v1|25
+   key: dems.sim.v1|119881
+   secure-store entries (entry names of shared_prefs/SecureStore.xml; none listed = none stored):
+   entry: name="key_v1-dems.live.device.v1"
+
+== D. the default source again: stop the app, then a launch with core=SIMULATED. The stored credential is not touched by it.
+-- am start -W -a android.intent.action.VIEW -d 'demsdemo:///?core=SIMULATED' com.dems.demo.tablet
+   Status: ok
+   LaunchState: COLD
+   Activity: com.dems.demo.tablet/.MainActivity
+   TotalTime: 10968
+-- waited 0 s for: runtime.sim.hydrated
+  source: 'runtime.debug.core',
+  source: 'runtime.sim.hydrated',
+-- request lines to the Core server after the reset (must be 0): 0
+-- dems.mobile.prefs.v1 (after the launch with core=SIMULATED; absent = the default source, SIMULATED): {"coreLinkSource":"SIMULATED"}
+
+-- app data (after the launch with core=SIMULATED (the credential entry must still be listed)): AsyncStorage keys with the length of each value; names of the secure-store entries
+   key: dems.mobile.log.v1|1344
+   key: dems.mobile.prefs.v1|30
+   key: dems.sim.v1|119883
+   secure-store entries (entry names of shared_prefs/SecureStore.xml; none listed = none stored):
+   entry: name="key_v1-dems.live.device.v1"
+-- Metro log (bundle and error lines):
+Android Bundled 1367ms node_modules/expo-router/entry.js (6120 modules)
+Android Bundled 80ms node_modules/expo-router/entry.js (1 module)
+-- display at the end: 2560x1600 (start: 2560x1600)
+-- lock state (end of the commands; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: PIN
+   fingerprints enrolled: "count":1
+-- adb reverse --list (end of commands; device-session.sh removes its own rules after this):
+host-16 tcp:8081 tcp:8083
+host-16 tcp:4400 tcp:4400
+host-16 tcp:4420 tcp:4422
+
+[device-session tablet 21:16:21] Metro 23553 stopped
+[device-session tablet 21:16:21] session ended with status 0
+device session exit=0
+
+== 21:16:21 4. the backend's request log during the device session (lines after line 22)
+-- by route, status and principal kind:
+   1 GET /api/v1/auth/session 401 principal=null
+   1 GET /api/v1/auth/status 200 principal=device
+   1 GET /api/v1/auth/status 200 principal=null
+   1 GET /api/v1/health 200 principal=null
+   1 GET /api/v1/pairing/code 200 principal=operator
+   1 GET /api/v1/pairing/devices 200 principal=operator
+   2 POST /api/v1/auth/sign-in 200 principal=null
+   2 POST /api/v1/auth/sign-out 204 principal=operator
+   1 POST /api/v1/pairing/code 201 principal=operator
+   1 POST /api/v1/pairing/redeem 201 principal=null
+-- the pairing requests, with their request IDs (to be found in the device log too):
+   7d076c4e-38fa-4b40-a29a-0d70876fdafb POST /api/v1/pairing/code 201
+   989c0220-1c59-4bf3-bc14-0a14fb049e98 POST /api/v1/pairing/redeem 201
+   c8457687-dfe3-42d9-949d-48906a4dccbd GET /api/v1/pairing/code 200
+-- socket lines:
+{"level":30,"connectionId":"52ab223c-d049-48e1-b7f5-4500cba3a372","principal":null,"kind":"ANONYMOUS","msg":"socket opened"}
+{"level":30,"connectionId":"52ab223c-d049-48e1-b7f5-4500cba3a372","code":1000,"closedBy":"peer","principal":null,"durationMs":47083,"msg":"socket closed"}
+{"level":30,"connectionId":"369bedbd-33f7-45e2-9259-a0c50981a8c8","principal":"device:DEV-0001","kind":"DEVICE","msg":"socket opened"}
+{"level":30,"connectionId":"369bedbd-33f7-45e2-9259-a0c50981a8c8","code":1006,"closedBy":"peer","principal":"device:DEV-0001","durationMs":39988,"msg":"socket closed"}
+-- lines with a bearer value, a cookie or a credential in the server log of this run (must be 0):
+0
+
+== 21:16:21 5. stop the backend and check that nothing is left
+npm exit status: 143
+{"level":30,"time":1791123381566,"pid":23467,"drained":true,"abandoned":0,"completed":2455,"failed":0,"timedOut":0,"refused":0,"msg":"pipeline closed"}
+{"level":30,"time":1791123381566,"pid":23467,"part":"database","ready":false,"msg":"readiness changed"}
+{"level":30,"time":1791123381566,"pid":23467,"msg":"shutdown complete"}
+lsof exit 1 (1 with no output: no listener on 4422 or 8083)
+process 23467 is gone
+
+== 21:16:21 6. dems_lane_2 after the check (the backend is stopped; the database is left as it is: the tablet is paired with it)
+   audit_log                91
+   biometric_tokens         0
+   device_credentials       1
+   paired_devices           1
+   pairing_codes            1
+   db:status: OK: dems_lane_2 is at the schema version this code expects and the ledger matches the files.
+
+== 21:16:22 end of run w57x211414

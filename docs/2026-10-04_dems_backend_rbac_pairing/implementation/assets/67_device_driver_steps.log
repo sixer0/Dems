@@ -1,0 +1,150 @@
+### 001.cmd
+# Login (W60's measured field centres, phone portrait 1080x2424); username only, then check the focus
+tap 540 1105
+sleep 800
+username
+sleep 400
+tap 540 1265
+sleep 800
+imedump
+focus
+### 001.out
+tap 540,1105
+slept 800 ms
+username typed (budi.santoso); editor inputType 0x80001
+slept 400 ms
+tap 540,1265
+slept 800 ms
+imedump: 66 lines; last inputType 0x80081
+focused true; editor inputType 0x80081
+screencap 001.png (1231922 bytes)
+### 002.cmd
+password
+sleep 300
+key 66
+waitlog signin 30
+sleep 4000
+ids
+### 002.out
+password typed (not shown); editor inputType 0x80081
+slept 300 ms
+key 66
+signin 200 (POST /api/v1/auth/sign-in 200)
+slept 4000 ms
+ids: screen-home[0,0][1080,2204] biometric-offer-dialog[53,865][1028,1559] biometric-offer-enable[106,1234][976,1360] biometric-offer-decline[106,1381][976,1507]
+screencap 002.png (388039 bytes)
+### 003.cmd
+tap 541 1444
+sleep 1500
+shot home_live
+link demsdemo:///session/new?step=1
+sleep 3000
+ids
+### 003.out
+tap 541,1444
+slept 1500 ms
+screencap 67_phone_home_live.png (437736 bytes)
+deep link demsdemo:///session/new?step=1
+slept 3000 ms
+ids: screen-session-new[0,0][1080,2424] session-new-header[0,63][1080,210] session-new-back[21,63][168,210] session-new-profile-menu[912,63][1059,210] session-new-stepper-root[42,231][1038,389] session-new-stepper[42,231][1038,389] session-new-stepper-step-0[113,336][303,389] session-new-stepper-step-1[426,336][655,389] session-new-stepper-step-2[824,336][920,389] session-new-scroll[0,421][1080,2162] session-new-step-1[42,421][1038,2162] session-new-info[42,421][1038,2162] session-new-case-number[84,605][996,730] session-new-scan[860,616][965,721] session-new-subject-type[84,857][996,973] session-new-subject-TERSANGKA[84,857][374,973] session-new-subject-SAKSI[395,857][685,973] session-new-subject-LAINNYA[706,857][996,973] session-new-subject-gloss[84,993][996,1046] session-new-subject-name[84,1167][996,1293] session-new-investigator[84,1419][996,1545] session-new-room[84,1671][996,1797] session-new-profile[84,1923][996,2049] session-new-notes[84,2169][996,2162] session-new-next[42,2183][1038,2330]
+screencap 003.png (205811 bytes)
+### 004.cmd
+shot step1_live
+tap 912 668
+sleep 700
+tap 229 915
+sleep 700
+tap 540 1230
+sleep 900
+text Ahmad Fauzi
+sleep 1200
+ids
+### 004.out
+screencap 67_phone_step1_live.png (205681 bytes)
+tap 912,668
+slept 700 ms
+tap 229,915
+slept 700 ms
+tap 540,1230
+slept 900 ms
+text typed (Ahmad Fauzi); editor inputType 0x2001
+slept 1200 ms
+ids: screen-session-new[0,0][1080,2424] session-new-header[0,63][1080,210] session-new-back[21,63][168,210] session-new-profile-menu[912,63][1059,210] session-new-stepper-root[42,231][1038,389] session-new-stepper[42,231][1038,389] session-new-stepper-step-0[113,336][303,389] session-new-stepper-step-1[426,336][655,389] session-new-stepper-step-2[824,336][920,389] session-new-scroll[0,421][1080,2162] session-new-step-1[42,421][1038,2162] session-new-info[42,421][1038,2162] session-new-case-number[84,605][996,730] session-new-scan[860,616][965,721] session-new-subject-type[84,857][996,973] session-new-subject-TERSANGKA[84,857][374,973] session-new-subject-SAKSI[395,857][685,973] session-new-subject-LAINNYA[706,857][996,973] session-new-subject-gloss[84,993][996,1046] session-new-subject-name[84,1167][996,1293] session-new-investigator[84,1419][996,1545] session-new-room[84,1671][996,1797] session-new-profile[84,1923][996,2049] session-new-notes[84,2169][996,2162] session-new-next[42,2183][1038,2330]
+screencap 004.png (227200 bytes)
+### 005.cmd
+tap 540 2256
+waitlog create 15
+waitlog precheck 15
+sleep 7000
+ids
+### 005.out
+tap 540,2256
+create 201 (POST /api/v1/session 201)
+precheck 202 (POST /api/v1/session/{id}/precheck 202)
+slept 7000 ms
+ids: screen-session-new[0,0][1080,2424] session-new-header[0,63][1080,210] session-new-back[21,63][168,210] session-new-stepper-root[42,231][1038,389] session-new-stepper[42,231][1038,389] session-new-stepper-step-0[114,336][302,389] session-new-stepper-step-1[425,336][656,389] session-new-stepper-step-2[824,336][920,389] session-new-scroll[0,421][1080,2162] session-new-step-2[42,421][1038,2162] session-new-previews-card[42,421][1038,900] session-new-previews[84,463][996,858] session-new-preview-CAM-1[84,463][524,784] session-new-feed-CAM-1[84,463][524,710] session-new-meter-AUDIO-01[221,745][524,771] session-new-preview-CAM-2[556,463][996,784] session-new-feed-CAM-2[556,463][996,710] session-new-meter-AUDIO-02[693,745][997,771] session-new-previews-hint[84,805][996,858] session-new-gate[42,943][1038,2162] session-new-gate-progress[769,985][996,1038] session-new-gate-pass[84,1185][515,1259] session-new-checks[84,1291][996,2162] session-new-check-CORE[84,1291][996,1491] session-new-check-CORE-value[205,1396][758,1449] session-new-check-CORE-status[788,1365][954,1417] session-new-check-LENS_1[84,1492][996,1692] session-new-check-LENS_1-value[205,1597][758,1650] session-new-check-LENS_1-status[788,1566][954,1618] session-new-check-LENS_2[84,1693][996,1893] session-new-check-LENS_2-value[205,1798][758,1851] session-new-check-LENS_2-status[788,1767][954,1819] session-new-check-MIC_1[84,1894][996,2094] session-new-check-MIC_1-value[205,1999][758,2052] session-new-check-MIC_1-status[788,1968][954,2020] session-new-check-MIC_2[84,2095][996,2162] session-new-check-MIC_2-value[205,2200][758,2162] session-new-check-MIC_2-status[788,2169][954,2162] session-new-check-STORAGE[84,2296][996,2162] session-new-check-STORAGE-value[205,2401][758,2162] session-new-check-STORAGE-status[788,2370][954,2162] session-new-next[42,2183][1038,2330]
+screencap 005.png (495316 bytes)
+### 006.cmd
+tap 540 2256
+sleep 1800
+shot step3_ready_live
+tap 540 2256
+sleep 1300
+shot countdown_live
+waitlog start 15
+sleep 1200
+ids
+### 006.out
+tap 540,2256
+slept 1800 ms
+screencap 67_phone_step3_ready_live.png (249005 bytes)
+tap 540,2256
+slept 1300 ms
+screencap 67_phone_countdown_live.png (176138 bytes)
+start 200 (POST /api/v1/session/{id}/start 200)
+slept 1200 ms
+ids: uiautomator could not dump within 7 s
+screencap 006.png (514935 bytes)
+### 007.cmd
+long 539 2266 2400
+sleep 1500
+ids
+### 007.out
+long 539,2266 2400 ms
+slept 1500 ms
+ids: uiautomator could not dump within 7 s
+screencap 007.png (507404 bytes)
+### 008.cmd
+tap 539 2266
+sleep 1500
+### 008.out
+tap 539,2266
+slept 1500 ms
+screencap 008.png (303857 bytes)
+### 009.cmd
+tap 539 1278
+sleep 800
+text W67 device check end
+sleep 1200
+### 009.out
+tap 539,1278
+slept 800 ms
+text typed (W67 device check end); editor inputType 0x24001
+slept 1200 ms
+screencap 009.png (314630 bytes)
+### 010.cmd
+tap 809 1621
+waitlog stop 15
+sleep 5000
+ids
+### 010.out
+tap 809,1621
+stop 202 (POST /api/v1/session/{id}/stop 202)
+slept 5000 ms
+ids: screen-session-summary[0,0][1080,2424]
+screencap 010.png (204176 bytes)
+### 011.cmd
+done 0
+### 011.out
+
+done 0

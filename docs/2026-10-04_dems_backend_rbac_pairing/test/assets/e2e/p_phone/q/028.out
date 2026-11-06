@@ -1,0 +1,15 @@
+10:04:05.358 js => {"status":200,"rest":"{\"update\":{\"currentVersion\":\"2.4.1\",\"availableVersion\":\"2.5.0\",\"activeSlot\":\"A\",\"state\":\"IDLE\",\"steps\":[{\"id\":\"SIGNATURE_VERIFICATION\",\"status\":\"pending\"},{\"id\":\"COMPATIBILITY_CHECK\",\"status\":\"pending\"},{\"id\":\"ANTI_ROLLBACK_POLICY\",\"status\":\"pending\"},{\"id\":\"INSTALL_INACTIVE_SLOT\",\"status\":\"pending\"},{\"id\":\"REBOOT\",\"status\":\"pending\"},{\"id\":\"POST_BOOT_HEALTH_CHECK\",\"status\":\"pending\"}],\"startedAt\":null,\"completedAt\":null},\"diagnostics\":null,\"settings\":{\"presentationMode\":false,\"timeFormat\":\"24\",\"notifyWarnings\":true,\"notifySound\":false}}"}
+10:04:05.472 mark a20 at 10:04:05.472
+10:04:05.581 tapid settings-section-header-back at 95,216 "Back"
+10:04:11.177 slept 2000 ms
+10:04:13.231 tapid settings-row-about at 540,2150 "About DEMS"
+10:04:19.558 slept 2500 ms
+10:04:22.131 declared screen settings-about
+10:04:22.196 screencap 21_settings_about.png 10:04:22.197..10:04:23.785
+10:04:24.599 ids(14): screen-settings-section@540,1102 ; settings-section-header@540,216 ; settings-section-header-back@95,216 "Back" ; settings-section-about@540,1247 ; settings-about@540,1247 ; settings-about-product-card@540,638 ; settings-about-demo@927,358 "DEMO" ; settings-about-product@540,463 "Product, DEMS Edge Client" ; settings-about-version@540,601 "Software release, v2.4.1" ; settings-about-build@540,877 "App build, 0.1.0" ; settings-about-identity@540,1585 ; settings-about-demo@927,1098 "DEMO" ; settings-about-device@540,1340 "Device ID, DEMS-IR-01" ; settings-about-licences@540,2193
+10:04:27.364 swipe 540,1900,540,800 600 ms
+10:04:30.364 slept 1200 ms
+10:04:31.753 screencap 21b_settings_about_scrolled.png 10:04:31.753..10:04:32.664
+10:04:32.882 ids(16): screen-settings-section@540,1102 ; settings-section-header@540,216 ; settings-section-header-back@95,216 "Back" ; settings-section-about@540,1247 ; settings-about@540,1215 ; settings-about-product-card@540,518 ; settings-about-demo@927,216 "DEMO" ; settings-about-product@540,290 "Product, DEMS Edge Client" ; settings-about-version@540,360 "Software release, v2.4.1" ; settings-about-build@540,636 "App build, 0.1.0" ; settings-about-identity@540,1344 ; settings-about-demo@927,857 "DEMO" ; settings-about-device@540,1099 "Device ID, DEMS-IR-01" ; settings-about-licences@540,2041 ; settings-about-licences-open@212,2073 "Show licences" ; settings-about-stack-check@539,2073 "Stack diagnostics"
+10:04:35.250 serverlog since a20 (0):
+    

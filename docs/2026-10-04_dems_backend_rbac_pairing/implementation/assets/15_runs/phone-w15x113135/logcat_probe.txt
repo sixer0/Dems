@@ -1,0 +1,16 @@
+10-04 11:31:45.218  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] START secure-store
+10-04 11:31:46.151  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] S0 environment PASS {"isDevice":false,"platformApiLevel":36,"osVersion":36,"model":"sdk_gphone64_arm64","deviceType":1,"debugBuild":true,"canUseBiometricAuthentication":false,"unprotectedBiometricItemAllowed":true,"localAuthentication":{"hasHardware":true,"isEnrolled":false,"enrolledLevel":0},"item":"dems.live.probe.v1","waitMs":8000}
+10-04 11:31:46.237  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] S1 probe item absent before the run PASS {"outcome":"ok","ms":83,"leftoverDeleted":false}
+10-04 11:31:46.321  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] U1 unprotected write PASS {"outcome":"ok","ms":84}
+10-04 11:31:46.335  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] U2 unprotected read gives the written value PASS {"outcome":"ok","ms":13,"read":"equal","length":34}
+10-04 11:31:46.368  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] U3 unprotected delete PASS {"outcome":"ok","ms":33}
+10-04 11:31:46.390  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] U4 read after the delete gives nothing PASS {"outcome":"ok","ms":22,"read":"absent"}
+10-04 11:31:46.439  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] P1 protected write PASS {"outcome":"threw","ms":47,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:31:46.484  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] P2 protected read PASS {"outcome":"ok","ms":45,"read":"absent"}
+10-04 11:31:46.520  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] P3 rotation: delete of the old value PASS {"outcome":"ok","ms":35}
+10-04 11:31:46.553  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] P4 rotation: protected write of a new value PASS {"outcome":"threw","ms":32,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:31:46.563  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] P5 rotation in place: protected write over the stored value PASS {"outcome":"threw","ms":9,"code":"AUTHENTICATION","messageClass":"NO_BIOMETRICS_ENROLLED","nativeCode":"ERR_AUTHENTICATION"}
+10-04 11:31:46.564  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] P6 protected read after the rotation PASS {"outcome":"ok","ms":0,"read":"absent"}
+10-04 11:31:46.566  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] Z1 delete of the probe item PASS {"outcome":"ok","ms":2}
+10-04 11:31:46.568  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] Z2 probe item absent after the run PASS {"outcome":"ok","ms":1,"read":"absent","protectedStepPending":false}
+10-04 11:31:46.568  6192  6224 I ReactNativeJS: [DEMS-PROBE-W15 run=w15x113135] DONE secure-store pass=14 fail=0

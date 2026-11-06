@@ -1,0 +1,51 @@
+## 2026-10-06 02:12:35 WIB CLG (a): the folder's existing tests, absent from the diff against acaff20
+$ git diff --stat acaff20 -- apps/core-web/src/features/system/__tests__
+(lines: 0)
+$ shasum -a 256 apps/core-web/src/features/system/__tests__/*  (pre-image values in .cache/rollback/W76/sha256_pre.txt)
+19c4126643eced6fda47b5bccc13d62614b3b6961470d33abec391d6df886c4d  apps/core-web/src/features/system/__tests__/system-model.test.tsx
+07c6a56037292477c9e48a3708e267f241c42a130cfb2a60e312e0b9214c14da  apps/core-web/src/features/system/__tests__/system-page.test.tsx
+
+## CLG (c): no useSimActions and no .actions read on a Sim in the folder's production files
+$ grep -rn "useSimActions" apps/core-web/src/features/system --exclude-dir=__tests__ | wc -l
+0
+$ grep -rnE "[A-Za-z_)]\.actions" apps/core-web/src/features/system --exclude-dir=__tests__ | grep -v "common\.actions\." | grep -vE "^\S+:\s*(\*|//)"
+apps/core-web/src/features/system/sim-adapter.ts:17: * as before in Simulated mode, CL-12) instead of reading `sim.actions` (AC-C-53). In Live mode the
+(the one line above, if any, is a comment: see the static test that strips comments)
+
+## protected files (rule 9) against HEAD b90a3c6
+$ git diff --stat HEAD -- apps/core-web/src/test/routes.test.tsx apps/core-web/src/test/sim-fetch.test.ts apps/core-web/src/features/storage/__tests__/storage-page.test.tsx apps/core-web/src/lib/__tests__/core-endpoint.test.tsx apps/core-web/src/lib/__tests__/packaged-csp.test.ts apps/core-web/src/features/dashboard/__tests__/dashboard.test.tsx apps/core-web/vite.config.ts apps/core-web/src/main.tsx apps/core-web/src/runtime apps/core-web/src/lib apps/core-web/src/components apps/core-web/src/routes/_app/system.tsx
+(empty above = unchanged)
+
+## this row's files
+$ git status --porcelain -- apps/core-web/src/features/system packages/shared/src/i18n/en/system.ts "apps/core-web/src/test/live-system-*"
+ M apps/core-web/src/features/system/demo-panel.tsx
+ M apps/core-web/src/features/system/diagnostics.tsx
+ M apps/core-web/src/features/system/index.tsx
+ M apps/core-web/src/features/system/log.ts
+ M apps/core-web/src/features/system/quick-actions.tsx
+ M apps/core-web/src/features/system/settings-panel.tsx
+ M apps/core-web/src/features/system/sim-adapter.ts
+ M apps/core-web/src/features/system/update-panel.tsx
+ M apps/core-web/src/features/system/use-sim-command.ts
+ M packages/shared/src/i18n/en/system.ts
+?? apps/core-web/src/features/system/export-logs-dialog.tsx
+?? apps/core-web/src/features/system/live-log-export.ts
+?? apps/core-web/src/features/system/live.ts
+?? apps/core-web/src/test/live-system-demo.test.tsx
+?? apps/core-web/src/test/live-system-export.test.tsx
+?? apps/core-web/src/test/live-system-maintenance.test.tsx
+?? apps/core-web/src/test/live-system-settings.test.tsx
+$ git diff --stat acaff20 -- apps/core-web/src/features/system packages/shared/src/i18n/en/system.ts
+ apps/core-web/src/features/system/demo-panel.tsx   | 242 +++++++++++++++------
+ apps/core-web/src/features/system/diagnostics.tsx  | 193 ++++++++++------
+ apps/core-web/src/features/system/index.tsx        |  18 +-
+ apps/core-web/src/features/system/log.ts           |  53 +++--
+ .../core-web/src/features/system/quick-actions.tsx |   8 +-
+ .../src/features/system/settings-panel.tsx         |  31 ++-
+ apps/core-web/src/features/system/sim-adapter.ts   |  99 ++++++---
+ apps/core-web/src/features/system/update-panel.tsx |  36 ++-
+ .../src/features/system/use-sim-command.ts         | 125 ++++++++---
+ packages/shared/src/i18n/en/system.ts              |  39 ++++
+ 10 files changed, 605 insertions(+), 239 deletions(-)
+$ git diff acaff20 -- packages/shared/src/i18n/en/system.ts | grep -c "^-[^-]"   (removed lines: additive means 0)
+0

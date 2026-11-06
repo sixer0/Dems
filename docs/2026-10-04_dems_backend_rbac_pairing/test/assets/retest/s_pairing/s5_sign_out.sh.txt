@@ -1,0 +1,45 @@
+#!/bin/sh
+# R-S step 5 (E2E-S-1 part 2 and E2E-S-2 out): sign the phone's operator out from More; the app must land on
+# LOGIN (round 1: the paired Pair view). The phone is recorded (screenrecord --bugreport) around the tap. The
+# web page stays open; the background watcher stamps its Operator cell. emulator-5558 ONLY. UI dump only on More.
+set -u
+OUT=/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/test/assets/retest/s_pairing
+S=emulator-5558
+APP=com.dems.demo.tablet
+a() { adb -s "$S" "$@"; }
+now() { python3 -c 'import time; t=time.time(); print(time.strftime("%H:%M:%S", time.localtime(t)) + ".%03d" % int((t % 1) * 1000))'; }
+kg() { a shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1; }
+echo "== R-S step 5 — host $(now); $(kg); uptime: $(uptime | sed 's/.*load/load/')"
+echo "-- host $(now) warm link 'demsdemo:///more' (signed in: a guarded link opens directly)"
+a shell "am start -W -a android.intent.action.VIEW -d 'demsdemo:///more' $APP" 2>&1 | tr -d '\r' | grep -E "Status|Error" | sed 's/^/   /'
+sleep 5
+a exec-out screencap -p > "$OUT/05_phone_more.png"; echo "   screencap 05_phone_more.png at host $(now)"
+a shell uiautomator dump /sdcard/rs_ui.xml >/dev/null 2>&1; a shell cat /sdcard/rs_ui.xml > "$OUT/05_ui_more.xml"; a shell rm -f /sdcard/rs_ui.xml
+IDS=$(grep -o 'resource-id="screen-[a-z-]*"' "$OUT/05_ui_more.xml" | sed 's/resource-id=//; s/"//g' | sort -u | tr '\n' ' ')
+echo "   UI dump 05_ui_more.xml ($(wc -c < "$OUT/05_ui_more.xml" | tr -d ' ') bytes): screen ids [$IDS]"
+case "$IDS" in *screen-more*) ;; *) echo "-- More is not confirmed by the dump: NOTHING tapped"; exit 3;; esac
+B=$(grep -o '<node[^>]*resource-id="more-sign-out"[^>]*>' "$OUT/05_ui_more.xml" | grep -o 'bounds="[^"]*"' | head -n 1)
+X=$(echo "$B" | sed -E 's/bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]"/\1 \3/' | awk '{print int(($1+$2)/2)}')
+Y=$(echo "$B" | sed -E 's/bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]"/\2 \4/' | awk '{print int(($1+$2)/2)}')
+echo "   more-sign-out $B -> centre $X $Y"
+[ -z "$X" ] && { echo "-- no Sign Out bounds: NOTHING tapped"; exit 3; }
+T0=$(a shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+echo "-- device T0 $T0; start the 20 s recording"
+a shell screenrecord --bugreport --time-limit 20 /sdcard/rs_signout.mp4 &
+REC=$!
+sleep 3
+echo "-- $(kg); tap more-sign-out at host $(now) (device $(a shell 'date +%H:%M:%S.%N' | tr -d '\r' | cut -c1-12))"
+a shell input tap "$X" "$Y"
+wait $REC
+sleep 1
+a pull /sdcard/rs_signout.mp4 "$OUT/05_phone_sign_out_screenrecord.mp4" 2>&1 | tail -n 1
+a shell rm -f /sdcard/rs_signout.mp4
+a exec-out screencap -p > "$OUT/05_phone_after_sign_out.png"; echo "   screencap 05_phone_after_sign_out.png at host $(now)"
+echo "-- app requests since T0:"
+a logcat -d -v epoch -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep 'DEMS-LIVE' | sed -E 's/^ *([0-9.]+) .*\[DEMS-LIVE\] /   \1 /; s/ [0-9a-f]{8}-[0-9a-f-]{27}$//'
+echo "-- the app's session records since T0:"
+a logcat -d -v epoch -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -E "source: '|kind: |reason: " | sed -E 's/^ *([0-9.]+) .*ReactNativeJS: /   \1 /' | cut -c1-160 | head -20
+echo "-- prefs: $(a shell "run-as $APP sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" | tr -d '\r')"
+echo "-- secure-store entry NAMES (values never read): $(a shell "run-as $APP sh -c 'grep -o \"name=\\\"[^\\\"]*\\\"\" shared_prefs/SecureStore.xml'" | tr -d '\r' | tr '\n' ' ')"
+echo "-- credential/token lines in the device JS log since T0 (must be 0): $(a logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -c -E 'dvc_|ses_|bio_')"
+echo "-- end host $(now); $(kg)"

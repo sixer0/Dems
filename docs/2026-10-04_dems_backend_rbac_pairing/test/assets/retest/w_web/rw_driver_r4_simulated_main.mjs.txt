@@ -1,0 +1,126 @@
+// R-W: E2E-W1-4 SIMULATED half on the MAIN console http://127.0.0.1:5173 (controller ruling: option (a), one check
+// only), because mock-core accepts the heartbeat only from the 5173 origin (O-RW-6).
+// Commands, and nothing else: switch the Login Data mode selector to Simulated; Simulated sign-in as andi.pratama;
+// open evidence item 0012 (today's re-dated id) -> Metadata tab (capture) -> Hash & Integrity (one capture);
+// sign out; switch the selector back to Live (capture); close.
+// No Live sign-in; no request reaches the Core 4420: /api/ and /ws of 5173 are failed in the browser (rt_lib_main).
+import { launch, openPage, signIn, signOutMenu, makeRun, writeEvents, sleep } from './rt_lib_main.mjs'
+
+const R = makeRun('r4_simulated_main')
+process.on('unhandledRejection', (e) => R.log(`unhandled: ${e?.message ?? e}`))
+const browser = await launch(R.log)
+let page
+const stored = () => page.eval(`localStorage.getItem('dems.core.mode.v1')`, 'stored')
+const selectorState = () => page.eval(`(() => { const s = document.querySelector('[data-testid="login-mode-selector"]'); return s ? s.getAttribute('data-mode') : null })()`, 'selector')
+const strip = () => page.eval(`(document.querySelector('[data-testid="page-login"]')?.innerText ?? '').replace(/\\s+/g, ' ').match(/(CORE LINK \\S+|MODE \\S+|DATABASE \\S+|ENGINE \\S+)/g)`, 'strip')
+const ids = () => page.eval(`[...new Set((document.querySelector('[data-testid="page-evidence"]')?.innerText ?? '').match(/EV-\\d{8}-\\d{4}/g) ?? [])]`, 'ids')
+try {
+  page = await openPage(browser.cdp, R.log)
+  await page.viewport(1440, 900)
+
+  // Fresh profile: the console starts in Live; its Core reads are failed in the browser (allowlist).
+  page.setLabel('Login (Live, Core paths blocked)')
+  await page.goto('/login', 2500)
+  await page.waitFor('login-mode-selector', true, 15000)
+  R.record('loginStart', { selector: await selectorState(), stored: await stored() })
+
+  // 1. Data mode selector -> Simulated
+  await page.click('login-mode-SIMULATED')
+  await page.waitFor('mode-switch-dialog', true, 8000)
+  await sleep(400)
+  R.record('switchToSimulated', await page.text('mode-switch-dialog', 300))
+  await page.click('mode-switch-confirm')
+  await sleep(1500)
+  await page.waitForFn('document.readyState === "complete"', 20000)
+  page.setLabel('Login (Simulated)')
+  await page.waitFor('page-login', true, 20000)
+  const enabled = await page.waitForFn(`(() => { const b = document.querySelector('[data-testid="login-submit"]'); return !!b && !b.disabled && !b.hasAttribute('disabled') })()`, 20000)
+  await sleep(1000)
+  R.record('loginSimulated', { selector: await selectorState(), stored: await stored(), coreMode: await page.attr('page-login', 'data-core-mode'), signInEnabled: enabled, alerts: (await page.facts()).alerts, strip: await strip() })
+  await page.shot('p4_main_sim_01_login_simulated.png')
+  if (!enabled) throw new Error('STOP: Simulated Sign In still disabled on 5173')
+
+  // 2. Simulated sign-in as andi.pratama
+  const ok = await signIn(page, 'andi.pratama', R.log)
+  page.setLabel('Simulated: evidence 0012')
+  R.record('signedIn', { ok, facts: await page.facts() })
+  if (!ok) throw new Error('STOP: Simulated sign-in did not reach the dashboard')
+
+  // 3. Evidence item 0012 (today's re-dated id), opened in-app from the list
+  await page.clickByText('aside a, nav a', 'Evidence', { exact: true })
+  await page.waitFor('page-evidence', true, 15000)
+  await sleep(2000)
+  let list = await ids()
+  let item = list.find((id) => id.endsWith('-0012'))
+  if (!item) {
+    await page.clickByText('[data-testid="page-evidence"] button', 'Next')
+    await sleep(2000)
+    list = list.concat(await ids())
+    item = list.find((id) => id.endsWith('-0012'))
+  }
+  R.record('evidenceList', { ids: list, item: item ?? null })
+  if (!item) throw new Error('STOP: item 0012 not found in the Simulated list')
+  const row = await page.clickByText('[data-testid="page-evidence"] td, [data-testid="page-evidence"] [role="gridcell"], [data-testid="page-evidence"] a', item)
+  // On a wide screen a row press selects the item into the preview card (list-page.tsx:192); its Open button
+  // (evidence-preview-open) opens the detail.
+  await page.waitFor('evidence-preview-open', true, 8000)
+  await sleep(600)
+  const preview = await page.text('evidence-preview', 200)
+  const open = await page.click('evidence-preview-open')
+  const opened = row.found && (await page.waitFor('page-evidence-detail', true, 10000))
+  R.record('openItem', { item, row, previewShowsItem: (preview ?? '').includes(item), open, opened })
+  if (!opened) throw new Error('STOP: the row press did not open the detail')
+  await sleep(1500)
+
+  await page.click('evidence-tab-metadata')
+  await page.waitFor('evidence-metadata', true, 15000)
+  await sleep(2500)
+  R.record('metadataSimulated', await page.eval(`(() => {
+    const m = document.querySelector('[data-testid="evidence-metadata"]')
+    return {
+      href: location.pathname + location.search,
+      dataPackage: m.getAttribute('data-package'),
+      foreignNotice: !!m.querySelector('[data-testid="evidence-foreign-package"]'),
+      anotherRecordTextOnPage: /is another record/i.test(document.body.innerText ?? ''),
+      headings: [...m.querySelectorAll('h3')].map((h) => h.innerText.replace(/\\s+/g, ' ').trim()),
+      manifestFields: [...m.querySelectorAll('[data-testid="evidence-manifest-fields"] [data-field]')].map((f) => f.innerText.replace(/\\s+/g, ' ').trim().slice(0, 100)),
+      packageTree: !!m.querySelector('[data-testid="evidence-package-tree"]'),
+      header: document.querySelector('[data-testid="evidence-detail-header"]')?.innerText?.replace(/\\s+/g, ' ').trim().slice(0, 300),
+      packageChip: document.querySelector('[data-testid="evidence-package-chip"]')?.getAttribute('data-package'),
+      mode: document.querySelector('[data-testid="shell-mode"]')?.innerText?.replace(/\\s+/g, ' ').trim(),
+    }
+  })()`, 'meta'))
+  await page.shot('p4_main_sim_02_metadata_tab.png')
+
+  await page.click('evidence-tab-integrity')
+  await page.waitFor('evidence-verify-card', true, 15000)
+  await sleep(2000)
+  R.record('integritySimulated', await page.eval(`(() => { const c = document.querySelector('[data-testid="evidence-verify-card"]'); return { verdict: c?.querySelector('[data-testid="evidence-verdict"]')?.getAttribute('data-verdict'), source: c?.getAttribute('data-verdict-source'), last: c?.querySelector('[data-testid="evidence-verify-last"]')?.innerText ?? null, bundled: document.querySelector('[data-testid="evidence-bundled"]')?.innerText?.replace(/\\s+/g, ' ').trim().slice(0, 200) ?? null } })()`, 'integ'))
+  await page.shot('p4_main_sim_03_hash_integrity.png')
+
+  // 4. Sign out (user menu, Simulated)
+  page.setLabel('Simulated: sign out')
+  R.record('signOut', await signOutMenu(page, R.log))
+
+  // 5. Selector back to Live (capture)
+  page.setLabel('Switch back to Live')
+  await page.click('login-mode-LIVE')
+  await page.waitFor('mode-switch-dialog', true, 8000)
+  await sleep(400)
+  R.record('switchToLive', await page.text('mode-switch-dialog', 300))
+  await page.click('mode-switch-confirm')
+  await sleep(1500)
+  await page.waitForFn('document.readyState === "complete"', 20000)
+  page.setLabel('Login (Live again, Core paths blocked)')
+  await page.waitFor('page-login', true, 20000)
+  await sleep(2500)
+  R.record('loginLiveAgain', { selector: await selectorState(), stored: await stored(), coreMode: await page.attr('page-login', 'data-core-mode'), strip: await strip(), alerts: (await page.facts()).alerts })
+  await page.shot('p4_main_sim_04_login_live_again.png')
+} catch (error) {
+  R.log(`FAILED: ${error.message}`)
+  R.obs.error = error.message
+} finally {
+  if (page) R.record('consoleNetwork', writeEvents(R.run, page.events))
+  await browser.close()
+  R.flush()
+}

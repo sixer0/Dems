@@ -1,0 +1,12 @@
+FXR-S W91-4 / W92-15 mutation check (2026-10-07 ~05:55)
+Mutations (in place, restored from copies afterwards):
+  m1 pairing/limits.ts: PAIRING_CODE_LIFETIME_MS restated locally as 299_000 (instead of the contract re-export)
+  m2 biometric/activity.ts: TokenRefusalReason = { ...BiometricTokenRefusalReason } (a copy, not the contract object)
+Command: npx vitest run --project unit src/modules/__tests__/contract-values.test.ts
+     × code lifetime, failed redeems, QR prefix and credential prefix are the contract's 3ms
+     × the refusal reasons of a token and the enrolment's 403 reason are the contract's 1ms
+AssertionError: expected 299000 to be 300000 // Object.is equality
+AssertionError: expected { TOKEN_REUSE: 'TOKEN_REUSE', …(5) } to be { TOKEN_REUSE: 'TOKEN_REUSE', …(5) } // Object.is equality
+      Tests  2 failed | 4 passed (6)
+After restore: Tests  6 passed (6)
+Related suites run with the fix: contract-values + devices/routes + pairing/__tests__ + biometric/__tests__ + core/__tests__ (unit project): Test Files 16 passed, Tests 344 passed

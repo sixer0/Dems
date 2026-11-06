@@ -1,0 +1,59 @@
+== after the landing of item 2: npm run test -w @dems/core-server -- --maxWorkers=2
+ FAIL  |unit| src/modules/sessions/__tests__/static.test.ts > the scan itself > reads the six production sources of the module
+ Test Files  1 failed | 138 passed (139)
+      Tests  1 failed | 3569 passed (3570)
+   Start at  17:11:34
+   Duration  33.22s (import 59%, tests 36%, transform 5%)
+== after the landing of item 3: npm run test -w @dems/core-server -- --maxWorkers=2
+ Test Files  140 passed (140)
+      Tests  3583 passed (3583)
+   Start at  17:15:53
+   Duration  29.99s (import 61%, tests 34%, transform 5%, worker 1%)
+== after the landing of item 4: npm run test -w @dems/core-server -- --maxWorkers=2
+ FAIL  |unit| src/db/fixtures/__tests__/audit-details.test.ts > every audit row of the fixture > an engine-written row has a key set, values of a kind, and a severity that the shared simulator writes for that type
+ FAIL  |unit| src/db/fixtures/__tests__/audit-details.test.ts > every event of the fixture > is in the category the shared map gives its type
+ FAIL  |unit| src/db/fixtures/__tests__/audit-details.test.ts > the comparisons can fail: what the fixture held before, and other drift > the severities as they were: of a module’s row, of an administration row, of an engine row
+ Test Files  1 failed | 139 passed (140)
+      Tests  3 failed | 3596 passed (3599)
+   Start at  17:20:12
+   Duration  33.41s (import 63%, tests 32%, transform 4%, worker 1%)
+== after the landing of item 5: npm run test -w @dems/core-server -- --maxWorkers=2
+ Test Files  140 passed (140)
+      Tests  3602 passed (3602)
+   Start at  17:23:55
+   Duration  42.50s (import 61%, tests 34%, transform 4%, worker 1%)
+== after the landing of item 1: npm run test -w @dems/core-server -- --maxWorkers=2
+ Test Files  141 passed (141)
+      Tests  3604 passed (3604)
+   Start at  17:29:08
+   Duration  34.70s (import 61%, tests 34%, transform 4%, worker 1%)
+== after the landing of item 6: npm run test -w @dems/core-server -- --maxWorkers=2
+ Test Files  141 passed (141)
+      Tests  3605 passed (3605)
+   Start at  17:34:23
+   Duration  35.20s (import 61%, tests 34%, transform 4%, worker 1%)
+== after the landing of item 7: npm run test -w @dems/core-server -- --maxWorkers=2
+ Test Files  141 passed (141)
+      Tests  3605 passed (3605)
+   Start at  17:34:59
+   Duration  36.50s (import 62%, tests 34%, transform 4%, worker 1%)
+== after the landing of item 8: npm run test -w @dems/core-server -- --maxWorkers=2
+ Test Files  141 passed (141)
+      Tests  3606 passed (3606)
+   Start at  17:35:36
+   Duration  33.37s (import 64%, tests 32%, transform 4%, worker 1%)
+== after the landing of item 10: npm run test -w @dems/core-server -- --maxWorkers=2
+ Test Files  141 passed (141)
+      Tests  3606 passed (3606)
+   Start at  17:36:10
+   Duration  36.14s (import 62%, tests 34%, transform 4%, worker 1%)
+== after the landing of item 9: npm run test -w @dems/core-server -- --maxWorkers=2
+ Test Files  141 passed (141)
+      Tests  3609 passed (3609)
+   Start at  17:44:27
+   Duration  22.92s (import 60%, tests 35%, transform 4%)
+== at the end (17:47:46)
+ Test Files  141 passed (141)
+      Tests  3609 passed (3609)
+   Start at  17:47:46
+   Duration  26.43s (import 59%, tests 35%, transform 5%)

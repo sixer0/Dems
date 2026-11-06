@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Copy-round MOBILE mutation check (rule M15: nothing in the tree is written; M1's method).
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file)
+and runs the test files of its group. DETECTED = jest exits non-zero. Hashes of the mutated files are
+compared before and after the run.
+  python3 run_mobile.py control A        the unmutated test files of every group, then group A
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+
+TESTS = {
+    'A': ['src/features/session-new/live-session-new-followups.test.tsx'],
+    'C': ['src/features/storage/live-storage-sites.test.tsx', 'src/features/storage/storage-screen.test.tsx'],
+    'D': ['src/features/settings/live-settings-sites.test.tsx', 'src/features/devices/live-devices-sites.test.tsx'],
+    'B': ['src/features/devices/live-devices-health-caption.test.tsx'],
+    'E': ['src/features/evidence/live-evidence-export.test.tsx', 'src/features/evidence/evidence-detail.test.tsx'],
+}
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+DP = 'src/features/session-new/device-previews.tsx'
+SI = 'src/features/session-new/session-info-step.tsx'
+M = [
+  # A: item 1 (#89) sessionNew.live.* on mobile
+  ('A1', DP, 'LIVE meters hint falls back to the Simulated words', [e("t(liveSource ? 'sessionNew.live.speakToTest' : 'sessionNew.devices.speakToTest')", "t('sessionNew.devices.speakToTest')")]),
+  ('A2', DP, 'SIMULATED meters hint takes the Live words', [e("t(liveSource ? 'sessionNew.live.speakToTest' : 'sessionNew.devices.speakToTest')", "t('sessionNew.live.speakToTest')")]),
+  ('A3', SI, 'LIVE scan label falls back to the Simulated words', [e("t(live ? 'sessionNew.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')", "t('sessionNew.info.caseNumber.scan')")]),
+  ('A4', SI, 'SIMULATED scan label takes the Live words', [e("t(live ? 'sessionNew.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')", "t('sessionNew.live.scanCaseNumber')")]),
+  # C: item 3 (#91) storage.manage.live.applied on mobile
+  ('C1', 'src/features/storage/storage-screen.tsx', 'LIVE toast falls back to the Simulated words', [e("live ? t('storage.manage.live.applied') : t('storage.manage.applied')", "t('storage.manage.applied')")]),
+  ('C2', 'src/features/storage/storage-screen.tsx', 'SIMULATED toast takes the Live words', [e("live ? t('storage.manage.live.applied') : t('storage.manage.applied')", "t('storage.manage.live.applied')")]),
+  # D: item 4 (#92) system.live.* on mobile (Settings, and the Devices diagnostics sheet)
+  ('D1', 'src/features/settings/maintenance-section.tsx', 'Settings: LIVE diagnostics subtitle falls back to the Simulated words', [e("t(live ? 'system.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle')", "t('system.diagnostics.subtitle')")]),
+  ('D2', 'src/features/settings/maintenance-section.tsx', 'Settings: LIVE started toast falls back to the Simulated words', [e("t(live ? 'system.live.startedToast' : 'system.update.startedToast', { version: update.availableVersion })", "t('system.update.startedToast', { version: update.availableVersion })")]),
+  ('D3', 'src/features/settings/maintenance-section.tsx', 'Settings: LIVE Install label falls back to the Simulated words', [e("t(live ? 'system.live.install' : 'system.update.install')", "t('system.update.install')")]),
+  ('D4', 'src/features/devices/diagnostics-sheet.tsx', 'Devices: LIVE diagnostics subtitle falls back to the Simulated words', [e("subtitleKey={live ? 'system.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle'}", "subtitleKey={'system.diagnostics.subtitle'}")]),
+  ('D5', 'src/features/devices/diagnostics-sheet.tsx', 'Devices: SIMULATED diagnostics subtitle takes the Live words', [e("subtitleKey={live ? 'system.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle'}", "subtitleKey={'system.live.diagnosticsSubtitle'}")]),
+  ('D6', 'src/features/settings/maintenance-section.tsx', 'Settings: SIMULATED diagnostics subtitle takes the Live words', [e("t(live ? 'system.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle')", "t('system.live.diagnosticsSubtitle')")]),
+  # E: item 5 (#93) the Live twin of evidence.exportWizard.success on mobile
+  ('E1', 'src/features/evidence/export-sheet.tsx', 'LIVE success toast falls back to the "(simulated)" sentence', [e("t(live ? 'evidence.live.export.success' : 'evidence.exportWizard.success', { id: evidenceId })", "t('evidence.exportWizard.success', { id: evidenceId })")]),
+  ('E2', 'src/features/evidence/export-sheet.tsx', 'SIMULATED success toast takes the Live sentence', [e("t(live ? 'evidence.live.export.success' : 'evidence.exportWizard.success', { id: evidenceId })", "t('evidence.live.export.success', { id: evidenceId })")]),
+  # B: item 2 (#90, decision D186) the shared Live health caption on mobile
+  ('B1', 'src/features/devices/health-chart.tsx', 'LIVE caption falls back to the Simulated words', [e("t(live ? 'devices.live.samples' : 'devices.drawer.health.samples', { count: data.length })", "t('devices.drawer.health.samples', { count: data.length })")]),
+  ('B2', 'src/features/devices/health-chart.tsx', 'SIMULATED caption takes the Live words', [e("t(live ? 'devices.live.samples' : 'devices.drawer.health.samples', { count: data.length })", "t('devices.live.samples', { count: data.length })")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = sys.argv[1:]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# Copy-round mobile mutation check, %s; the tree is not edited' % time.strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+    if 'control' in wanted:
+        tests = sorted({t for group in TESTS.values() for t in group})
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'), tests)
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation, %d test files): exit=%d %s (%.0f s)' % (len(tests), run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-4000:])
+            sys.exit(1)
+    chosen = [m for m in M if m[0] in wanted or m[0].rstrip('0123456789') in wanted]
+    detected = missed = unapplied = 0
+    for mid, file, what, edits in chosen:
+        group = mid.rstrip('0123456789')
+        with open(SPEC, 'w') as f:
+            json.dump({'id': mid, 'file': file, 'edits': edits}, f)
+        started = time.time()
+        run = jest(dict(os.environ, CI='1', COPY_MUT_SPEC=SPEC), TESTS[group])
+        tail, failed, first = summary(run.stdout)
+        if 'expected exactly 1' in run.stdout:
+            unapplied += 1
+            verdict = 'NOT APPLIED'
+        elif run.returncode != 0:
+            detected += 1
+            verdict = 'DETECTED'
+        else:
+            missed += 1
+            verdict = 'not detected'
+        print('%-4s %-12s %s | %s | %s | failing files: %s | first: %s (%.0f s)' % (mid, verdict, what, file, tail, ', '.join(failed) or '-', ' / '.join(first) or '-', time.time() - started), flush=True)
+    if chosen:
+        print('## %d detected, %d not detected, %d not applied, of %d' % (detected, missed, unapplied, len(chosen)), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    same = before == after
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if same else 'CHANGED'), flush=True)
+    for f in files:
+        print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+
+if __name__ == '__main__':
+    main()

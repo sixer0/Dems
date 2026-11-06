@@ -1,0 +1,30 @@
+13:16:03.390 mark i01 at 13:16:03.390
+13:16:03.420 declared screen summary
+13:16:03.448 tap 244,2252
+13:16:03.565 sumack 204 at device 10-06 13:16:03.278 (POST /api/v1/session/{id}/summary/acknowledge 204)
+13:16:04.210 slept 2500 ms
+13:16:06.747 declared screen home
+13:16:06.783 screencap 83_home_after_summary_done_investigator.png 13:16:06.783..13:16:07.225
+13:16:07.337 press sm-final-close ok at 13:16:07.396
+13:16:07.436 slept 500 ms
+13:16:07.961 nav /admin/users load=true
+13:16:11.108 wait page-users-roles present: 0 ms (at 13:16:11.108)
+13:16:11.144 js => [["OPR-001","budi.santoso","INVESTIGATOR"],["OPR-002","andi.pratama","SUPERVISOR"],["OPR-003","rina.wijaya","TECHNICIAN"]]
+13:16:11.189 press ur-actions-OPR-001 ok at 13:16:11.212
+13:16:11.252 wait ur-change-role-OPR-001 present: 1 ms (at 13:16:11.253)
+13:16:11.293 slept 300 ms
+13:16:11.644 press ur-change-role-OPR-001 ok at 13:16:11.729
+13:16:11.786 wait ur-role-dialog present: 1 ms (at 13:16:11.787)
+13:16:11.828 slept 600 ms
+13:16:12.473 js => true
+13:16:12.540 slept 400 ms
+13:16:13.012 screenshot 84_role_web_dialog_to_technician.png 13:16:13.012..13:16:13.198
+13:16:13.257 serverlog since i01 (8):
+    13:16:03.565 POST /api/v1/auth/touch 200
+    13:16:03.619 POST /api/v1/session/:id/summary/acknowledge 204
+    13:16:07.972 [socket closed]
+    13:16:08.078 GET /api/v1/auth/session 200
+    13:16:08.089 [socket opened]
+    13:16:08.211 GET /api/v1/admin/users 200
+    13:16:08.212 GET /api/v1/rbac/matrix 200
+    13:16:11.148 GET /api/v1/admin/users 200

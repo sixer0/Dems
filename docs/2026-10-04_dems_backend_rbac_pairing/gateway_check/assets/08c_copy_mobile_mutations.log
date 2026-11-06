@@ -1,0 +1,57 @@
+# Copy-round mobile mutation check, 2026-10-06 04:50:02; the tree is not edited
+control (no mutation, 3 test files): exit=0 Tests:       31 passed, 31 total (11 s)
+A1   DETECTED     LIVE meters hint falls back to the Simulated words | src/features/session-new/device-previews.tsx | Tests:       1 failed, 8 passed, 9 total | failing files: live-session-new-followups.test.tsx | first: truthful copy (§3.2, MD-8; F-2) › LIVE: the case-number button's label and the step 2 hint say what is true; no text of steps 1 and 2 claims a simulation (4 s)
+A2   DETECTED     SIMULATED meters hint takes the Live words | src/features/session-new/device-previews.tsx | Tests:       1 failed, 8 passed, 9 total | failing files: live-session-new-followups.test.tsx | first: truthful copy (§3.2, MD-8; F-2) › SIMULATED: the words of before ("Scan case number (simulated)", "Speak to test (simulated)") (4 s)
+A3   DETECTED     LIVE scan label falls back to the Simulated words | src/features/session-new/session-info-step.tsx | Tests:       1 failed, 8 passed, 9 total | failing files: live-session-new-followups.test.tsx | first: truthful copy (§3.2, MD-8; F-2) › LIVE: the case-number button's label and the step 2 hint say what is true; no text of steps 1 and 2 claims a simulation (4 s)
+A4   DETECTED     SIMULATED scan label takes the Live words | src/features/session-new/session-info-step.tsx | Tests:       1 failed, 8 passed, 9 total | failing files: live-session-new-followups.test.tsx | first: truthful copy (§3.2, MD-8; F-2) › SIMULATED: the words of before ("Scan case number (simulated)", "Speak to test (simulated)") (4 s)
+C1   DETECTED     LIVE toast falls back to the Simulated words | src/features/storage/storage-screen.tsx | Tests:       5 failed, 17 passed, 22 total | failing files: live-storage-sites.test.tsx | first: S2-6: Apply in the Manage Storage sheet (operation 55) › success as the SUPERVISOR: busy at once, spinner late (LB-1); one request; the toast and the closing only after the Core's 200; the Core's words / S2-6: Apply in the Manage Storage sheet (operation 55) › answer first, delta later: the toast and the closing wait for the revision the answer named (CL-16) (9 s)
+C2   DETECTED     SIMULATED toast takes the Live words | src/features/storage/storage-screen.tsx | Tests:       2 failed, 20 passed, 22 total | failing files: live-storage-sites.test.tsx, storage-screen.test.tsx | first: Storage screen › Manage Storage as a Supervisor: Apply writes the policy, toasts and adds the activity row / SIMULATED mode is as before (the same call site; the simulator settles at once) › Apply writes the store before the press returns, toasts "(simulated)", closes the sheet, and nothing is ever marked busy (11 s)
+## 6 detected, 0 not detected, 0 not applied, of 6
+## the mutated files in the tree, before and after: identical
+   90d2226048a65d6a  src/features/session-new/device-previews.tsx
+   2d31b72817b0d083  src/features/session-new/session-info-step.tsx
+   ecbde4b7980f03d2  src/features/storage/storage-screen.tsx
+# finished 04:50:48
+# Copy-round mobile mutation check, 2026-10-06 04:52:37; the tree is not edited
+control (no mutation, 5 test files): exit=0 Tests:       77 passed, 77 total (11 s)
+D1   DETECTED     Settings: LIVE diagnostics subtitle falls back to the Simulated words | src/features/settings/maintenance-section.tsx | Tests:       3 failed, 43 passed, 46 total | failing files: live-settings-sites.test.tsx | first: S2-7: Run diagnostics (operation 65) › success: the sheet opens only after the Core accepted the run; busy at once, spinner late (LB-1); one request; the Core's words / S2-7: Install update (operation 67) › success (TECHNICIAN, MAINTENANCE): the started toast only after the Core's 202; DEMO chip and the Core's words (5 s)
+D2   DETECTED     Settings: LIVE started toast falls back to the Simulated words | src/features/settings/maintenance-section.tsx | Tests:       1 failed, 45 passed, 46 total | failing files: live-settings-sites.test.tsx | first: S2-7: Install update (operation 67) › success (TECHNICIAN, MAINTENANCE): the started toast only after the Core's 202; DEMO chip and the Core's words (5 s)
+D3   DETECTED     Settings: LIVE Install label falls back to the Simulated words | src/features/settings/maintenance-section.tsx | Tests:       3 failed, 43 passed, 46 total | failing files: live-settings-sites.test.tsx | first: S2-7: Run diagnostics (operation 65) › success: the sheet opens only after the Core accepted the run; busy at once, spinner late (LB-1); one request; the Core's words / S2-7: Install update (operation 67) › success (TECHNICIAN, MAINTENANCE): the started toast only after the Core's 202; DEMO chip and the Core's words (5 s)
+D4   DETECTED     Devices: LIVE diagnostics subtitle falls back to the Simulated words | src/features/devices/diagnostics-sheet.tsx | Tests:       1 failed, 45 passed, 46 total | failing files: live-devices-sites.test.tsx | first: S2-8: Run diagnostics (operation 65) › success: the sheet opens only once the Core accepted the run (202); busy at once, spinner late; the Core's checks resolve (5 s)
+D5   DETECTED     Devices: SIMULATED diagnostics subtitle takes the Live words | src/features/devices/diagnostics-sheet.tsx | Tests:       1 failed, 45 passed, 46 total | failing files: live-devices-sites.test.tsx | first: SIMULATED mode keeps its words (the same call sites, the simulator settles at once) › the dialog body, the success toast, the Log and the diagnostics subtitle still say "simulated" (5 s)
+D6   not detected Settings: SIMULATED diagnostics subtitle takes the Live words | src/features/settings/maintenance-section.tsx | Tests:       46 passed, 46 total | failing files: - | first: - (5 s)
+## 5 detected, 1 not detected, 0 not applied, of 6
+## the mutated files in the tree, before and after: identical
+   041fa1d6de388c30  src/features/devices/diagnostics-sheet.tsx
+   90d2226048a65d6a  src/features/session-new/device-previews.tsx
+   2d31b72817b0d083  src/features/session-new/session-info-step.tsx
+   6826096309226444  src/features/settings/maintenance-section.tsx
+   ecbde4b7980f03d2  src/features/storage/storage-screen.tsx
+# finished 04:53:17
+# Copy-round mobile mutation check, 2026-10-06 04:55:13; the tree is not edited
+control (no mutation, 7 test files): exit=0 Tests:       95 passed, 95 total (18 s)
+E1   DETECTED     LIVE success toast falls back to the "(simulated)" sentence | src/features/evidence/export-sheet.tsx | Tests:       1 failed, 17 passed, 18 total | failing files: live-evidence-export.test.tsx | first: S1-6: the export — the request starts with the build step; the result at the later of the answer and EXPORT_BUILD_MS (LB-2) › success: one request at the press; "Building" until EXPORT_BUILD_MS though the Core answered; then Done with the Core's export ID (10 s)
+E2   not detected SIMULATED success toast takes the Live sentence | src/features/evidence/export-sheet.tsx | Tests:       18 passed, 18 total | failing files: - | first: - (10 s)
+## 1 detected, 1 not detected, 0 not applied, of 2
+## the mutated files in the tree, before and after: identical
+   041fa1d6de388c30  src/features/devices/diagnostics-sheet.tsx
+   721158a1279bf7e1  src/features/evidence/export-sheet.tsx
+   90d2226048a65d6a  src/features/session-new/device-previews.tsx
+   2d31b72817b0d083  src/features/session-new/session-info-step.tsx
+   6826096309226444  src/features/settings/maintenance-section.tsx
+   ecbde4b7980f03d2  src/features/storage/storage-screen.tsx
+# finished 04:55:50
+# Copy-round mobile mutation check, 2026-10-06 05:14:28; the tree is not edited
+control (no mutation, 8 test files): exit=0 Tests:       100 passed, 100 total (19 s)
+B1   DETECTED     LIVE caption falls back to the Simulated words | src/features/devices/health-chart.tsx | Tests:       2 failed, 3 passed, 5 total | failing files: live-devices-health-caption.test.tsx | first: the chart caption, for every metric (D160) › LIVE: "Derived from the Core's data · last N samples" / the LIVE screen of every kind of device (W78's bed) › every Health tab says the line is derived (the microphone, without meter frames in the bed, is still collecting); nothing claims a simulation (4 s)
+B2   DETECTED     SIMULATED caption takes the Live words | src/features/devices/health-chart.tsx | Tests:       2 failed, 3 passed, 5 total | failing files: live-devices-health-caption.test.tsx | first: the chart caption, for every metric (D160) › SIMULATED: "Simulated · last N samples", as before / the SIMULATED screen › the Health tab of a camera keeps "Simulated · last N samples" (4 s)
+## 2 detected, 0 not detected, 0 not applied, of 2
+## the mutated files in the tree, before and after: identical
+   041fa1d6de388c30  src/features/devices/diagnostics-sheet.tsx
+   9a2909344608ca2f  src/features/devices/health-chart.tsx
+   721158a1279bf7e1  src/features/evidence/export-sheet.tsx
+   90d2226048a65d6a  src/features/session-new/device-previews.tsx
+   2d31b72817b0d083  src/features/session-new/session-info-step.tsx
+   6826096309226444  src/features/settings/maintenance-section.tsx
+   ecbde4b7980f03d2  src/features/storage/storage-screen.tsx
+# finished 05:14:56

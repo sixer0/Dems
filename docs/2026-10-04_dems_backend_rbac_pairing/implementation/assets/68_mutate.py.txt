@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""W68 mutation check of the Session Monitor's Live behaviour (plan row W68; rule M15).
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file,
+W67's copy of row M0's) and runs the folder's test files. A mutation is DETECTED when jest exits
+non-zero. Nothing in the tree is written: the hashes of the mutated files are compared before and
+after the run.
+
+  python3 mutate.py [id ...]      (no id: all; 'control' runs the unmutated tests once)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+F = 'src/features/session-live/'
+TESTS = [
+    F + 'live-session-live-sites.test.tsx', F + 'live-session-live-link.test.tsx',
+    F + 'session-live-screen.test.tsx', F + 'back-guard.test.tsx', F + 'session-live.math.test.ts',
+]
+MONITOR = F + 'use-monitor.ts'
+SCREEN = F + 'session-live-screen.tsx'
+TILES = F + 'action-tiles.tsx'
+END = F + 'end-session.tsx'
+FEED = F + 'live-feed.tsx'
+MIC = F + 'mic-card.tsx'
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+M = [
+  # ── U: the wrapper of S2-1 (use-monitor.ts) ──
+  ('U1', MONITOR, 'Live mode skips the presenter (the step-79 toasts instead)', [
+      e("      if (live && presentCoreError(error)) {", "      if (false && presentCoreError(error)) {")]),
+  ('U2', MONITOR, 'the Core\'s 422 INVALID_REASON is not the reason field\'s error', [
+      e("      if (live && error instanceof SimTransitionError && error.code === SimErrorCode.REASON_TOO_SHORT) {", "      if (false) {")]),
+  ('U3', MONITOR, 'LIVE keeps the step-79 read-only rule (a reconnect attempt reads as OFFLINE)', [
+      e("  if (link.source === 'LIVE') return offline;\n", "  void offline;\n")]),
+  ('U4', MONITOR, 'the `ok` continuation never runs', [e("        ok: () => handlers.ok?.(),", "        ok: () => undefined,")]),
+  ('U5', MONITOR, 'the control is never released (`done` dropped)', [e("        done: () => handlers.done?.(),", "        done: () => undefined,")]),
+  ('U6', MONITOR, 'a refusal is not told to the control', [e("          handlers.refused?.(why);", "          void why;")]),
+  # ── S: the consumers on the screen ──
+  ('S1', SCREEN, 'the shutter waits for the settle (no flash at the press, LB-4)', [e("    if (!settled) {", "    if (false) {")]),
+  ('S2', SCREEN, 'the shutter flashes twice in Live mode (at the press and again in ok)', [
+      e("        if (!flashed) setShutterSignal((n) => n + 1);", "        setShutterSignal((n) => n + 1);")]),
+  ('S3', SCREEN, 'the snapshot toast at the press (before the Core answered)', [
+      e("    actions.snapshot({", "    toast.show({ variant: 'success', label: t('session.actions.snapshot.captured'), ...CONFIRM_TOAST });\n    actions.snapshot({")]),
+  ('S4', SCREEN, 'the marker field closes at the press (S4-2 read not awaited)', [
+      e("    actions.addMarker(label, {", "    added();\n    actions.addMarker(label, {")]),
+  ('S5', SCREEN, 'End Session\'s outcome is not handed to the Dialog', [e("    actions.endSession(reason, handlers);", "    actions.endSession(reason);")]),
+  ('S6', SCREEN, 'no one-at-a-time guard for the camera', [
+      e("    cameraPress.run((release) => actions.setActiveCamera(cameraId, { done: release }));", "    actions.setActiveCamera(cameraId);")]),
+  # ── T: the tiles ──
+  ('T1', TILES, 'the Snapshot tile has no in-flight guard', [e("          snapshotPress.run(onSnapshot);", "          onSnapshot(() => undefined);")]),
+  ('T2', TILES, 'the tile is never marked busy', [e("      {...busyState(busy, disabled)}", "")]),
+  ('T3', TILES, 'the tile never shows the Spinner', [
+      e("      {pending ? <PendingSpinner color={palette.gold} testID={`${testID}-spinner`} /> :", "      {false ? <PendingSpinner color={palette.gold} testID={`${testID}-spinner`} /> :")]),
+  ('T4', TILES, 'the marker field closes at the press, whatever the Core says', [
+      e("    submitPress.run((release) => {", "    setLabel('');\n    setRequested(false);\n    submitPress.run((release) => {")]),
+  # ── E: the End Session Dialog ──
+  ('E1', END, '"Keep recording" closes the Dialog while the stop is out', [
+      e("    if (!press.busy) close();", "    close();"), e("isDisabled={press.busy} onPress={dismiss}", "onPress={dismiss}")]),
+  ('E2', END, 'the confirm has no in-flight guard', [
+      e("    press.run((release) =>\n      onEnd(sent, {", "    ((release) =>\n      onEnd(sent, {"),
+      e("        done: release,\n      }),\n    );", "        done: release,\n      }))(() => undefined);")]),
+  ('E3', END, 'the Dialog closes on every refusal (the reason is lost)', [
+      e("        refused: (why) => {", "        refused: (why) => {\n          close();")]),
+  ('E4', END, 'the Core\'s 422 does not reach the reason field', [e("          if (why === 'reason') setRefusedReason(sent);", "          void why;")]),
+  ('E5', END, 'the confirm never shows the Spinner', [e("              {press.pending ? <PendingSpinner", "              {false ? <PendingSpinner")]),
+  ('E6', END, 'the confirm is never marked busy', [e(" {...busyState(press.busy, !check.valid)}", "")]),
+  ('E7', END, 'an edited reason keeps the Core\'s refusal', [
+      e("  const refusedByCore = refusedReason !== null && refusedReason === check.value;", "  const refusedByCore = refusedReason !== null;")]),
+  # ── F, M: the feed and the CLIP reset ──
+  ('F1', FEED, 'the camera tap target is never marked busy', [e("              {...busyState(cameraBusy)}\n", "")]),
+  ('M1', MIC, 'no one-at-a-time guard for the CLIP reset', [
+      e("        clipPress.run((release) => onClipReset(mic.id, release));", "        onClipReset(mic.id, () => undefined);")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *TESTS],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = set(sys.argv[1:])
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# W68 mutation check, %s; %d test files per run; the tree is not edited' % (time.strftime('%Y-%m-%d %H:%M:%S'), len(TESTS)), flush=True)
+    if not wanted or 'control' in wanted:
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'))
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation): exit=%d %s (%.0f s)' % (run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print('## the control run is not green: stop', flush=True)
+            print(run.stdout[-3000:], flush=True)
+            return 2
+    todo = [m for m in M if not wanted or m[0] in wanted]
+    detected, survived, broken = [], [], []
+    for (mid, file, what, edits) in todo:
+        text = open(APP + '/' + file).read()
+        ok = True
+        for edit in edits:
+            if text.count(edit['from']) != 1:
+                ok = False
+                break
+            text = text.replace(edit['from'], edit['to'], 1)
+        if not ok:
+            broken.append(mid)
+            print('%s  NOT APPLIED: a text does not occur exactly once in %s   (%s)' % (mid, file, what), flush=True)
+            continue
+        json.dump({'id': mid, 'file': file, 'edits': edits}, open(SPEC, 'w'))
+        started = time.time()
+        run = jest(dict(os.environ, W68_MUT_SPEC=SPEC, CI='1'))
+        tail, failed, first = summary(run.stdout)
+        verdict = 'detected' if run.returncode != 0 else 'NOT DETECTED'
+        (detected if run.returncode != 0 else survived).append(mid)
+        print('%s  %-12s %3.0fs  %s  | %s  | %s | %s' % (mid, verdict, time.time() - started, what, tail, ', '.join(failed), first[0][:160] if first else ''), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## %d detected, %d not detected, %d not applied, of %d' % (len(detected), len(survived), len(broken), len(todo)), flush=True)
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files:
+        print('   %s  %s' % (after[f][:16], f), flush=True)
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())

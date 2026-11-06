@@ -1,0 +1,417 @@
+/**
+ * The transcript pane of a sealed item (blueprint row 92, M8-W3; UX spec flow 6; R-5; MB-07).
+ *
+ * - **States**: ASSEMBLED, PARTIAL (with how many parts of the audio have no text, and whether the
+ *   backend was unreachable), UNAVAILABLE ("The transcript is not available yet."), DISABLED (by
+ *   configuration: nothing is asked of the Core).
+ * - **Speaker labels default to UNAVAILABLE**: the badge reads exactly "speaker labels unavailable"
+ *   and every segment is shown unlabelled; a label is drawn only for a LABELLED document.
+ * - **The sealed original is immutable.** Each segment shows the sealed text. A revision is shown
+ *   BESIDE it, marked "derived, not part of the sealed transcript", and listed with its number, its
+ *   author and its signature under the segments (operation 86, newest first). No revision is hidden.
+ * - **Revise (G6)**: TRANSCRIPT_REVISE; "Checking your permissions..." until the role is known; a
+ *   role without it sees no control. The form is `transcript-revise-sheet.tsx`.
+ * - Every row keeps a constant 1 px border; a revised segment changes its colour only (E-15).
+ *   Timestamps are media pts of the segments; nothing here is driven by a timer or animated (E-13).
+ * - "Load again" after a failed read is rate-limited by the Core's clock (3 s, 6 s, 12 s; three tries).
+ *
+ * Wave H C2 (finding 6):
+ * - **A simulated item** (G81-01): operation 84 refuses with `details.reason: SIMULATED_ITEM` - the
+ *   Core keeps no transcript for it and never will. The pane says that, not "not available yet".
+ * - **No speech** (G81-05, ruling D198): an ASSEMBLED transcript without a segment reads "No speech
+ *   was detected in this recording." in the neutral tone - never "Transcript assembled" as a
+ *   success - and has no revise control.
+ * - **Access** (G81-07): `access === false` (operation 40 says this caller is outside the scope of
+ *   the transcript operations) - NOTHING is asked of the Core on the page view (a refusal is an
+ *   audited row), and the pane says "You are not permitted to read this transcript."
+ */
+import { useQueryClient } from '@tanstack/react-query';
+import { Button, Spinner } from 'heroui-native';
+import { FileText, Lock, PencilLine, RotateCcw } from 'lucide-react-native';
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime';
+import { Permission, selectCan, selectOperator, useSim, useSimInstance } from '@dems/shared/sim';
+import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
+import { StatusChip } from '@/components/kit';
+import { useOperatorId } from '@/lib/operator-query-scope';
+import { useMobileLive } from '@/runtime';
+import type { ItemTranscriptModel, ItemV2 } from './item-v2';
+import { formatMediaTime, permissionGate, type GateState } from './sealed-playback';
+import { activeSegmentIndex, requestPlaybackSeek, usePlaybackPosition } from './playback-link';
+import { TranscriptReadError, transcriptQueryKey, transcriptRevisionsQueryKey, useTranscript, useTranscriptFollowsRevision, useTranscriptRevisions } from './transcript';
+import {
+  TRANSCRIPT_REASON_SIMULATED_ITEM,
+  currentRevisionNumber,
+  deniedReadKindOf,
+  deriveSegments,
+  isNoSpeech,
+  paneStateOf,
+  sealedWithoutDocument,
+  type DerivedSegment,
+  type TranscriptPaneState,
+  type TranscriptRevision,
+} from './transcript-model';
+import { TranscriptReviseSheet } from './transcript-revise-sheet';
+
+export interface TranscriptPaneProps {
+  evidenceId: string;
+  item: ItemV2;
+  operatorNames: Readonly<Record<string, string>>;
+  /** `access.transcript` of operation 40: false = refused (nothing is asked); true / null / absent = asked as before. */
+  access?: boolean | null;
+}
+
+const STATE_TONE = { ASSEMBLED: 'success', PARTIAL: 'warning', UNAVAILABLE: 'default', DISABLED: 'default', UNKNOWN: 'default' } as const satisfies Record<TranscriptPaneState, 'success' | 'warning' | 'default'>;
+const RETRY_BASE_MS = 3_000;
+const RETRY_MAX = 3;
+
+export function TranscriptPane({ evidenceId, item, operatorNames, access = null }: TranscriptPaneProps) {
+  const { t } = useTranslation();
+  const live = useMobileLive();
+  const sim = useSimInstance();
+  const queryClient = useQueryClient();
+  const operatorId = useOperatorId();
+  const operatorKnown = useSim((s) => selectOperator(s) !== null);
+  const canRevise = useSim((s) => selectCan(s, Permission.TRANSCRIPT_REVISE));
+  const gate = permissionGate({ operatorKnown, permitted: canRevise });
+  const summary = item.transcript;
+  // No document was sealed (disabled, or unavailable at the seal): nothing is asked of the Core (R80-01).
+  const refusedByAccess = access === false;
+  const disabled = sealedWithoutDocument(summary) || refusedByAccess;
+  const transcript = useTranscript(evidenceId, !disabled);
+  const revisions = useTranscriptRevisions(evidenceId, !disabled && transcript.data !== undefined);
+  // A revision another operator appended moves the head of the slice item: both reads are fetched again (pass D10).
+  useTranscriptFollowsRevision(evidenceId, summary?.revision ?? null);
+  const [revising, setRevising] = useState<{ key: number; index: number } | null>(null);
+  const [retry, setRetry] = useState({ attempts: 0, until: 0 });
+
+  // A document read before the refusal was known is not drawn for a caller who may not read it.
+  const document = refusedByAccess ? null : (transcript.data ?? null);
+  const state = paneStateOf(summary, document !== null);
+  const noSpeech = isNoSpeech(state, document);
+  /** The Core keeps no transcript for this item (a simulated item): it will never come (G81-01). */
+  const simulatedItem = transcript.error instanceof TranscriptReadError && transcript.error.refusal === 'NOT_READY' && transcript.error.reason === TRANSCRIPT_REASON_SIMULATED_ITEM;
+  const revisionList = revisions.data ?? [];
+  const derivedSegments = document === null ? [] : deriveSegments(document, revisionList);
+  const baseRevision = currentRevisionNumber(document, revisionList);
+  // Fix wave K (G81b-07): a caller operation 40 already refused is told so ONCE - no second line from a read
+  // that should not have been made; and a refused read is worded by the refusal's own reason (the case, not the role).
+  const refusal = refusedByAccess ? null : transcript.error instanceof TranscriptReadError ? transcript.error.refusal : transcript.isError ? 'FAILED' : null;
+  const deniedKind = deniedReadKindOf(transcript.error instanceof TranscriptReadError ? transcript.error.reason : null);
+  const loading = !disabled && transcript.isPending && transcript.fetchStatus !== 'idle';
+  const nameOf = (operatorId: string): string => operatorNames[operatorId] ?? operatorId;
+  // Round two (JT-10): the segment at the playhead of this item's player, and whether a seek found no player.
+  const playbackMs = usePlaybackPosition(evidenceId);
+  const activeIndex = activeSegmentIndex(derivedSegments.map((entry) => entry.segment), playbackMs);
+  const [seekRefused, setSeekRefused] = useState(false);
+  const revisingSegment = revising === null ? null : (derivedSegments.find((entry) => entry.segment.index === revising.index) ?? null);
+
+  const coreNow = sim.store.getState().clock.now;
+  const canRetry = retry.attempts < RETRY_MAX && coreNow >= retry.until;
+  const reload = () => {
+    const now = sim.store.getState().clock.now;
+    if (retry.attempts >= RETRY_MAX || now < retry.until) return;
+    setRetry({ attempts: retry.attempts + 1, until: now + RETRY_BASE_MS * 2 ** retry.attempts });
+    void queryClient.invalidateQueries({ queryKey: transcriptQueryKey(evidenceId, live, operatorId) });
+    void queryClient.invalidateQueries({ queryKey: transcriptRevisionsQueryKey(evidenceId, live, operatorId) });
+  };
+
+  return (
+    <View style={styles.root} testID={`evidence-transcript-${noSpeech ? 'NO_SPEECH' : state}`} accessibilityLabel={t('evidence.transcript.title')}>
+      <View style={styles.head}>
+        <FileText size={16} color={palette.gold} />
+        <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" style={styles.title}>
+          {t('evidence.transcript.title')}
+        </Text>
+        {refusedByAccess ? null : noSpeech ? (
+          // Neutral, and not the word "assembled": no speech is a finding about the recording, not a success.
+          <StatusChip size="sm" tone="default" icon={null} label={t('evidence.itemFacts.transcript.noSpeech')} testID="evidence-transcript-no-speech" />
+        ) : (
+          <StatusChip size="sm" tone={STATE_TONE[state]} icon={null} label={t(`evidence.transcript.state.${state}`)} testID="evidence-transcript-state" />
+        )}
+        {document !== null ? (
+          <>
+            <StatusChip size="sm" tone="default" icon={Lock} label={t('evidence.transcript.inPackage')} testID="evidence-transcript-in-package" />
+            <StatusChip
+              size="sm"
+              tone="default"
+              icon={null}
+              label={document.speakerState === 'LABELLED' ? t('evidence.transcript.speakersLabelled') : t('evidence.transcript.speakersUnavailable')}
+              testID={`evidence-transcript-speakers-${document.speakerState}`}
+            />
+          </>
+        ) : null}
+      </View>
+
+      {/* Fix wave K (G81b-06; ruling D160): which model made the transcript, as the item states it. Nothing when it states none. */}
+      {!refusedByAccess && item.transcriptModel != null ? <TranscriptModelLines model={item.transcriptModel} /> : null}
+
+      {state === 'PARTIAL' && summary !== null ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-partial">
+          {summary.failedChunks > 0 ? `${t('evidence.transcript.failedChunks', { count: summary.failedChunks })} ` : ''}
+          {summary.backendUnreachable ? t('evidence.transcript.backendUnreachable') : ''}
+        </Text>
+      ) : null}
+
+      {state === 'PARTIAL' && sealedWithoutDocument(summary) ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-no-document">
+          {t('evidence.transcript.noDocument')}
+        </Text>
+      ) : null}
+
+      {loading ? (
+        <View style={styles.inline} testID="evidence-transcript-loading">
+          <Spinner size="sm" />
+          <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
+            {t('evidence.transcript.loading')}
+          </Text>
+        </View>
+      ) : null}
+
+      {refusedByAccess ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} accessibilityRole="text" testID="evidence-transcript-may-not-read">
+          {t('evidence.itemFacts.transcript.mayNotRead')}
+        </Text>
+      ) : null}
+      {simulatedItem ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-simulated-item">
+          {t('evidence.itemFacts.transcript.simulatedItem')}
+        </Text>
+      ) : refusal === 'NOT_READY' ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-not-ready">
+          {t('evidence.transcript.notReady')}
+        </Text>
+      ) : null}
+      {refusal === 'DENIED' || refusal === 'FAILED' ? (
+        <View style={styles.failed} accessibilityRole="alert" testID={`evidence-transcript-failed-${refusal}`}>
+          <Text maxFontSizeMultiplier={1.2} style={[styles.body, styles.failText]} testID={refusal === 'DENIED' ? `evidence-transcript-denied-${deniedKind}` : 'evidence-transcript-failed-text'}>
+            {refusal === 'FAILED'
+              ? t('evidence.transcript.failed')
+              : deniedKind === 'CASE_SCOPE'
+                ? t('features.evidence.waveK.transcript.deniedCaseScope')
+                : deniedKind === 'ROLE'
+                  ? t('evidence.transcript.notPermitted')
+                  : t('evidence.itemFacts.transcript.mayNotRead')}
+          </Text>
+          {refusal === 'FAILED' ? (
+            <Button size="sm" variant="outline" onPress={reload} isDisabled={!canRetry} testID="evidence-transcript-retry">
+              <RotateCcw size={16} color={canRetry ? palette.gold : palette.gray} />
+              <Button.Label>{retry.attempts >= RETRY_MAX ? t('common.errors.maxRetries') : t('evidence.transcript.retry')}</Button.Label>
+            </Button>
+          ) : null}
+        </View>
+      ) : null}
+
+      {document !== null ? (
+        <>
+          <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-sealed-note">
+            {t('evidence.transcript.sealedOriginal')}
+          </Text>
+          {noSpeech ? null : derivedSegments.length === 0 ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-empty">
+              {t('evidence.transcript.noSegments')}
+            </Text>
+          ) : (
+            <View style={styles.list} testID="evidence-transcript-segments">
+              {seekRefused ? (
+                <Text maxFontSizeMultiplier={1.2} style={styles.caption} accessibilityLiveRegion="polite" testID="evidence-transcript-seek-no-player">
+                  {t('features.evidence.transcriptLink.noPlayer')}
+                </Text>
+              ) : null}
+              {derivedSegments.map((entry) => (
+                <SegmentRow
+                  key={entry.segment.index}
+                  entry={entry}
+                  gate={gate}
+                  authorName={entry.revised ? nameOf(entry.revised.authorId) : ''}
+                  onRevise={() => setRevising((previous) => ({ key: (previous?.key ?? 0) + 1, index: entry.segment.index }))}
+                  active={activeIndex === entry.segment.index}
+                  onSeek={() => setSeekRefused(!requestPlaybackSeek(evidenceId, entry.segment.startMs))}
+                />
+              ))}
+            </View>
+          )}
+          <RevisionList revisions={revisionList} failed={revisions.isError} nameOf={nameOf} />
+        </>
+      ) : null}
+
+      {revising !== null && revisingSegment !== null ? (
+        <TranscriptReviseSheet key={revising.key} evidenceId={evidenceId} segment={revisingSegment} baseRevision={baseRevision} isOpen onClose={() => setRevising(null)} />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * The provenance of the transcript (fix wave K, G81b-06). A local model: its name, the version the
+ * installation declared, the quantisation and the file hash. A server backend (D160): the name the
+ * server reported and the Core's own sentence that nothing of it was verified - no version, no hash.
+ */
+function TranscriptModelLines({ model }: { model: ItemTranscriptModel }) {
+  const { t } = useTranslation();
+  const notStated = t('features.evidence.waveK.transcript.model.notStated');
+  return (
+    <View style={styles.model} testID={`evidence-transcript-model-${model.reportedByServer ? 'server' : 'local'}`} accessibilityLabel={t('features.evidence.waveK.transcript.model.title')}>
+      <Text maxFontSizeMultiplier={1.2} style={styles.strong}>
+        {t('features.evidence.waveK.transcript.model.title')}
+      </Text>
+      <Text maxFontSizeMultiplier={1.2} selectable style={styles.caption} testID="evidence-transcript-model-name">
+        {t('features.evidence.waveK.transcript.model.name', { name: model.name })}
+      </Text>
+      {model.reportedByServer ? (
+        // The Core's own line (D160): the model was reported by the STT server and not verified by the Core.
+        <Text maxFontSizeMultiplier={1.2} selectable style={styles.caption} testID="evidence-transcript-model-report">
+          {model.report}
+        </Text>
+      ) : (
+        <>
+          <Text maxFontSizeMultiplier={1.2} selectable style={styles.caption} testID="evidence-transcript-model-version">
+            {t('features.evidence.waveK.transcript.model.version', { version: model.version ?? notStated })}
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} selectable style={styles.caption} testID="evidence-transcript-model-quantisation">
+            {t('features.evidence.waveK.transcript.model.quantisation', { quantisation: model.quantisation ?? notStated })}
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} selectable style={[styles.caption, styles.hash]} testID="evidence-transcript-model-hash">
+            {t('features.evidence.waveK.transcript.model.hash', { hash: model.modelSha256 ?? notStated })}
+          </Text>
+        </>
+      )}
+    </View>
+  );
+}
+
+function SegmentRow({ entry, gate, authorName, onRevise, active, onSeek }: { entry: DerivedSegment; gate: GateState; authorName: string; onRevise: () => void; active: boolean; onSeek: () => void }) {
+  const { t } = useTranslation();
+  const { segment, revised } = entry;
+  const start = formatMediaTime(segment.startMs);
+  const end = formatMediaTime(segment.endMs);
+  return (
+    <View
+      style={[styles.segment, revised ? styles.segmentRevised : null, active ? styles.segmentActive : null]}
+      accessibilityLabel={t('evidence.transcript.segmentLabel', { index: segment.index, start, end })}
+      accessibilityState={{ selected: active }}
+      testID={`evidence-transcript-segment-${segment.index}`}
+    >
+      <View style={styles.segmentHead}>
+        {/* Round two (JT-10): the time is the control that takes the playback there. */}
+        <Pressable onPress={onSeek} accessibilityRole="button" accessibilityLabel={t('features.evidence.transcriptLink.seek', { start })} hitSlop={8} testID={`evidence-transcript-seek-${segment.index}`}>
+          <Text maxFontSizeMultiplier={1.2} style={[styles.time, styles.timeLink]}>
+            {start}–{end}
+          </Text>
+        </Pressable>
+        {active ? (
+          <Text maxFontSizeMultiplier={1.2} style={styles.nowPlaying} testID={`evidence-transcript-active-${segment.index}`}>
+            {t('features.evidence.transcriptLink.now')}
+          </Text>
+        ) : null}
+        {segment.speaker !== null ? (
+          <Text maxFontSizeMultiplier={1.2} style={styles.speaker} testID={`evidence-transcript-speaker-${segment.index}`}>
+            {segment.speaker}
+          </Text>
+        ) : null}
+        <View style={styles.grow} />
+        {gate === 'REFUSED' ? null : (
+          <Button size="sm" variant="ghost" isDisabled={gate !== 'ALLOWED'} onPress={onRevise} testID={`evidence-transcript-revise-${segment.index}`}>
+            <PencilLine size={14} color={gate === 'ALLOWED' ? palette.gold : palette.gray} />
+            <Button.Label>{gate === 'CHECKING' ? t('evidence.playback.checking') : t('evidence.transcript.revise.action')}</Button.Label>
+          </Button>
+        )}
+      </View>
+      <Text maxFontSizeMultiplier={1.2} selectable style={styles.body} testID={`evidence-transcript-original-${segment.index}`}>
+        {segment.text}
+      </Text>
+      {revised ? (
+        <View style={styles.derived} testID={`evidence-transcript-derived-${segment.index}`}>
+          <Text maxFontSizeMultiplier={1.2} style={styles.derivedLabel}>
+            {t('evidence.transcript.derived', { number: revised.number })} · {t('evidence.transcript.revisions.author', { author: authorName })}
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} selectable style={styles.body} testID={`evidence-transcript-derived-text-${segment.index}`}>
+            {revised.text}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function RevisionList({ revisions, failed, nameOf }: { revisions: readonly TranscriptRevision[]; failed: boolean; nameOf: (operatorId: string) => string }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.revisions} testID="evidence-transcript-revisions">
+      <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" style={styles.title}>
+        {t('evidence.transcript.revisions.title')}
+      </Text>
+      {failed ? (
+        <Text maxFontSizeMultiplier={1.2} style={[styles.caption, styles.failText]} accessibilityRole="alert" testID="evidence-transcript-revisions-failed">
+          {t('evidence.transcript.revisions.loadFailed')}
+        </Text>
+      ) : revisions.length === 0 ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-revisions-none">
+          {t('evidence.transcript.revisions.none')}
+        </Text>
+      ) : (
+        revisions.map((revision) => (
+          <View key={revision.revisionId} style={styles.segment} testID={`evidence-transcript-revision-${revision.number}`}>
+            <Text maxFontSizeMultiplier={1.2} style={styles.strong}>
+              {t('evidence.transcript.revisions.entry', { number: revision.number })} {t('evidence.transcript.revisions.author', { author: nameOf(revision.authorId) })}
+            </Text>
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
+              {revision.createdAt !== null ? `${formatDate(revision.createdAt, DATE_PATTERNS.dateTime)} · ` : ''}
+              {revision.baseRevision === 0 ? t('evidence.transcript.revisions.baseOriginal') : t('evidence.transcript.revisions.base', { base: revision.baseRevision })}
+              {' · '}
+              {revision.simulated ? t('evidence.transcript.revisions.simulated') : t('evidence.transcript.revisions.signed', { key: revision.signedBy })}
+            </Text>
+            {/* Fix wave K (G81b-09): why the revision was made, as the Core answers it; nothing when the answer states none. */}
+            {typeof revision.reason === 'string' && revision.reason.length > 0 ? (
+              <Text maxFontSizeMultiplier={1.2} selectable style={styles.caption} testID={`evidence-transcript-revision-reason-${revision.number}`}>
+                <Text style={styles.strong}>{t('features.evidence.waveK.transcript.revisionReason')}</Text>: {revision.reason}
+              </Text>
+            ) : null}
+            {revision.changes.map((change, index) => (
+              <Text key={`${change.segmentIndex}-${index}`} maxFontSizeMultiplier={1.2} style={styles.caption}>
+                <Text style={styles.strong}>{t('evidence.transcript.revisions.change', { index: change.segmentIndex })}</Text>: {change.to}
+              </Text>
+            ))}
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { gap: spacing[2] },
+  model: { gap: 2, padding: spacing[1] + 2, borderRadius: radius.px.lg, borderWidth: 1, borderColor: derived.separator },
+  hash: { fontFamily: fontFamily.native.mono },
+  head: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing[1] },
+  inline: { flexDirection: 'row', alignItems: 'center', gap: spacing[1] },
+  failed: { gap: spacing[1] },
+  list: { gap: spacing[0] + 2 },
+  revisions: { gap: spacing[0] + 2 },
+  grow: { flex: 1 },
+  segment: {
+    gap: 4,
+    padding: spacing[1] + 2,
+    borderRadius: radius.px.lg,
+    backgroundColor: derived.surfaceSecondary,
+    // E-15: the border is always 1 px; a revised segment changes its colour only.
+    borderWidth: 1,
+    borderColor: derived.separator,
+  },
+  segmentRevised: { borderColor: statusText.sealed },
+  segmentActive: { borderColor: palette.gold },
+  timeLink: { textDecorationLine: 'underline' },
+  nowPlaying: { fontFamily: fontFamily.native.medium, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gold },
+  segmentHead: { flexDirection: 'row', alignItems: 'center', gap: spacing[1] },
+  derived: { gap: 2, padding: spacing[1], borderRadius: radius.px.lg, borderWidth: 1, borderColor: statusText.sealed, borderStyle: 'dashed' },
+  derivedLabel: { fontFamily: fontFamily.native.semibold, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: statusText.sealed },
+  title: { fontFamily: fontFamily.native.semibold, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.foreground },
+  time: { fontFamily: fontFamily.native.mono, fontSize: typography.data.size, lineHeight: typography.data.lineHeight, color: palette.gray, fontVariant: ['tabular-nums'] },
+  speaker: { fontFamily: fontFamily.native.medium, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gold },
+  strong: { fontFamily: fontFamily.native.semibold, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.foreground },
+  body: { fontFamily: fontFamily.native.normal, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.foreground },
+  caption: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray },
+  failText: { color: statusText.danger },
+});

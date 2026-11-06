@@ -1,0 +1,339 @@
+
+ RUN  v5.0.3 /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1a/before/apps/core-server
+
+stdout | src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > the five lines of the table, as the review printed them
+[cpb1-2] the table of the review
+A key err               | statement:false param:false pgDetail:false code:undefined type:"Error"
+B key error             | statement:true param:true pgDetail:true code:undefined type:undefined
+C key cause             | statement:true param:true pgDetail:true code:undefined type:undefined
+D nested                | statement:true param:true pgDetail:true code:undefined type:undefined
+E key err, driver error | statement:false param:false pgDetail:false code:"23505" type:"error"
+
+ ❯ |unit| src/plugins/logger/__tests__/error-keys.test.ts (17 tests | 13 failed) 193ms
+   ❯ CPB1-2: an error logged under any key is written as its name, its code and its frames (10)
+     × A key err: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 51ms
+     × B key error: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 2ms
+     × C key cause: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 1ms
+     × D nested: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 1ms
+     × the five lines of the table, as the review printed them 7ms
+     × two and more levels deep, inside arrays, under any name, beside other members 3ms
+     × a driver error under another key: no DETAIL, no HINT, no WHERE, no message 2ms
+     × an error given as a value for the text of a line is described the same way 8ms
+     × the whole captured log of this file holds no part of the error 2ms
+   ❯ CPB1-7: the safe description follows `cause` for the code (4)
+     × a wrapped database error: the SQLSTATE of the driver, the name of the driver's error, no text of the wrapper 2ms
+     × the chain is read to a bounded depth, and a chain that loops ends 1ms
+     × a cause that is not an error, or a code that is not a text, is not reported 1ms
+   ❯ CPB1-23: the frames of a stack, never a line of the message (3)
+     × a line of the statement that has the form of a frame is not kept 3ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 13 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > A key err: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there
+AssertionError: expected [ 'statementLine' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "statementLine",
++ ]
+
+ ❯ src/plugins/logger/__tests__/error-keys.test.ts:115:41
+    113|     const line = captured.lines().find((entry) => entry['msg'] === row…
+    114|     expect(line).toBeDefined();
+    115|     expect(leaks(JSON.stringify(line))).toEqual([]);
+       |                                         ^
+    116|     const described = row.read(line ?? {}) as Record<string, unknown>;
+    117|     expect(described).toMatchObject({ type: row.type, code: row.code, …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/13]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > B key error: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > C key cause: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > D nested: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there
+AssertionError: expected [ 'statement', 'statementLine', …(5) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "statement",
++   "statementLine",
++   "parameter",
++   "detail",
++   "hint",
++   "where",
++   "internalQuery",
++ ]
+
+ ❯ src/plugins/logger/__tests__/error-keys.test.ts:115:41
+    113|     const line = captured.lines().find((entry) => entry['msg'] === row…
+    114|     expect(line).toBeDefined();
+    115|     expect(leaks(JSON.stringify(line))).toEqual([]);
+       |                                         ^
+    116|     const described = row.read(line ?? {}) as Record<string, unknown>;
+    117|     expect(described).toMatchObject({ type: row.type, code: row.code, …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/13]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > the five lines of the table, as the review printed them
+AssertionError: expected [ …(5) ] to deeply equal [ …(5) ]
+
+- Expected
++ Received
+
+  [
+-   "A key err               | statement:false param:false pgDetail:false code:\"23505\" type:\"Error\"",
+-   "B key error             | statement:false param:false pgDetail:false code:\"23505\" type:\"Error\"",
+-   "C key cause             | statement:false param:false pgDetail:false code:\"23505\" type:\"Error\"",
+-   "D nested                | statement:false param:false pgDetail:false code:\"23505\" type:\"Error\"",
++   "A key err               | statement:false param:false pgDetail:false code:undefined type:\"Error\"",
++   "B key error             | statement:true param:true pgDetail:true code:undefined type:undefined",
++   "C key cause             | statement:true param:true pgDetail:true code:undefined type:undefined",
++   "D nested                | statement:true param:true pgDetail:true code:undefined type:undefined",
+    "E key err, driver error | statement:false param:false pgDetail:false code:\"23505\" type:\"error\"",
+  ]
+
+ ❯ src/plugins/logger/__tests__/error-keys.test.ts:136:21
+    134|     });
+    135|     console.info(`[cpb1-2] the table of the review\n${printed.join('\n…
+    136|     expect(printed).toEqual([
+       |                     ^
+    137|       'A key err               | statement:false param:false pgDetail:…
+    138|       'B key error             | statement:false param:false pgDetail:…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/13]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > two and more levels deep, inside arrays, under any name, beside other members
+AssertionError: expected [ 'statement', 'statementLine', …(5) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "statement",
++   "statementLine",
++   "parameter",
++   "detail",
++   "hint",
++   "where",
++   "internalQuery",
++ ]
+
+ ❯ src/plugins/logger/__tests__/error-keys.test.ts:159:41
+    157|     );
+    158|     const line = captured.lines().find((entry) => entry['msg'] === 'de…
+    159|     expect(leaks(JSON.stringify(line))).toEqual([]);
+       |                                         ^
+    160|     expect(line).toMatchObject({ unit: 7, label: 'pairing.redeem' });
+    161|     for (const path of [['e'], ['reason'], ['outcome', 'attempts', 0, …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/13]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > a driver error under another key: no DETAIL, no HINT, no WHERE, no message
+AssertionError: expected [ 'detail', 'hint', 'where', …(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "detail",
++   "hint",
++   "where",
++   "internalQuery",
++ ]
+
+ ❯ src/plugins/logger/__tests__/error-keys.test.ts:172:41
+    170|     log.error({ error: driverError(), nested: { cause: driverError() }…
+    171|     const line = captured.lines().find((entry) => entry['msg'] === 'dr…
+    172|     expect(leaks(JSON.stringify(line))).toEqual([]);
+       |                                         ^
+    173|     expect(line['error']).toMatchObject({ type: 'error', code: '23505'…
+    174|     expect(JSON.stringify(line)).not.toContain('device_credentials');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/13]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > an error given as a value for the text of a line is described the same way
+AssertionError: expected [ 'statement', 'statementLine', …(6) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "statement",
++   "statementLine",
++   "parameter",
++   "driverMessage",
++   "detail",
++   "hint",
++   "where",
++   "internalQuery",
++ ]
+
+ ❯ src/plugins/logger/__tests__/error-keys.test.ts:184:25
+    182|     expect(text).toContain('failed with');
+    183|     expect(text).toContain('failed in a unit');
+    184|     expect(leaks(text)).toEqual([]);
+       |                         ^
+    185|     expect(text).toContain('23505');
+    186|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/13]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > the whole captured log of this file holds no part of the error
+AssertionError: expected [ 'statement', 'statementLine', …(5) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "statement",
++   "statementLine",
++   "parameter",
++   "detail",
++   "hint",
++   "where",
++   "internalQuery",
++ ]
+
+ ❯ src/plugins/logger/__tests__/error-keys.test.ts:194:36
+    192|     log.error({ err: wrappedError() });
+    193|     expect(captured.lines().length).toBe(ROWS.length + 2);
+    194|     expect(leaks(captured.text())).toEqual([]);
+       |                                    ^
+    195|   });
+    196| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/13]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-7: the safe description follows `cause` for the code > a wrapped database error: the SQLSTATE of the driver, the name of the driver's error, no text of the wrapper
+AssertionError: expected { errorName: 'Error', …(1) } to match object { errorName: 'Error', …(2) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "causeName": "error",
+-   "code": "23505",
+    "errorName": "Error",
+  }
+
+ ❯ src/plugins/logger/__tests__/error-keys.test.ts:201:25
+    199|   it('a wrapped database error: the SQLSTATE of the driver, the name o…
+    200|     const description = describeError(wrappedError());
+    201|     expect(description).toMatchObject({ errorName: 'Error', code: '235…
+       |                         ^
+    202|     expect(Object.keys(description).sort()).toEqual(['causeName', 'cod…
+    203|     expect(leaks(JSON.stringify(description))).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/13]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-7: the safe description follows `cause` for the code > the chain is read to a bounded depth, and a chain that loops ends
+AssertionError: expected { errorName: 'Error', …(1) } to match object { code: '23505', causeName: 'error' }
+(2 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "causeName": "error",
+-   "code": "23505",
++   "errorName": "Error",
++   "stackTrace": "    at chain (/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1a/before/apps/core-server/src/plugins/logger/__tests__/error-keys.test.ts:218:62)
++     at /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1a/before/apps/core-server/src/plugins/logger/__tests__/error-keys.test.ts:222:26
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:1628:35
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:26
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3321:20
++     at new Promise (<anonymous>)
++     at runWithCancel (file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3316:10)
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3301:20
++     at new Promise (<anonymous>)
++     at runWithTimeout (file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3259:10)",
+  }
+
+ ❯ src/plugins/logger/__tests__/error-keys.test.ts:222:37
+    220|     };
+    221|     // The error and three causes are read: a code four causes down is…
+    222|     expect(describeError(chain(3))).toMatchObject({ code: '23505', cau…
+       |                                     ^
+    223|     expect(describeError(chain(4))).not.toHaveProperty('code');
+    224|     const loop = new Error('loops');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/13]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-7: the safe description follows `cause` for the code > a cause that is not an error, or a code that is not a text, is not reported
+AssertionError: expected { errorName: 'Error', …(1) } to match object { code: 'E_PLAIN', …(1) }
+(2 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "causeName": "PlainObject",
+-   "code": "E_PLAIN",
++   "errorName": "Error",
++   "stackTrace": "    at /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1a/before/apps/core-server/src/plugins/logger/__tests__/error-keys.test.ts:233:26
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:1628:35
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:26
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3321:20
++     at new Promise (<anonymous>)
++     at runWithCancel (file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3316:10)
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3301:20
++     at new Promise (<anonymous>)
++     at runWithTimeout (file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3259:10)
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3882:64",
+  }
+
+ ❯ src/plugins/logger/__tests__/error-keys.test.ts:233:96
+    231|     expect(describeError(new Error('x', { cause: 'a string' }))).not.t…
+    232|     expect(describeError(new Error('x', { cause: { code: 23505 } }))).…
+    233|     expect(describeError(new Error('x', { cause: { code: 'E_PLAIN', na…
+       |                                                                                                ^
+    234|   });
+    235| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/13]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-23: the frames of a stack, never a line of the message > a line of the statement that has the form of a frame is not kept
+AssertionError: expected '    at MARK-statement-line-77e2 (stat…' not to contain 'MARK-statement-line-77e2'
+
+- Expected
++ Received
+
+- MARK-statement-line-77e2
++     at MARK-statement-line-77e2 (statement.sql:1:1)
++     at wrappedError (/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1a/before/apps/core-server/src/plugins/logger/__tests__/error-keys.test.ts:61:10)
++     at /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1a/before/apps/core-server/src/plugins/logger/__tests__/error-keys.test.ts:239:19
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:1628:35
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:26
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3321:20
++     at new Promise (<anonymous>)
++     at runWithCancel (file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3316:10)
++     at file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3301:20
++     at new Promise (<anonymous>)
++     at runWithTimeout (file:///Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3259:10)
+
+ ❯ src/plugins/logger/__tests__/error-keys.test.ts:244:28
+    242|     const { stackTrace } = describeError(error);
+    243|     expect(stackTrace).toBeDefined();
+    244|     expect(stackTrace).not.toContain(MARK.statementLine);
+       |                            ^
+    245|     expect(stackTrace).not.toContain(MARK.statement);
+    246|     expect(stackTrace).not.toContain(MARK.parameter);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/13]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  13 failed | 4 passed (17)
+   Start at  15:03:54
+   Duration  3.04s (transform 65%, import 28%, tests 7%)
+

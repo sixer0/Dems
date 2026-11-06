@@ -1,0 +1,46 @@
+# W11b follow-up 3: the whole projects from the two scratch copies BEFORE the landing, to see whether the change gives any test of another row a red.
+# The copies hold src/ and test/ as of 20:25:23 and reach packages/ and docs/ of the live tree through links.
+
+## 1. whole db, one after the other: before 20:39:10, after 20:41:05
+--- before
+ Test Files  3 failed | 116 passed (119)
+      Tests  6 failed | 1702 passed (1708)
+   Duration  113.92s (tests 83%, import 16%, transform 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 355 ms; 0 remain with the run prefix dems_test_step_33d_tmdxxbjr_
+exit=1
+--- after
+ Test Files  3 failed | 118 passed (121)
+      Tests  3 failed | 1716 passed (1719)
+   Duration  174.88s (tests 83%, import 16%, transform 1%)
+[test:db] forced drops that needed a retry: 1 (1 refusal(s) with SQLSTATE 42501 while a backend that the owner role may not end, such as an autovacuum worker, w
+[test:db] teardown: dropped 8 database(s) in 531 ms; 0 remain with the run prefix dems_test_step_33d_tmdy0hxa_
+exit=1
+--- what failed (each an assertion in 0 to 138 ms; no time-out)
+  in both:        src/modules/demo/__tests__/reset-failures.db.test.ts (the known red of that hour)
+  only 'before':  test/acceptance/contract.test.ts (1), test/acceptance/rbac-matrix.test.ts (4): the contract registry, DEVICE_CREDENTIAL (decision D118)
+  only 'after':   src/modules/identity/biometric/__tests__/sequence.db.test.ts (1), sign-in.db.test.ts (1): 403 where 200 was expected
+
+## 2. why they differ: the live tree moved between and during the two runs (files changed since the snapshot, with their times)
+  20:39:14 packages/shared/openapi/openapi.json
+  20:39:14 packages/shared/src/api/identity.ts
+  20:39:14 packages/shared/src/api/operation-parts.ts
+  20:39:14 packages/shared/src/api/pairing.ts
+  20:39:14 packages/shared/test/api-openapi-scope.test.ts
+  20:39:14 packages/shared/test/api-registry.test.ts
+  20:44:33 packages/shared/src/i18n/en/shell.ts
+  20:44:41 packages/shared/src/i18n/en/users-roles.ts
+  20:44:49 packages/shared/src/i18n/en/paired-devices.ts
+  20:45:06 packages/shared/src/i18n/index.ts
+  20:47:25 packages/shared/src/i18n/en/login.ts
+  (the same landing of 20:39:14 changed src/modules/identity/biometric/ in the repository: routes.ts, sign-in.ts, index.ts, activity.ts and five test files; the copies still hold the files of 20:25:23)
+
+## 3. the five affected files in both copies AT THE SAME INSTANT (20:45:04)
+--- before:  Tests 3 failed | 122 passed (125);exit=1;
+--- after:  Tests 3 failed | 122 passed (125);exit=1;
+  the same three tests fail in both copies: reset-failures (known), biometric sequence and sign-in (the copies' files of 20:25 against the contract of 20:39)
+
+## 4. whole unit, both copies at the same instant (20:45:58)
+--- before:  Test Files 1 failed | 146 passed (147); Tests 2 failed | 3793 passed (3795);exit=1;
+--- after:  Test Files 1 failed | 147 passed (148); Tests 2 failed | 3810 passed (3812);exit=1;
+  the same two tests fail in both copies (src/modules/identity/biometric/__tests__/routes.test.ts, for the reason of part 2); none only in the changed copy; the changed copy has one file and 17 tests more (limits.test.ts)

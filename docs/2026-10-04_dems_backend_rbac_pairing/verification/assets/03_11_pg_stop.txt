@@ -1,0 +1,10 @@
+$ npm run pg:stop
+# 2026-10-07 05:30:12
+
+> dems-demo@0.1.0 pg:stop
+> node scripts/pg/stop.mjs
+
+waiting for server to shut down.... done
+server stopped
+pg:stop: stopped PID 48897; 127.0.0.1:4432 is free
+exit=0

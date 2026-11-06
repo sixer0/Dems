@@ -1,0 +1,34 @@
+== C0 05:31:23 after boot, before any request
+connected as dems_owner to 127.0.0.1/32:4432 (PostgreSQL 18.4)
+active_session              0  d41d8cd98f00b204e9800998ecf8427e
+alerts                      0  d41d8cd98f00b204e9800998ecf8427e
+audit_chain_head            1  c964883ae93ce3d6a0c3a29b3a78e7f7
+audit_chain_history         0  d41d8cd98f00b204e9800998ecf8427e
+audit_log                  83  d049882d3f55e2f3a187b40c60c6b2ef
+auth_sessions               0  d41d8cd98f00b204e9800998ecf8427e
+biometric_tokens            0  d41d8cd98f00b204e9800998ecf8427e
+console_settings            1  9fcf5e2eff4c084549d662323f63913a
+core_device                 1  e5534f12f323aa290ba110754b0005be
+core_state                  1  0dbaeef223a43c1c002e9118b9d6a448
+device_credentials          0  d41d8cd98f00b204e9800998ecf8427e
+engine_counters             5  b902c55cc1df85f8b120ff5f469da7cc
+events                     60  26a7804ea0e14f0b7728693e9f57bc6e
+evidence_custody           28  fe7196279cec4d13d085ac7e701087c8
+evidence_items             13  7b73aa0ceb7e9b46307da6013cf9ec44
+evidence_tracks            52  481cc8b2969557620bf740c30748ec70
+exports                     1  528d2c98bdc7e02ffe986f5246e317f0
+hardware_snapshot           1  6f4f438d9abea71354aef79fad9929e8
+health_snapshots            0  d41d8cd98f00b204e9800998ecf8427e
+operator_credentials        3  033269258fcbdd1c55ff5a7e2d4edd70
+operators                   3  f3f8554913c0257a5c0077426a059092
+paired_devices              0  d41d8cd98f00b204e9800998ecf8427e
+pairing_codes               0  d41d8cd98f00b204e9800998ecf8427e
+permissions                12  aa0e5474ec05c78aa2bf635397ea0676
+registry_counters           2  cad05c9a39dbf023490c9e69bbc9188e
+role_permissions           18  fbf20c640c4b4e039ef64e3be274c4d3
+roles                       3  ae0d751197b14ce00fb4b90bbc159618
+schema_meta                 1  eb888f88187742c42ea325a3ccc64914
+session_history            13  2613502b559fd849e9a2ad6240a8f529
+storage_policy              1  f4b703b717901cb7d293bd14f4a2ebd8
+tables 30; rows 303
+exit=0

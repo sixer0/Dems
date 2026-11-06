@@ -1,0 +1,102 @@
+{
+ "check": "H-10",
+ "run": "h10_zero_run1",
+ "case": "zero",
+ "regression_bound_ms": 2.0,
+ "product_bound_ms": 40.0,
+ "files": {
+  "cam1.mp4": {
+   "inject_ms": 0,
+   "inject_drift_ppm": 0.0,
+   "video_frames": 600,
+   "flash_frame_indexes": [
+    50,
+    250,
+    450
+   ],
+   "beeps_in_audio": 6,
+   "events": [
+    {
+     "frame": 100,
+     "flash_s": 1.448856,
+     "beep_s": 1.448875,
+     "offset_ms": 0.0194,
+     "truth_ms": 0.0,
+     "error_ms": 0.0194
+    },
+    {
+     "frame": 300,
+     "flash_s": 5.448856,
+     "beep_s": 5.448875,
+     "offset_ms": 0.0194,
+     "truth_ms": 0.0,
+     "error_ms": 0.0194
+    },
+    {
+     "frame": 500,
+     "flash_s": 9.448856,
+     "beep_s": 9.448875,
+     "offset_ms": 0.0194,
+     "truth_ms": 0.0,
+     "error_ms": 0.0194
+    }
+   ],
+   "mean_offset_ms": 0.0194,
+   "measured_drift_ppm": 0.0,
+   "drift_over_run_ms": 0.0,
+   "max_abs_error_vs_truth_ms": 0.0194,
+   "sign_correct": true,
+   "regression_bound": "PASS",
+   "max_abs_offset_ms": 0.0194,
+   "product_bound": "WITHIN",
+   "uncorrected_offset_exceeds_regression_bound": false
+  },
+  "cam2.mp4": {
+   "inject_ms": 0,
+   "inject_drift_ppm": 0.0,
+   "video_frames": 600,
+   "flash_frame_indexes": [
+    150,
+    350,
+    550
+   ],
+   "beeps_in_audio": 6,
+   "events": [
+    {
+     "frame": 200,
+     "flash_s": 3.448856,
+     "beep_s": 3.448875,
+     "offset_ms": 0.0194,
+     "truth_ms": 0.0,
+     "error_ms": 0.0194
+    },
+    {
+     "frame": 400,
+     "flash_s": 7.448856,
+     "beep_s": 7.448875,
+     "offset_ms": 0.0194,
+     "truth_ms": 0.0,
+     "error_ms": 0.0194
+    },
+    {
+     "frame": 600,
+     "flash_s": 11.448856,
+     "beep_s": 11.448875,
+     "offset_ms": 0.0194,
+     "truth_ms": 0.0,
+     "error_ms": 0.0194
+    }
+   ],
+   "mean_offset_ms": 0.0194,
+   "measured_drift_ppm": 0.0,
+   "drift_over_run_ms": 0.0,
+   "max_abs_error_vs_truth_ms": 0.0194,
+   "sign_correct": true,
+   "regression_bound": "PASS",
+   "max_abs_offset_ms": 0.0194,
+   "product_bound": "WITHIN",
+   "uncorrected_offset_exceeds_regression_bound": false
+  }
+ },
+ "verdict": "PASS"
+}

@@ -1,0 +1,86 @@
+# Planted violations for `sh check.sh --selftest` (blueprint row 58; M3-SR-2 negative controls).
+# rule<TAB>file the line is appended to<TAB>the line. Each one, added to a copy of src/, MUST make the rules fail with that rule's tag.
+# This file is the only place under apps/capture-worker (beside the one proof line of the Makefile) that holds a forbidden mux option.
+AU2-07	ingest.c	static void second(void *g) { avfilter_graph_send_command(g, "astreamselect@asel", "map", "1", NULL, 0, 0); }
+N-10	capture_worker.c	#include <libavfilter/avfilter.h>
+N-10	ingest.c	static int other(void *f) { return av_opt_set(f, "map", "1", 1); }
+C.4	ingest.c	static const char *planted_a = "use_editlist=1";
+C.4	ingest.c	static const char *planted_b = "+negative_cts_offsets";
+C.4	ingest.c	static const char *planted_c = "avoid_negative_ts=disabled";
+W1-C1	ingest.c	static const char *planted_d = "frag_type=every_frame";
+H-4	audio.c	static const void *second_encoder(void) { return avcodec_find_encoder_by_name("aac"); }
+SEC35-23	ingest.c	static const char *planted_e = "rtsp://0.0.0.0:8555/cam";
+W-1	ingest.c	static const char *planted_f = "rtsp_transport";
+W-4	audio.c	static void planted_g(void) { exit(0); }
+B.2	audio.c	static void planted_h(void) { printf("hello\n"); }
+B.2	sink.c	static const char *planted_i(void) { return getenv("HOME"); }
+D58-1	sink.c	static int planted_j(const char *p) { return open(p, O_WRONLY | O_TRUNC); }
+D58-1	sink.c	static int planted_k(const char *p) { return open(p, O_WRONLY | O_CREAT, 0600); }
+D58-2	audio.c	static int planted_l(const char *a, const char *b) { return link(a, b); }
+D58-1	sink.c	static void *planted_m(const char *p) { return fopen(p, "w"); }
+F-2	ingest.c	static const char *planted_n = "not on whitelist";
+D59-3	audio.c	static int planted_o(int fd) { return ftruncate(fd, 0); }
+D59-3	sink.c	static int planted_p(const char *p) { return truncate(p, 0); }
+D59-2	sink.c	static int planted_q(int fd) { return fcntl(fd, F_FULLFSYNC); }
+D59-4	audio.c	static void planted_r(void) { sink_fault_hook = NULL; }
+SR-3	ingest.c	static void planted_s(AVDictionary *o) { av_dict_set(&o, "frag_interleave", "1", 0); }
+# Row 61 (decisions D84 R-6, D85 R-8; pair-58 F-10): the evasions the spelling rules let through. Each is refused by the pinned-call rule (test/static/pinned_calls.py).
+R-6	sink.c	static int planted_r6_a(const char *p) { return open(p, O_WRONLY); }
+R-6	sink.c	static int planted_r6_b(const char *p) { return creat(p, 0600); }
+R-6	sink.c	static int planted_r6_c(const char *p) { int f = O_WRONLY | O_CREAT | O_EXCL; f &= ~O_EXCL; return open(p, f, 0600); }
+R-6	sink.c	static int planted_r6_d(const char *p) { return open(p, O_WRONLY | O_CREAT, 0600); } /* O_CREAT | O_EXCL */
+R-6	audio.c	static void *planted_r6_e(const char *p) { return fopen(p,"w"); }
+R-6	audio.c	static void *planted_r6_f(const char *p, const char *m) { return fopen(p, m); }
+R-6	ipc.c	static int planted_r6_g(const char *p) { return truncate(p, 0); }
+R-6	ipc.c	static int planted_r6_h(const char *a, const char *b) { return renameat(AT_FDCWD, a, AT_FDCWD, b); }
+R-6	ingest.c	static int planted_r6_i(AVIOContext **pb, const char *p) { return avio_open(pb, p, AVIO_FLAG_WRITE); }
+R-6	sink.c	static int planted_r6_j(const char *a, const char *b) { return linkat(AT_FDCWD, a, AT_FDCWD, b, 0); }
+R-6	audio.c	static int planted_r6_k(const char *p) { return unlink(p); }
+R-6	sink.c	static int planted_r8_a(int fd) { return ftruncate(fd, 0); }
+R-6	audio.c	static void *planted_r8_b(const char *p, void *f) { return freopen(p, "w", f); }
+R-6	sink.c	static int (*planted_r8_c)(const char *, int, ...) = open;
+R-6	sink.c	static int planted_r8_d(const char *a, const char *b) { return rename(a, b); }
+R-6	sink.c	static int planted_r8_e(const char *p) { return openat(AT_FDCWD, p, O_WRONLY | O_CREAT | O_EXCL, 0600); }
+R-6	sink.c	static long planted_r8_f(const char *p) { return syscall(5, p, 0x601, 0600); }
+R-6	sink.c	#define PLANTED_GLUE(a, b) a##b
+F-10	ingest.c	static const char *planted_f10_a = "use_" "editlist=1";
+F-10	audio.c	static int (*planted_f10_b)(AVFilterGraph *, const char *, const char *, const char *, char *, int, int) = avfilter_graph_send_command;
+F-10	ingest.c	#define PLANTED_OPT "avoid_negative" "_ts"
+F-10	ingest.c	static void planted_f10_d(AVDictionary **d, const char *k) { av_dict_set(d, k, "1", 0); }
+F-10	ingest.c	static void planted_f10_e(AVDictionary **d, const char *s) { av_dict_parse_string(d, s, "=", ":", 0); }
+F-10	ingest.c	static void planted_f10_f(AVDictionary **d) { av_dict_set(d, "frag_duration", "1", 0); }
+F-10	ingest.c	static const char *planted_f10_g = PLANTED_STR(negative_cts_offsets);
+# Fix pass F-M3, review R63-08: the four evasions that passed both nets (each shown to pass on the tree at abf742f).
+R-6	sink.c	%:define PLANTED_DIGLUE(a, b) a %:%: b
+R-6	sink.c	static int planted_r63_label(const char *, int, ...) __asm__("_open");
+R-6	sink.c	static int planted_r63_alias(const char *p) __attribute__((weakref("creat")));
+R-6	sink.c	static int planted_r63_removefile(const char *p) { return removefile(p, 0, 0); }
+F-10	ingest.c	static int planted_r63_muxer(AVFormatContext **c) { return avformat_alloc_output_context2(c, NULL, "segment", NULL); }
+F-10	ingest.c	static int planted_r63_named(AVFormatContext **c, const char *file) { return avformat_alloc_output_context2(c, NULL, "mp4", file); }
+R-6	sink.c	static const char planted_r63_trigraph[] = "what??!";
+# Task 4 rows 58 / 142, BR-01: a second way to a camera's bytes that the announce gate does not stand on; another proof switch of the gate.
+BR-01	ingest.c	static int planted_br01_a(AVFormatContext *c) { return avformat_find_stream_info(c, NULL); }
+BR-01	capture_worker.c	static int planted_br01_b(AVFormatContext **c, const char *u) { return avformat_open_input(c, u, NULL, NULL); }
+BR-01	ingest.c	static int planted_br01_c(Cam *c) { return announce_gate_passed(&c->announce); }
+BR-01	sink.c	static int planted_br01_d(AVFormatContext *c, AVPacket *k) { return av_read_frame(c, k); }
+BR-01	ingest.c	#define DEMS_PROOF_ANNOUNCE_OFF 1
+# Task 4 rows 175 / 142, BR-04 (1): a log level set by a call, and through a pointer.
+BR-04	ingest.c	static void planted_br04_a(void) { av_log_set_level(56); }
+BR-04	capture_worker.c	static void (*planted_br04_b)(int) = av_log_set_level;
+# Task 4 row 178 (requests of rows 175 and 182), BR-04 (2)-(3): a word of a refusal a second time, and a frame reason handed over as a text.
+BR-04	ingest.c	static const char *planted_br04_c(void) { return "INGEST_ANNOUNCE_NOT_SEEN"; }
+BR-04	sink.c	static const char *planted_br04_d(void) { return "CAMERA_ANNOUNCE_NOT_MATCHED"; }
+BR-04	audio.c	static const char *planted_br04_e(void) { return "CAMERA_NO_PICTURE"; }
+BR-04	ingest.c	static void planted_br04_f(Cam *c, const char *text) { ingest_over_as(c, "ingest", "INGEST_ENDED", text, 0); }
+# Task 4 row N3 (protocol version 5; design 06 s7.2a): THE GAPPED KIND - a second place that sets the flag, its address taken,
+# a read outside the closed set, a branch on the kind word outside the plan reader, a resampler call a gapped microphone can reach.
+N3-GAP	capture_worker.c	static void planted_gap_a(Session *s) { s->mic[1].gapped = 1; }
+N3-GAP	capture_worker.c	static int *planted_gap_b(Session *s) { return &s->mic[0].gapped; }
+N3-GAP	ingest.c	static int planted_gap_c(void) { return S.mic[0].gapped; }
+N3-GAP	audio.c	static int planted_gap_d(const char *k) { return !strcmp(k, "PCM_FIFO_GAPPED"); }
+N3-GAP	audio.c	static void planted_gap_e(MicIn *m) { swr_set_compensation(m->swr, 240, SR); }
+N3-GAP	audio.c	static int planted_gap_f(MicIn *m, uint8_t **d, const uint8_t **s) { return swr_convert(m->swr, d, 1, s, 1); }
+N3-GAP	audio.c	static int planted_gap_g(MicIn *m) { return swr_inject_silence(m->swr, 480); }
+N3-GAP	audio.c	#define planted_gap_h swr_set_compensation
+# Audit row 152b (N-31; D135, D136): the operator's switch is retired - a graph command in the unit of the filtering thread is refused too (it was the one place it stood).
+AU2-07	audio.c	static void planted_switch(void) { avfilter_graph_send_command(graph, "astreamselect@asel", "map", "1", NULL, 0, 0); }

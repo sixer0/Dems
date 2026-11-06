@@ -1,0 +1,8 @@
+tap 784,1434 at 13:07:49.355
+slept 3500 ms
+screencap P14h_settings_about.png (405950 bytes) at 13:07:53.033
+swipe 784,700,784,1400 700 ms
+slept 2500 ms
+tap 784,360 at 13:07:56.369
+slept 3500 ms
+screencap P14i_settings_account_profile.png (227109 bytes) at 13:08:00.031

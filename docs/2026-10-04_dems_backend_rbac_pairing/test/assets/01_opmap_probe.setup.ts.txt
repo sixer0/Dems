@@ -1,0 +1,40 @@
+// W87 (step 109) scratch probe, outside the tree (rule M15). It records, for every response a
+// Fastify instance sends during a test, the test file, the test name, the method, the URL, the
+// status and the error code of the envelope. Nothing is changed in the answer: the hook returns
+// the payload it was given. Output: one JSON line per answer under ./out/.
+import { channel } from 'node:diagnostics_channel';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { expect } from 'vitest';
+
+const OUT = '/Users/gsp-budi/Documents/DEMS/.cache/w87/opmap/out';
+const g = globalThis as Record<string, unknown> & { __w87expect?: typeof expect; __w87probe?: boolean };
+g.__w87expect = expect;
+if (!g.__w87probe) {
+  g.__w87probe = true;
+  mkdirSync(OUT, { recursive: true });
+  const file = `${OUT}/${process.pid}-${Date.now()}.jsonl`;
+  channel('fastify.initialization').subscribe((message) => {
+    const fastify = (message as { fastify: { addHook: (name: string, fn: unknown) => void } }).fastify;
+    fastify.addHook('onSend', async (request: { method: string; url: string }, reply: { statusCode: number }, payload: unknown) => {
+      try {
+        const state = (g.__w87expect?.getState?.() ?? {}) as { testPath?: string; currentTestName?: string };
+        const status = reply.statusCode;
+        let code: string | null = null;
+        if (status >= 400) {
+          const text = typeof payload === 'string' ? payload : Buffer.isBuffer(payload) ? payload.toString('utf8') : null;
+          if (text !== null) {
+            try {
+              code = (JSON.parse(text) as { error?: { code?: string } })?.error?.code ?? null;
+            } catch {
+              code = null;
+            }
+          }
+        }
+        appendFileSync(file, `${JSON.stringify({ t: state.testPath ?? null, n: state.currentTestName ?? null, m: request.method, u: request.url, s: status, c: code })}\n`);
+      } catch {
+        // the probe never changes an answer
+      }
+      return payload;
+    });
+  });
+}

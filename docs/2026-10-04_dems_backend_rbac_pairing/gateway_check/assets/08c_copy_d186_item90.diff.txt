@@ -1,0 +1,237 @@
+--- a/packages/shared/src/i18n/en/devices.ts	2026-10-06 00:20:26
++++ b/packages/shared/src/i18n/en/devices.ts	2026-10-06 05:12:10
+@@ -327,8 +327,14 @@
+     lcdLabel: 'Local status display, page {{page}}',
+     /** The camera picture's accessible name: the bundled demo loop (MS-1), not the Core's camera (plan row W0, item 7). */
+     feedAria: '{{name}}, bundled demo picture',
+-    samples_one: '{{count}} sample',
+-    samples_other: 'Last {{count}} samples',
++    /**
++     * The Health line's caption in Live mode, for both clients (closing copy round, decision D186 on
++     * W83 ledger #90): the Core serves no per-device health history, so the line is derived on the
++     * client from the Core's data. One sentence, true on the web and on the tablet. Simulated mode
++     * keeps `drawer.health.samples_*`.
++     */
++    samples_one: "Derived from the Core's data · {{count}} sample",
++    samples_other: "Derived from the Core's data · last {{count}} samples",
+     /** The tablet row of the device drawer in Live mode (note G6): the web console does not pair. */
+     pairedDevices: {
+       label: 'Paired devices',
+--- a/apps/mobile/src/features/devices/i18n.ts	2026-10-06 04:51:40
++++ b/apps/mobile/src/features/devices/i18n.ts	2026-10-06 05:12:28
+@@ -96,10 +96,9 @@
+       RESTART: 'Restart',
+       IDENTIFY: 'Identify',
+     },
+-    // Row M1 follow-up (D160, RESIDUAL-W78-2 (W83 ledger #57)): the Core serves no per-device health history, so the
+-    // LIVE line is computed on this device from the Core's data (§3.2: say what is true).
+-    samples_one: "Derived on this device from the Core's data · {{count}} sample",
+-    samples_other: "Derived on this device from the Core's data · last {{count}} samples",
++    // The LIVE health caption (row M1 follow-up, D160; RESIDUAL-W78-2, W83 ledger #57) is the shared
++    // `devices.live.samples`, one sentence for both clients ("Derived from the Core's data · last N samples"):
++    // row M1's own `samples_*` were merged into it in the closing copy round (decision D186).
+     // The LIVE diagnostics subtitle is the shared `system.live.diagnosticsSubtitle` (the web console's and
+     // Settings' words; closing copy round, D177 DN-5): row W78's own key was merged into it.
+   },
+--- a/apps/mobile/src/features/devices/health-chart.tsx	2026-10-06 04:10:40
++++ b/apps/mobile/src/features/devices/health-chart.tsx	2026-10-06 05:12:28
+@@ -6,11 +6,11 @@
+  * config, so a new point redraws without a tween (the data is the motion, 03M R9).
+  *
+  * LIVE mode (backend task W78; 04_client_integration_spec §3.2): the line is drawn from the Core's
+- * replicated data, so the sample caption drops "Simulated" (`features.devices.live.samples`). The Core
+- * serves no per-device health history (RESIDUAL-W78-2, W83 ledger #57): the line of a camera, the tablet and the
+- * PoE switch is derived from the Core's network data, the lamp's from its session state, a
+- * microphone's from 1 s peaks of its meter frames, so the LIVE caption says the line is derived on this
+- * device (row M1 follow-up, D160).
++ * replicated data, so the sample caption drops "Simulated". The Core serves no per-device health
++ * history (RESIDUAL-W78-2, W83 ledger #57): the line of a camera, the tablet and the PoE switch is
++ * derived from the Core's network data, the lamp's from its session state, a microphone's from 1 s
++ * peaks of its meter frames, so the LIVE caption says the line is derived (row M1 follow-up, D160) in
++ * the web console's words: the shared `devices.live.samples` (closing copy round, decision D186).
+  */
+ import { useMemo } from 'react';
+ import { useTranslation } from 'react-i18next';
+@@ -91,7 +91,7 @@
+         )}
+       </View>
+       <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID={testID ? `${testID}-samples` : undefined}>
+-        {enough ? t(live ? 'features.devices.live.samples' : 'devices.drawer.health.samples', { count: data.length }) : t('devices.drawer.health.collecting')}
++        {enough ? t(live ? 'devices.live.samples' : 'devices.drawer.health.samples', { count: data.length }) : t('devices.drawer.health.collecting')}
+       </Text>
+     </View>
+   );
+--- a/apps/mobile/src/features/devices/live-devices-health-caption.test.tsx	2026-10-06 04:10:04
++++ b/apps/mobile/src/features/devices/live-devices-health-caption.test.tsx	2026-10-06 05:12:43
+@@ -14,9 +14,9 @@
+ 
+ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+ import { fireEvent, render, screen } from '@testing-library/react-native';
++import { en } from '@dems/shared/i18n';
+ import { getMissingKeys, resetMissingKeys } from '@/i18n';
+ import { HealthChart } from './health-chart';
+-import { devicesEn } from './i18n';
+ import { HEALTH_METRIC, type HealthMetric, type HealthSeries } from './sim-adapter';
+ import { renderDevicesApp, settle } from './testing/devices-harness';
+ import { renderLiveDevices, resetLiveDevicesBed, type LiveDevicesBed } from './testing/live-devices-bed';
+@@ -36,7 +36,7 @@
+   expect(getMissingKeys()).toEqual([]);
+ });
+ 
+-const LIVE_CAPTION = /^Derived on this device from the Core's data · last (\d+) samples$/;
++const LIVE_CAPTION = /^Derived from the Core's data · last (\d+) samples$/;
+ const SIMULATED_CAPTION = /^Simulated · last (\d+) samples$/;
+ const caption = (): string => {
+   const node = screen.getByTestId('device-health-samples');
+@@ -52,18 +52,19 @@
+ });
+ 
+ describe('the LIVE texts', () => {
+-  it('say the line is derived on this device from the Core\'s data, and nothing about a simulation', () => {
+-    expect(devicesEn.live.samples_other).toBe("Derived on this device from the Core's data · last {{count}} samples");
+-    expect(devicesEn.live.samples_one).toBe("Derived on this device from the Core's data · {{count}} sample");
+-    for (const text of [devicesEn.live.samples_one, devicesEn.live.samples_other]) expect(/simulat|demo\b|mock/i.test(text)).toBe(false);
++  // Closing copy round (decision D186): one shared sentence for both clients, `devices.live.samples`.
++  it('say the line is derived from the Core\'s data, and nothing about a simulation', () => {
++    expect(en.devices.live.samples_other).toBe("Derived from the Core's data · last {{count}} samples");
++    expect(en.devices.live.samples_one).toBe("Derived from the Core's data · {{count}} sample");
++    for (const text of [en.devices.live.samples_one, en.devices.live.samples_other]) expect(/simulat|demo\b|mock/i.test(text)).toBe(false);
+   });
+ });
+ 
+ describe('the chart caption, for every metric (D160)', () => {
+-  it('LIVE: "Derived on this device from the Core\'s data · last N samples"', () => {
++  it('LIVE: "Derived from the Core\'s data · last N samples"', () => {
+     for (const metric of METRICS) {
+       const view = render(<HealthChart series={seriesOf(metric, 7)} testID="device-health" live />);
+-      expect([metric, caption()]).toEqual([metric, "Derived on this device from the Core's data · last 7 samples"]);
++      expect([metric, caption()]).toEqual([metric, "Derived from the Core's data · last 7 samples"]);
+       view.unmount();
+     }
+     const one = render(<HealthChart series={seriesOf('linkQuality', 1)} testID="device-health" live />);
+--- a/apps/mobile/src/features/devices/live-devices-sites.test.tsx	2026-10-06 04:52:07
++++ b/apps/mobile/src/features/devices/live-devices-sites.test.tsx	2026-10-06 05:12:43
+@@ -366,7 +366,7 @@
+     await press('device-tab-health', b);
+     expect(screen.getByText('Link quality (%)')).toBeTruthy();
+     // Row M1 follow-up (D160): the LIVE caption says the line is derived on this device (RESIDUAL-W78-2, W83 ledger #57).
+-    expect(screen.getByTestId('device-health-samples')).toHaveTextContent(/^(?:Derived on this device from the Core's data · last \d+ samples|Collecting samples…)$/);
++    expect(screen.getByTestId('device-health-samples')).toHaveTextContent(/^(?:Derived from the Core's data · last \d+ samples|Collecting samples…)$/);
+     expect(saysSimulated()).toBe(false);
+   });
+ });
+--- a/apps/mobile/src/features/devices/devices-live-static.test.ts	2026-10-06 04:52:07
++++ b/apps/mobile/src/features/devices/devices-live-static.test.ts	2026-10-06 05:12:43
+@@ -136,7 +136,7 @@
+ describe('the copy (rule 8; §3.2)', () => {
+   it('the text LIVE mode adds says nothing about a simulation; the texts it replaces did', () => {
+     const live = leaves(devicesEn.live);
+-    expect(live).toHaveLength(10);
++    expect(live).toHaveLength(8);
+     expect(live.filter((leaf) => /simulat|demo\b|mock/i.test(leaf.text))).toEqual([]);
+     expect(devicesEn.actions.testSignalBody).toMatch(/^Simulated\./);
+     expect(devicesEn.actions.restartBody).toMatch(/^Simulated\./);
+--- /dev/null (new file)	2026-10-06 05:07:38
++++ b/apps/core-web/src/features/devices/__tests__/copy-round-health-caption.test.tsx	2026-10-06 05:13:31
+@@ -0,0 +1,101 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Closing copy round, decision D186 on W83 ledger #90: the Health line's caption in Live mode is ONE
++// sentence for both clients, the shared `devices.live.samples` ("Derived from the Core's data · last N
++// samples"): the Core serves no per-device health history, so the line is derived on the client from the
++// Core's data. Before, the web said "Last N samples" and the mobile app "Derived on this device from the
++// Core's data · …". Simulated mode keeps "Simulated · last N samples".
++import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
++import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
++import { en } from '@dems/shared/i18n'
++import type { Sim } from '@dems/shared/sim'
++import { createTestSim, withProviders } from '@/components/composed/__tests__/test-utils'
++import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
++import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
++import { resetCoreErrorPresenter } from '@/lib/core-errors'
++import { createLiveTestBed, SUPERVISOR_SESSION, type LiveTestBed } from '@/runtime/testing/live-harness'
++import { HealthChart } from '../health-chart'
++
++vi.setConfig({ testTimeout: 25_000 })
++
++const LIVE_CAPTION = /^Derived from the Core's data · (?:last \d+ samples|1 sample)$/
++const SIMULATED_CAPTION = /^Simulated · (?:last \d+ samples|1 sample)$/
++const caption = (root: HTMLElement): string => root.querySelector('.dev-health-source')?.textContent ?? ''
++
++let bed: LiveTestBed | undefined
++const sims: Sim[] = []
++
++const originalPlay = HTMLMediaElement.prototype.play
++const originalPause = HTMLMediaElement.prototype.pause
++const originalGetContext = HTMLCanvasElement.prototype.getContext
++beforeAll(() => {
++  HTMLCanvasElement.prototype.getContext = (() => null) as unknown as HTMLCanvasElement['getContext']
++  HTMLMediaElement.prototype.play = (() => Promise.resolve()) as unknown as HTMLMediaElement['play']
++  HTMLMediaElement.prototype.pause = (() => undefined) as unknown as HTMLMediaElement['pause']
++  Element.prototype.getAnimations ??= function getAnimations() {
++    return []
++  }
++})
++afterAll(() => {
++  HTMLCanvasElement.prototype.getContext = originalGetContext
++  HTMLMediaElement.prototype.play = originalPlay
++  HTMLMediaElement.prototype.pause = originalPause
++})
++
++beforeEach(() => {
++  resetMissingI18nKeys()
++  resetCoreErrorPresenter()
++  window.localStorage.clear()
++  window.sessionStorage.clear()
++  window.sessionStorage.setItem(SHELL_INTRO_STORAGE_KEY, '1')
++})
++
++afterEach(() => {
++  cleanup()
++  bed?.dispose()
++  bed = undefined
++  for (const sim of sims.splice(0)) sim.stop()
++  vi.restoreAllMocks()
++})
++
++describe('the Live caption is one shared sentence', () => {
++  it('says the line is derived from the Core\'s data, names no device or browser, and nothing about a simulation', () => {
++    expect(en.devices.live.samples_other).toBe("Derived from the Core's data · last {{count}} samples")
++    expect(en.devices.live.samples_one).toBe("Derived from the Core's data · {{count}} sample")
++    for (const text of [en.devices.live.samples_one, en.devices.live.samples_other]) {
++      expect([text, /simulat|this device|this browser/i.test(text)]).toEqual([text, false])
++    }
++    // The control: the Simulated caption is unchanged.
++    expect(en.devices.drawer.health.samples_other).toBe('Simulated · last {{count}} samples')
++  })
++})
++
++describe('Simulated mode keeps its caption', () => {
++  it('the Health chart says "Simulated · last N samples"', () => {
++    const sim = createTestSim()
++    sims.push(sim)
++    render(withProviders(<HealthChart deviceId="CAM-01" />, { sim }))
++    const health = screen.getByTestId('device-health')
++    expect(caption(health)).toMatch(SIMULATED_CAPTION)
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++})
++
++describe('Live mode: the drawer\'s Health tab (real router, real Live source, fake transport)', () => {
++  it('Camera 1: "Derived from the Core\'s data · …"; nothing on the tab claims a simulation', async () => {
++    const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
++    bed = created
++    const page = await created.load()
++    await created.mount(page, '/devices')
++    await screen.findByTestId('page-devices')
++    fireEvent.click(await screen.findByRole('button', { name: 'Open details for Camera 1' }))
++    const drawer = await screen.findByTestId('device-drawer')
++    fireEvent.click(within(drawer).getByRole('tab', { name: 'Health' }))
++    const health = await within(drawer).findByTestId('device-health')
++    await waitFor(() => expect(caption(health)).toMatch(LIVE_CAPTION))
++    expect(health.textContent ?? '').not.toMatch(/simulat/i)
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++})

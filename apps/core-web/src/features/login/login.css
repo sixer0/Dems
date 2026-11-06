@@ -1,0 +1,698 @@
+/*
+ * Login page styles (masterplan/01_specs.md §14.8; research/04 §5.8, §7; D28, D46).
+ *
+ * Tiers come from `use-login-tier.ts` as `data-tier` on the page root:
+ *   wide ≥ 1280 (7 | 5), split 1024-1279 (6 | 6), stacked 768-1023 (280 px brand band above the
+ *   card), compact < 768 (full-bleed backdrop, card over it).
+ *
+ * Rules of the house (03_motion_spec §9.2): only transform and opacity animate here (the one CSS
+ * keyframe is the hover sheen's translateX); the backdrop grade and glows are static; glow changes
+ * are opacity on pre-rendered layers (GlowLayer), never box-shadow. Durations multiply by
+ * `--motion-time-scale` (proof mode). Everything sits in `@layer components`, like shell.css, so
+ * kit utilities still override.
+ */
+
+@layer components {
+  .dems-login {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: 7fr 5fr;
+    min-height: 100dvh;
+    overflow: hidden;
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  .dems-login[data-tier='split'] {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dems-login[data-tier='stacked'] {
+    grid-template-columns: 1fr;
+    grid-template-rows: 280px auto;
+    height: 100dvh;
+    overflow-y: auto;
+  }
+
+  .dems-login[data-tier='compact'] {
+    grid-template-columns: 1fr;
+    align-content: start;
+    height: 100dvh;
+    overflow-y: auto;
+  }
+
+  /* ── Backdrop: the room still, graded (brightness .55, sepia .35, saturate .8, warm overlay) ── */
+  .dems-login-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .dems-login-backdrop-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 62% 45%;
+    transform-origin: 60% 40%;
+    will-change: transform; /* §9.3: Ken Burns images */
+    user-select: none;
+  }
+
+  /* Until the baked copy is ready (graded-still.ts), the same grade as a live filter. */
+  .dems-login-backdrop-image--css-grade {
+    filter: brightness(0.55) sepia(0.35) saturate(0.8);
+  }
+
+  .dems-login-backdrop-grade {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(120% 90% at 38% 42%, rgb(255 159 61 / 0.1) 0%, transparent 60%),
+      linear-gradient(180deg, rgb(11 13 15 / 0.55) 0%, rgb(11 13 15 / 0) 22%, rgb(11 13 15 / 0) 70%, rgb(11 13 15 / 0.75) 100%),
+      rgb(255 140 50 / 0.06);
+  }
+
+  /* Fades into the canvas toward the auth side (the auth column starts at 58.3% in `wide`). */
+  .dems-login-backdrop-fade {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgb(11 13 15 / 0.2) 0%, transparent 18%, transparent 44%, rgb(11 13 15 / 0.88) 60%, var(--background) 72%);
+  }
+
+  .dems-login[data-tier='split'] .dems-login-backdrop-fade {
+    background: linear-gradient(90deg, rgb(11 13 15 / 0.2) 0%, transparent 16%, transparent 34%, rgb(11 13 15 / 0.9) 52%, var(--background) 62%);
+  }
+
+  .dems-login[data-tier='stacked'] .dems-login-backdrop-fade {
+    background: linear-gradient(180deg, transparent 0, transparent 150px, rgb(11 13 15 / 0.9) 280px, var(--background) 360px);
+  }
+
+  .dems-login[data-tier='compact'] .dems-login-backdrop-fade {
+    background: linear-gradient(180deg, rgb(11 13 15 / 0.35) 0%, rgb(11 13 15 / 0.7) 55%, rgb(11 13 15 / 0.92) 100%);
+  }
+
+  /* ── Brand side ───────────────────────────────────────────────────────────────────────── */
+  .dems-login-brand {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 100dvh;
+    padding: clamp(28px, 5vh, 56px) clamp(40px, 6vw, 112px);
+  }
+
+  .dems-login-particles {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /* M-C-23: gold at about 30% effective alpha. */
+  .dems-login-particles canvas {
+    opacity: 0.6;
+  }
+
+  .dems-login-brand-main {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: clamp(18px, 3vh, 32px);
+  }
+
+  .dems-login-ring-stage {
+    position: relative;
+    display: grid;
+    flex: none;
+    place-items: center;
+  }
+
+  .dems-login-ring-stage > * {
+    grid-area: 1 / 1;
+  }
+
+  .dems-login-ring-layer {
+    position: relative;
+    display: grid;
+    width: 100%;
+    height: 100%;
+    place-items: center;
+  }
+
+  .dems-login-ring-layer > * {
+    grid-area: 1 / 1;
+  }
+
+  /* The shared-layout emblem: no CSS transform on it or its ancestors (layout projection). */
+  .dems-login-emblem {
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+  }
+
+  .dems-login-emblem-inner {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .dems-login-emblem-svg {
+    position: relative;
+    display: block;
+    filter: drop-shadow(0 0 10px rgb(255 159 61 / 0.55)) drop-shadow(0 0 2px rgb(255 200 107 / 0.5));
+  }
+
+  .dems-login-emblem-bloom {
+    position: absolute;
+    inset: -32%;
+    border-radius: 9999px;
+    pointer-events: none;
+    background: radial-gradient(circle, rgb(255 200 107 / 0.5) 0%, rgb(255 159 61 / 0.2) 38%, transparent 70%);
+  }
+
+  .dems-login-halo {
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    pointer-events: none;
+  }
+
+  .dems-login-halo-ring {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .dems-login-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 680px;
+  }
+
+  .dems-login-overline {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
+    letter-spacing: 0.48em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .dems-login-wordmark {
+    font-family: var(--font-display);
+    font-size: clamp(30px, 2.5vw, 44px);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    color: transparent;
+    background: linear-gradient(180deg, #ffffff 30%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  /* The italic display tagline: Orbitron has no italic, so a synthetic oblique (04 §9 #25). */
+  .dems-login-tagline-wrap {
+    transform: skewX(-9deg);
+    transform-origin: left bottom;
+  }
+
+  .dems-login-tagline {
+    font-family: var(--font-display);
+    font-size: clamp(24px, 2.2vw, 38px);
+    font-weight: 800;
+    line-height: 1.18;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--foreground);
+    text-shadow: 0 2px 18px rgb(0 0 0 / 0.45);
+  }
+
+  .dems-login-rule {
+    display: block;
+    width: 168px;
+    height: 2px;
+    margin-top: 6px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--color-bronze) 60%, transparent 100%);
+    transform-origin: left center;
+  }
+
+  .dems-login-pillars {
+    position: absolute;
+    top: 50%;
+    right: clamp(20px, 3vw, 48px);
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 14px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--font-display);
+    font-size: 13px;
+    letter-spacing: 0.32em;
+    color: rgb(216 206 198 / 0.55);
+    translate: 0 -50%;
+  }
+
+  /* ── Device strip ─────────────────────────────────────────────────────────────────────── */
+  .dems-login-strip {
+    position: relative;
+    z-index: 1;
+    align-self: flex-start;
+    max-width: 100%;
+  }
+
+  .dems-login-strip-card {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    padding: 12px 6px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgb(21 14 7 / 0.78);
+    box-shadow: var(--shadow-glow-1);
+  }
+
+  .dems-login-strip-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    padding: 0 14px;
+  }
+
+  .dems-login-strip-label {
+    white-space: nowrap;
+    font-size: 11px;
+    line-height: 14px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .dems-login-strip-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    white-space: nowrap;
+    color: var(--foreground);
+  }
+
+  .dems-login-strip-sep {
+    align-self: stretch;
+    height: auto;
+  }
+
+  .dems-login[data-tier='split'] .dems-login-overline {
+    letter-spacing: 0.28em;
+  }
+
+  /* 1024-1279: three cells per row, no separators. */
+  .dems-login[data-tier='split'] .dems-login-strip-card {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 12px;
+  }
+
+  .dems-login[data-tier='split'] .dems-login-strip-sep {
+    display: none;
+  }
+
+  .dems-login-clock {
+    display: inline-flex;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+  }
+
+  .dems-login-clock-face,
+  .dems-login-clock-group {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .dems-login-dot {
+    position: relative;
+    display: inline-block;
+    flex: none;
+    width: 8px;
+    height: 8px;
+  }
+
+  .dems-login-dot-core,
+  .dems-login-dot-halo {
+    position: absolute;
+    border-radius: 9999px;
+  }
+
+  .dems-login-dot-core {
+    inset: 0;
+  }
+
+  .dems-login-dot-halo {
+    inset: -4px;
+    opacity: 0.28;
+    filter: blur(3px);
+  }
+
+  /* ── Auth side ────────────────────────────────────────────────────────────────────────── */
+  .dems-login-auth {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    min-width: 0;
+    min-height: 100dvh;
+    padding: 32px clamp(20px, 3vw, 56px);
+  }
+
+  /* The topographic texture, faint and static behind the card (research/04 §7). */
+  .dems-login-auth::before {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    content: '';
+    pointer-events: none;
+    background: url('../../assets/brand/topo.svg') center / cover no-repeat;
+    opacity: 0.14;
+    mask-image: radial-gradient(70% 60% at 50% 55%, #000 0%, transparent 80%);
+  }
+
+  .dems-login-card-wrap {
+    width: min(440px, 100%);
+  }
+
+  .dems-login-card-frame {
+    position: relative;
+    border-radius: 16px;
+  }
+
+  .dems-login-card {
+    position: relative;
+    gap: 18px;
+    padding: 28px 28px 22px;
+    border-radius: 16px;
+    background: var(--surface);
+    box-shadow: none;
+  }
+
+  .dems-login-card-header {
+    gap: 4px;
+  }
+
+  .dems-login-card-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .dems-login-alert-slot:empty {
+    display: none;
+  }
+
+  .dems-login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .dems-login-field-icon {
+    color: var(--muted);
+    transition: color calc(120ms * var(--motion-time-scale, 1)) var(--dems-ease-standard, ease);
+  }
+
+  .dems-login-field:focus-within .dems-login-field-icon {
+    color: var(--accent);
+  }
+
+  .dems-login-caps {
+    color: var(--warning-soft-foreground);
+  }
+
+  .dems-login-submit {
+    position: relative;
+    overflow: hidden;
+    height: 44px;
+    font-weight: 600;
+  }
+
+  .dems-login-submit-label {
+    position: relative;
+  }
+
+  .dems-login-sheen {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(100deg, transparent 22%, rgb(255 255 255 / 0.38) 50%, transparent 78%);
+    transform: translateX(-100%);
+  }
+
+  /* M-C-16: on hover the sheen crosses once (`sheen` 700, `luxe`). */
+  .dems-login-submit:hover:not([data-disabled]):not([data-pending]) .dems-login-sheen:not(.dems-login-sheen-loop) {
+    animation: dems-login-sheen calc(var(--dems-sheen-ms, 700ms) * var(--motion-time-scale, 1)) var(--dems-ease-luxe, ease) 1;
+  }
+
+  :root[data-motion='reduced'] .dems-login-sheen {
+    animation: none !important;
+  }
+
+  .dems-login-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .dems-login-key {
+    gap: 8px;
+  }
+
+  .dems-login-countdown-digits {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .dems-login-retry {
+    flex: none;
+    align-self: center;
+    gap: 6px;
+  }
+
+  .dems-login-demo {
+    border-top: 1px solid var(--separator);
+    padding-top: 6px;
+  }
+
+  .dems-login-demo-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 2px;
+    border-radius: 8px;
+    color: var(--color-foreground-2);
+  }
+
+  .dems-login-demo-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 4px;
+  }
+
+  .dems-login-demo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .dems-login-operator {
+    justify-content: flex-start;
+    gap: 12px;
+    height: auto;
+    min-height: 48px;
+    padding: 8px 10px;
+    text-align: left;
+  }
+
+  .dems-login-operator-initials {
+    display: grid;
+    flex: none;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    background: var(--surface-tertiary);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .dems-login-operator-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+  }
+
+  /* Live mode (WS-9 C1): the plain sentence that says what the disclosure is. */
+  .dems-login-demo-notice {
+    margin: 0 0 2px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-tertiary);
+    color: var(--foreground);
+  }
+
+  /* Live mode (§3.5): Retry and "Use Simulated mode" of the offline Alert, one under the other. */
+  .dems-login-alert-actions {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: stretch;
+    align-self: center;
+    gap: 6px;
+  }
+
+  /* Dev builds (§3.2, MD-4): "Data mode: Simulated | Live", above the trust line. */
+  .dems-login-mode {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-top: 1px solid var(--separator);
+    padding-top: 12px;
+  }
+
+  .dems-login-mode-label {
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
+  .dems-login-trust {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: 8px;
+    padding: 2px 4px;
+    border-radius: 6px;
+    color: var(--color-foreground-2);
+    cursor: default;
+  }
+
+  .dems-login-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    text-align: center;
+    color: rgb(216 206 198 / 0.62);
+  }
+
+  .dems-login-footer-version {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 16px;
+    letter-spacing: 0.06em;
+  }
+
+  .dems-login-footer-triplet {
+    font-size: 10px;
+    line-height: 16px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  /* ── Stacked (768-1023): a 280 px brand band above the card ──────────────────────────── */
+  .dems-login[data-tier='stacked'] .dems-login-brand {
+    height: 280px;
+    min-height: 280px;
+    padding: 24px 40px;
+  }
+
+  .dems-login[data-tier='stacked'] .dems-login-brand-main {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 28px;
+  }
+
+  .dems-login[data-tier='stacked'] .dems-login-tagline {
+    font-size: 18px;
+  }
+
+  .dems-login[data-tier='stacked'] .dems-login-auth {
+    justify-content: flex-start;
+    min-height: auto;
+    padding: 8px 24px 40px;
+  }
+
+  /* ── Compact (< 768): the card over a full-bleed backdrop, like the mobile Login ────────── */
+  .dems-login[data-tier='compact'] .dems-login-brand {
+    min-height: auto;
+    padding: 32px 16px 8px;
+  }
+
+  .dems-login[data-tier='compact'] .dems-login-brand-main {
+    align-items: center;
+    gap: 12px;
+  }
+
+  .dems-login[data-tier='compact'] .dems-login-copy {
+    align-items: center;
+    text-align: center;
+  }
+
+  .dems-login[data-tier='compact'] .dems-login-wordmark {
+    font-size: 26px;
+  }
+
+  .dems-login[data-tier='compact'] .dems-login-auth {
+    justify-content: flex-start;
+    min-height: auto;
+    padding: 8px 16px 32px;
+  }
+}
+
+@keyframes dems-login-sheen {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}

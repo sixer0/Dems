@@ -1,0 +1,5 @@
+12:46:45.840 declared screen sessions
+12:46:46.046 tap 470,662
+12:46:46.465 slept 1500 ms
+12:46:48.033 screencap 05b_sessions_filter_incomplete.png 12:46:48.033..12:46:48.397
+12:46:48.490 ids(2): session-row-SES-20261006-0029@540,866 "SES-20261006-0029, Dewi W73 Device, Incomplete, 6 Oct 2026 01:53, dura" ; session-row-SES-20261004-0016@540,1161 "SES-20261004-0016, Hendra Wijaya, Incomplete, 4 Oct 2026 15:47, durati"

@@ -1,0 +1,76 @@
+
+> dems-demo@0.1.0 start:server
+> npm run start -w @dems/core-server --
+
+
+> @dems/core-server@0.2.0 start
+> tsx src/index.ts
+
+{"level":30,"time":1791226286345,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","port":4421,"database":"dems_lane_1","demoControls":false,"msg":"configuration loaded"}
+{"level":30,"time":1791226286355,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","part":"database","ready":true,"msg":"readiness changed"}
+{"level":30,"time":1791226286356,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-1","msg":"boot step passed"}
+{"level":30,"time":1791226286356,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-2","msg":"boot step passed"}
+{"level":30,"time":1791226286357,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-3","msg":"boot step passed"}
+{"level":30,"time":1791226286359,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-4","msg":"boot step passed"}
+{"level":30,"time":1791226286361,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-5","msg":"boot step passed"}
+{"level":30,"time":1791226286362,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-6","msg":"boot step passed"}
+{"level":30,"time":1791226286365,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-7","msg":"boot step passed"}
+{"level":30,"time":1791226286370,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-8","rowsChecked":220,"firstSeq":1,"lastSeq":220,"linkBreaks":0,"digests":"ok","lineage":"ok","msg":"the stored audit chain verifies"}
+{"level":30,"time":1791226286370,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-8","msg":"boot step passed"}
+{"level":30,"time":1791226286374,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-9","msg":"boot step passed"}
+{"level":30,"time":1791226286409,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","mode":"boot","epoch":27,"auditTotal":220,"session":"SEALED","restartFault":null,"tamperCleared":false,"tabletLinkReset":false,"tabletLinkCarried":false,"auditRows":0,"msg":"engine started"}
+{"level":30,"time":1791226286409,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","part":"engine","ready":true,"msg":"readiness changed"}
+{"level":30,"time":1791226286409,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","step":"engine.rehydrate","msg":"boot step passed"}
+{"level":30,"time":1791226286413,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","step":"rbac.matrix","msg":"boot step passed"}
+{"level":30,"time":1791226286416,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","msg":"Server listening at http://127.0.0.1:4421"}
+{"level":30,"time":1791226286521,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"1583913a-31b7-4515-b109-bc461f283e75","method":"GET","route":"/api/v1/health","status":200,"durationMs":3,"principal":null,"msg":"request completed"}
+{"level":30,"time":1791226303398,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","connectionId":"1f62c0f7-f83a-4f5c-901e-895da3ddcad6","principal":"device:DEV-0001","kind":"DEVICE","msg":"socket opened"}
+{"level":30,"time":1791226303412,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"089464b4-bb36-4d90-ba38-bfc67a495310","method":"GET","route":"/api/v1/pairing/device","status":200,"durationMs":4,"principal":"device:DEV-0001","msg":"request completed"}
+{"level":30,"time":1791226303420,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"94f134ef-eddb-4d82-a588-79785983e1c6","method":"GET","route":"/api/v1/auth/session","status":401,"durationMs":11,"principal":"device:DEV-0001","code":"NOT_SIGNED_IN","msg":"request completed"}
+{"level":30,"time":1791226303422,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"1c32f69c-58a6-4b06-a5e4-8b26c1fda070","method":"GET","route":"/api/v1/auth/status","status":200,"durationMs":2,"principal":"device:DEV-0001","msg":"request completed"}
+{"level":30,"time":1791226317650,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"8d4483ba-3999-4401-abd7-a48da2f22b6e","method":"POST","route":"/api/v1/auth/sign-in","status":200,"durationMs":29,"principal":"device:DEV-0001","msg":"request completed"}
+{"level":30,"time":1791226317677,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","connectionId":"1f62c0f7-f83a-4f5c-901e-895da3ddcad6","code":1000,"closedBy":"peer","principal":"device:DEV-0001","durationMs":14280,"msg":"socket closed"}
+{"level":30,"time":1791226317682,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","connectionId":"2ab68ffa-1dea-405b-b597-e36ea12e9213","principal":"operator:OPR-001","kind":"OPERATOR","msg":"socket opened"}
+{"level":30,"time":1791226370022,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"72a56021-fa78-4c68-843f-63a254e662e8","method":"POST","route":"/api/v1/auth/touch","status":200,"durationMs":4,"principal":"operator:OPR-001","msg":"request completed"}
+{"level":30,"time":1791226376494,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"a5c35657-dec5-4e77-a858-f0d1b614b750","method":"POST","route":"/api/v1/session","status":201,"durationMs":17,"principal":"operator:OPR-001","msg":"request completed"}
+{"level":30,"time":1791226376620,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"525c02cd-56c0-4c46-9ffd-f1f12a86a7ea","method":"POST","route":"/api/v1/session/:id/precheck","status":202,"durationMs":3,"principal":"operator:OPR-001","msg":"request completed"}
+{"level":30,"time":1791226418473,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"d28ebd56-602f-4b47-965b-e592883f50e3","method":"POST","route":"/api/v1/session/:id/start","status":200,"durationMs":8,"principal":"operator:OPR-001","msg":"request completed"}
+{"level":30,"time":1791226436403,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","signal":"SIGTERM","msg":"shutdown requested"}
+{"level":30,"time":1791226436403,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","hold":"shutdown","held":true,"msg":"readiness hold"}
+{"level":30,"time":1791226436403,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","part":"engine","ready":false,"msg":"readiness changed"}
+{"level":30,"time":1791226436403,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","epoch":27,"revision":168,"msg":"engine stopped"}
+{"level":30,"time":1791226436407,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","connectionId":"2ab68ffa-1dea-405b-b597-e36ea12e9213","code":1001,"closedBy":"server","principal":"operator:OPR-001","durationMs":118726,"msg":"socket closed"}
+{"level":30,"time":1791226436408,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","drained":true,"abandoned":0,"completed":2916,"failed":0,"timedOut":0,"refused":0,"msg":"pipeline closed"}
+{"level":30,"time":1791226436408,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","part":"database","ready":false,"msg":"readiness changed"}
+{"level":30,"time":1791226436409,"pid":18690,"hostname":"GSP-Budis-MacBook-Air.local","msg":"shutdown complete"}
+
+> dems-demo@0.1.0 start:server
+> npm run start -w @dems/core-server --
+
+
+> @dems/core-server@0.2.0 start
+> tsx src/index.ts
+
+{"level":30,"time":1791226444009,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","port":4421,"database":"dems_lane_1","demoControls":false,"msg":"configuration loaded"}
+{"level":30,"time":1791226444027,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","part":"database","ready":true,"msg":"readiness changed"}
+{"level":30,"time":1791226444028,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-1","msg":"boot step passed"}
+{"level":30,"time":1791226444028,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-2","msg":"boot step passed"}
+{"level":30,"time":1791226444029,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-3","msg":"boot step passed"}
+{"level":30,"time":1791226444031,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-4","msg":"boot step passed"}
+{"level":30,"time":1791226444033,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-5","msg":"boot step passed"}
+{"level":30,"time":1791226444033,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-6","msg":"boot step passed"}
+{"level":30,"time":1791226444035,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-7","msg":"boot step passed"}
+{"level":30,"time":1791226444048,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-8","rowsChecked":228,"firstSeq":1,"lastSeq":228,"linkBreaks":0,"digests":"ok","lineage":"ok","msg":"the stored audit chain verifies"}
+{"level":30,"time":1791226444048,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-8","msg":"boot step passed"}
+{"level":30,"time":1791226444050,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-9","msg":"boot step passed"}
+{"level":30,"time":1791226444138,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","mode":"boot","epoch":28,"auditTotal":230,"session":"FAULT","restartFault":"RECORDING","tamperCleared":false,"tabletLinkReset":true,"tabletLinkCarried":false,"auditRows":2,"msg":"engine started"}
+{"level":30,"time":1791226444138,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","part":"engine","ready":true,"msg":"readiness changed"}
+{"level":30,"time":1791226444139,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","step":"engine.rehydrate","msg":"boot step passed"}
+{"level":30,"time":1791226444144,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","step":"rbac.matrix","msg":"boot step passed"}
+{"level":30,"time":1791226444149,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","msg":"Server listening at http://127.0.0.1:4421"}
+{"level":30,"time":1791226444836,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","connectionId":"3c9de17e-7306-47b8-a39e-a8ef8b9981fc","principal":"operator:OPR-001","kind":"OPERATOR","msg":"socket opened"}
+{"level":30,"time":1791226444913,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"3cafaa75-d650-416a-9074-870f20b0d205","method":"GET","route":"/api/v1/auth/session","status":200,"durationMs":4,"principal":"operator:OPR-001","msg":"request completed"}
+{"level":30,"time":1791226468589,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"1ae6e810-607b-4573-a6a0-2d8f7384ee84","method":"POST","route":"/api/v1/session/:id/recover","status":202,"durationMs":27,"principal":"operator:OPR-001","msg":"request completed"}
+{"level":30,"time":1791226490379,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"2084ad0b-a3f4-42ae-b74a-9d41cdf4201e","operatorId":"OPR-001","alertId":"ALR-000014","msg":"alert acknowledged"}
+{"level":30,"time":1791226490379,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"2084ad0b-a3f4-42ae-b74a-9d41cdf4201e","method":"POST","route":"/api/v1/alerts/:id/acknowledge","status":204,"durationMs":9,"principal":"operator:OPR-001","msg":"request completed"}
+{"level":30,"time":1791226493850,"pid":21103,"hostname":"GSP-Budis-MacBook-Air.local","connectionId":"3c9de17e-7306-47b8-a39e-a8ef8b9981fc","code":1006,"closedBy":"peer","principal":"operator:OPR-001","durationMs":49016,"msg":"socket closed"}

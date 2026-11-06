@@ -1,0 +1,19 @@
+## 2026-10-05 23:31:01 WIB 23:31  2 users, load averages: 8.64 9.15 8.35
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+FAIL src/features/devices/live-devices-sites.test.tsx (9.172 s)
+FAIL src/features/devices/live-devices-sites.test.tsx (9.172 s)
+Test Suites: 1 failed, 103 passed, 104 total
+Tests:       1 failed, 1344 passed, 1345 total
+Time:        105.292 s
+exit=1
+PASS lines: 103
+## 23:32:47 $ npm run typecheck -w @dems/mobile
+src/features/devices/testing/live-devices-bed.tsx(64,8): error TS2305: Module '"@dems/shared/sim"' has no exported member 'AudioTrackId'.
+exit=2
+## 23:32:58 $ npm run lint -w @dems/mobile
+
+> @dems/mobile@0.1.0 lint
+> eslint . --max-warnings 0
+
+exit=0
+## finished 23:33:20

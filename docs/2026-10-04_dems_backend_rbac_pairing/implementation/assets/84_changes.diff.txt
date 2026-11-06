@@ -1,0 +1,2411 @@
+diff --git a/apps/core-web/src/features/api-reference/actions.ts b/apps/core-web/src/features/api-reference/actions.ts
+index 2c5edac..94df4d7 100644
+--- a/apps/core-web/src/features/api-reference/actions.ts
++++ b/apps/core-web/src/features/api-reference/actions.ts
+@@ -1,6 +1,7 @@
+ /**
+  * Copy and Download for the server strip and the Realtime panel. Each shows a friendly toast on
+- * success and on failure (layer 1) and logs the failure (layer 2; no client log endpoint, D41(g)).
++ * success and on failure (layer 1) and writes the failure to the page's own log (layer 2; no client
++ * log endpoint, D41(g); a fixed sentence and the cause's class, never the copied text, AR-9).
+  * Nothing here touches the network: Download builds a Blob from the in-memory document.
+  */
+ import { toast } from '@heroui/react'
+@@ -13,7 +14,7 @@ export async function copyToClipboard(text: string, messages: { ok: string; fail
+     toast.success(messages.ok)
+     return true
+   } catch (error) {
+-    logApiReference('warn', source, error, { length: text.length })
++    logApiReference('warn', source, error, 'The clipboard did not take the text.')
+     toast.danger(messages.failed)
+     return false
+   }
+@@ -39,7 +40,7 @@ export function downloadText(
+     toast.success(messages.ok)
+     return true
+   } catch (error) {
+-    logApiReference('error', source, error, { fileName })
++    logApiReference('error', source, error, 'The file could not be created.')
+     toast.danger(messages.failed)
+     return false
+   }
+diff --git a/apps/core-web/src/features/api-reference/api-document.ts b/apps/core-web/src/features/api-reference/api-document.ts
+index 30344e6..f56cf7d 100644
+--- a/apps/core-web/src/features/api-reference/api-document.ts
++++ b/apps/core-web/src/features/api-reference/api-document.ts
+@@ -12,17 +12,35 @@
+  *
+  * The demo-data import stays inside this feature folder, so it lives in the lazy
+  * `/developer/api` chunk only (R6, AC-73).
++ *
++ * Plan row W84 (backend task 04_client_integration_spec §11) adds the views of the page:
++ *
++ * | View | Document | Server | Examples |
++ * |------|----------|--------|----------|
++ * | Simulated (as before) | `offline` scope: ten operations, LIVE health, nine SIMULATED (one with "Show simulated endpoints" off) | mock-core, or the packaged page origin (`pointAtCoreOrigin`) | the DEMO dataset |
++ * | Simulated, "Show Core-server endpoints" on (AR-2) | the same, plus the 65 operations only the Core server answers, each with the neutral badge `CORE SERVER` (`withCoreServerOperations`) | as above | as above |
++ * | Live (AR-1, AR-3, AR-5) | `all` scope: 75 operations, every one LIVE | the page's own origin only (`pointAtPageOrigin`) | the contract's, with the session and evidence identifiers taken from the replica (`applyReplicaIdentifiers`) |
+  */
+ import {
++  API_BADGES,
++  CORE_API_OPERATIONS,
+   CORE_HTTP_ORIGIN,
++  CORE_SERVER_HTTP_ORIGIN,
++  CORE_SERVER_SERVICE_NAME,
++  CORE_SERVER_WS_URL,
+   CORE_WS_URL,
++  CoreApiScope,
+   createOpenApiDocument,
++  isOfflineCoreApiOperation,
++  listOpenApiOperations,
+   serializeOpenApiDocument,
++  type OpenApiBadge,
+   type OpenApiDocument,
+   type OpenApiMediaType,
+   type OpenApiOperationObject,
+ } from '@dems/shared/api'
+ import { DEMO_EVIDENCE_INDEX } from '@dems/shared/demo-data'
++import { toneHex } from '@dems/shared/tokens'
+ import { coreHttpOrigin, coreWsUrl } from '@/lib/core-endpoint'
+ 
+ /** Key of the demo-data example inside each `examples` map. */
+@@ -126,8 +144,8 @@ export function pointAtCoreOrigin(document: OpenApiDocument): OpenApiDocument {
+ }
+ 
+ /**
+- * The page's document: all 10 operations, or only the LIVE one when `includeSimulated` is false,
+- * served from this build's Core origin (`pointAtCoreOrigin`).
++ * The page's document in Simulated mode: all 10 operations, or only the LIVE one when
++ * `includeSimulated` is false, served from this build's Core origin (`pointAtCoreOrigin`).
+  */
+ export function buildApiDocument(includeSimulated: boolean): OpenApiDocument {
+   return applyDemoExamples(pointAtCoreOrigin(createOpenApiDocument({ includeSimulated })))
+@@ -138,6 +156,139 @@ export function apiDocumentJson(includeSimulated: boolean): string {
+   return serializeOpenApiDocument(buildApiDocument(includeSimulated))
+ }
+ 
++// ── Plan row W84: the views of both modes ────────────────────────────────────────────────
++
++/** The badge of AR-2: neutral, shown on the operations only the Core server answers in Simulated mode. */
++export const CORE_SERVER_BADGE: OpenApiBadge = { name: 'CORE SERVER', position: 'after', color: toneHex.default }
++
++/** The identifiers Live examples take from the replica (AR-5); null when the replica holds none. */
++export interface ReplicaIdentifiers {
++  /** The open session (`session.id`). */
++  openSessionId: string | null
++  /** The last sealed session (`lastSealedSessionId`): the one a summary acknowledges. */
++  lastSealedSessionId: string | null
++  /** The first sealed evidence item (`evidence[].sealedAt` set). */
++  firstSealedEvidenceId: string | null
++}
++
++export const NO_REPLICA_IDENTIFIERS: ReplicaIdentifiers = { openSessionId: null, lastSealedSessionId: null, firstSealedEvidenceId: null }
++
++/** What a view of the page is. */
++export type ApiDocumentView =
++  | { mode: 'simulated'; includeSimulated: boolean; includeCoreServer: boolean }
++  | { mode: 'live'; identifiers: ReplicaIdentifiers }
++
++/** The replica's identifiers of AR-5, from the parts of the state that hold them. */
++export function replicaIdentifiersOf(state: {
++  session: { id: string } | null
++  lastSealedSessionId: string | null
++  evidence: readonly { id: string; sealedAt: number | null }[]
++}): ReplicaIdentifiers {
++  return {
++    openSessionId: state.session?.id ?? null,
++    lastSealedSessionId: state.lastSealedSessionId,
++    firstSealedEvidenceId: state.evidence.find((item) => item.sealedAt !== null)?.id ?? null,
++  }
++}
++
++const CORE_SERVER_ONLY_IDS = new Set(
++  CORE_API_OPERATIONS.filter((operation) => !isOfflineCoreApiOperation(operation)).map((operation) => operation.operationId),
++)
++
++/**
++ * AR-2: adds to a Simulated document (in place; it is a fresh copy) the operations only the Core
++ * server answers, as the `all` scope describes them, with `CORE SERVER` in place of their LIVE
++ * badge. The ten operations, their texts and the document's `info` and `servers` stay as they
++ * are; the components the added operations name, their tags, the shared answers, headers and
++ * security schemes are added beside the existing ones (no name of the `offline` scope is replaced).
++ */
++export function withCoreServerOperations(document: OpenApiDocument): OpenApiDocument {
++  const all = createOpenApiDocument({ scope: CoreApiScope.ALL })
++  for (const { path, method, operation } of listOpenApiOperations(all)) {
++    if (!CORE_SERVER_ONLY_IDS.has(operation.operationId)) continue
++    operation['x-badges'] = [CORE_SERVER_BADGE, ...operation['x-badges'].filter((badge) => badge.name !== API_BADGES.LIVE.name)]
++    const item = (document.paths[path] ??= {})
++    item[method] = operation
++  }
++  const components = document.components
++  components.schemas = { ...all.components.schemas, ...components.schemas }
++  components.headers = { ...all.components.headers, ...components.headers }
++  if (all.components.responses) components.responses = { ...all.components.responses, ...components.responses }
++  if (all.components.securitySchemes) components.securitySchemes = { ...all.components.securitySchemes, ...components.securitySchemes }
++  const used = new Set(listOpenApiOperations(document).flatMap((entry) => entry.operation.tags))
++  const existing = new Map(document.tags.map((tag) => [tag.name, tag]))
++  document.tags = all.tags
++    .filter((tag) => existing.has(tag.name) || used.has(tag.name))
++    .map((tag) => existing.get(tag.name) ?? tag)
++  return document
++}
++
++/**
++ * AR-3: the Live document is served from the page's own origin and from nowhere else (section 4.2
++ * of the spec: in Live mode the page talks to the Core server through its own origin). One server;
++ * the Core server's address in `info` and in the tag texts follows it, as `pointAtCoreOrigin` does
++ * for a packaged build (W83 KI-18 place 8).
++ */
++export function pointAtPageOrigin(document: OpenApiDocument): OpenApiDocument {
++  const origin = coreHttpOrigin()
++  const wsUrl = coreWsUrl()
++  const swap = (text: string) =>
++    text.replaceAll(`\`${CORE_SERVER_HTTP_ORIGIN}\``, `\`${origin}\``).replaceAll(`\`${CORE_SERVER_WS_URL}\``, `\`${wsUrl}\``)
++  document.servers = [
++    {
++      url: origin,
++      description: `The Core server (${CORE_SERVER_SERVICE_NAME}) through this page's own origin: every operation of this document and WS /ws. Try it sends real requests as the signed-in operator.`,
++    },
++  ]
++  document.info.description = swap(document.info.description)
++  for (const tag of document.tags) tag.description = swap(tag.description)
++  return document
++}
++
++/** The path templates whose `{id}` is a session or an evidence item (AR-5), and where its value comes from. */
++function replicaIdentifierFor(path: string, operationId: string, ids: ReplicaIdentifiers): string | null | undefined {
++  if (path.startsWith('/api/v1/evidence/{id}')) return ids.firstSealedEvidenceId
++  if (path.startsWith('/api/v1/session/{id}')) {
++    return operationId === 'acknowledgeSessionSummary' ? ids.lastSealedSessionId : ids.openSessionId
++  }
++  return undefined
++}
++
++/**
++ * AR-5: the session and evidence identifiers of the path examples come from the replica, never
++ * from the frozen example identifiers (which do not exist on another day). When the replica holds
++ * none, the example is removed, so Try-it asks for the identifier instead of sending a dead one.
++ * Other identifiers (operators, devices, alerts) are seeded and stay as the contract gives them.
++ */
++export function applyReplicaIdentifiers(document: OpenApiDocument, ids: ReplicaIdentifiers): OpenApiDocument {
++  for (const { path, operation } of listOpenApiOperations(document)) {
++    const value = replicaIdentifierFor(path, operation.operationId, ids)
++    if (value === undefined) continue
++    const parameter = operation.parameters?.find((candidate) => candidate.in === 'path' && candidate.name === 'id')
++    if (!parameter) continue
++    if (value === null) delete parameter.example
++    else parameter.example = value
++  }
++  return document
++}
++
++/** The Live document (AR-1, AR-3, AR-5): 75 operations, every one LIVE, served from the page's origin. */
++export function buildLiveApiDocument(ids: ReplicaIdentifiers): OpenApiDocument {
++  return applyReplicaIdentifiers(pointAtPageOrigin(createOpenApiDocument({ scope: CoreApiScope.ALL })), ids)
++}
++
++/** The document of a view of the page. */
++export function buildApiDocumentFor(view: ApiDocumentView): OpenApiDocument {
++  if (view.mode === 'live') return buildLiveApiDocument(view.identifiers)
++  const document = buildApiDocument(view.includeSimulated)
++  return view.includeCoreServer ? withCoreServerOperations(document) : document
++}
++
++/** AR-8: `openapi.json` text of the document of the current view (Download button). */
++export function apiDocumentJsonFor(view: ApiDocumentView): string {
++  return serializeOpenApiDocument(buildApiDocumentFor(view))
++}
++
+ /** Number of operations in a document (server strip). */
+ export function countOperations(document: OpenApiDocument): number {
+   let count = 0
+diff --git a/apps/core-web/src/features/api-reference/api-reference.css b/apps/core-web/src/features/api-reference/api-reference.css
+index dd26fe8..366d29c 100644
+--- a/apps/core-web/src/features/api-reference/api-reference.css
++++ b/apps/core-web/src/features/api-reference/api-reference.css
+@@ -227,6 +227,8 @@
+     white-space: pre;
+     overflow-x: auto;
+   }
++  /* Live mode (W84): an entry's slice list wraps instead of scrolling sideways. */
++  .api-rt-json-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+ 
+   .api-spin { animation: api-spin 1s linear infinite; }
+ 
+diff --git a/apps/core-web/src/features/api-reference/index.tsx b/apps/core-web/src/features/api-reference/index.tsx
+index eb59be1..d36a644 100644
+--- a/apps/core-web/src/features/api-reference/index.tsx
++++ b/apps/core-web/src/features/api-reference/index.tsx
+@@ -6,44 +6,76 @@
+  *
+  * Layout (12 columns from 1440 px; one column below):
+  *   server strip 12
++ *   (Live mode: the Try-it warning) 12
+  *   renderer (Scalar, lazy chunk) 9 | Realtime WS panel 3
+  *
+- * - The OpenAPI document is `createOpenApiDocument()` (D62) with the DEMO dataset's example
+- *   payloads (D67), rebuilt only when "Show simulated endpoints" changes.
+- * - Try-it goes through `simAwareFetch`: LIVE health to mock-core, SIMULATED endpoints answered by
+- *   the one in-browser simulator (`sim.request` via the adapter), anything else blocked (AC-58).
+- * - Scalar and the demo-data import stay inside this folder (AC-73, R6); the renderer is a lazy
+- *   chunk of its own below the lazy route chunk.
++ * Both modes (backend task 04_client_integration_spec §11; plan row W84):
++ *
++ * | | Simulated mode (as before) | Live mode |
++ * |-|----------------------------|-----------|
++ * | Document | `offline` scope: ten operations with the DEMO dataset's examples (D62, D67); "Show Core-server endpoints" adds the other 65 with the badge CORE SERVER (AR-2) | `all` scope: 75 operations, every one LIVE, served from the page's origin; identifiers from the replica (AR-1, AR-3, AR-5) |
++ * | Try-it | `simAwareFetch`: LIVE health to mock-core, SIMULATED endpoints answered by the one in-browser simulator, anything else blocked (AC-58); a Core-server operation rejected before any request (AR-2) | `liveTryItFetch`: `{page origin}/api/v1/*` to the network with the session cookie, the six operations of AR-3a rejected before any request, anything else blocked; never `sim.request` |
++ * | Realtime panel | its own heartbeat client against mock-core | the console's one socket, read through the Live source (AR-7; no second socket, AC-C-18) |
++ * | Banner | mock-core | the Core server's name, version and readiness (AR-6) |
++ * | Warning | — | an `Alert` above the renderer: Try-it acts as the signed-in operator (AR-4) |
++ *
++ * Scalar and the demo-data import stay inside this folder (AC-73, R6); the renderer is a lazy chunk
++ * of its own below the lazy route chunk. Nothing of a Try-it exchange is kept but its method, path
++ * and status (AR-9).
+  */
+ import { useCallback, useMemo, useState } from 'react'
++import { Alert } from '@heroui/react'
+ import { Braces } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+-import { useSimInstance } from '@dems/shared/sim'
++import { useLiveSelector } from '@dems/shared/live'
++import { useSim, useSimInstance } from '@dems/shared/sim'
+ import { PageHeader } from '@/components/shell/page-header'
+ import { coreHttpOrigin } from '@/lib/core-endpoint'
+-import { apiDocumentJson, buildApiDocument, countOperations } from './api-document'
++import { useWebLive, type WebLive } from '@/runtime'
++import { apiDocumentJsonFor, buildApiDocumentFor, countOperations, replicaIdentifiersOf, type ApiDocumentView } from './api-document'
+ import { RealtimePanel } from './realtime-panel'
+ import { RendererPanel } from './renderer-panel'
+ import { ServerStrip } from './server-strip'
+ import { ServiceBanner } from './service-banner'
+ import { createSimAwareFetch, type TryItExchange } from './sim-fetch'
++import { createLiveTryItFetch } from './try-it'
+ import './api-reference.css'
+ 
+ export function ApiReferencePage() {
+-  const { t } = useTranslation()
+-  const sim = useSimInstance()
+-  const [includeSimulated, setIncludeSimulated] = useState(true)
+-  const [exchangeParity, setExchangeParity] = useState<'a' | 'b' | null>(null)
++  const live = useWebLive()
++  return live ? <LiveApiReference /> : <SimulatedApiReference />
++}
+ 
+-  const document = useMemo(() => buildApiDocument(includeSimulated), [includeSimulated])
++/** Flips `a` / `b` on every answered exchange (the response reveal of scalar-theme.ts). */
++function useExchangeParity() {
++  const [exchangeParity, setExchangeParity] = useState<'a' | 'b' | null>(null)
+   const onExchange = useCallback((_exchange: TryItExchange) => {
+     setExchangeParity((parity) => (parity === 'a' ? 'b' : 'a'))
+   }, [])
+-  const customFetch = useMemo(() => createSimAwareFetch({ sim, onExchange }), [sim, onExchange])
+-  const getDocumentJson = useCallback(() => apiDocumentJson(includeSimulated), [includeSimulated])
++  return { exchangeParity, onExchange }
++}
++
++function SimulatedApiReference() {
++  const { t } = useTranslation()
++  const sim = useSimInstance()
++  const [includeSimulated, setIncludeSimulated] = useState(true)
++  const [includeCoreServer, setIncludeCoreServer] = useState(false)
++  const { exchangeParity, onExchange } = useExchangeParity()
++
++  const view = useMemo<ApiDocumentView>(
++    () => ({ mode: 'simulated', includeSimulated, includeCoreServer }),
++    [includeSimulated, includeCoreServer],
++  )
++  const document = useMemo(() => buildApiDocumentFor(view), [view])
++  const coreServerRefusal = includeCoreServer ? t('apiReference.tryIt.coreServerOnly') : undefined
++  const customFetch = useMemo(
++    () => createSimAwareFetch({ sim, onExchange, ...(coreServerRefusal !== undefined ? { coreServerRefusal } : {}) }),
++    [sim, onExchange, coreServerRefusal],
++  )
++  const getDocumentJson = useCallback(() => apiDocumentJsonFor(view), [view])
+ 
+   return (
+-    <div className="dems-page api-page" data-testid="page-api-reference">
++    <div className="dems-page api-page" data-testid="page-api-reference" data-mode="simulated">
+       <PageHeader
+         icon={Braces}
+         title={t('apiReference.title')}
+@@ -53,13 +85,17 @@ export function ApiReferencePage() {
+       <ServerStrip
+         includeSimulated={includeSimulated}
+         onIncludeSimulatedChange={setIncludeSimulated}
++        includeCoreServer={includeCoreServer}
++        onIncludeCoreServerChange={setIncludeCoreServer}
+         operationCount={countOperations(document)}
++        specVersion={document.info.version}
+         getDocumentJson={getDocumentJson}
+       />
+       <div className="api-grid">
+         <RendererPanel
+           document={document}
+           includeSimulated={includeSimulated}
++          viewKey={`${includeSimulated ? 'all' : 'live'}${includeCoreServer ? '+core' : ''}`}
+           customFetch={customFetch}
+           exchangeParity={exchangeParity}
+         />
+@@ -68,3 +104,49 @@ export function ApiReferencePage() {
+     </div>
+   )
+ }
++
++function LiveApiReference() {
++  const { t } = useTranslation()
++  const { exchangeParity, onExchange } = useExchangeParity()
++  const operator = useLiveSelector((source: WebLive | null) => source?.session?.operator.displayName ?? null)
++  // AR-5: the identifiers of the examples follow the replica. `useSim` compares the three values
++  // shallowly, so the document is rebuilt only when one of them changes.
++  const identifiers = useSim(replicaIdentifiersOf)
++  const view = useMemo<ApiDocumentView>(() => ({ mode: 'live', identifiers }), [identifiers])
++  const document = useMemo(() => buildApiDocumentFor(view), [view])
++  const secretRefusal = t('apiReference.tryIt.secretDenied')
++  const customFetch = useMemo(() => createLiveTryItFetch({ secretRefusal, onExchange }), [secretRefusal, onExchange])
++  const getDocumentJson = useCallback(() => apiDocumentJsonFor(view), [view])
++  const address = new URL(coreHttpOrigin()).host
++
++  return (
++    <div className="dems-page api-page" data-testid="page-api-reference" data-mode="live">
++      <PageHeader
++        icon={Braces}
++        title={t('apiReference.title')}
++        subtitle={t('apiReference.subtitleLive', { address })}
++        status={<ServiceBanner live />}
++      />
++      <ServerStrip
++        mode="live"
++        includeSimulated
++        onIncludeSimulatedChange={() => undefined}
++        operationCount={countOperations(document)}
++        specVersion={document.info.version}
++        getDocumentJson={getDocumentJson}
++      />
++      <Alert status="warning" data-testid="api-live-warning">
++        <Alert.Indicator />
++        <Alert.Content>
++          <Alert.Description>
++            {t('apiReference.liveWarning.body', { operator: operator ?? t('apiReference.liveWarning.unknownOperator') })}
++          </Alert.Description>
++        </Alert.Content>
++      </Alert>
++      <div className="api-grid">
++        <RendererPanel document={document} includeSimulated viewKey="core" customFetch={customFetch} exchangeParity={exchangeParity} />
++        <RealtimePanel />
++      </div>
++    </div>
++  )
++}
+diff --git a/apps/core-web/src/features/api-reference/log.ts b/apps/core-web/src/features/api-reference/log.ts
+index ef3ca5d..c3be882 100644
+--- a/apps/core-web/src/features/api-reference/log.ts
++++ b/apps/core-web/src/features/api-reference/log.ts
+@@ -1,25 +1,46 @@
+ /**
+- * The API Reference page's structured log record (level, source, message, stack, context,
+- * timestamp). mock-core has no client log endpoint (D3/D4, D41(g)), so the record goes to the dev
+- * console, as on the other pages. `context` never carries personal data or request bodies: only
+- * methods, paths, statuses and IDs.
++ * The API Reference page's own log (backend task 04_client_integration_spec §11 AR-9, CL-6a; plan
++ * row W84; decision D182). The page binds the console's one page reporter (`@/lib/page-report`,
++ * row W0 §15) to the prefix `api`, so a record goes to `webErrorSink`: kept in memory, printed to the
++ * console in a dev build, never sent anywhere and never put in web storage.
++ *
++ * What a record holds, and nothing else:
++ *
++ * | Member | Value |
++ * |--------|-------|
++ * | `message` | The caller's fixed sentence, never the text of an error (it may quote input) |
++ * | `source` | `ApiReference.<call site>` |
++ * | `context` | Of a request, only its `method`, its `path` (no origin, no query) and its `status`; then the reporter's own facts: the cause by its class (`errorName`), its code and status, and an `api-…` correlation ID |
++ *
++ * Never a request body, an answer, a header, a query string or a stack (D182 removed the message
++ * and the stack the page logged before). A Try-it body can hold a password, a pairing code or a
++ * token, and an answer can hold Core data.
+  */
+-export type ApiReferenceLogLevel = 'error' | 'warn' | 'info'
++import { createPageReporter } from '@/lib/page-report'
+ 
++export type ApiReferenceLogLevel = 'error' | 'warn'
++
++/** The facts of a request a record may carry (AR-9: method, path and status only). */
++export interface ApiReferenceLogContext {
++  method?: string
++  /** The path of the URL only: no origin, no query, no fragment. */
++  path?: string
++  status?: number
++}
++
++const page = createPageReporter('api')
++
++/** Writes one record to the page's own log. Never throws. */
+ export function logApiReference(
+   level: ApiReferenceLogLevel,
+   source: string,
+   error: unknown,
+-  context: Record<string, unknown> = {},
++  message: string,
++  context: ApiReferenceLogContext = {},
+ ): void {
+-  if (!import.meta.env.DEV) return
+-  const log = level === 'error' ? console.error : level === 'warn' ? console.warn : console.info
+-  log('[core-web] api-reference', {
+-    level,
+-    source: `ApiReference.${source}`,
+-    message: error instanceof Error ? error.message : String(error),
+-    stack: error instanceof Error ? error.stack : undefined,
+-    context,
+-    timestamp: new Date().toISOString(),
+-  })
++  const facts: Record<string, string | number> = {}
++  if (context.method !== undefined) facts.method = context.method
++  if (context.path !== undefined) facts.path = context.path
++  if (context.status !== undefined) facts.status = context.status
++  page.report(`ApiReference.${source}`, error, message, facts, level)
+ }
+diff --git a/apps/core-web/src/features/api-reference/panel.tsx b/apps/core-web/src/features/api-reference/panel.tsx
+index 3266832..992a91f 100644
+--- a/apps/core-web/src/features/api-reference/panel.tsx
++++ b/apps/core-web/src/features/api-reference/panel.tsx
+@@ -63,8 +63,9 @@ interface BoundaryState {
+ 
+ /**
+  * Frontend error rules, layers 1–3: a render failure shows friendly copy with a rate-limited retry
+- * (3 s → 6 s → 12 s, at most 3, `useRetryCooldown`), and the structured record goes to the dev
+- * console (no client log endpoint exists, D41(g)).
++ * (3 s → 6 s → 12 s, at most 3, `useRetryCooldown`), and one record goes to the page's own log (no
++ * client log endpoint exists, D41(g)): a fixed sentence and the panel's name in the source, never
++ * the error's text or a component stack (AR-9, D182).
+  */
+ export class ApiPanelBoundary extends Component<BoundaryProps, BoundaryState> {
+   override state: BoundaryState = { error: null, resets: 0 }
+@@ -73,8 +74,8 @@ export class ApiPanelBoundary extends Component<BoundaryProps, BoundaryState> {
+     return { error }
+   }
+ 
+-  override componentDidCatch(error: Error, info: ErrorInfo) {
+-    logApiReference('error', 'PanelBoundary', error, { panel: this.props.panel, componentStack: info.componentStack })
++  override componentDidCatch(error: Error, _info: ErrorInfo) {
++    logApiReference('error', `PanelBoundary.${this.props.panel}`, error, 'A panel of the API Reference page failed to render.')
+   }
+ 
+   private readonly reset = () => {
+diff --git a/apps/core-web/src/features/api-reference/realtime-panel.tsx b/apps/core-web/src/features/api-reference/realtime-panel.tsx
+index 65e9c14..b69f3d7 100644
+--- a/apps/core-web/src/features/api-reference/realtime-panel.tsx
++++ b/apps/core-web/src/features/api-reference/realtime-panel.tsx
+@@ -10,9 +10,11 @@ import { AnimatedListItem } from '@/components/ui/animated-list'
+ import { SlidingNumber } from '@/components/ui/sliding-number'
+ import { allowedPageOrigins, coreWsUrl } from '@/lib/core-endpoint'
+ import { useMotionPolicy } from '@/motion'
++import { useWebLive, type WebLive } from '@/runtime'
+ import { copyToClipboard } from './actions'
+ import { ApiPanel } from './panel'
+-import { REALTIME_MESSAGE_LIMIT, useRealtimeFeed, type RealtimeChipState } from './use-realtime-feed'
++import { useLiveRealtimeFeed } from './use-live-realtime-feed'
++import { chipStateOf, REALTIME_MESSAGE_LIMIT, useRealtimeFeed, type RealtimeChipState } from './use-realtime-feed'
+ 
+ const routeApi = getRouteApi('/_app/developer/api')
+ 
+@@ -20,13 +22,24 @@ const CHIP_TONE: Record<RealtimeChipState, StatusTone> = { ONLINE: 'success', CO
+ const CHIP_ICON = { ONLINE: Wifi, CONNECTING: Loader, OFFLINE: WifiOff } as const
+ 
+ /**
+- * The Realtime WS panel (01_specs §14.9; 3 columns, full width below 1440): the WS `/ws` heartbeat
+- * that OpenAPI cannot describe, live from mock-core. Chip ONLINE / CONNECTING / OFFLINE (M-C-06
+- * morph), the WS URL with a copy button, `seq` (MP SlidingNumber), server time, uptime, clients,
+- * the last 5 raw messages (MU AnimatedList, M-C-07) and a Connect switch. The connection dot pulses
+- * once per heartbeat (M-C-06; the page's only ambient motion, and data). Reduced motion: no pulse.
++ * The Realtime WS panel (01_specs §14.9; 3 columns, full width below 1440). Simulated mode: the
++ * panel as it always was (below). Live mode (backend task 04_client_integration_spec §11 AR-7, plan
++ * row W84): the console's one socket, read through the Live source; no second socket, no Connect
++ * switch, no state payload (`LiveRealtimePanel`).
+  */
+ export function RealtimePanel() {
++  const live = useWebLive()
++  return live ? <LiveRealtimePanel live={live} /> : <SimulatedRealtimePanel />
++}
++
++/**
++ * Simulated mode: the WS `/ws` heartbeat that OpenAPI cannot describe, live from mock-core. Chip
++ * ONLINE / CONNECTING / OFFLINE (M-C-06 morph), the WS URL with a copy button, `seq` (MP
++ * SlidingNumber), server time, uptime, clients, the last 5 raw messages (MU AnimatedList, M-C-07)
++ * and a Connect switch. The connection dot pulses once per heartbeat (M-C-06; the page's only
++ * ambient motion, and data). Reduced motion: no pulse.
++ */
++function SimulatedRealtimePanel() {
+   const { t } = useTranslation()
+   const { socketFactory } = routeApi.useRouteContext()
+   const feed = useRealtimeFeed(socketFactory)
+@@ -171,3 +184,155 @@ export function RealtimePanel() {
+     </ApiPanel>
+   )
+ }
++
++/**
++ * Live mode (AR-7). The heartbeat card, the URL and the last five messages of the app's one socket,
++ * by type: a heartbeat with the members its view keeps; a snapshot or a delta as type, epoch,
++ * revision and the names of the slices it touches; meter frames as a rate. No Connect switch: it
++ * would disconnect the console.
++ */
++function LiveRealtimePanel({ live }: { live: WebLive }) {
++  const { t } = useTranslation()
++  const feed = useLiveRealtimeFeed(live)
++  const m = useMotionPolicy()
++  const { heartbeat } = feed
++  const chip = chipStateOf(heartbeat.state, true)
++  const tone = CHIP_TONE[chip]
++  const ChipIcon = CHIP_ICON[chip]
++  const wsUrl = coreWsUrl()
++  const address = new URL(wsUrl).host
++  const note =
++    chip === 'OFFLINE'
++      ? t('apiReference.realtime.live.reconnecting', { address })
++      : chip === 'CONNECTING' && heartbeat.seq === null
++        ? t('apiReference.realtime.waiting')
++        : null
++
++  return (
++    <ApiPanel
++      id="realtime"
++      icon={Radio}
++      title={`${t('apiReference.realtime.title')} • ${t('apiReference.realtime.endpoint')}`}
++      className="api-realtime-panel"
++      action={
++        <Chip {...toneChipProps(tone)} variant="soft" data-testid="api-realtime-chip" data-state={chip}>
++          <ChipIcon aria-hidden="true" size={14} className={chip === 'CONNECTING' && !m.reduced ? 'api-spin' : undefined} />
++          <Chip.Label>{t(`apiReference.realtime.state.${chip}`)}</Chip.Label>
++        </Chip>
++      }
++    >
++      <div className="api-rt-url">
++        <span className="api-strip-label">{t('apiReference.realtime.url')}</span>
++        <code className="api-rt-url-text" data-testid="api-realtime-url">
++          {wsUrl}
++        </code>
++        <Button
++          isIconOnly
++          size="sm"
++          variant="ghost"
++          aria-label={t('apiReference.realtime.copyUrl')}
++          onPress={() =>
++            void copyToClipboard(
++              wsUrl,
++              { ok: t('apiReference.realtime.copied'), failed: t('apiReference.realtime.copyFailed') },
++              'RealtimePanel.copyUrl',
++            )
++          }
++        >
++          <Copy className="size-4" aria-hidden="true" />
++        </Button>
++      </div>
++
++      <div className="api-rt-hero">
++        <span className="api-rt-dot" aria-hidden="true">
++          {chip === 'ONLINE' && !m.reduced && heartbeat.seq !== null ? (
++            <motion.span
++              key={heartbeat.seq}
++              className="api-rt-dot-halo"
++              style={{ backgroundColor: toneHex[tone] }}
++              initial={{ scale: 1, opacity: 0.6 }}
++              animate={{ scale: 1.6, opacity: 0 }}
++              transition={{ duration: m.seconds(motionTokens.ambient.heartbeatPulse), ease: [0.22, 1, 0.36, 1] }}
++            />
++          ) : null}
++          <span className="api-rt-dot-core" style={{ backgroundColor: toneHex[tone] }} />
++        </span>
++        <div className="api-rt-seq" data-testid="api-realtime-seq" aria-label={`${t('apiReference.realtime.fields.seq')} ${heartbeat.seq ?? 0}`}>
++          <span className="api-strip-label">{t('apiReference.realtime.fields.seq')}</span>
++          <span className="api-rt-seq-value">
++            <SlidingNumber value={heartbeat.seq ?? 0} />
++          </span>
++        </div>
++      </div>
++
++      <dl className="api-kv" data-testid="api-realtime-live-fields">
++        <div>
++          <dt>{t('apiReference.realtime.fields.serverTime')}</dt>
++          <dd className="api-mono" data-testid="api-realtime-server-time">
++            {heartbeat.serverTime ? `${formatClock(heartbeat.serverTime)} UTC${formatUtcOffset()}` : '—'}
++          </dd>
++        </div>
++        <div>
++          <dt>{t('apiReference.realtime.fields.clients')}</dt>
++          <dd className="api-mono" data-testid="api-realtime-clients">
++            {heartbeat.clients ?? '—'}
++          </dd>
++        </div>
++        <div>
++          <dt>{t('apiReference.realtime.live.epoch')}</dt>
++          <dd className="api-mono" data-testid="api-realtime-epoch">
++            {feed.epoch ?? '—'}
++          </dd>
++        </div>
++        <div>
++          <dt>{t('apiReference.realtime.live.revision')}</dt>
++          <dd className="api-mono" data-testid="api-realtime-revision">
++            {feed.revision ?? '—'}
++          </dd>
++        </div>
++        <div>
++          <dt>{t('apiReference.realtime.fields.interval')}</dt>
++          <dd className="api-mono">{`${HEARTBEAT_INTERVAL_MS / 1000} s`}</dd>
++        </div>
++        <div>
++          <dt>{t('apiReference.realtime.live.meters')}</dt>
++          <dd className="api-mono" data-testid="api-realtime-meters">
++            {feed.metersRate === null || feed.metersRate === 0
++              ? t('apiReference.realtime.live.metersNone')
++              : t('apiReference.realtime.live.metersRate', { rate: feed.metersRate })}
++          </dd>
++        </div>
++      </dl>
++
++      <p className="api-note" data-testid="api-realtime-live-note">
++        {t('apiReference.realtime.live.note')}
++      </p>
++      {note ? (
++        <p className="api-note" role="status" data-testid="api-realtime-note">
++          {note}
++        </p>
++      ) : null}
++
++      <div className="api-rt-messages">
++        <span className="api-strip-label">{t('apiReference.realtime.lastMessages', { count: REALTIME_MESSAGE_LIMIT })}</span>
++        <ScrollShadow className="api-rt-scroll" hideScrollBar data-testid="api-realtime-messages">
++          {feed.entries.length === 0 ? (
++            <p className="api-note">{t('apiReference.realtime.none')}</p>
++          ) : (
++            <div className="api-rt-list" role="list">
++              <AnimatePresence initial={false}>
++                {feed.entries.map((entry, index) => (
++                  <AnimatedListItem key={entry.id} highlight={index === 0}>
++                    <pre className="api-rt-json api-rt-json-wrap" role="listitem" data-type={entry.type}>
++                      {entry.text}
++                    </pre>
++                  </AnimatedListItem>
++                ))}
++              </AnimatePresence>
++            </div>
++          )}
++        </ScrollShadow>
++      </div>
++    </ApiPanel>
++  )
++}
+diff --git a/apps/core-web/src/features/api-reference/renderer-panel.tsx b/apps/core-web/src/features/api-reference/renderer-panel.tsx
+index 28a0611..dee0d3f 100644
+--- a/apps/core-web/src/features/api-reference/renderer-panel.tsx
++++ b/apps/core-web/src/features/api-reference/renderer-panel.tsx
+@@ -29,6 +29,12 @@ export interface RendererPanelProps {
+   customFetch: FetchLike
+   /** Flips `a` / `b` on every answered Try-it exchange (response reveal in scalar-theme.ts); null before the first. */
+   exchangeParity: 'a' | 'b' | null
++  /**
++   * Plan row W84: the name of the view, the cross-fade key and `data-filter` (`all`, `live`,
++   * `all+core`, `live+core`, `core` for Live mode). Default: `all` / `live` from `includeSimulated`,
++   * as before.
++   */
++  viewKey?: string
+ }
+ 
+ /**
+@@ -37,7 +43,7 @@ export interface RendererPanelProps {
+  * "Show simulated endpoints" switch swaps the document, and the renderer cross-fades (160 ms)
+  * because Scalar re-renders everything.
+  */
+-export function RendererPanel({ document, includeSimulated, customFetch, exchangeParity }: RendererPanelProps) {
++export function RendererPanel({ document, includeSimulated, customFetch, exchangeParity, viewKey }: RendererPanelProps) {
+   const { t } = useTranslation()
+   const m = useMotionPolicy()
+   const routeDelay = useRouteEnterDelay()
+@@ -53,14 +59,15 @@ export function RendererPanel({ document, includeSimulated, customFetch, exchang
+     [document, customFetch],
+   )
+   const exchange = exchangeParity === null ? {} : { [EXCHANGE_ATTRIBUTE]: exchangeParity }
++  const view = viewKey ?? (includeSimulated ? 'all' : 'live')
+   return (
+     <ApiPanel id="renderer" icon={BookOpenText} title={t('apiReference.renderer.title')} className="api-renderer-panel" bodyClassName="api-renderer-body">
+       <AnimatePresence mode="wait" initial={false}>
+         <motion.div
+-          key={includeSimulated ? 'all' : 'live'}
++          key={view}
+           className="dems-api-renderer"
+           data-testid="api-renderer"
+-          data-filter={includeSimulated ? 'all' : 'live'}
++          data-filter={view}
+           {...exchange}
+           initial={{ opacity: 0 }}
+           animate={{ opacity: 1, transition: { duration: m.seconds(RENDERER_SWAP_MS) } }}
+diff --git a/apps/core-web/src/features/api-reference/server-strip.tsx b/apps/core-web/src/features/api-reference/server-strip.tsx
+index 8dd6917..6231f92 100644
+--- a/apps/core-web/src/features/api-reference/server-strip.tsx
++++ b/apps/core-web/src/features/api-reference/server-strip.tsx
+@@ -2,8 +2,8 @@ import { Button, Card, Chip, Label, Switch, Tooltip } from '@heroui/react'
+ import { motion } from 'motion/react'
+ import { Copy, Download, Server } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+-import { API_BADGES, OPENAPI_DOCUMENT_VERSION, type ApiBadgeKey } from '@dems/shared/api'
+-import { toneChipProps } from '@dems/shared/tokens'
++import { API_BADGES, OPENAPI_DOCUMENT_VERSION } from '@dems/shared/api'
++import { toneChipProps, type StatusTone } from '@dems/shared/tokens'
+ import { coreHttpOrigin } from '@/lib/core-endpoint'
+ import { copyToClipboard, downloadText } from './actions'
+ import { useStripVariants } from './choreography'
+@@ -14,20 +14,59 @@ export interface ServerStripProps {
+   operationCount: number
+   /** Builds the openapi.json text of what the renderer shows (on demand, at click time). */
+   getDocumentJson: () => string
++  /** Plan row W84: Live mode hides both switches and shows the Live legend. Default: Simulated. */
++  mode?: 'simulated' | 'live'
++  /** AR-2, Simulated mode: "Show Core-server endpoints", off by default. */
++  includeCoreServer?: boolean
++  onIncludeCoreServerChange?: (on: boolean) => void
++  /** `info.version` of the document shown. Default: the Simulated document's version. */
++  specVersion?: string
+ }
+ 
+-const LEGEND: readonly ApiBadgeKey[] = ['LIVE', 'SIMULATED', 'RBAC_AUDIT']
+-const LEGEND_TOOLTIP = { LIVE: 'live', SIMULATED: 'simulated', RBAC_AUDIT: 'rbac' } as const
++type LegendKey = 'LIVE' | 'SIMULATED' | 'RBAC_AUDIT' | 'CORE_SERVER'
++type LegendTooltip = 'live' | 'simulated' | 'rbac' | 'coreServer' | 'liveCore'
++const LEGEND_TONE: Record<LegendKey, StatusTone> = {
++  LIVE: API_BADGES.LIVE.tone,
++  SIMULATED: API_BADGES.SIMULATED.tone,
++  RBAC_AUDIT: API_BADGES.RBAC_AUDIT.tone,
++  CORE_SERVER: 'default',
++}
++
++/** The legend of a view: Simulated as before (plus CORE SERVER while that switch is on); Live: LIVE and RBAC + AUDIT. */
++function legendOf(mode: 'simulated' | 'live', includeCoreServer: boolean): readonly { key: LegendKey; tooltip: LegendTooltip }[] {
++  if (mode === 'live') return [{ key: 'LIVE', tooltip: 'liveCore' }, { key: 'RBAC_AUDIT', tooltip: 'rbac' }]
++  const legend: { key: LegendKey; tooltip: LegendTooltip }[] = [
++    { key: 'LIVE', tooltip: 'live' },
++    { key: 'SIMULATED', tooltip: 'simulated' },
++    { key: 'RBAC_AUDIT', tooltip: 'rbac' },
++  ]
++  if (includeCoreServer) legend.push({ key: 'CORE_SERVER', tooltip: 'coreServer' })
++  return legend
++}
+ 
+ /**
+  * The server strip (01_specs §14.9): base-URL chip (mono), spec version, Download and Copy
+  * buttons, the LIVE / SIMULATED / RBAC + AUDIT legend, and the "Show simulated endpoints" switch.
+- * The chips stagger in on the strip beat (M-PG-API).
++ * The chips stagger in on the strip beat (M-PG-API). Plan row W84 (backend task
++ * 04_client_integration_spec §11): in Simulated mode a second switch "Show Core-server endpoints"
++ * (AR-2); in Live mode no switch, the base URL is the page's own origin and the spec version the
++ * Core server's document (AR-3). Download and Copy give the current view's document and base URL
++ * (AR-8).
+  */
+-export function ServerStrip({ includeSimulated, onIncludeSimulatedChange, operationCount, getDocumentJson }: ServerStripProps) {
++export function ServerStrip({
++  includeSimulated,
++  onIncludeSimulatedChange,
++  operationCount,
++  getDocumentJson,
++  mode = 'simulated',
++  includeCoreServer = false,
++  onIncludeCoreServerChange,
++  specVersion = OPENAPI_DOCUMENT_VERSION,
++}: ServerStripProps) {
+   const { t } = useTranslation()
+   const { container, item } = useStripVariants()
+   const baseUrl = coreHttpOrigin()
++  const legend = legendOf(mode, includeCoreServer)
+   return (
+     <Card variant="secondary" className="api-strip" data-testid="api-server-strip">
+       <motion.div className="api-strip-row" variants={container} initial="hidden" animate="visible">
+@@ -41,37 +80,49 @@ export function ServerStrip({ includeSimulated, onIncludeSimulatedChange, operat
+         <motion.div variants={item} className="api-strip-group">
+           <span className="api-strip-label">{t('apiReference.server.specVersion')}</span>
+           <Chip variant="soft" color="accent" className="api-mono-chip" data-testid="api-spec-version">
+-            <Chip.Label>{`v${OPENAPI_DOCUMENT_VERSION}`}</Chip.Label>
++            <Chip.Label>{`v${specVersion}`}</Chip.Label>
+           </Chip>
+           <span className="api-note" data-testid="api-operation-count">
+             {t('apiReference.server.operations', { count: operationCount })}
+           </span>
+         </motion.div>
+         <motion.div variants={item} className="api-strip-group api-strip-legend" role="list" aria-label={t('apiReference.server.legend')}>
+-          {LEGEND.map((key) => (
++          {legend.map(({ key, tooltip }) => (
+             <Tooltip key={key} delay={300}>
+               <Tooltip.Trigger
+                 className="api-legend-trigger"
+                 role="listitem"
+-                aria-label={`${t(`apiReference.badges.${key}`)}: ${t(`apiReference.tooltips.${LEGEND_TOOLTIP[key]}`)}`}
++                aria-label={`${t(`apiReference.badges.${key}`)}: ${t(`apiReference.tooltips.${tooltip}`)}`}
+               >
+-                <Chip {...toneChipProps(API_BADGES[key].tone)} variant="soft" data-testid={`api-legend-${key}`}>
++                <Chip {...toneChipProps(LEGEND_TONE[key])} variant="soft" data-testid={`api-legend-${key}`}>
+                   <Chip.Label>{t(`apiReference.badges.${key}`)}</Chip.Label>
+                 </Chip>
+               </Tooltip.Trigger>
+-              <Tooltip.Content placement="bottom">{t(`apiReference.tooltips.${LEGEND_TOOLTIP[key]}`)}</Tooltip.Content>
++              <Tooltip.Content placement="bottom">{t(`apiReference.tooltips.${tooltip}`)}</Tooltip.Content>
+             </Tooltip>
+           ))}
+         </motion.div>
+         <motion.div variants={item} className="api-strip-group api-strip-actions">
+-          <Switch isSelected={includeSimulated} onChange={onIncludeSimulatedChange} data-testid="api-show-simulated">
+-            <Switch.Content>
+-              <Switch.Control>
+-                <Switch.Thumb />
+-              </Switch.Control>
+-              <Label>{t('apiReference.server.showSimulated')}</Label>
+-            </Switch.Content>
+-          </Switch>
++          {mode === 'simulated' ? (
++            <>
++              <Switch isSelected={includeSimulated} onChange={onIncludeSimulatedChange} data-testid="api-show-simulated">
++                <Switch.Content>
++                  <Switch.Control>
++                    <Switch.Thumb />
++                  </Switch.Control>
++                  <Label>{t('apiReference.server.showSimulated')}</Label>
++                </Switch.Content>
++              </Switch>
++              <Switch isSelected={includeCoreServer} onChange={(on) => onIncludeCoreServerChange?.(on)} data-testid="api-show-core-server">
++                <Switch.Content>
++                  <Switch.Control>
++                    <Switch.Thumb />
++                  </Switch.Control>
++                  <Label>{t('apiReference.server.showCoreServer')}</Label>
++                </Switch.Content>
++              </Switch>
++            </>
++          ) : null}
+           <Button
+             size="sm"
+             variant="outline"
+diff --git a/apps/core-web/src/features/api-reference/service-banner.tsx b/apps/core-web/src/features/api-reference/service-banner.tsx
+index b96de8c..13572d7 100644
+--- a/apps/core-web/src/features/api-reference/service-banner.tsx
++++ b/apps/core-web/src/features/api-reference/service-banner.tsx
+@@ -1,11 +1,10 @@
+ import { Card } from '@heroui/react'
+-import { useQuery } from '@tanstack/react-query'
+ import { useTranslation } from 'react-i18next'
+-import { HEALTH_QUERY_KEY } from '@dems/shared/api'
+ import { HeartbeatState } from '@dems/shared/domain'
+ import { useHeartbeat } from '@dems/shared/realtime'
+ import type { StatusTone } from '@dems/shared/tokens'
+-import { coreHttpOrigin, fetchCoreHealth } from '@/lib/core-endpoint'
++import { useHealth } from '@/features/home/use-health'
++import { coreHttpOrigin } from '@/lib/core-endpoint'
+ import { GlowLayer, type GlowTone } from '@/motion'
+ 
+ type BannerState = 'ONLINE' | 'CONNECTING' | 'OFFLINE'
+@@ -19,30 +18,54 @@ const STATE_OF: Record<HeartbeatState, BannerState> = {
+ const TONE: Record<BannerState, StatusTone> = { ONLINE: 'success', CONNECTING: 'warning', OFFLINE: 'danger' }
+ const GLOW: Record<BannerState, GlowTone> = { ONLINE: 'brand', CONNECTING: 'warning', OFFLINE: 'danger' }
+ 
++export interface ServiceBannerProps {
++  /** Live mode (plan row W84, AR-6): the Core server's words; otherwise mock-core's, as before. */
++  live?: boolean
++}
++
+ /**
+- * The page-header service banner (01_specs §14.9, fed by `useHeartbeat`): the app-wide mock-core
+- * link, plus the service version from the shared health query (`['health']`, invalidated by the
+- * heartbeat resync). Offline means only LIVE try-it is unavailable; SIMULATED try-it still answers.
++ * The page-header service banner (01_specs §14.9, fed by `useHeartbeat`): the app-wide link, plus
++ * the service version from the shared health query (`['health']`, invalidated by the heartbeat
++ * resync). Simulated mode: mock-core; offline means only LIVE try-it is unavailable, SIMULATED
++ * try-it still answers. Live mode (backend task 04_client_integration_spec §11 AR-6): the heartbeat
++ * is the view of the Live source's one socket (the root route provides it), and the health answer
++ * names `dems-core-server`, its version and its readiness.
++ *
++ * The health query is the Home page's `useHealth()` (finding CPW1-9: one home for the query with
++ * these options; the Login page's Live reader keeps its own options by design).
+  */
+-export function ServiceBanner() {
++export function ServiceBanner({ live = false }: ServiceBannerProps) {
+   const { t } = useTranslation()
+   const heartbeat = useHeartbeat()
+   const state = STATE_OF[heartbeat.state]
+-  const health = useQuery({ queryKey: HEALTH_QUERY_KEY, queryFn: () => fetchCoreHealth(), refetchInterval: 10_000 })
++  const health = useHealth()
+   const version = health.data?.version
+-  const title =
+-    state === 'ONLINE'
+-      ? version
+-        ? t('apiReference.banner.ONLINE', { version })
+-        : t('apiReference.banner.ONLINE_NO_VERSION')
+-      : t(`apiReference.banner.${state}`)
++  const address = new URL(coreHttpOrigin()).host
++  let title: string
++  if (live) {
++    const ready = health.data?.ready
++    const readiness = t(ready === undefined || (ready.database && ready.engine) ? 'apiReference.banner.live.ready' : 'apiReference.banner.live.starting')
++    title =
++      state === 'ONLINE'
++        ? version && health.data
++          ? t('apiReference.banner.live.ONLINE', { service: health.data.service, version, readiness })
++          : t('apiReference.banner.live.ONLINE_NO_VERSION')
++        : t(`apiReference.banner.live.${state}`)
++  } else {
++    title =
++      state === 'ONLINE'
++        ? version
++          ? t('apiReference.banner.ONLINE', { version })
++          : t('apiReference.banner.ONLINE_NO_VERSION')
++        : t(`apiReference.banner.${state}`)
++  }
+   return (
+     <Card variant="secondary" className="api-banner" data-tone={TONE[state]} data-state={state} role="status" data-testid="api-service-banner">
+       <GlowLayer level={1} tone={GLOW[state]} />
+       <span className="api-banner-dot" aria-hidden="true" />
+       <div className="api-banner-text">
+         <p className="api-banner-title">{title}</p>
+-        <p className="api-banner-detail">{t('apiReference.banner.detail', { address: new URL(coreHttpOrigin()).host })}</p>
++        <p className="api-banner-detail">{live ? t('apiReference.banner.live.detail', { address }) : t('apiReference.banner.detail', { address })}</p>
+       </div>
+     </Card>
+   )
+diff --git a/apps/core-web/src/features/api-reference/sim-adapter.ts b/apps/core-web/src/features/api-reference/sim-adapter.ts
+index 91572c2..6ac63a7 100644
+--- a/apps/core-web/src/features/api-reference/sim-adapter.ts
++++ b/apps/core-web/src/features/api-reference/sim-adapter.ts
+@@ -43,7 +43,7 @@ export function answerSimulated(sim: SimTarget, request: SimulatedRequest): SimA
+   try {
+     return sim.request({ method, path: request.path, ...(request.body !== undefined ? { body: request.body } : {}) })
+   } catch (error) {
+-    logApiReference('error', 'answerSimulated', error, { method, path: request.path })
++    logApiReference('error', 'answerSimulated', error, 'The simulator could not answer a Try-it request.', { method, path: request.path })
+     return errorResponse(500, 'SIMULATOR_ERROR', 'The simulator could not answer this request.')
+   }
+ }
+diff --git a/apps/core-web/src/features/api-reference/sim-fetch.ts b/apps/core-web/src/features/api-reference/sim-fetch.ts
+index b83ce19..cb22282 100644
+--- a/apps/core-web/src/features/api-reference/sim-fetch.ts
++++ b/apps/core-web/src/features/api-reference/sim-fetch.ts
+@@ -16,23 +16,25 @@
+  * So nothing leaves the machine (NFR1): the only network request Try-it can make is the loopback
+  * health call. The simulator applies the signed-in operator's role (export: INVESTIGATOR 403 plus
+  * an EXPORT_DENIED audit row; SUPERVISOR 202 plus EVIDENCE_EXPORTED).
++ *
++ * Plan row W84 (backend task 04_client_integration_spec §11 AR-2): with `coreServerRefusal` set
++ * (the page sets it while "Show Core-server endpoints" is on), a request of one of the 65
++ * operations only the Core server answers is rejected before any request and before the simulator
++ * is asked (`TryItRefusedError`, reason `CORE_SERVER`): the page never fabricates an answer for
++ * them. Without it the routing is the table above, unchanged. Live mode has its own fetch
++ * (try-it.ts).
+  */
+ import { API_BASE_PATH, HEALTH_PATH, SIMULATED_HEADER_NAME } from '@dems/shared/api'
+ import { coreHttpOrigin } from '@/lib/core-endpoint'
+ import { answerSimulated, type SimTarget } from './sim-adapter'
+ import { logApiReference } from './log'
++import { BlockedRequestError, coreServerOnlyOperation, TryItRefusedError } from './try-it'
+ 
+ export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+ 
+-/** Rejection for a URL outside the Core API (nothing is sent). */
+-export class BlockedRequestError extends TypeError {
+-  readonly url: string
+-  constructor(url: string, coreOrigin: string = coreHttpOrigin()) {
+-    super(`Blocked: ${url} is outside the local Core API (${coreOrigin}${API_BASE_PATH}).`)
+-    this.name = 'BlockedRequestError'
+-    this.url = url
+-  }
+-}
++// The rejection for a URL outside the Core API lives beside the other Try-it rules (try-it.ts) and
++// keeps its import path here.
++export { BlockedRequestError }
+ 
+ export type TryItMode = 'live' | 'simulated'
+ 
+@@ -50,6 +52,11 @@ export interface SimAwareFetchOptions {
+   networkFetch?: FetchLike
+   /** Called after every answered exchange (not for blocked or failed ones). */
+   onExchange?: (exchange: TryItExchange) => void
++  /**
++   * AR-2: when set, a request of an operation only the Core server answers is rejected with this
++   * sentence before any request. Unset (the default): routed as the table above says.
++   */
++  coreServerRefusal?: string
+ }
+ 
+ function requestUrl(input: string | URL | Request): string {
+@@ -80,7 +87,7 @@ function toResponse(status: number, headers: Record<string, string>, body: unkno
+ 
+ /** Builds the `customFetch` for one simulator. */
+ export function createSimAwareFetch(options: SimAwareFetchOptions): FetchLike {
+-  const { sim, onExchange } = options
++  const { sim, onExchange, coreServerRefusal } = options
+   const networkFetch: FetchLike = options.networkFetch ?? ((input, init) => globalThis.fetch(input, init))
+   const coreBase = coreHttpOrigin()
+   const coreOrigin = new URL(coreBase).origin
+@@ -98,10 +105,22 @@ export function createSimAwareFetch(options: SimAwareFetchOptions): FetchLike {
+       url.origin === coreOrigin && (url.pathname === API_BASE_PATH || url.pathname.startsWith(`${API_BASE_PATH}/`))
+     if (!inCoreApi) {
+       const blocked = new BlockedRequestError(url.origin + url.pathname, coreBase)
+-      logApiReference('warn', 'simAwareFetch.blocked', blocked, { method })
++      logApiReference('warn', 'simAwareFetch.blocked', blocked, 'A Try-it request outside the Core API was blocked.', {
++        method,
++        path: url.pathname,
++      })
+       throw blocked
+     }
+ 
++    if (coreServerRefusal !== undefined && coreServerOnlyOperation(method, url.pathname) !== null) {
++      const refused = new TryItRefusedError('CORE_SERVER', coreServerRefusal, method, url.pathname)
++      logApiReference('warn', 'simAwareFetch.coreServer', refused, 'A Try-it request of a Core-server operation was refused in Simulated mode.', {
++        method,
++        path: url.pathname,
++      })
++      throw refused
++    }
++
+     // LIVE: the one endpoint mock-core serves goes to the network unchanged.
+     if (method === 'GET' && url.pathname === HEALTH_PATH) {
+       const response = await networkFetch(input, init)
+@@ -113,9 +132,10 @@ export function createSimAwareFetch(options: SimAwareFetchOptions): FetchLike {
+     const body = method === 'GET' || method === 'HEAD' ? undefined : await requestBody(input, init)
+     const answer = answerSimulated(sim, { method, path: url.pathname, ...(body !== undefined ? { body } : {}) })
+     if (answer.headers[SIMULATED_HEADER_NAME] === undefined) {
+-      logApiReference('warn', 'simAwareFetch.header', new Error('simulated response without x-dems-simulated'), {
++      logApiReference('warn', 'simAwareFetch.header', null, 'A simulated answer came without its x-dems-simulated header.', {
+         method,
+         path: url.pathname,
++        status: answer.status,
+       })
+     }
+     onExchange?.({ mode: 'simulated', method, path: url.pathname, status: answer.status })
+diff --git a/apps/core-web/src/features/api-reference/use-realtime-feed.ts b/apps/core-web/src/features/api-reference/use-realtime-feed.ts
+index 6355e27..6bab076 100644
+--- a/apps/core-web/src/features/api-reference/use-realtime-feed.ts
++++ b/apps/core-web/src/features/api-reference/use-realtime-feed.ts
+@@ -141,7 +141,7 @@ export function useRealtimeFeed(socketFactory?: SocketFactory): RealtimeFeed {
+     createHeartbeatClient({
+       url: coreWsUrl(),
+       socketFactory: tappingSocketFactory(socketFactory, (data) => tap.record(data)),
+-      onInvalidMessage: (reason) => logApiReference('warn', 'realtime.invalidMessage', new Error(reason)),
++      onInvalidMessage: (reason) => logApiReference('warn', 'realtime.invalidMessage', new Error(reason), 'A heartbeat frame was dropped.'),
+     }),
+   )
+   // Injected sockets (tests) and allowed origins connect at once; other origins wait for Connect.
+@@ -152,7 +152,7 @@ export function useRealtimeFeed(socketFactory?: SocketFactory): RealtimeFeed {
+     try {
+       client.start()
+     } catch (error) {
+-      logApiReference('error', 'realtime.start', error)
++      logApiReference('error', 'realtime.start', error, 'The Realtime panel could not open its heartbeat socket.')
+     }
+     return () => client.stop()
+   }, [client, connected])
+diff --git a/packages/shared/src/i18n/en/api-reference.ts b/packages/shared/src/i18n/en/api-reference.ts
+index f665130..7570714 100644
+--- a/packages/shared/src/i18n/en/api-reference.ts
++++ b/packages/shared/src/i18n/en/api-reference.ts
+@@ -1,18 +1,32 @@
+ /**
+  * `apiReference.*`: the API Reference page frame (01_specs §14.9; research/04 §5.9).
+  * Copy inside the Scalar renderer comes from the OpenAPI document, not from here.
++ * Plan row W84 added the keys of Live mode and of the "Show Core-server endpoints" switch (backend
++ * task 04_client_integration_spec §11): `subtitleLive`, `banner.live`, `server.showCoreServer`,
++ * `badges.CORE_SERVER`, `tooltips.coreServer`, `tooltips.liveCore`, `tryIt`, `liveWarning`,
++ * `realtime.live`.
+  */
+ import type { ResourceTree } from '../resource-tree';
+ 
+ export const apiReference = {
+   title: 'API REFERENCE',
+   subtitle: 'Core API v1 • OpenAPI • local mock-core {{address}}',
++  subtitleLive: 'Core API v1 • OpenAPI • Core server through {{address}}',
+   banner: {
+     ONLINE: 'MOCK-CORE ONLINE • v{{version}} • WS 1 Hz',
+     ONLINE_NO_VERSION: 'MOCK-CORE ONLINE • WS 1 Hz',
+     CONNECTING: 'CONNECTING',
+     OFFLINE: 'MOCK-CORE OFFLINE • live try-it unavailable',
+     detail: 'LIVE try-it goes to {{address}}; SIMULATED try-it is answered in this browser',
++    live: {
++      ONLINE: 'CORE SERVER ONLINE • {{service}} v{{version}} • {{readiness}}',
++      ONLINE_NO_VERSION: 'CORE SERVER ONLINE • WS 1 Hz',
++      CONNECTING: 'CONNECTING TO THE CORE SERVER',
++      OFFLINE: 'CORE SERVER OFFLINE • try-it unavailable',
++      ready: 'READY',
++      starting: 'STARTING',
++      detail: 'Try it goes to the Core server through {{address}}, as the signed-in operator',
++    },
+   },
+ 
+   server: {
+@@ -21,6 +35,7 @@ export const apiReference = {
+     download: 'Download openapi.json',
+     copyBaseUrl: 'Copy base URL',
+     showSimulated: 'Show simulated endpoints',
++    showCoreServer: 'Show Core-server endpoints',
+     legend: 'Legend',
+     copied: 'Base URL copied',
+     copyFailed: 'Could not copy the base URL',
+@@ -38,6 +53,7 @@ export const apiReference = {
+     LIVE: 'LIVE',
+     SIMULATED: 'SIMULATED',
+     RBAC_AUDIT: 'RBAC + AUDIT',
++    CORE_SERVER: 'CORE SERVER',
+   },
+ 
+   bookGaps: {
+@@ -50,6 +66,18 @@ export const apiReference = {
+     simulated: 'Simulated in the browser. No network call is made.',
+     rbac: 'Checked against the role of the signed-in operator, and audited.',
+     offline: 'mock-core unreachable at {{address}}',
++    coreServer: 'Answered by the Core server only. Switch to Live mode to try it.',
++    liveCore: 'Answered over the network by the Core server, as the signed-in operator.',
++  },
++
++  tryIt: {
++    coreServerOnly: 'This operation is answered by the Core server. Switch to Live mode to try it.',
++    secretDenied: 'This operation carries or returns a secret and cannot be tried from the reference page.',
++  },
++
++  liveWarning: {
++    body: "Try it sends real requests to the Core server as {{operator}}. Commands change the Core's state and are recorded in the audit log.",
++    unknownOperator: 'the signed-in operator',
+   },
+ 
+   realtime: {
+@@ -82,6 +110,16 @@ export const apiReference = {
+     reconnecting: 'mock-core unreachable at {{address}}. Reconnecting automatically.',
+     originBlocked:
+       'The live heartbeat needs the dev origin {{origin}} (mock-core allowlist). This page is served from {{current}}.',
++    live: {
++      note: "The console's one socket to the Core server. State payloads are not shown.",
++      reconnecting: 'Core server unreachable at {{address}}. The console reconnects by itself.',
++      epoch: 'Epoch',
++      revision: 'Revision',
++      meters: 'Meter frames',
++      metersRate: '{{rate}} per second',
++      metersNone: 'none',
++      everySlice: 'every slice ({{count}})',
++    },
+   },
+ 
+   states: {
+diff --git a/apps/core-web/src/features/api-reference/try-it.ts b/apps/core-web/src/features/api-reference/try-it.ts
+new file mode 100644
+index 0000000..18cf50f
+--- /dev/null
++++ b/apps/core-web/src/features/api-reference/try-it.ts
+@@ -0,0 +1,236 @@
++/**
++ * Try-it rules of the API Reference page that do not depend on the simulator (backend task
++ * 04_client_integration_spec §11 AR-2, AR-3, AR-3a, AR-9; security design review SD-16; plan row
++ * W84).
++ *
++ * | Mode | A request to | Goes |
++ * |------|--------------|------|
++ * | Live | `{page origin}/api/v1/*`, not one of the six of AR-3a | To the network unchanged, with the browser's session cookie (`credentials: 'same-origin'`): the Core server answers as the signed-in operator and audits it. `sim.request` is never called |
++ * | Live | One of the six operations whose body or answer holds a secret | Nowhere: rejected before any request (`TryItRefusedError`, reason `SECRET`) |
++ * | Live | Anything outside `{page origin}/api/v1` | Nowhere: `BlockedRequestError`, as in Simulated mode |
++ * | Simulated, "Show Core-server endpoints" on | One of the 65 operations only the Core server answers | Nowhere: rejected before any request (`TryItRefusedError`, reason `CORE_SERVER`); the page never fabricates an answer (sim-fetch.ts) |
++ *
++ * The deny list is matched on the request as sent and again on a normalised form of its path
++ * (percent-decoded, lower case, repeated and trailing slashes folded), so a spelling the server
++ * might route to the same operation is refused too. A refusal is written to the page's own log
++ * with the method and the path only (log.ts).
++ */
++import {
++  API_BASE_PATH,
++  CORE_API_OPERATIONS,
++  isOfflineCoreApiOperation,
++  matchCoreApiOperation,
++  type CoreApiRegistryOperation,
++} from '@dems/shared/api'
++import { coreHttpOrigin } from '@/lib/core-endpoint'
++import { logApiReference } from './log'
++import type { FetchLike, TryItExchange } from './sim-fetch'
++
++/**
++ * AR-3a: the six operations whose request body or answer holds a secret (01_specs §7.7): a
++ * password (`signIn`), a biometric token (`setBiometricEnrollment`, `signInWithBiometric`), a
++ * pairing code (`issuePairingCode`), a device credential (`redeemPairingCode`,
++ * `rotateDeviceCredential`). They stay documented; only Try-it is refused.
++ */
++export const TRY_IT_DENIED_OPERATIONS = [
++  'signIn',
++  'setBiometricEnrollment',
++  'signInWithBiometric',
++  'issuePairingCode',
++  'redeemPairingCode',
++  'rotateDeviceCredential',
++] as const
++export type TryItDeniedOperation = (typeof TRY_IT_DENIED_OPERATIONS)[number]
++
++const DENIED = new Set<string>(TRY_IT_DENIED_OPERATIONS)
++
++/** AR-2: the operations only the Core server answers (75 minus the ten of the offline scope). */
++export const CORE_SERVER_ONLY_OPERATIONS: readonly CoreApiRegistryOperation[] = CORE_API_OPERATIONS.filter(
++  (operation) => !isOfflineCoreApiOperation(operation),
++)
++const CORE_SERVER_ONLY = new Set<string>(CORE_SERVER_ONLY_OPERATIONS.map((operation) => operation.operationId))
++
++/** Rejection for a URL outside the Core API (nothing is sent). Re-exported by sim-fetch.ts. */
++export class BlockedRequestError extends TypeError {
++  readonly url: string
++  constructor(url: string, coreOrigin: string = coreHttpOrigin()) {
++    super(`Blocked: ${url} is outside the local Core API (${coreOrigin}${API_BASE_PATH}).`)
++    this.name = 'BlockedRequestError'
++    this.url = url
++  }
++}
++
++/** Why a Try-it request was refused before it was sent. */
++export type TryItRefusal = 'SECRET' | 'CORE_SERVER'
++
++/** A Try-it request refused before any request (Scalar shows its message in its own toast and response panel). */
++export class TryItRefusedError extends Error {
++  readonly reason: TryItRefusal
++  readonly method: string
++  readonly path: string
++  constructor(reason: TryItRefusal, message: string, method: string, path: string) {
++    super(message)
++    this.name = 'TryItRefusedError'
++    this.reason = reason
++    this.method = method
++    this.path = path
++  }
++}
++
++/** A path as a router might read it: percent-decoded, lower case, `//` folded, no trailing `/`. */
++export function normaliseTryItPath(pathname: string): string {
++  let decoded = pathname
++  try {
++    decoded = decodeURIComponent(pathname)
++  } catch {
++    // Not valid percent-encoding: compare the raw text (the server refuses it as a malformed path).
++  }
++  const folded = decoded.toLowerCase().replace(/\/{2,}/g, '/')
++  return folded.length > 1 ? folded.replace(/\/+$/, '') : folded
++}
++
++/** A path template of the registry as a pattern over a normalised path. */
++function templatePattern(template: string): RegExp {
++  const source = template
++    .toLowerCase()
++    .split('/')
++    .map((segment) => (/^\{\w+\}$/.test(segment) ? '[^/]+' : segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
++    .join('/')
++  return new RegExp(`^${source}$`)
++}
++
++const DENIED_ROUTES = CORE_API_OPERATIONS.filter((operation) => DENIED.has(operation.operationId)).map((operation) => ({
++  operationId: operation.operationId,
++  pattern: templatePattern(operation.path),
++}))
++
++/**
++ * The denied operation a request names, or null. A request is denied when it matches one of the
++ * six as sent, or when its normalised path is one of theirs and it is not another (allowed)
++ * operation of the same path (`GET /api/v1/pairing/code` reads the code's status, never the code,
++ * and stays allowed beside the denied `POST`).
++ */
++export function deniedTryItOperation(method: string, pathname: string): TryItDeniedOperation | null {
++  const exact = matchCoreApiOperation(method, pathname)
++  if (exact && DENIED.has(exact.operation.operationId)) return exact.operation.operationId as TryItDeniedOperation
++  if (exact) return null
++  const normalised = normaliseTryItPath(pathname)
++  const allowed = matchCoreApiOperation(method, normalised)
++  if (allowed && !DENIED.has(allowed.operation.operationId)) return null
++  const route = DENIED_ROUTES.find((candidate) => candidate.pattern.test(normalised))
++  return route ? (route.operationId as TryItDeniedOperation) : null
++}
++
++/**
++ * The Core-server-only operation a request names, or null (AR-2). The ten operations of the
++ * offline scope never match: the registry's routes do not overlap, so `GET /api/v1/session/current`
++ * is `getCurrentSession`, whatever template another operation has.
++ */
++export function coreServerOnlyOperation(method: string, pathname: string): string | null {
++  const match = matchCoreApiOperation(method, pathname)
++  return match && CORE_SERVER_ONLY.has(match.operation.operationId) ? match.operation.operationId : null
++}
++
++export interface LiveTryItFetchOptions {
++  /** The sentence of AR-3a, in the page's language: the message of a refusal. */
++  secretRefusal: string
++  /** The network `fetch`. Defaults to the global `fetch` (the browser attaches the session cookie). */
++  networkFetch?: FetchLike
++  /** Called after every answered exchange (not for refused, blocked or failed ones). */
++  onExchange?: (exchange: TryItExchange) => void
++}
++
++function requestUrl(input: string | URL | Request): string {
++  if (typeof input === 'string') return input
++  if (input instanceof URL) return input.href
++  return input.url
++}
++
++function isRequest(input: string | URL | Request): input is Request {
++  return typeof input === 'object' && !(input instanceof URL)
++}
++
++/** The headers of the request, as a plain record (a `Headers` of the request, then `init.headers` over it). */
++function requestHeaders(input: string | URL | Request, init?: RequestInit): Record<string, string> {
++  const headers: Record<string, string> = {}
++  if (isRequest(input)) input.headers.forEach((value, name) => (headers[name] = value))
++  if (init?.headers !== undefined) new Headers(init.headers).forEach((value, name) => (headers[name] = value))
++  return headers
++}
++
++async function requestBodyText(input: string | URL | Request, init?: RequestInit): Promise<string | undefined> {
++  if (init?.body !== undefined && init.body !== null) {
++    if (typeof init.body === 'string') return init.body
++    return new Response(init.body).text()
++  }
++  if (isRequest(input) && input.body !== null) return input.clone().text()
++  return undefined
++}
++
++function isAbort(error: unknown): boolean {
++  return typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'AbortError'
++}
++
++/**
++ * Builds Scalar's `customFetch` for Live mode (AR-3, AR-3a). The request is passed on as a URL and
++ * a plain init (method, headers, body text, `credentials: 'same-origin'`, the abort signal), so
++ * nothing but what Scalar built travels, and the body is read once, here, and kept nowhere.
++ */
++export function createLiveTryItFetch(options: LiveTryItFetchOptions): FetchLike {
++  const { secretRefusal, onExchange } = options
++  const networkFetch: FetchLike = options.networkFetch ?? ((input, init) => globalThis.fetch(input, init))
++  const coreBase = coreHttpOrigin()
++  const coreOrigin = new URL(coreBase).origin
++
++  return async function liveTryItFetch(input, init) {
++    const raw = requestUrl(input)
++    let url: URL
++    try {
++      url = new URL(raw, coreBase)
++    } catch {
++      throw new BlockedRequestError(raw, coreBase)
++    }
++    const method = (init?.method ?? (isRequest(input) ? input.method : undefined) ?? 'GET').toUpperCase()
++    const inCoreApi =
++      url.origin === coreOrigin && (url.pathname === API_BASE_PATH || url.pathname.startsWith(`${API_BASE_PATH}/`))
++    if (!inCoreApi) {
++      const blocked = new BlockedRequestError(url.origin + url.pathname, coreBase)
++      logApiReference('warn', 'liveTryIt.blocked', blocked, 'A Try-it request outside the Core API was blocked.', {
++        method,
++        path: url.pathname,
++      })
++      throw blocked
++    }
++    if (deniedTryItOperation(method, url.pathname) !== null) {
++      const refused = new TryItRefusedError('SECRET', secretRefusal, method, url.pathname)
++      logApiReference('warn', 'liveTryIt.denied', refused, 'A Try-it request of an operation that carries a secret was refused.', {
++        method,
++        path: url.pathname,
++      })
++      throw refused
++    }
++
++    const body = method === 'GET' || method === 'HEAD' ? undefined : await requestBodyText(input, init)
++    const signal = init?.signal ?? (isRequest(input) ? input.signal : undefined)
++    let response: Response
++    try {
++      response = await networkFetch(url.href, {
++        method,
++        headers: requestHeaders(input, init),
++        ...(body !== undefined ? { body } : {}),
++        credentials: 'same-origin',
++        ...(signal ? { signal } : {}),
++      })
++    } catch (error) {
++      if (!isAbort(error)) {
++        logApiReference('warn', 'liveTryIt.network', error, 'A Try-it request did not reach the Core server.', {
++          method,
++          path: url.pathname,
++        })
++      }
++      throw error
++    }
++    onExchange?.({ mode: 'live', method, path: url.pathname, status: response.status })
++    return response
++  }
++}
+diff --git a/apps/core-web/src/features/api-reference/use-live-realtime-feed.ts b/apps/core-web/src/features/api-reference/use-live-realtime-feed.ts
+new file mode 100644
+index 0000000..c23be50
+--- /dev/null
++++ b/apps/core-web/src/features/api-reference/use-live-realtime-feed.ts
+@@ -0,0 +1,165 @@
++/**
++ * The Realtime panel's feed in Live mode (backend task 04_client_integration_spec §11 AR-7; CL-7;
++ * plan row W84, finding F72-4: AC-C-18, no second socket).
++ *
++ * In Live mode the console holds ONE socket, the Live source's. The panel opens none and builds no
++ * heartbeat client: it reads what the source makes public about that socket, and prints no state
++ * payload.
++ *
++ * | Entry | Read from | Printed |
++ * |-------|-----------|---------|
++ * | `heartbeat` | `live.heartbeat`, the heartbeat view of the one socket | type, `seq`, `serverTime`, `clients`: every member of a heartbeat the view keeps |
++ * | `snapshot` | `live.socketStatus()`: its `snapshots` counter moved | type, epoch, revision and the names of the slices it carries (every replicated slice) |
++ * | `delta` | the replica changed and the `deltas` counter moved since the last state entry | type, epoch, revision, the names of the replicated slices that changed (structural sharing keeps an untouched slice the same object) and how many deltas, when more than one was applied at once |
++ * | meter frames | the `meters` counter, sampled at each heartbeat | a rate per second, never an entry (they come several times a second) |
++ *
++ * The source applies state messages through its command gate, so a delta can reach the replica a
++ * little after it reached the socket: the entry is made when the replica changes, with the epoch and
++ * revision the socket last handed on. Entries count from the moment the panel opened; the newest is
++ * first and at most `REALTIME_MESSAGE_LIMIT` are kept.
++ */
++import { useEffect, useState, useSyncExternalStore } from 'react'
++import { REPLICATED_SLICE_NAMES } from '@dems/shared/api'
++import type { HeartbeatSnapshot, LiveSocketStatus } from '@dems/shared/realtime'
++import type { WebLive } from '@/runtime'
++import { REALTIME_MESSAGE_LIMIT } from './use-realtime-feed'
++
++export type LiveRealtimeEntryType = 'heartbeat' | 'snapshot' | 'delta'
++
++export interface LiveRealtimeEntry {
++  /** Unique for the panel's life. */
++  id: string
++  type: LiveRealtimeEntryType
++  /** The printed form: the members of the table above, never a payload. */
++  text: string
++}
++
++/** One reading of the socket and the replica. */
++export interface LiveFrameReading {
++  heartbeat: HeartbeatSnapshot
++  status: Pick<LiveSocketStatus, 'epoch' | 'revision' | 'counters'>
++  /** The replica (the source's store state); only the replicated slices are compared, by identity. */
++  replica: object
++}
++
++export interface LiveFrameTap {
++  /** Takes one reading. Returns true when an entry or the meter rate changed. */
++  observe(reading: LiveFrameReading): boolean
++  subscribe(listener: () => void): () => void
++  getEntries(): readonly LiveRealtimeEntry[]
++  /** Meter frames per second over the last samples, one decimal; null before two samples. */
++  getMetersRate(): number | null
++}
++
++/** How long the meter rate looks back. */
++export const METERS_RATE_WINDOW_MS = 3_000
++
++/** Prints the members of an entry: one per line, a list on one line (it wraps in the panel). */
++export function formatLiveEntry(members: Readonly<Record<string, unknown>>): string {
++  const lines = Object.entries(members).map(([name, value]) => `  ${JSON.stringify(name)}: ${JSON.stringify(value)}`)
++  return `{\n${lines.join(',\n')}\n}`
++}
++
++export function createLiveFrameTap(limit: number = REALTIME_MESSAGE_LIMIT): LiveFrameTap {
++  let entries: readonly LiveRealtimeEntry[] = []
++  let started = false
++  let serial = 0
++  let lastSeq: number | null = null
++  let lastSnapshots = 0
++  let lastDeltas = 0
++  let lastSlices: readonly unknown[] = []
++  let metersRate: number | null = null
++  let meterSamples: { at: number; count: number }[] = []
++  const listeners = new Set<() => void>()
++
++  const push = (type: LiveRealtimeEntryType, members: Record<string, unknown>) => {
++    serial += 1
++    entries = [{ id: `${type}-${serial}`, type, text: formatLiveEntry({ type, ...members }) }, ...entries].slice(0, limit)
++  }
++  const slicesOf = (replica: object) => REPLICATED_SLICE_NAMES.map((name) => (replica as Readonly<Record<string, unknown>>)[name])
++
++  return {
++    observe({ heartbeat, status, replica }) {
++      const slices = slicesOf(replica)
++      const { counters } = status
++      if (!started) {
++        started = true
++        lastSeq = heartbeat.seq
++        lastSnapshots = counters.snapshots
++        lastDeltas = counters.deltas
++        lastSlices = slices
++        if (heartbeat.lastBeatAt !== null) meterSamples = [{ at: heartbeat.lastBeatAt, count: counters.meters }]
++        return false
++      }
++      let changed = false
++      if (heartbeat.seq !== null && heartbeat.seq !== lastSeq) {
++        lastSeq = heartbeat.seq
++        push('heartbeat', { seq: heartbeat.seq, serverTime: heartbeat.serverTime, clients: heartbeat.clients })
++        changed = true
++        if (heartbeat.lastBeatAt !== null) {
++          const at = heartbeat.lastBeatAt
++          meterSamples = [...meterSamples.filter((sample) => at - sample.at <= METERS_RATE_WINDOW_MS && sample.at < at), { at, count: counters.meters }]
++          const first = meterSamples[0]
++          const next = first && first.at < at ? Math.round(((counters.meters - first.count) / ((at - first.at) / 1000)) * 10) / 10 : null
++          if (next !== metersRate) metersRate = next
++        }
++      }
++      if (counters.snapshots > lastSnapshots) {
++        lastSnapshots = counters.snapshots
++        lastDeltas = counters.deltas
++        lastSlices = slices
++        push('snapshot', { epoch: status.epoch, revision: status.revision, slices: [...REPLICATED_SLICE_NAMES] })
++        changed = true
++      } else {
++        const touched = REPLICATED_SLICE_NAMES.filter((_name, index) => slices[index] !== lastSlices[index])
++        if (touched.length > 0) {
++          const applied = counters.deltas - lastDeltas
++          lastDeltas = counters.deltas
++          lastSlices = slices
++          push('delta', { epoch: status.epoch, revision: status.revision, slices: touched, ...(applied > 1 ? { deltas: applied } : {}) })
++          changed = true
++        }
++      }
++      if (changed) for (const listener of listeners) listener()
++      return changed
++    },
++    subscribe(listener) {
++      listeners.add(listener)
++      return () => {
++        listeners.delete(listener)
++      }
++    },
++    getEntries: () => entries,
++    getMetersRate: () => metersRate,
++  }
++}
++
++export interface LiveRealtimeFeed {
++  heartbeat: HeartbeatSnapshot
++  entries: readonly LiveRealtimeEntry[]
++  metersRate: number | null
++  epoch: number | null
++  revision: number | null
++}
++
++/** The panel's view of the Live source's one socket. Opens nothing: it subscribes to what the source already has. */
++export function useLiveRealtimeFeed(live: WebLive): LiveRealtimeFeed {
++  const [tap] = useState(createLiveFrameTap)
++  const heartbeat = useSyncExternalStore(live.heartbeat.subscribe, live.heartbeat.getSnapshot, live.heartbeat.getSnapshot)
++  useEffect(() => {
++    const read = () => {
++      tap.observe({ heartbeat: live.heartbeat.getSnapshot(), status: live.socketStatus(), replica: live.store.getState() })
++    }
++    read()
++    const stopBeats = live.heartbeat.subscribe(read)
++    const stopStore = live.store.subscribe(read)
++    return () => {
++      stopBeats()
++      stopStore()
++    }
++  }, [live, tap])
++  const entries = useSyncExternalStore(tap.subscribe, tap.getEntries, tap.getEntries)
++  const metersRate = useSyncExternalStore(tap.subscribe, tap.getMetersRate, tap.getMetersRate)
++  const status = live.socketStatus()
++  return { heartbeat, entries, metersRate, epoch: status.epoch, revision: status.revision }
++}
+diff --git a/apps/core-web/src/test/live-api-reference-document.test.tsx b/apps/core-web/src/test/live-api-reference-document.test.tsx
+new file mode 100644
+index 0000000..48f167d
+--- /dev/null
++++ b/apps/core-web/src/test/live-api-reference-document.test.tsx
+@@ -0,0 +1,473 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Plan row W84: the API Reference page in both modes, the parts that need no page (backend task
++// 04_client_integration_spec §11, §13.11). The page itself, in Live mode on the fake transport and in
++// Simulated mode on the simulator, is `live-api-reference-page.test.tsx`.
++//
++// | Criterion | Where it is proven here |
++// |-----------|-------------------------|
++// | AR-1, AC-C-100 Simulated: the ten operations as before; "Show Core-server endpoints" lists 75 (66 without the simulated ones), the 65 with CORE SERVER | "AR-2: the Simulated views" |
++// | AR-2, AC-C-100 Simulated: Try-it of a Core-server operation is rejected without a request, and without asking the simulator; the ten route as before | "AR-2: Try-it in Simulated mode" |
++// | AR-3, AC-C-100 Live: 75 operations, every one LIVE, served from the page origin only | "AR-3: the Live document" |
++// | AR-5 Live examples take the session and evidence identifiers from the replica | "AR-5" |
++// | AR-3, AC-C-100 Live Try-it: `{page origin}/api/v1/*` to the network with the cookie, never the simulator; a URL outside it rejected | "AR-3: Try-it in Live mode" |
++// | AR-3a, AC-C-103 the six operations rejected before a request, also when spelled otherwise | "AR-3a" |
++// | AR-9, AC-C-103, AC-C-107 the page's log holds method, path and status only; no marker password, pairing code or bearer value | "AR-9" |
++// | AR-7 the Realtime panel's Live entries: by type, no payload, meters as a rate | "AR-7: the Live frame tap" |
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import {
++  CORE_API_OPERATIONS,
++  CORE_HTTP_ORIGIN,
++  CORE_SERVER_HTTP_ORIGIN,
++  CORE_SERVER_WS_URL,
++  isOfflineCoreApiOperation,
++  listOpenApiOperations,
++  REPLICATED_SLICE_NAMES,
++  serializeOpenApiDocument,
++  type OpenApiDocument,
++} from '@dems/shared/api'
++import { en } from '@dems/shared/i18n'
++import { HeartbeatState } from '@dems/shared/domain'
++import type { HeartbeatSnapshot, LiveSocketCounters } from '@dems/shared/realtime'
++import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, OPERATOR_IDS, type Sim } from '@dems/shared/sim'
++import {
++  apiDocumentJson,
++  apiDocumentJsonFor,
++  buildApiDocument,
++  buildApiDocumentFor,
++  buildLiveApiDocument,
++  CORE_SERVER_BADGE,
++  countOperations,
++  NO_REPLICA_IDENTIFIERS,
++  replicaIdentifiersOf,
++} from '@/features/api-reference/api-document'
++import { createSimAwareFetch, type FetchLike, type TryItExchange } from '@/features/api-reference/sim-fetch'
++import {
++  BlockedRequestError,
++  CORE_SERVER_ONLY_OPERATIONS,
++  createLiveTryItFetch,
++  deniedTryItOperation,
++  TRY_IT_DENIED_OPERATIONS,
++  TryItRefusedError,
++} from '@/features/api-reference/try-it'
++import { createLiveFrameTap, type LiveFrameReading } from '@/features/api-reference/use-live-realtime-feed'
++import { setCoreEndpointMode } from '@/lib/core-endpoint'
++import { webErrorSink } from '@/runtime'
++
++const PAGE = 'http://127.0.0.1:5178'
++const SECRET = en.apiReference.tryIt.secretDenied
++const CORE_ONLY = en.apiReference.tryIt.coreServerOnly
++/** Markers of AC-C-107: none of them may reach the page's log. */
++const MARKER_PASSWORD = 'W84-marker-password-7f3c'
++const MARKER_CODE = '482913'
++const MARKER_BEARERS = ['ses_W84markerSessionToken000000000000', 'dvc_W84markerDeviceCredential0000000', 'bio_W84markerBiometricToken00000000']
++
++const sims: Sim[] = []
++
++beforeEach(() => {
++  webErrorSink.clear()
++})
++
++afterEach(() => {
++  for (const sim of sims.splice(0)) sim.destroy()
++  setCoreEndpointMode('SIMULATED')
++  vi.restoreAllMocks()
++})
++
++async function makeSim(): Promise<Sim> {
++  const authStorage = createMemoryAuthStorage()
++  authStorage.save({ operatorId: OPERATOR_IDS.ANDI, issuedAt: Date.parse('2026-10-01T03:00:00Z') })
++  const sim = createSim({
++    clock: createManualClock(Date.parse('2026-10-01T03:00:00Z')),
++    storage: null,
++    authStorage,
++    visibility: ALWAYS_VISIBLE,
++    scheduler: () => () => undefined,
++  })
++  sims.push(sim)
++  await sim.ready
++  return sim
++}
++
++/** Every `$ref` of a document resolves inside it. */
++function unresolvedRefs(document: OpenApiDocument): string[] {
++  const text = JSON.stringify(document)
++  const missing = new Set<string>()
++  for (const match of text.matchAll(/"\$ref":"#\/components\/(\w+)\/([^"]+)"/g)) {
++    const [, section = '', name = ''] = match
++    const table = (document.components as unknown as Record<string, Record<string, unknown> | undefined>)[section]
++    if (!table || !(name in table)) missing.add(`${section}/${name}`)
++  }
++  return [...missing]
++}
++
++const badgesOf = (document: OpenApiDocument) =>
++  listOpenApiOperations(document).map(({ operation }) => [operation.operationId, operation['x-badges'].map((badge) => badge.name)] as const)
++
++const pathOf = (operationId: string, id = 'X-1'): string => {
++  const operation = CORE_API_OPERATIONS.find((candidate) => candidate.operationId === operationId)
++  if (!operation) throw new Error(operationId)
++  return operation.path.replace('{id}', id)
++}
++const methodOf = (operationId: string): string => CORE_API_OPERATIONS.find((candidate) => candidate.operationId === operationId)?.method.toUpperCase() ?? 'GET'
++
++/** What every record of the page's own log may hold in its context: the request's method, path, status, and the reporter's own facts. */
++const ALLOWED_CONTEXT = new Set(['method', 'path', 'status', 'errorName', 'code', 'correlationId'])
++
++function assertLogDiscipline(): void {
++  const records = webErrorSink.records().filter((record) => record.source.startsWith('ApiReference.'))
++  for (const record of records) {
++    expect(record.stack, record.source).toBeUndefined()
++    for (const key of Object.keys(record.context ?? {})) expect(ALLOWED_CONTEXT.has(key), `${record.source}: ${key}`).toBe(true)
++    expect(String(record.context?.correlationId)).toMatch(/^api-/)
++  }
++  const text = JSON.stringify(webErrorSink.records())
++  for (const marker of [MARKER_PASSWORD, MARKER_CODE, ...MARKER_BEARERS, 'ses_', 'dvc_', 'bio_']) expect(text, marker).not.toContain(marker)
++}
++
++describe('AR-2: the Simulated views (AC-C-100)', () => {
++  it('the default view is the document of before: ten operations, byte-equal to `buildApiDocument(true)`', () => {
++    const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: false })
++    expect(countOperations(view)).toBe(10)
++    expect(serializeOpenApiDocument(view)).toBe(serializeOpenApiDocument(buildApiDocument(true)))
++    expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: false })).toBe(apiDocumentJson(true))
++    expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: false, includeCoreServer: false })).toBe(apiDocumentJson(false))
++  })
++
++  it('"Show Core-server endpoints" lists 75: the ten unchanged, the other 65 with CORE SERVER in place of LIVE', () => {
++    const plain = buildApiDocument(true)
++    const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: true })
++    expect(countOperations(view)).toBe(75)
++    expect(CORE_SERVER_ONLY_OPERATIONS).toHaveLength(65)
++    const coreOnly = new Set(CORE_SERVER_ONLY_OPERATIONS.map((operation) => operation.operationId))
++    for (const [operationId, badges] of badgesOf(view)) {
++      if (coreOnly.has(operationId)) {
++        expect(badges[0], operationId).toBe(CORE_SERVER_BADGE.name)
++        expect(badges, operationId).not.toContain('LIVE')
++      }
++    }
++    // The ten, `info`, `servers` and the offline texts are those of the plain view.
++    for (const { path, method, operation } of listOpenApiOperations(plain)) {
++      expect(view.paths[path]?.[method], operation.operationId).toEqual(operation)
++    }
++    expect(view.info).toEqual(plain.info)
++    expect(view.servers).toEqual(plain.servers)
++    for (const tag of plain.tags) expect(view.tags.find((candidate) => candidate.name === tag.name)).toEqual(tag)
++    expect(view.components.headers).toHaveProperty('XDemsSimulated')
++    expect(unresolvedRefs(view)).toEqual([])
++    expect(CORE_SERVER_BADGE.color).toMatch(/^#/)
++  })
++
++  it('with "Show simulated endpoints" off as well: health and the 65 (66)', () => {
++    const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: false, includeCoreServer: true })
++    expect(countOperations(view)).toBe(66)
++    expect(badgesOf(view).filter(([, badges]) => badges.includes('SIMULATED'))).toEqual([])
++    expect(unresolvedRefs(view)).toEqual([])
++  })
++})
++
++describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
++  async function harness(coreServerRefusal?: string) {
++    const sim = await makeSim()
++    const request = vi.spyOn(sim, 'request')
++    const networkFetch = vi.fn<FetchLike>(async () => new Response('{}', { status: 200 }))
++    const exchanges: TryItExchange[] = []
++    const fetch = createSimAwareFetch({ sim, networkFetch, onExchange: (exchange) => exchanges.push(exchange), ...(coreServerRefusal ? { coreServerRefusal } : {}) })
++    return { sim, request, networkFetch, exchanges, fetch }
++  }
++
++  it.each(CORE_SERVER_ONLY_OPERATIONS.map((operation) => [operation.operationId] as const))(
++    '%s is rejected with the sentence of AR-2: no request, no simulator answer',
++    async (operationId) => {
++      const { request, networkFetch, exchanges, fetch } = await harness(CORE_ONLY)
++      const method = methodOf(operationId)
++      const call = fetch(new Request(`${CORE_HTTP_ORIGIN}${pathOf(operationId)}`, method === 'POST' ? { method, body: '{}', headers: { 'content-type': 'application/json' } } : { method }))
++      await expect(call).rejects.toBeInstanceOf(TryItRefusedError)
++      await expect(call).rejects.toMatchObject({ message: CORE_ONLY, reason: 'CORE_SERVER' })
++      expect(request).not.toHaveBeenCalled()
++      expect(networkFetch).not.toHaveBeenCalled()
++      expect(exchanges).toEqual([])
++    },
++  )
++
++  it('the ten route as before with the switch on: health to the network, the nine to the simulator', async () => {
++    const { request, networkFetch, fetch } = await harness(CORE_ONLY)
++    await fetch(`${CORE_HTTP_ORIGIN}/api/v1/health`)
++    expect(networkFetch).toHaveBeenCalledTimes(1)
++    for (const operation of CORE_API_OPERATIONS.filter(isOfflineCoreApiOperation).filter((candidate) => candidate.operationId !== 'getServiceHealth')) {
++      const response = await fetch(new Request(`${CORE_HTTP_ORIGIN}${operation.path.replace('{id}', 'SES-20261001-0001')}`, { method: operation.method.toUpperCase(), ...(operation.method === 'post' ? { body: '{}' } : {}) }))
++      expect(response.headers.get('x-dems-simulated'), operation.operationId).toBe('1')
++    }
++    expect(request).toHaveBeenCalledTimes(9)
++  })
++
++  it('without the switch nothing changes: a Core-server path is the simulator\'s answer, as before', async () => {
++    const { request, fetch } = await harness()
++    const response = await fetch(`${CORE_HTTP_ORIGIN}/api/v1/auth/session`)
++    expect(request).toHaveBeenCalledTimes(1)
++    expect(response.status).toBeGreaterThanOrEqual(400)
++  })
++
++  it('the refusal is written to the page\'s log with the method and the path only (AR-9)', async () => {
++    const { fetch } = await harness(CORE_ONLY)
++    await expect(fetch(new Request(`${CORE_HTTP_ORIGIN}/api/v1/auth/sign-in`, { method: 'POST', body: JSON.stringify({ username: 'andi.pratama', password: MARKER_PASSWORD }) }))).rejects.toBeInstanceOf(TryItRefusedError)
++    const records = webErrorSink.records()
++    expect(records).toHaveLength(1)
++    expect(records[0]).toMatchObject({
++      level: 'warn',
++      source: 'ApiReference.simAwareFetch.coreServer',
++      message: 'A Try-it request of a Core-server operation was refused in Simulated mode.',
++      context: { method: 'POST', path: '/api/v1/auth/sign-in', errorName: 'TryItRefusedError' },
++    })
++    assertLogDiscipline()
++  })
++})
++
++describe('AR-3: the Live document (AC-C-100)', () => {
++  beforeEach(() => setCoreEndpointMode('LIVE'))
++
++  it('75 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
++    const document = buildLiveApiDocument(NO_REPLICA_IDENTIFIERS)
++    expect(countOperations(document)).toBe(75)
++    for (const [operationId, badges] of badgesOf(document)) expect(badges[0], operationId).toBe('LIVE')
++    expect(document.servers.map((server) => server.url)).toEqual([PAGE])
++    expect(document.info.version).toBe('0.2.1')
++    const prose = [document.info.description, ...document.tags.map((tag) => tag.description)].join('\n')
++    expect(prose).not.toContain(`\`${CORE_SERVER_HTTP_ORIGIN}\``)
++    expect(prose).not.toContain(`\`${CORE_SERVER_WS_URL}\``)
++    expect(prose).toContain(`\`${PAGE}\``)
++    expect(prose).toContain('`ws://127.0.0.1:5178/ws`')
++    expect(unresolvedRefs(document)).toEqual([])
++    // The view function gives the same document, and the Download text is its serialisation (AR-8).
++    const view = { mode: 'live', identifiers: NO_REPLICA_IDENTIFIERS } as const
++    expect(apiDocumentJsonFor(view)).toBe(serializeOpenApiDocument(buildApiDocumentFor(view)))
++  })
++})
++
++describe('AR-5: Live examples take their identifiers from the replica', () => {
++  beforeEach(() => setCoreEndpointMode('LIVE'))
++
++  const examplesOf = (document: OpenApiDocument) =>
++    Object.fromEntries(
++      listOpenApiOperations(document).flatMap(({ operation }) =>
++        (operation.parameters ?? []).filter((parameter) => parameter.in === 'path').map((parameter) => [operation.operationId, parameter.example] as const),
++      ),
++    )
++
++  it('the open session, the last sealed session for the summary, the first sealed evidence item', () => {
++    const ids = replicaIdentifiersOf({
++      session: { id: 'SES-20261006-0031' },
++      lastSealedSessionId: 'SES-20261006-0030',
++      evidence: [
++        { id: 'EV-20261006-0009', sealedAt: null },
++        { id: 'EV-20261006-0010', sealedAt: 1 },
++      ],
++    })
++    expect(ids).toEqual({ openSessionId: 'SES-20261006-0031', lastSealedSessionId: 'SES-20261006-0030', firstSealedEvidenceId: 'EV-20261006-0010' })
++    const examples = examplesOf(buildLiveApiDocument(ids))
++    expect(examples.startSession).toBe('SES-20261006-0031')
++    expect(examples.addSessionNote).toBe('SES-20261006-0031')
++    expect(examples.acknowledgeSessionSummary).toBe('SES-20261006-0030')
++    expect(examples.exportEvidence).toBe('EV-20261006-0010')
++    expect(examples.getEvidence).toBe('EV-20261006-0010')
++    // Seeded identifiers stay as the contract gives them.
++    expect(examples.assignUserRole).toBe('OPR-003')
++    const text = JSON.stringify(examples)
++    expect(text).not.toContain('SES-20261001-0024')
++    expect(text).not.toContain('EV-20260930-0004')
++  })
++
++  it('without a session or a sealed item the example is removed, never a frozen one', () => {
++    const examples = examplesOf(buildLiveApiDocument(NO_REPLICA_IDENTIFIERS))
++    for (const operationId of ['startSession', 'stopSession', 'addSessionNote', 'acknowledgeSessionSummary', 'exportEvidence', 'verifyEvidence']) {
++      expect(examples[operationId], operationId).toBeUndefined()
++    }
++  })
++})
++
++describe('AR-3: Try-it in Live mode (AC-C-100)', () => {
++  beforeEach(() => setCoreEndpointMode('LIVE'))
++
++  function liveHarness() {
++    const calls: { url: string; init: RequestInit }[] = []
++    const networkFetch = vi.fn<FetchLike>(async (input, init) => {
++      calls.push({ url: String(input), init: init ?? {} })
++      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } })
++    })
++    const exchanges: TryItExchange[] = []
++    const fetch = createLiveTryItFetch({ secretRefusal: SECRET, networkFetch, onExchange: (exchange) => exchanges.push(exchange) })
++    return { fetch, networkFetch, calls, exchanges }
++  }
++
++  it('a GET goes to `{page origin}/api/v1/*` with the session cookie; a POST carries its body and headers, read once', async () => {
++    const { fetch, calls, exchanges } = liveHarness()
++    const health = await fetch(new Request(`${PAGE}/api/v1/health`))
++    expect(health.status).toBe(200)
++    await fetch(HEALTH_RELATIVE)
++    const body = JSON.stringify({ retentionPolicy: 'YEAR_1' })
++    await fetch(new Request(`${PAGE}/api/v1/storage/policy`, { method: 'POST', headers: { 'content-type': 'application/json' }, body }))
++    expect(calls.map((call) => [call.init.method, call.url])).toEqual([
++      ['GET', `${PAGE}/api/v1/health`],
++      ['GET', `${PAGE}/api/v1/health`],
++      ['POST', `${PAGE}/api/v1/storage/policy`],
++    ])
++    for (const call of calls) expect(call.init.credentials).toBe('same-origin')
++    expect(calls[0]?.init.body).toBeUndefined()
++    expect(calls[2]?.init.body).toBe(body)
++    expect(new Headers(calls[2]?.init.headers ?? {}).get('content-type')).toBe('application/json')
++    expect(exchanges).toEqual([
++      { mode: 'live', method: 'GET', path: '/api/v1/health', status: 200 },
++      { mode: 'live', method: 'GET', path: '/api/v1/health', status: 200 },
++      { mode: 'live', method: 'POST', path: '/api/v1/storage/policy', status: 200 },
++    ])
++  })
++
++  it('every one of the 69 operations that are not denied goes to the network (the nine design-book ones too)', async () => {
++    const { fetch, networkFetch } = liveHarness()
++    const allowed = CORE_API_OPERATIONS.filter((operation) => !(TRY_IT_DENIED_OPERATIONS as readonly string[]).includes(operation.operationId))
++    expect(allowed).toHaveLength(69)
++    for (const operation of allowed) {
++      await fetch(new Request(`${PAGE}${operation.path.replace('{id}', 'X-1')}`, { method: operation.method.toUpperCase() }))
++    }
++    expect(networkFetch).toHaveBeenCalledTimes(69)
++  })
++
++  it.each([
++    'https://example.com/api/v1/health',
++    'http://localhost:5178/api/v1/health',
++    `${CORE_SERVER_HTTP_ORIGIN}/api/v1/health`,
++    `${CORE_HTTP_ORIGIN}/api/v1/health`,
++    `${PAGE}/ws`,
++    `${PAGE}/openapi.json`,
++    `${PAGE}/api/v10/health`,
++    'https://proxy.scalar.com/?scalar_url=http%3A%2F%2F127.0.0.1%3A5178%2Fapi%2Fv1%2Fhealth',
++  ])('a URL outside `{page origin}/api/v1` is rejected without a request: %s', async (url) => {
++    const { fetch, networkFetch } = liveHarness()
++    await expect(fetch(url)).rejects.toBeInstanceOf(BlockedRequestError)
++    await expect(fetch(url)).rejects.toThrow(`(${PAGE}/api/v1)`)
++    expect(networkFetch).not.toHaveBeenCalled()
++  })
++
++  it('a network failure is written to the log by method and path, and passed on; a cancel is not logged', async () => {
++    const failing = createLiveTryItFetch({
++      secretRefusal: SECRET,
++      networkFetch: async () => {
++        throw new TypeError('Failed to fetch')
++      },
++    })
++    await expect(failing(`${PAGE}/api/v1/health`)).rejects.toThrow('Failed to fetch')
++    const aborting = createLiveTryItFetch({
++      secretRefusal: SECRET,
++      networkFetch: async () => {
++        throw new DOMException('The operation was aborted.', 'AbortError')
++      },
++    })
++    await expect(aborting(`${PAGE}/api/v1/health`)).rejects.toThrow('aborted')
++    expect(webErrorSink.records().map((record) => [record.source, record.message, record.context?.method, record.context?.path, record.context?.errorName])).toEqual([
++      ['ApiReference.liveTryIt.network', 'A Try-it request did not reach the Core server.', 'GET', '/api/v1/health', 'TypeError'],
++    ])
++    assertLogDiscipline()
++  })
++})
++
++const HEALTH_RELATIVE = '/api/v1/health'
++
++describe('AR-3a: the six operations are rejected before a request (AC-C-103)', () => {
++  beforeEach(() => setCoreEndpointMode('LIVE'))
++
++  /** A body that carries every marker of AC-C-107. */
++  const markedBody = JSON.stringify({ username: 'andi.pratama', password: MARKER_PASSWORD, code: MARKER_CODE, token: MARKER_BEARERS[2], credential: MARKER_BEARERS[1], session: MARKER_BEARERS[0] })
++
++  it.each(TRY_IT_DENIED_OPERATIONS.map((operationId) => [operationId] as const))('%s: the sentence of AR-3a, no request', async (operationId) => {
++    const networkFetch = vi.fn<FetchLike>(async () => new Response('{}'))
++    const fetch = createLiveTryItFetch({ secretRefusal: SECRET, networkFetch })
++    const call = fetch(new Request(`${PAGE}${pathOf(operationId)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: markedBody }))
++    await expect(call).rejects.toBeInstanceOf(TryItRefusedError)
++    await expect(call).rejects.toMatchObject({ message: SECRET, reason: 'SECRET', method: 'POST', path: pathOf(operationId) })
++    expect(networkFetch).not.toHaveBeenCalled()
++    expect(webErrorSink.records().at(-1)).toMatchObject({ source: 'ApiReference.liveTryIt.denied', context: { method: 'POST', path: pathOf(operationId) } })
++    assertLogDiscipline()
++  })
++
++  it.each([
++    ['POST', '/api/v1/auth/sign-in/'],
++    ['POST', '/api/v1/AUTH/Sign-In'],
++    ['POST', '/api/v1//auth/sign-in'],
++    ['POST', '/api/v1/auth%2Fsign-in'],
++    ['POST', '/api/v1/auth/sign%2Din'],
++    ['POST', '/api/v1/pairing/code/'],
++    ['POST', '/api/v1/Pairing/Redeem'],
++    ['POST', '/api/v1/pairing/device/credential//'],
++    ['PUT', '/api/v1/auth/biometric/sign-in'],
++    ['GET', '/api/v1/auth/biometric'],
++  ])('another spelling of a denied operation is refused too: %s %s', (method, path) => {
++    expect(deniedTryItOperation(method, path)).not.toBeNull()
++  })
++
++  it.each([
++    ['GET', '/api/v1/pairing/code', 'getPairingCodeStatus reads the status, never the code'],
++    ['GET', '/api/v1/Pairing/Code/', 'getPairingCodeStatus spelled otherwise: still not the denied POST of the same path'],
++    ['POST', '/api/v1/pairing/code/cancel', 'cancelPairingCode'],
++    ['POST', '/api/v1/auth/sign-out', 'signOut'],
++    ['POST', '/api/v1/auth/biometric/failure', 'reportBiometricFailure'],
++    ['GET', '/api/v1/pairing/device', 'getDeviceRegistration'],
++  ])('an operation beside them stays allowed: %s %s (%s)', (method, path) => {
++    expect(deniedTryItOperation(method, path)).toBeNull()
++  })
++})
++
++describe('AR-7: the Live frame tap (no payload, by type, meters as a rate)', () => {
++  const counters = (over: Partial<LiveSocketCounters> = {}): LiveSocketCounters => ({
++    received: 0, invalid: 0, snapshots: 1, deltas: 0, deltasDropped: 0, deltasStale: 0, meters: 0, metersDropped: 0, control: 0, sent: 0, resyncs: 0, reconnects: 0, errors: 0, ...over,
++  })
++  const beat = (seq: number | null, at: number | null): HeartbeatSnapshot => ({
++    state: HeartbeatState.LIVE, seq, serverTime: seq === null ? null : `2026-10-06T00:00:0${seq % 10}.000Z`, lastBeatAt: at, clients: 1, reconnectAttempt: 0,
++  })
++  const replica = (over: Record<string, unknown> = {}): Record<string, unknown> => {
++    const base: Record<string, unknown> = {}
++    for (const name of REPLICATED_SLICE_NAMES) base[name] = { name }
++    return { ...base, ...over }
++  }
++
++  it('starts from the reading at mount, then lists heartbeats, a snapshot and deltas newest first, at most five', () => {
++    const tap = createLiveFrameTap()
++    const state0 = replica()
++    const reading = (over: Partial<LiveFrameReading>): LiveFrameReading => ({ heartbeat: beat(1, 1_000), status: { epoch: 3, revision: 40, counters: counters() }, replica: state0, ...over })
++    expect(tap.observe(reading({}))).toBe(false)
++    expect(tap.getEntries()).toEqual([])
++    expect(tap.observe(reading({ heartbeat: beat(2, 2_000) }))).toBe(true)
++    const secret = { caseNumber: 'LP/2026/1006-0001', subjectName: 'Synthetic Subject' }
++    const state1 = { ...state0, session: secret, sessionHistory: [secret] }
++    tap.observe(reading({ heartbeat: beat(2, 2_000), status: { epoch: 3, revision: 42, counters: counters({ deltas: 2 }) }, replica: state1 }))
++    const state2 = replica()
++    tap.observe(reading({ heartbeat: beat(2, 2_000), status: { epoch: 4, revision: 0, counters: counters({ snapshots: 2, deltas: 2 }) }, replica: state2 }))
++    const entries = tap.getEntries()
++    expect(entries.map((entry) => entry.type)).toEqual(['snapshot', 'delta', 'heartbeat'])
++    expect(JSON.parse(entries[0]?.text ?? '')).toEqual({ type: 'snapshot', epoch: 4, revision: 0, slices: [...REPLICATED_SLICE_NAMES] })
++    expect(JSON.parse(entries[1]?.text ?? '')).toEqual({ type: 'delta', epoch: 3, revision: 42, slices: ['session', 'sessionHistory'], deltas: 2 })
++    expect(JSON.parse(entries[2]?.text ?? '')).toEqual({ type: 'heartbeat', seq: 2, serverTime: '2026-10-06T00:00:02.000Z', clients: 1 })
++    // Never a state payload.
++    const text = entries.map((entry) => entry.text).join('\n')
++    expect(text).not.toContain('LP/2026/1006-0001')
++    expect(text).not.toContain('Synthetic Subject')
++    for (let seq = 3; seq < 10; seq += 1) tap.observe(reading({ heartbeat: beat(seq, seq * 1_000), status: { epoch: 4, revision: 0, counters: counters({ snapshots: 2, deltas: 2 }) }, replica: state2 }))
++    expect(tap.getEntries()).toHaveLength(5)
++    expect(tap.getEntries().every((entry) => entry.type === 'heartbeat')).toBe(true)
++  })
++
++  it('a client-only change of the replica (the clock, the audio) is no entry; meter frames are a rate, never an entry', () => {
++    const tap = createLiveFrameTap()
++    const state0 = replica()
++    tap.observe({ heartbeat: beat(1, 1_000), status: { epoch: 3, revision: 40, counters: counters() }, replica: { ...state0, clock: 1 } })
++    tap.observe({ heartbeat: beat(1, 1_000), status: { epoch: 3, revision: 40, counters: counters({ meters: 5 }) }, replica: { ...state0, clock: 2, audio: { level: 0.9 } } })
++    expect(tap.getEntries()).toEqual([])
++    expect(tap.getMetersRate()).toBeNull()
++    tap.observe({ heartbeat: beat(2, 2_000), status: { epoch: 3, revision: 40, counters: counters({ meters: 10 }) }, replica: state0 })
++    expect(tap.getMetersRate()).toBe(10)
++    tap.observe({ heartbeat: beat(3, 3_000), status: { epoch: 3, revision: 40, counters: counters({ meters: 30 }) }, replica: state0 })
++    expect(tap.getMetersRate()).toBe(15)
++    expect(tap.getEntries().map((entry) => entry.type)).toEqual(['heartbeat', 'heartbeat'])
++  })
++})
+diff --git a/apps/core-web/src/test/live-api-reference-page.test.tsx b/apps/core-web/src/test/live-api-reference-page.test.tsx
+new file mode 100644
+index 0000000..7ba146f
+--- /dev/null
++++ b/apps/core-web/src/test/live-api-reference-page.test.tsx
+@@ -0,0 +1,325 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Plan row W84: the API Reference page `/developer/api` in both modes (backend task
++// 04_client_integration_spec §11, §13.11). Live mode runs on W50's harness: the real router and Live
++// start-up on the contract-checked fake transport, rendered under StrictMode as `main.tsx` does.
++// Simulated mode runs on the simulator, as the protected route tests do. Scalar is replaced by a stub
++// that records the configuration the page hands it, so a test calls Try-it exactly as Scalar does:
++// `configuration.customFetch(request)`.
++//
++// | Criterion | Where it is proven here |
++// |-----------|-------------------------|
++// | AC-C-100 Live: 75 operations, all `LIVE`, the page origin as the one server; a Try-it of `getServiceHealth` answered by `dems-core-server`; a URL outside `{page origin}/api/v1` rejected | "Live mode: the document and Try-it" |
++// | AC-C-103 Live: Try-it of the six operations sends no request (the fake transport's log); after one GET and one POST no web-storage value holds a request body or an answer; the page's log holds method, path and status only | "AC-C-103" |
++// | AC-C-107 no marker password, no pairing code, no `ses_`/`dvc_`/`bio_` value in the error sink or the page's log | "AC-C-103" (the marked bodies) |
++// | AC-C-18 with the page open, no second socket: one connection, the global `WebSocket` never constructed; the Realtime panel lists the one socket's messages by type, prints no payload and has no Connect switch | "AC-C-18" |
++// | AR-4, AR-6 the warning names the signed-in operator; the banner names `dems-core-server`, its version and its readiness | "Live mode: the document and Try-it" |
++// | AC-C-100 Simulated: ten operations as before; "Show Core-server endpoints" lists 75 and a Try-it of a Core-server operation is rejected without a request | "Simulated mode" |
++import { createElement } from 'react'
++import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
++import { QueryClient } from '@tanstack/react-query'
++import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { CORE_API_OPERATIONS, listOpenApiOperations, type OpenApiDocument } from '@dems/shared/api'
++import { en } from '@dems/shared/i18n'
++import type { SocketLike } from '@dems/shared/realtime'
++import { ALWAYS_VISIBLE, createMemoryAuthStorage, createSim, OPERATOR_IDS, type Sim } from '@dems/shared/sim'
++import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
++import type { DemsScalarConfiguration } from '@/features/api-reference/scalar-config'
++import { TRY_IT_DENIED_OPERATIONS, TryItRefusedError } from '@/features/api-reference/try-it'
++import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
++import { setCoreEndpointMode } from '@/lib/core-endpoint'
++import { createAppRouter } from '@/router'
++import { webErrorSink } from '@/runtime'
++import { createLiveTestBed, LIVE_TEST_ORIGIN, SUPERVISOR_SESSION, type LiveTestBed } from '@/runtime/testing/live-harness'
++
++configure({ asyncUtilTimeout: 8_000 })
++vi.setConfig({ testTimeout: 30_000 })
++
++// Scalar replaced by a stub that keeps the configuration (the renderer module is the only runtime import of Scalar).
++const scalar = vi.hoisted(() => ({ configurations: [] as unknown[] }))
++vi.mock('@/features/api-reference/scalar-renderer', () => ({
++  default: ({ configuration }: { configuration: unknown }) => {
++    scalar.configurations.push(configuration)
++    return createElement('div', { 'data-testid': 'scalar-stub' })
++  },
++}))
++
++const A = en.apiReference
++const MARKER_PASSWORD = 'W84-page-marker-password-91d2'
++const MARKER_CODE = '771234'
++const MARKER_BEARERS = ['ses_W84pageMarkerSessionToken0000000000', 'dvc_W84pageMarkerDeviceCredential00000', 'bio_W84pageMarkerBiometricToken000000']
++
++/** The configuration Scalar got last. */
++function lastConfiguration(): DemsScalarConfiguration {
++  const configuration = scalar.configurations.at(-1)
++  if (!configuration) throw new Error('the renderer was not mounted')
++  return configuration as DemsScalarConfiguration
++}
++
++const pathOf = (operationId: string): string => CORE_API_OPERATIONS.find((operation) => operation.operationId === operationId)?.path ?? ''
++const badgesOf = (document: OpenApiDocument) => listOpenApiOperations(document).map(({ operation }) => operation['x-badges'][0]?.name)
++
++/** Every value of every web storage the page can reach. */
++function storageText(bed?: LiveTestBed): string {
++  const values: string[] = []
++  for (const storage of [window.localStorage, window.sessionStorage, ...(bed?.storage ? [bed.storage] : [])]) {
++    for (let index = 0; index < storage.length; index += 1) {
++      const key = storage.key(index)
++      if (key !== null) values.push(`${key}=${storage.getItem(key) ?? ''}`)
++    }
++  }
++  return values.join('\n')
++}
++
++/** Every socket opened with the global constructor. */
++let globalSockets: string[] = []
++class CountingSocket {
++  readyState = 0
++  onopen: unknown = null
++  onmessage: unknown = null
++  onclose: unknown = null
++  onerror: unknown = null
++  constructor(url: string) {
++    globalSockets.push(url)
++  }
++  close() {
++    this.readyState = 3
++  }
++}
++
++let bed: LiveTestBed | undefined
++const sims: Sim[] = []
++
++beforeEach(() => {
++  scalar.configurations.length = 0
++  globalSockets = []
++  resetMissingI18nKeys()
++  webErrorSink.clear()
++  window.localStorage.clear()
++  window.sessionStorage.clear()
++  window.sessionStorage.setItem(SHELL_INTRO_STORAGE_KEY, '1')
++  vi.stubGlobal('WebSocket', CountingSocket)
++  Element.prototype.scrollTo ??= function scrollTo() {}
++})
++
++afterEach(() => {
++  cleanup()
++  bed?.dispose()
++  bed = undefined
++  for (const sim of sims.splice(0)) sim.stop()
++  setCoreEndpointMode('SIMULATED')
++  vi.unstubAllGlobals()
++  vi.restoreAllMocks()
++})
++
++async function openLive() {
++  bed = createLiveTestBed({ session: SUPERVISOR_SESSION })
++  const page = await bed.load()
++  const mounted = await bed.mount(page, '/developer/api', { strict: true })
++  await screen.findByTestId('page-api-reference')
++  await screen.findByTestId('scalar-stub')
++  return { bed, page, mounted }
++}
++
++describe('Live mode: the document and Try-it (AC-C-100, AR-4, AR-6)', () => {
++  it('75 operations, every one LIVE, served from the page origin; no switch; the warning names the operator', async () => {
++    const { bed: live } = await openLive()
++    expect(screen.getByTestId('page-api-reference')).toHaveAttribute('data-mode', 'live')
++    const document = lastConfiguration().content
++    expect(listOpenApiOperations(document)).toHaveLength(75)
++    expect(new Set(badgesOf(document))).toEqual(new Set(['LIVE']))
++    expect(document.servers.map((server) => server.url)).toEqual([LIVE_TEST_ORIGIN])
++    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('75 operations')
++    expect(screen.getByTestId('api-base-url')).toHaveTextContent(LIVE_TEST_ORIGIN)
++    expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.2.1')
++    expect(screen.queryByTestId('api-show-simulated')).toBeNull()
++    expect(screen.queryByTestId('api-show-core-server')).toBeNull()
++    expect(screen.queryByTestId('api-legend-SIMULATED')).toBeNull()
++    expect(screen.getByTestId('api-live-warning')).toHaveTextContent(
++      A.liveWarning.body.replace('{{operator}}', SUPERVISOR_SESSION.operator.displayName),
++    )
++    // AR-6: the banner reads the one socket's heartbeat and the health answer.
++    await live.elapse(2_000)
++    await waitFor(() => expect(screen.getByTestId('api-service-banner')).toHaveTextContent('CORE SERVER ONLINE • dems-core-server v0.2.0 • READY'))
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++
++  it('a Try-it of `getServiceHealth` goes to the page origin with the cookie and is answered by `dems-core-server`; `sim.request` is never called', async () => {
++    const { bed: live, page } = await openLive()
++    const request = vi.spyOn(page.live, 'request')
++    const before = live.fake.log.requestsOf('getServiceHealth').length
++    const response = await lastConfiguration().customFetch(new Request(`${LIVE_TEST_ORIGIN}/api/v1/health`))
++    expect(response.status).toBe(200)
++    expect(((await response.json()) as { service: string }).service).toBe('dems-core-server')
++    const calls = live.fake.log.requestsOf('getServiceHealth')
++    expect(calls).toHaveLength(before + 1)
++    expect(calls.at(-1)).toMatchObject({ url: `${LIVE_TEST_ORIGIN}/api/v1/health`, credentials: 'same-origin', outcome: 'answered' })
++    expect(request).not.toHaveBeenCalled()
++  })
++
++  it('a URL outside `{page origin}/api/v1` is rejected and nothing reaches the transport', async () => {
++    const { bed: live } = await openLive()
++    const before = live.fake.log.requests.length
++    for (const url of ['http://127.0.0.1:4420/api/v1/health', `${LIVE_TEST_ORIGIN}/ws`, 'http://localhost:5178/api/v1/health']) {
++      await expect(lastConfiguration().customFetch(url)).rejects.toThrow(`(${LIVE_TEST_ORIGIN}/api/v1)`)
++    }
++    expect(live.fake.log.requests).toHaveLength(before)
++  })
++})
++
++describe('AC-C-103 and AC-C-107: the deny list, web storage and the page\'s log', () => {
++  it('Try-it of the six operations sends no request: the fake transport\'s log holds none of them', async () => {
++    const { bed: live } = await openLive()
++    const before = live.fake.log.requests.length
++    const marked = JSON.stringify({ username: 'andi.pratama', password: MARKER_PASSWORD, code: MARKER_CODE, token: MARKER_BEARERS[2], deviceName: MARKER_BEARERS[1], platform: MARKER_BEARERS[0] })
++    for (const operationId of TRY_IT_DENIED_OPERATIONS) {
++      const call = lastConfiguration().customFetch(
++        new Request(`${LIVE_TEST_ORIGIN}${pathOf(operationId)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: marked }),
++      )
++      await expect(call, operationId).rejects.toBeInstanceOf(TryItRefusedError)
++      await expect(call, operationId).rejects.toThrow(A.tryIt.secretDenied)
++      expect(live.fake.log.requestsOf(operationId), operationId).toEqual([])
++    }
++    expect(live.fake.log.requests).toHaveLength(before)
++    // Six records, each with the method and the path only.
++    const records = webErrorSink.records().filter((record) => record.source === 'ApiReference.liveTryIt.denied')
++    expect(records.map((record) => record.context?.path)).toEqual(TRY_IT_DENIED_OPERATIONS.map(pathOf))
++    const sink = JSON.stringify(webErrorSink.records())
++    for (const marker of [MARKER_PASSWORD, MARKER_CODE, ...MARKER_BEARERS, 'ses_', 'dvc_', 'bio_']) expect(sink, marker).not.toContain(marker)
++    expect(storageText(live)).not.toContain(MARKER_PASSWORD)
++  })
++
++  it('after one GET and one POST no web-storage value holds a request body or an answer; the log holds method, path and status only', async () => {
++    const { bed: live } = await openLive()
++    live.fake.answerFromExample('setStoragePolicy', 200)
++    const { customFetch } = lastConfiguration()
++    const get = await customFetch(new Request(`${LIVE_TEST_ORIGIN}/api/v1/health`))
++    const getAnswer = await get.text()
++    const body = JSON.stringify({ retentionPolicy: 'YEAR_1' })
++    const post = await customFetch(new Request(`${LIVE_TEST_ORIGIN}/api/v1/storage/policy`, { method: 'POST', headers: { 'content-type': 'application/json' }, body }))
++    expect(post.status).toBe(200)
++    const postAnswer = await post.text()
++    expect(live.fake.log.requestsOf('setStoragePolicy').at(-1)).toMatchObject({ bodyText: body, credentials: 'same-origin' })
++    await live.flush()
++    const stored = storageText(live)
++    for (const text of [body, getAnswer, postAnswer, 'YEAR_1', 'dems-core-server', 'retentionPolicy']) expect(stored, text).not.toContain(text)
++    // A failed exchange is the only kind the page logs; every record of the page holds method, path, status and the reporter's own facts.
++    await expect(customFetch(`${LIVE_TEST_ORIGIN}/openapi.json`)).rejects.toBeInstanceOf(TypeError)
++    const records = webErrorSink.records().filter((record) => record.source.startsWith('ApiReference.'))
++    expect(records.length).toBeGreaterThan(0)
++    for (const record of records) {
++      expect(record.stack).toBeUndefined()
++      for (const key of Object.keys(record.context ?? {})) expect(['method', 'path', 'status', 'errorName', 'code', 'correlationId']).toContain(key)
++    }
++    const sink = JSON.stringify(webErrorSink.records())
++    for (const text of [body, getAnswer, postAnswer, 'YEAR_1']) expect(sink, text).not.toContain(text)
++  })
++})
++
++describe('AC-C-18: no second socket with the page open in Live mode (F72-4)', () => {
++  it('one connection, the Live source\'s; the global constructor is never used; the panel lists the socket\'s messages by type, no payload', async () => {
++    const { bed: live, page } = await openLive()
++    await live.elapse(3_000)
++    expect(live.fake.connections).toHaveLength(1)
++    expect(page.sockets).toHaveLength(1)
++    expect(globalSockets).toEqual([])
++    const panel = screen.getByTestId('api-panel-realtime')
++    expect(within(panel).queryByTestId('api-realtime-connect')).toBeNull()
++    expect(within(panel).getByTestId('api-realtime-url')).toHaveTextContent('ws://127.0.0.1:5178/ws')
++    await waitFor(() => expect(within(panel).getByTestId('api-realtime-chip')).toHaveAttribute('data-state', 'ONLINE'))
++    await waitFor(() => expect(panel.querySelectorAll('pre[data-type="heartbeat"]').length).toBeGreaterThan(0))
++    const heartbeat = JSON.parse(panel.querySelector('pre[data-type="heartbeat"]')?.textContent ?? '{}') as Record<string, unknown>
++    expect(Object.keys(heartbeat)).toEqual(['type', 'seq', 'serverTime', 'clients'])
++    // A delta of the one socket: type, epoch, revision and the slice it touches, never its value.
++    await act(async () => {
++      live.fake.connection(0).delta([{ op: 'replace', slice: 'activeCameraId', value: 'VIDEO-02' }])
++    })
++    await live.flush()
++    await waitFor(() => expect(panel.querySelectorAll('pre[data-type="delta"]').length).toBe(1))
++    const delta = JSON.parse(panel.querySelector('pre[data-type="delta"]')?.textContent ?? '{}') as Record<string, unknown>
++    expect(delta).toEqual({ type: 'delta', epoch: 3, revision: 41, slices: ['activeCameraId'] })
++    expect(panel.textContent).not.toContain('VIDEO-02')
++    expect(within(panel).getByTestId('api-realtime-revision')).toHaveTextContent('41')
++    await live.elapse(2_000)
++    expect(live.fake.connections).toHaveLength(1)
++    expect(globalSockets).toEqual([])
++  })
++})
++
++// ── Simulated mode ─────────────────────────────────────────────────────────────────────────
++
++class SilentSocket implements SocketLike {
++  readyState = 0
++  onopen: SocketLike['onopen'] = null
++  onmessage: SocketLike['onmessage'] = null
++  onclose: SocketLike['onclose'] = null
++  onerror: SocketLike['onerror'] = null
++  close() {
++    this.readyState = 3
++  }
++}
++
++async function openSimulated() {
++  const fetched: string[] = []
++  vi.stubGlobal(
++    'fetch',
++    vi.fn(async (input: string | URL | Request) => {
++      fetched.push(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
++      return new Response(JSON.stringify({ status: 'ok' }), { status: 200 })
++    }),
++  )
++  const authStorage = createMemoryAuthStorage()
++  authStorage.save({ operatorId: OPERATOR_IDS.ANDI, issuedAt: Date.now() })
++  const sim = createSim({ storage: null, authStorage, visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined })
++  sims.push(sim)
++  const router = createAppRouter(
++    { sim, queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }), socketFactory: () => new SilentSocket() },
++    { history: createMemoryHistory({ initialEntries: ['/developer/api'] }) },
++  )
++  render(<RouterProvider router={router} />)
++  await screen.findByTestId('page-api-reference')
++  await screen.findByTestId('scalar-stub')
++  return { sim, fetched }
++}
++
++describe('Simulated mode (AC-C-100, AR-2)', () => {
++  it('ten operations as before; "Show Core-server endpoints" lists 75 with CORE SERVER and refuses their Try-it without a request', async () => {
++    const { sim, fetched } = await openSimulated()
++    expect(screen.getByTestId('page-api-reference')).toHaveAttribute('data-mode', 'simulated')
++    expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(10)
++    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('10 operations')
++    expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.1.0')
++    expect(screen.queryByTestId('api-live-warning')).toBeNull()
++    expect(screen.getByTestId('api-realtime-connect')).toBeInTheDocument()
++    const coreSwitch = within(screen.getByTestId('api-show-core-server')).getByRole('switch')
++    expect(coreSwitch).not.toBeChecked()
++    expect(screen.queryByTestId('api-legend-CORE_SERVER')).toBeNull()
++
++    fireEvent.click(coreSwitch)
++    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(75))
++    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('75 operations')
++    expect(screen.getByTestId('api-legend-CORE_SERVER')).toHaveTextContent(A.badges.CORE_SERVER)
++    expect(badgesOf(lastConfiguration().content).filter((name) => name === 'CORE SERVER')).toHaveLength(65)
++
++    const request = vi.spyOn(sim, 'request')
++    const before = fetched.length
++    await expect(lastConfiguration().customFetch(new Request('http://127.0.0.1:4400/api/v1/admin/users'))).rejects.toThrow(A.tryIt.coreServerOnly)
++    await expect(
++      lastConfiguration().customFetch(new Request('http://127.0.0.1:4400/api/v1/auth/sign-in', { method: 'POST', body: JSON.stringify({ username: 'andi.pratama', password: MARKER_PASSWORD }) })),
++    ).rejects.toBeInstanceOf(TryItRefusedError)
++    expect(request).not.toHaveBeenCalled()
++    expect(fetched).toHaveLength(before)
++    // The nine are still answered by the simulator.
++    const current = await lastConfiguration().customFetch(new Request('http://127.0.0.1:4400/api/v1/session/current'))
++    expect(current.headers.get('x-dems-simulated')).toBe('1')
++    expect(request).toHaveBeenCalledTimes(1)
++    expect(JSON.stringify(webErrorSink.records())).not.toContain(MARKER_PASSWORD)
++
++    fireEvent.click(coreSwitch)
++    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(10))
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++})

@@ -1,0 +1,82 @@
+#!/bin/bash
+# Lands one item of fix round B1 in the tree in one step.
+#   land.sh <item-name> <list-file>
+# List lines:  "C <path>"            a changed or new file: copied from the scratch copy
+#              "M <old> <new>"       a file that moves: the new path takes the scratch content, the old path leaves the tree
+#              "S <old> <new>"       as M, but the old path stays and becomes the scratch copy's shim
+# Every file is first copied beside its target under a name no tool reads, then all are renamed.
+# Before anything is written, every existing target must still be what this round last knew
+# (the pre-image of 17:04, or what an earlier item of this round landed).
+set -euo pipefail
+W=/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1b1
+S=$W/tree/apps/core-server
+T=/Users/gsp-budi/Documents/DEMS/apps/core-server
+P=/Users/gsp-budi/Documents/DEMS/.cache/rollback/CPB1b1
+ITEM=$1; LIST=$2
+KNOWN=$W/known.sha256
+touch "$KNOWN"
+sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+known() { # the hash this round last knew for a tree path, or empty
+  local k; k=$(grep -F "  $1" "$KNOWN" | tail -1 | cut -d' ' -f1 || true)
+  if [ -n "$k" ]; then echo "$k"; elif [ -f "$P/$1" ]; then sha "$P/$1"; fi
+}
+# 1. checks
+FAIL=0
+while read -r kind a b; do
+  [ -z "${kind:-}" ] && continue
+  case "$kind" in
+    C) src="$S/$a"; [ -f "$src" ] || { echo "NOT IN SCRATCH: $a"; FAIL=1; }
+       if [ -f "$T/$a" ]; then k=$(known "$a"); [ "$(sha "$T/$a")" = "$k" ] || { echo "CHANGED BY ANOTHER WRITER: $a"; FAIL=1; }; fi ;;
+    M|S) [ -f "$T/$a" ] || { echo "MOVE SOURCE MISSING: $a"; FAIL=1; }
+       k=$(known "$a"); [ -f "$T/$a" ] && { [ "$(sha "$T/$a")" = "$k" ] || { echo "CHANGED BY ANOTHER WRITER: $a"; FAIL=1; }; }
+       [ -e "$T/$b" ] && { echo "MOVE TARGET EXISTS: $b"; FAIL=1; }
+       [ -f "$S/$b" ] || { echo "NOT IN SCRATCH: $b"; FAIL=1; }
+       [ "$kind" = S ] && { [ -f "$S/$a" ] || { echo "SHIM NOT IN SCRATCH: $a"; FAIL=1; }; }
+       [ "$kind" = M ] && { [ -e "$S/$a" ] && { echo "MOVED FILE STILL IN SCRATCH: $a"; FAIL=1; }; } ;;
+    *) echo "BAD LINE: $kind $a $b"; FAIL=1 ;;
+  esac
+done < "$LIST"
+[ $FAIL -eq 0 ] || { echo "nothing was written"; exit 1; }
+# 2. stage
+N=0
+while read -r kind a b; do
+  [ -z "${kind:-}" ] && continue
+  case "$kind" in
+    C) mkdir -p "$(dirname "$T/$a")"; cp -p "$S/$a" "$T/$a.cpb1b1-new" ;;
+    M) mkdir -p "$(dirname "$T/$b")"; cp -p "$S/$b" "$T/$b.cpb1b1-new" ;;
+    S) mkdir -p "$(dirname "$T/$b")"; cp -p "$S/$b" "$T/$b.cpb1b1-new"; cp -p "$S/$a" "$T/$a.cpb1b1-shim" ;;
+  esac
+  N=$((N+1))
+done < "$LIST"
+echo "[$ITEM] staged $N entries beside their targets at $(date '+%H:%M:%S')"
+# 3. rename, in list order: a moved file first appears at its new path (both paths exist for a
+#    moment), then the changed files, and only at the end the old path leaves the tree (it is
+#    moved to $W/removed, never deleted) or becomes its shim. No importer ever points at nothing.
+START=$(date '+%H:%M:%S')
+while read -r kind a b; do
+  [ -z "${kind:-}" ] && continue
+  case "$kind" in
+    C) mv -f "$T/$a.cpb1b1-new" "$T/$a" ;;
+    M|S) mv -f "$T/$b.cpb1b1-new" "$T/$b" ;;
+  esac
+done < "$LIST"
+while read -r kind a b; do
+  [ -z "${kind:-}" ] && continue
+  case "$kind" in
+    M) mkdir -p "$(dirname "$W/removed/$a")"; mv "$T/$a" "$W/removed/$a" ;;
+    S) mv -f "$T/$a.cpb1b1-shim" "$T/$a" ;;
+  esac
+done < "$LIST"
+echo "[$ITEM] renamed between $START and $(date '+%H:%M:%S')"
+echo "[$ITEM] temporary files left: $(find "$T" \( -name '*.cpb1b1-new' -o -name '*.cpb1b1-shim' \) | wc -l | tr -d ' ')"
+# 4. verify and record
+while read -r kind a b; do
+  [ -z "${kind:-}" ] && continue
+  case "$kind" in
+    C) cmp -s "$S/$a" "$T/$a" || echo "DIFFERS AFTER LANDING: $a"; echo "$(sha "$T/$a")  $a" >> "$KNOWN" ;;
+    M) cmp -s "$S/$b" "$T/$b" || echo "DIFFERS AFTER LANDING: $b"; echo "$(sha "$T/$b")  $b" >> "$KNOWN"; echo "REMOVED  $a" >> "$KNOWN"; [ -e "$T/$a" ] && echo "OLD PATH STILL THERE: $a" ;;
+    S) cmp -s "$S/$b" "$T/$b" || echo "DIFFERS AFTER LANDING: $b"; cmp -s "$S/$a" "$T/$a" || echo "SHIM DIFFERS: $a"; echo "$(sha "$T/$b")  $b" >> "$KNOWN"; echo "$(sha "$T/$a")  $a" >> "$KNOWN" ;;
+  esac
+done < "$LIST"
+echo "[$ITEM] the tree equals the scratch copy for the $N entries"
+cp "$LIST" "$W/landed.$ITEM.list"

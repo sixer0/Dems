@@ -1,0 +1,10 @@
+12:57:09.045 mark c05 at 12:57:09.045
+12:57:09.114 declared screen settings
+12:57:09.170 tapid settings-row-about at 540,2150 "About DEMS"
+12:57:12.123 slept 2500 ms
+12:57:14.730 declared screen settings-about
+12:57:14.800 screencap 46_settings_about.png 12:57:14.800..12:57:15.315
+12:57:15.462 swipe 540,1900,540,900 600 ms
+12:57:16.226 slept 1200 ms
+12:57:17.471 screencap 46b_settings_about_scrolled.png 12:57:17.471..12:57:17.872
+12:57:18.038 ids(11): settings-about-product-card@540,518 ; settings-about-demo@927,216 "DEMO" ; settings-about-product@540,290 "Product, DEMS Edge Client" ; settings-about-version@540,360 "Software release, v2.4.1" ; settings-about-build@540,636 "App build, 0.1.0" ; settings-about-identity@540,1344 ; settings-about-demo@927,857 "DEMO" ; settings-about-device@540,1099 "Device ID, DEMS-IR-01" ; settings-about-licences@540,2041 ; settings-about-licences-open@212,2073 "Show licences" ; settings-about-stack-check@539,2073 "Stack diagnostics"

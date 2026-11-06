@@ -1,0 +1,68 @@
+
+ RUN  v5.0.3 /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1a/tree/apps/core-server
+
+stdout | src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > the five lines of the table, as the review printed them
+[cpb1-2] the table of the review
+A key err               | statement:false param:false pgDetail:false code:"23505" type:"Error"
+B key error             | statement:false param:false pgDetail:false code:"23505" type:"Error"
+C key cause             | statement:false param:false pgDetail:false code:"23505" type:"Error"
+D nested                | statement:false param:false pgDetail:false code:"23505" type:"Error"
+E key err, driver error | statement:false param:false pgDetail:false code:"23505" type:"error"
+
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > holds no credential, no body, no query value, no path parameter value and no error message 3ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > has one request line per request, with exactly the fields of SR-49 2ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > the request ID is the correlation key: an error answer names the reqId of its log line 2ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > names the route pattern, never the raw URL 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > logs a parse failure by its code only 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > logs every refusal with its code 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > logs an unexpected failure with its name and stack frames, without its message 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > redacts authorization, cookie and set-cookie where a header object is logged by hand 1ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > never makes an error message the log message 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > keeps the raw URL out of Fastify's own warning about a second answer 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > replaces a quoted path in a message text (the other form of that warning) 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the credential search (positive control) > finds a bearer value, a token of each prefix and a session cookie with its value 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the credential search (positive control) > does not take a field name, a code, a cookie name or a sentence for a credential 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the credential search (positive control) > finds a deliberate leak end to end: an app that logs the headers and the body it received 20ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the persistent error log > gets one entry for the unexpected failure: identifiers and frames, no message, no URL 1ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the persistent error log > is a file of mode 0600 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the persistent error log > the app factory writes none unless a file is given 10ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the principal reference of a request line > is the operator ID or the device ID, and null for an anonymous caller 24ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the principal reference of a request line > principalReference never returns more than an identifier 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the helpers > pathWithoutQuery cuts the query, the fragment, control characters and an overlong path 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the helpers > scrubMessage replaces a quoted absolute path and leaves other text alone 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the helpers > describeError gives the name, the code and the frames, never the message 4ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > A key err: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 55ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > B key error: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 2ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > C key cause: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 1ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > D nested: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 1ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > E key err, driver error: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 1ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > the five lines of the table, as the review printed them 3ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > two and more levels deep, inside arrays, under any name, beside other members 2ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > a driver error under another key: no DETAIL, no HINT, no WHERE, no message 1ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > an error given as a value for the text of a line is described the same way 3ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > the whole captured log of this file holds no part of the error 2ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-7: the safe description follows `cause` for the code > a wrapped database error: the SQLSTATE of the driver, the name of the driver's error, no text of the wrapper 1ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-7: the safe description follows `cause` for the code > the error's own code comes first; a cause is read only when the error has none 1ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-7: the safe description follows `cause` for the code > the chain is read to a bounded depth, and a chain that loops ends 0ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-7: the safe description follows `cause` for the code > a cause that is not an error, or a code that is not a text, is not reported 0ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-23: the frames of a stack, never a line of the message > a line of the statement that has the form of a frame is not kept 0ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-23: the frames of a stack, never a line of the message > an error whose message was changed after it was thrown: only lines in the form of a frame are kept 0ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-23: the frames of a stack, never a line of the message > an error without a message, and one without a stack 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > loggedError > is what the err serializer writes: type, code, message (the code or the name) and the frames 19ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > returns the same object when it holds no error, and never changes the object it was given 2ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > leaves req, res and err at the top to their serializers, and nowhere else 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > describes an error at any depth it reads, and does not write what lies deeper than the limit 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > a structure that refers to itself ends 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > a container with more members than the limit is not written, so nothing unread is 1ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > reads what an object gives as its JSON form, and a member that throws is not written 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > an object that is not plain is read like the serialiser reads it: its own members 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > through the logger > a line at every level, and a line of a request, are written safe 97ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > through the logger > the persistent error log gets the code and the name of the cause, and nothing of the error 2ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > codedCauseOf: the one walk over a cause chain > gives the error that carries the code, its code and how far down it was 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > codedCauseOf: the one walk over a cause chain > reads at most CAUSE_CHAIN_DEPTH errors 0ms
+
+ Test Files  3 passed (3)
+      Tests  51 passed (51)
+   Start at  15:04:04
+   Duration  3.26s (transform 53%, import 36%, tests 10%)
+

@@ -1,0 +1,46 @@
+CP-W1 read-only checks — senior-code-reviewer — 2026-10-05 (times local)
+
+== 1. the protected artefacts (AC-C-35, AC-C-36, AC-C-41) ==
+apps/core-web/src/lib/packaged-csp.ts
+  now    78c8898ecb89206beda222030c918958143316c3
+  acaff20 78c8898ecb89206beda222030c918958143316c3
+apps/core-web/src/lib/__tests__/packaged-csp.test.ts
+  now    6d0db39e3b918db65f0faff8b6ad7fbb30403fe0
+  acaff20 6d0db39e3b918db65f0faff8b6ad7fbb30403fe0
+apps/core-web/src/lib/__tests__/core-endpoint.test.tsx
+  now    89cab371b658f09788a9350da13d118d4b822493
+  acaff20 89cab371b658f09788a9350da13d118d4b822493
+apps/core-web/src/test/routes.test.tsx
+  now    7a04c97d66fef15ed36f753a87a91c400f7b9500
+  acaff20 7a04c97d66fef15ed36f753a87a91c400f7b9500
+  git diff --stat acaff20 over those four paths: (empty)
+  the two paths F76-13 measured (wrong folder):
+    fatal: path 'apps/core-web/src/test/packaged-csp.test.ts' does not exist in 'acaff20'
+    fatal: path 'apps/core-web/src/test/core-endpoint.test.tsx' does not exist in 'acaff20'
+  ls apps/core-web/src/test (the files F76-13 expected there):
+    evidence-table.test.tsx
+    home-page.test.tsx
+    integrity-checks.test.ts
+    live-login-model.test.tsx
+    live-login-page.test.tsx
+    live-login-presentation.test.tsx
+    live-login-signin.test.tsx
+    live-runtime-bridge.test.tsx
+    live-runtime-mode.test.tsx
+    live-runtime-sink.test.tsx
+    live-runtime-startup.test.tsx
+    live-runtime-static.test.tsx
+    live-runtime-storage.test.tsx
+    live-runtime-surface.test.tsx
+    live-shell-admin.test.tsx
+    live-shell-indicator.test.tsx
+    live-shell-notices.test.tsx
+    routes.test.tsx
+    scalar-config.test.ts
+    setup.ts
+    shell-motion.test.tsx
+    sim-fetch.test.ts
+    visual-audit-45b.test.tsx
+
+== 2. the three guard files of AC-C-41 and mock-core ==
+  (empty above = unchanged)

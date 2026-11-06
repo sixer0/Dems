@@ -1,0 +1,22 @@
+13:17:23.229 mark i03 at 13:17:23.229
+13:17:23.273 declared screen home
+13:17:23.320 tap 324,2283
+13:17:23.481 slept 2500 ms
+13:17:26.008 declared screen sessions
+13:17:26.036 screencap 88_role_phone_sessions_hub_technician_locked.png 13:17:26.036..13:17:26.302
+13:17:26.362 ids(2): sessions-start@540,363 "Start New Session" ; sessions-start-locked@540,467 "Requires the Investigator role"
+13:17:28.622 js => [[418,"ROLE_CHANGED","OPR-002","2026-10-06T03:42:42.902Z","Role of OPR-001 changed from INVESTIGATOR to TECHNICIAN","{\"to\":\"TECHNICIAN\",\"from\":\"INVESTIGATOR\",\"targetOperatorId\":\"OPR-001\"}"],[419,"ROLE_CHANGED","OPR-002","2026-10-06T03:43:46.164Z","Role of OPR-001 changed from TECHNICIAN to INVESTIGATOR","{\"to\":\"INVESTIGATOR\",\"from\":\"TECHNICIAN\",\"targetOperatorId\":\"OPR-001\"}"],[507,"ROLE_CHANGED","OPR-002","2026-10-06T06:16:30.445Z","Role of OPR-001 changed from INVESTIGATOR to TECHNICIAN","{\"to\":\"TECHNICIAN\",\"from\":\"INVESTIGATOR\",\"targetOperatorId\":\"OPR-001\"}"]]
+13:17:28.655 tap 108,2283
+13:17:28.736 slept 2000 ms
+13:17:30.761 press ur-actions-OPR-001 ok at 13:17:30.774
+13:17:30.799 wait ur-change-role-OPR-001 present: 0 ms (at 13:17:30.799)
+13:17:30.821 slept 300 ms
+13:17:31.151 press ur-change-role-OPR-001 ok at 13:17:31.223
+13:17:31.249 wait ur-role-dialog present: 0 ms (at 13:17:31.249)
+13:17:31.274 slept 600 ms
+13:17:31.901 js => true
+13:17:31.944 slept 400 ms
+13:17:32.367 screenshot 89_role_web_dialog_back_to_investigator.png 13:17:32.367..13:17:32.490
+13:17:32.512 serverlog since i03 (2):
+    13:17:23.475 POST /api/v1/auth/touch 200
+    13:17:28.629 GET /api/v1/audit 200

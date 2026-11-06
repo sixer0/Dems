@@ -1,0 +1,150 @@
+# Final runs of plan row W33 (blueprint step 55), 2026-10-04, WIB. From /Users/gsp-budi/Documents/DEMS, never from a subfolder.
+# Summary lines of each run; the certificate warning lines of the sandbox are left out.
+
+## First pass (15:15:31 to 15:19:36)
+
+# npm run typecheck -w @dems/core-server   (15:15:31)   exit 0
+
+# npm run lint -w @dems/core-server   (15:15:39)   exit 0
+
+# npm run test -w @dems/core-server -- --maxWorkers=2 --reporter=verbose src/modules/admin   (15:15:39)   exit 0
+ Test Files  3 passed (3)
+      Tests  86 passed (86)
+   Start at  15:15:40
+   Duration  2.36s (transform 56%, import 32%, tests 11%)
+
+# DEMS_TEST_STEP=55 npm run test:db -w @dems/core-server -- --maxWorkers=2 --reporter=verbose src/modules/admin   (15:15:42)   exit 0
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_55_tmdiy7i1_
+[test:db] stale sweep: dropped 0; kept 11 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+ Test Files  6 passed (6)
+      Tests  60 passed (60)
+   Start at  15:15:43
+   Duration  15.26s (tests 65%, import 23%, transform 12%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 1741 ms; 0 remain with the run prefix dems_test_step_55_tmdiy7i1_
+
+# npm run test -w @dems/core-server -- --maxWorkers=2   (15:16:00)   exit 1
+ ❯ |unit| src/plugins/permission-guard/__tests__/guard.test.ts (29 tests | 1 failed) 179ms
+     × a route without an access rule and an audit rule stops the boot, by name, with one log line and one entry in the error log 13ms
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > a route without an access rule and an audit rule stops the boot, by name, with one log line and one entry in the error log
+ ❯ src/plugins/permission-guard/__tests__/guard.test.ts:186:31
+ Test Files  1 failed | 100 passed (101)
+      Tests  1 failed | 2646 passed (2647)
+   Start at  15:16:00
+   Duration  38.60s (import 56%, tests 38%, transform 6%)
+
+# DEMS_TEST_STEP=55 npm run test:db -w @dems/core-server -- --maxWorkers=2   (15:16:39)   exit 1
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_55_tmdizs9h_
+[test:db] stale sweep: dropped 0; kept 17 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+ ❯ |db| src/modules/rbac/__tests__/matrix.db.test.ts (24 tests | 1 failed) 5851ms
+     × takes a changed grant, and keeps the last good matrix when the stored vocabulary no longer fits 8ms
+ FAIL  |db| src/modules/rbac/__tests__/matrix.db.test.ts > reloadMatrix: the stored matrix read again > takes a changed grant, and keeps the last good matrix when the stored vocabulary no longer fits
+ ❯ refuseProblems src/plugins/permission-guard/access-rules.ts:98:34
+ ❯ Object.reloadMatrix src/plugins/permission-guard/index.ts:371:9
+ ❯ src/modules/rbac/__tests__/matrix.db.test.ts:326:24
+ Test Files  1 failed | 73 passed (74)
+      Tests  1 failed | 1072 passed (1073)
+   Start at  15:16:40
+   Duration  176.23s (tests 87%, import 12%, transform 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 764 ms; 0 remain with the run prefix dems_test_step_55_tmdizs9h_
+
+## The two failures of the first pass, in full
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > a route without an access rule and an audit rule stops the boot, by name, with one log line and one entry in the error log
+AssertionError: expected [ { …(7) } ] to deeply equal [ ObjectContaining{…} ]
+
+- Expected
++ Received
+
+  [
+    {
+      "code": "ROUTE_WITHOUT_RULES",
+      "context": {
+        "codes": "ROUTE_WITHOUT_RULES",
+-       "details": "the route is no operation of the contract registry: it has no access rule and no audit rule",
+        "operations": "",
+        "routes": "GET /api/v1/scratch",
+      },
+      "level": "fatal",
++     "message": "a registered route has no access rule or no audit rule: the server does not start",
++     "service": "dems-core-server",
+      "source": "permissionGuard.routes",
++     "timestamp": "2026-10-04T08:16:15.606Z",
+    },
+  ]
+
+ ❯ src/plugins/permission-guard/__tests__/guard.test.ts:186:31
+    184|     expect(lines).toHaveLength(1);
+    185|     expect(lines[0]).toMatchObject({ code: 'ROUTE_WITHOUT_RULES', msg:…
+    186|     expect(errorLogOf(built)).toEqual([
+       |                               ^
+    187|       expect.objectContaining({
+    188|         level: 'fatal',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 100 passed (101)
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |db| src/modules/rbac/__tests__/matrix.db.test.ts > reloadMatrix: the stored matrix read again > takes a changed grant, and keeps the last good matrix when the stored vocabulary no longer fits
+AccessRuleError: the access rules are incomplete: STORED_GRANTS_MISMATCH : missing grant: INVESTIGATOR SESSION_NOTE
+ ❯ refuseProblems src/plugins/permission-guard/access-rules.ts:98:34
+     96| export function refuseProblems(problems: readonly AccessRuleProblem[])…
+     97|   const [first, ...rest] = problems;
+     98|   if (first !== undefined) throw new AccessRuleError([first, ...rest]);
+       |                                  ^
+     99| }
+    100|
+ ❯ Object.reloadMatrix src/plugins/permission-guard/index.ts:371:9
+ ❯ src/modules/rbac/__tests__/matrix.db.test.ts:326:24
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 73 passed (74)
+
+## The two files alone, after the other row's edit had ended (15:20:13 and 15:20:16)
+
+# npm run test -w @dems/core-server -- --maxWorkers=2 src/plugins/permission-guard/__tests__/guard.test.ts   exit 0
+ Test Files  1 passed (1)
+      Tests  29 passed (29)
+   Start at  15:20:13
+# DEMS_TEST_STEP=55 npm run test:db -w @dems/core-server -- --maxWorkers=2 src/modules/rbac/__tests__/matrix.db.test.ts   exit 0
+ Test Files  1 passed (1)
+      Tests  28 passed (28)
+   Start at  15:20:16
+
+## Second pass of the whole projects (15:20:44 to 15:24:19)
+
+# npm run test -w @dems/core-server -- --maxWorkers=2   (15:20:44)   exit 0
+ Test Files  102 passed (102)
+      Tests  2659 passed (2659)
+   Start at  15:20:45
+   Duration  38.33s (import 56%, tests 38%, transform 5%)
+
+# DEMS_TEST_STEP=55 npm run test:db -w @dems/core-server -- --maxWorkers=2   (15:21:23)   exit 0
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_55_tmdj7oux_
+[test:db] stale sweep: dropped 0; kept 16 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+ Test Files  75 passed (75)
+      Tests  1081 passed (1081)
+   Start at  15:21:24
+   Duration  161.60s (tests 86%, import 13%, transform 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 712 ms; 0 remain with the run prefix dems_test_step_55_tmdj7oux_
+
+# npm run typecheck -w @dems/core-server   (15:24:06)   exit 0
+
+# npm run lint -w @dems/core-server   (15:24:19)   exit 0
+
+## End state (15:24:28)
+
+session: role=dems_owner server=18.4 port=4432 postmaster started 2026-10-04 07:14:26.046351+07
+databases with this row's prefix (dems_test_step_55_*): 0
+test databases of all rows at this moment: 24
+project databases: dems_demo, dems_lane_1, dems_lane_2, dems_lane_3
+sessions on this row's databases still open: 0
+postgres.pid: 19121 (process started Sun Oct  4 07:14:26 2026)

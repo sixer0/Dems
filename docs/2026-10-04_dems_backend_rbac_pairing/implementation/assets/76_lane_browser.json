@@ -1,0 +1,371 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+    "headless": true
+  },
+  "viewport": "1440x900",
+  "steps": {
+    "liveSupervisor": {
+      "loginCoreMode": "LIVE",
+      "signedIn": true,
+      "systemShown": true,
+      "coreDemoStatus": {
+        "status": 200,
+        "code": null,
+        "epoch": 18,
+        "scenario": "idle",
+        "lastResetAt": 1791088603575,
+        "activeFaults": 0
+      },
+      "facts": {
+        "href": "http://127.0.0.1:5178/system",
+        "onSystem": true,
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: AKP Andi Pratama",
+        "panels": [
+          "quick",
+          "services",
+          "health",
+          "update",
+          "maintenance",
+          "about",
+          "settings",
+          "demo"
+        ],
+        "banner": "All core services running16 of 16 running · v2.4.1 · slot A",
+        "services": 16,
+        "updateCurrent": "v2.4.1",
+        "installText": "Install update",
+        "maintenanceSaysSimulated": false,
+        "updateSaysSimulated": false,
+        "demoPanel": true,
+        "demoBody": false,
+        "demoClock": null,
+        "activeFaults": null,
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/76_system_live_supervisor.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/demo/status",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 78,
+            "firstTypes": [
+              "hello@epoch=18",
+              "snapshot@epoch=18",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello@epoch=18",
+              "meters",
+              "snapshot@epoch=18"
+            ]
+          },
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 123,
+            "firstTypes": [
+              "hello@epoch=18",
+              "snapshot@epoch=18",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello@epoch=18",
+              "meters",
+              "snapshot@epoch=18"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "a10Diagnostics": {
+      "pressed": true,
+      "opened": true,
+      "checks": [
+        "CPU:PASS",
+        "STORAGE:PASS",
+        "FAN:PASS",
+        "NETWORK:PASS",
+        "CAMERA:PASS",
+        "AUDIO:PASS",
+        "TIME:PASS",
+        "SECURITY:PASS"
+      ],
+      "modalSaysSimulated": false,
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/76_diagnostics_live.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/system/diagnostics",
+            "status": 202
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "a8ExportLogs": {
+      "dialogOpened": true,
+      "dialogScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/76_export_dialog_live.png",
+      "toastShown": true,
+      "toast": "Logs exported · EXP-000034155 audit rows and 117 events in the file",
+      "files": [
+        {
+          "kind": "dems-log-export",
+          "source": "core-server",
+          "exportId": "EXP-000034",
+          "scope": "LOGS",
+          "reasonLength": 48,
+          "auditRows": 155,
+          "auditTotal": 155,
+          "firstSeq": 1,
+          "lastSeq": 155,
+          "head": "73ddc5341e7b",
+          "events": 117,
+          "services": 16,
+          "saysSimulatedNotice": false,
+          "bytes": 136044
+        }
+      ],
+      "chainBefore": {
+        "status": 200,
+        "total": 155,
+        "head": "73ddc5341e7b"
+      },
+      "chainAfter": {
+        "status": 200,
+        "total": 156,
+        "head": "7987f351fef4"
+      },
+      "requests": {
+        "exportLogs": [
+          202
+        ],
+        "listAuditRowsPages": 1,
+        "listEventsPages": 1
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/76_export_done_live.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/logs/export",
+            "status": 202
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/audit?…",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/events?…",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "d4Reset": {
+      "announcedAt": "02:06:27",
+      "statusBefore": {
+        "status": 200,
+        "code": null,
+        "epoch": 18,
+        "scenario": "idle",
+        "lastResetAt": 1791088603575,
+        "activeFaults": 0
+      },
+      "toggled": true,
+      "bodyShown": true,
+      "panelScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/76_demo_panel_live.png",
+      "pressed": true,
+      "confirmShown": true,
+      "confirmScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/76_demo_reset_confirm_live.png",
+      "toastShown": true,
+      "statusAfter": {
+        "status": 200,
+        "code": null,
+        "epoch": 19,
+        "scenario": "idle",
+        "lastResetAt": 1791227184606,
+        "activeFaults": 0
+      },
+      "snapshotFrames": [],
+      "facts": {
+        "activeFaults": "0 faults active",
+        "toasts": [
+          "Demo reset: idle scenario, faults cleared"
+        ],
+        "demoClock": "Demo data datesDemo media and evidence packages: as of 1 Oct 2026, 10:00 WIBCore clock: 6 Oct 2026 02:06:27 WIBThe dataset is rebuilt around the simulator clock; package files keep their generation date."
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/76_demo_reset_done_live.png",
+      "resetRequests": [
+        200
+      ],
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/demo/reset",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/demo/status",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "liveInvestigator": {
+      "signOutOfSupervisor": {
+        "status": 204,
+        "loginShown": true
+      },
+      "signedIn": true,
+      "shown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/system",
+        "onSystem": true,
+        "shellMode": "LIVE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: AKP Budi Santoso",
+        "panels": [
+          "quick",
+          "services",
+          "health",
+          "update",
+          "maintenance",
+          "about",
+          "settings"
+        ],
+        "banner": "All core services running16 of 16 running · v2.4.1 · slot A",
+        "services": 16,
+        "updateCurrent": "v2.4.1",
+        "installText": "Install update",
+        "maintenanceSaysSimulated": false,
+        "updateSaysSimulated": false,
+        "demoPanel": false,
+        "demoBody": false,
+        "demoClock": null,
+        "activeFaults": null,
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/76_system_live_investigator.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 79,
+            "firstTypes": [
+              "hello@epoch=19",
+              "snapshot@epoch=19",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello@epoch=19",
+              "meters",
+              "snapshot@epoch=19"
+            ]
+          },
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 120,
+            "firstTypes": [
+              "hello@epoch=19",
+              "snapshot@epoch=19",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello@epoch=19",
+              "meters",
+              "snapshot@epoch=19"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "finalSignOut": {
+      "status": 204,
+      "loginShown": true
+    }
+  },
+  "durationMs": 40603
+}

@@ -1,0 +1,6 @@
+# Row 56 (HIL per OI-3): production signing key - done by the controller (D46)
+
+PREPARE: Core inactive, signer_absent, `.data` ancestors root, no group/other w.
+First attempt with `script` + piped input hung before the first prompt (input consumed early); the controller's own processes were stopped, nothing written. Second: a PTY driver that waits for each prompt (`~/dems-dev-logs/pty_answer.py`): organisation "PT Gemilang Satria Perkasa", id DEMS-BENCH-01, PROVISION; `answers_sent=3/3 exit=0`.
+Output: `evidence:production-key: OK`; subject `CN=CORE-KEY-EVSIGN-01,OU=Evidence signing DEMS-BENCH-01,O=PT Gemilang Satria Perkasa`; certificate sha256 `0c862174c333ac0721e89cfeced99985bff4f596aab8b63c7a13cfd8ea032d9e`; valid 2026-10-23T02:01:57Z to 2031-10-22T02:01:57Z; hand-over record `/opt/dems/core/.data/handover/CORE-KEY-EVSIGN-01.handover.txt`.
+VERIFY: signer dems-core 700; .crt 644, .p8 600, .provisioned.json 644, .wrap 600 (owner dems-core); handover dems-core 700; suffixes `crt json p8 wrap`; subject holds `OU = Evidence signing DEMS-BENCH-01`; fingerprint equals the output. Fingerprint not handed to anyone yet (rule: only after the first successful production start - which happened in row 58).

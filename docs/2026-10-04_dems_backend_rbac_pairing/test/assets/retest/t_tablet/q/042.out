@@ -1,0 +1,8 @@
+tap 227,944 at 13:07:26.641
+slept 3500 ms
+tap 784,1482 at 13:07:30.220
+slept 3500 ms
+screencap P14g_settings_system_maintenance.png (403126 bytes) at 13:07:34.022
+swipe 784,1400,784,700 700 ms
+slept 2500 ms
+ids: 87 nodes -> q/p_settings_scrolled.txt

@@ -1,0 +1,39 @@
+// W98 read-only probe. Repository access path (scripts/pg/lib.mjs readConnectionFile + scripts/pg/db.mjs connect:
+// 127.0.0.1:4432 only, PG* variables scrubbed) as dems_owner. The owner file is opened inside this process; no value of
+// it is printed, written or passed on. Every statement runs in a READ ONLY transaction.
+//   node db_probe.mjs counts <database> <out.json>   per-table count(*) + pg_stat_user_tables write counters
+//   node db_probe.mjs databases                       database names + per-database audit_log/events counts
+import { writeFileSync } from 'node:fs'
+import { OWNER_KEYS, projectPaths, readConnectionFile } from '/Users/gsp-budi/Documents/DEMS/scripts/pg/lib.mjs'
+import { connect } from '/Users/gsp-budi/Documents/DEMS/scripts/pg/db.mjs'
+const [mode, database = 'dems_demo', out] = process.argv.slice(2)
+const owner = readConnectionFile(projectPaths().ownerEnv, OWNER_KEYS)
+if (owner.user !== 'dems_owner') throw new Error('the owner file does not name dems_owner')
+const open = (db) => connect({ user: owner.user, password: owner.password, database: db, appName: 'dems-w98-probe' })
+if (mode === 'databases') {
+  const c = await open('postgres')
+  const names = (await c.query("select datname from pg_database where datname like 'dems%' order by 1")).rows.map((r) => r.datname)
+  await c.end()
+  for (const n of names) {
+    try {
+      const d = await open(n); await d.query('begin read only')
+      const q = async (t) => { try { return Number((await d.query(`select count(*) as n from public.${t}`)).rows[0].n) } catch { return null } }
+      console.log(`${n}: audit_log ${await q('audit_log')}, events ${await q('events')}, evidence_items ${await q('evidence_items')}, session_history ${await q('session_history')}`)
+      await d.query('rollback'); await d.end()
+    } catch (e) { console.log(`${n}: not readable (${e.code ?? e.message})`) }
+  }
+  process.exit(0)
+}
+const c = await open(database)
+await c.query('begin read only')
+const at = Date.now()
+const tables = (await c.query("select relname from pg_stat_user_tables where schemaname = 'public' order by relname")).rows.map((r) => r.relname)
+const stat = Object.fromEntries((await c.query("select relname, n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd from pg_stat_user_tables where schemaname = 'public'")).rows.map((r) => [r.relname, { ins: Number(r.n_tup_ins), upd: Number(r.n_tup_upd), del: Number(r.n_tup_del) }]))
+const rows = {}
+for (const t of tables) rows[t] = { count: Number((await c.query(`select count(*) as n from public.${t}`)).rows[0].n), ...stat[t] }
+const db = (await c.query('select xact_commit, xact_rollback, tup_inserted, tup_updated, tup_deleted from pg_stat_database where datname = current_database()')).rows[0]
+const ro = (await c.query('show transaction_read_only')).rows[0].transaction_read_only
+await c.query('rollback'); await c.end()
+const result = { database, at, atIso: new Date(at).toISOString(), transactionReadOnly: ro, tables: tables.length, rows, database_stats: Object.fromEntries(Object.entries(db).map(([k, v]) => [k, Number(v)])) }
+if (out) writeFileSync(out, JSON.stringify(result, null, 1))
+console.log(`${database} at ${result.atIso}: ${tables.length} tables, transaction_read_only=${ro}; xact_commit ${result.database_stats.xact_commit}; ins ${result.database_stats.tup_inserted} upd ${result.database_stats.tup_updated} del ${result.database_stats.tup_deleted}`)

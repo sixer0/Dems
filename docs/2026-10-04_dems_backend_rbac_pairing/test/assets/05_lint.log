@@ -1,0 +1,6 @@
+## 2026-10-04 19:14:21 WIB $ npm run lint -w @dems/core-server
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+exit=0

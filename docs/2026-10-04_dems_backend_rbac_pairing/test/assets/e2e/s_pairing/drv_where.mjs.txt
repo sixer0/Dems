@@ -1,0 +1,8 @@
+// E2E-S: where is the page, and is its session alive (status codes and named elements only)
+import { connect, log, pdFacts } from './lib.mjs'
+const page = await connect()
+const f = await pdFacts(page)
+const s = await page.evaluate(`(async () => { const r = await fetch('/api/v1/auth/session', { credentials: 'same-origin' }); return r.status })()`, 'session')
+const ids = await page.evaluate(`[...document.querySelectorAll('[data-testid^="page-"]')].map((e) => e.getAttribute('data-testid'))`, 'pages')
+log(`href ${f.href}; page ids ${JSON.stringify(ids)}; GET /api/v1/auth/session ${s}; list ${f.list}; rows ${JSON.stringify(f.rows)}; summary ${JSON.stringify(f.summary)}; toasts ${JSON.stringify(f.toasts)}`)
+page.close()

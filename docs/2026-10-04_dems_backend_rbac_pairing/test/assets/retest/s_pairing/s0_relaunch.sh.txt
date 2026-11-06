@@ -1,0 +1,41 @@
+#!/bin/sh
+# R-S step 0: force-stop the app on emulator-5558 ONLY and relaunch it with demsdemo:///login?core=LIVE&motion=off
+# (single-quoted for the device shell) so the full new bundle loads. Read-only checks, one screencap.
+# No lock, PIN, fingerprint or settings change. No uiautomator dump (Login shows).
+#   sh s0_relaunch.sh
+set -u
+OUT=/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/test/assets/retest/s_pairing
+S=emulator-5558
+APP=com.dems.demo.tablet
+a() { adb -s "$S" "$@"; }
+now() { python3 -c 'import time; print("%.3f" % time.time())'; }
+kg() { a shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1; }
+focus() { a shell dumpsys window 2>/dev/null | tr -d '\r' | grep -m 1 'mCurrentFocus' | sed 's/^ *//'; }
+echo "== R-S step 0 — $(date '+%Y-%m-%d %H:%M:%S') WIB; host $(now)"
+echo "-- uptime: $(uptime)"
+echo "-- AVD $(a shell getprop ro.boot.qemu.avd_name | tr -d '\r'); boot_completed $(a shell getprop sys.boot_completed | tr -d '\r'); $(kg)"
+echo "-- app: $(a shell dumpsys package $APP | tr -d '\r' | grep -E 'versionName' | head -n 1 | sed 's/^ *//')"
+echo "-- reverse rules on $S:"; a reverse --list | sed 's/^/   /'
+echo "-- prefs before: $(a shell "run-as $APP sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" | tr -d '\r')"
+echo "-- secure-store entry NAMES before (values never read): $(a shell "run-as $APP sh -c 'grep -o \"name=\\\"[^\\\"]*\\\"\" shared_prefs/SecureStore.xml'" | tr -d '\r' | tr '\n' ' ')"
+echo "-- Metro: $(curl -s http://127.0.0.1:8081/status)"
+T0=$(a shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+echo "-- device T0 $T0"
+echo "-- host $(now) am force-stop $APP"
+a shell am force-stop "$APP"
+sleep 1
+echo "-- process after force-stop: '$(a shell pidof $APP | tr -d '\r')' (empty = stopped)"
+echo "-- host $(now) am start -W -d 'demsdemo:///login?core=LIVE&motion=off'"
+a shell "am start -W -a android.intent.action.VIEW -d 'demsdemo:///login?core=LIVE&motion=off' $APP" 2>&1 | tr -d '\r' | grep -E "Status|LaunchState|Activity|Error|TotalTime" | sed 's/^/   /'
+js() { a logcat -d -v epoch -T "$T0" -s ReactNativeJS:V 2>/dev/null; }
+i=0; until js | grep -q -- 'runtime.live.ready' || [ "$i" -ge 240 ]; do i=$((i + 1)); sleep 1; done
+echo "-- waited $i s for runtime.live.ready (host $(now))"
+sleep 8
+a exec-out screencap -p > "$OUT/00_phone_relaunch_login.png"
+echo "-- screencap 00_phone_relaunch_login.png ($(wc -c < "$OUT/00_phone_relaunch_login.png" | tr -d ' ') bytes) host $(now) $(date '+%H:%M:%S'); $(kg); focus: $(focus)"
+echo "-- the runtime's own records since T0 (boot, core source, live ready, live requests):"
+js | grep -E 'runtime\.(debug\.core|live\.ready|sim\.hydrated|boot)|DEMS-LIVE|BUNDLE|Running "' | sed -E 's/^ *([0-9.]+) .*ReactNativeJS: /   \1 /' | sed -E 's/ [0-9a-f]{8}-[0-9a-f-]{27}$//' | cut -c1-220 | head -40
+echo "-- console.warn / console.error lines since T0 (level W/E of ReactNativeJS): $(a logcat -d -v brief -T "$T0" -s ReactNativeJS:W 2>/dev/null | grep -c -E '^[WE]/')"
+echo "-- prefs after: $(a shell "run-as $APP sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" | tr -d '\r')"
+echo "-- credential/token lines in the device JS log (must be 0): $(js | grep -c -E 'dvc_|ses_|bio_')"
+echo "-- end host $(now) $(date '+%H:%M:%S'); $(kg)"

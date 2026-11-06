@@ -1,0 +1,80 @@
+
+== 05:13:15 0. the three ports must be free before anything is started (nothing is stopped that this check did not start)
+free: 4423 5178 9398
+2026-10-06 05:13:15 WIB
+ 5:13  up 4 days, 12:26, 2 users, load averages: 3.25 3.27 3.00
+
+== 05:13:15 1. lane database before the check: npm run db:status -w @dems/core-server -- --database dems_lane_3
+db:status exit 0
+seeded_at        2026-10-05T19:06:24.606Z (1791227184606)
+last_reset_at    2026-10-05T19:06:24.606Z (1791227184606)
+audit head       seq 92; hash cc76471ab80269b4...
+audit triggers   audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A
+  audit_log                92
+  auth_sessions            27
+  operators                3
+  pairing_codes            1
+
+== 05:13:16 2. start the lane backend: DEMS_CORE_PORT=4423 npm run start -w @dems/core-server (demo flag OFF)
+backend up after 3 quarter seconds (attempt 1), npm pid 6338
+COMMAND  PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    6359 gsp-budi   17u  IPv4 0x6223789639214b8a      0t0  TCP 127.0.0.1:4423 (LISTEN)
+-- direct health on the backend:
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T22:13:17.219Z","uptimeMs":383,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 05:13:17 3. start Vite for lane 3: DEMS_CORE_PROXY_PORT=4423 VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port 5178 --strictPort
+waited 1 quarter seconds
+COMMAND  PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    6396 gsp-budi   14u  IPv4 0x42c26d66b434d53d      0t0  TCP 127.0.0.1:5178 (LISTEN)
+
+== 05:13:17 4. AC-C-33: curl -si http://127.0.0.1:5178/api/v1/health
+HTTP/1.1 200 OK
+content-security-policy: default-src 'none'; frame-ancestors 'none'
+cross-origin-resource-policy: same-origin
+referrer-policy: no-referrer
+x-content-type-options: nosniff
+content-type: application/json; charset=utf-8
+cache-control: no-store
+x-request-id: dd9be5ea-bf35-45e1-8feb-69b436d90a8c
+content-length: 234
+date: Mon, 05 Oct 2026 22:13:17 GMT
+connection: close
+
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T22:13:17.584Z","uptimeMs":748,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+-- access-control-allow- headers in that answer: 0
+-- service: "service":"dems-core-server"
+
+== 05:13:17 7. the API Reference page in a real browser, both modes (headless Chromium over CDP)
+chrome pid 6410
+cdp-driver exit 0
+  "elapsedSeconds": 103
+}
+cdp-driver: the output held the seeded password before redaction: false
+
+== 05:15:01 8. what Vite printed (hot update lines; no page error)
+14:5:14:16 AM [vite] (client) [console.warn] [core-web] live {"level":"warn","source":"ApiReference.liveTryIt.denied","message":"A Try-it request of an operation that carries a secret was refused.","context":{"method":"POST","path":"/api/v1/auth/sign-in","errorName":"TryItRefusedError","correlationId":"api-muvt4mds-1"},"at":1791238456144}
+15:5:14:16 AM [vite] (client) [console.error] TryItRefusedError: This operation carries or returns a secret and cannot be tried from the reference page.
+-- lines in Vite's log:       18
+
+== 05:15:01 9. lane database after the check
+db:status exit 0
+-- row counts that differ (before / after):
+< audit head       seq 92; hash cc76471ab80269b4...
+> audit head       seq 94; hash 9384600b4d0f825c...
+<   audit_log                92
+<   auth_sessions            27
+>   audit_log                94
+>   auth_sessions            28
+<   events                   73
+>   events                   76
+<   health_snapshots         4
+>   health_snapshots         5
+-- the backend's log: lines       49; lines with level error or fatal: 0
+
+== 05:15:01 stop what this check started
+chrome stopped
+vite: npm exit status 143
+backend: npm exit status 0
+
+== 05:15:01 listeners left on 4423, 5178, 9398 (expect none):
+lsof exit 1 (1 with no output: no listener)

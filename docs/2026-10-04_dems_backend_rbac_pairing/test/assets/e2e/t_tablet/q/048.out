@@ -1,0 +1,12 @@
+tap 227,944 at 10:17:24.341
+slept 5000 ms
+tap 784,1358 at 10:17:29.440
+slept 5000 ms
+screencap 18f_settings_network_time.png (342911 bytes) at 10:17:34.700
+ids: 281 nodes -> q/after_nt.txt
+tap 227,944 at 10:17:38.105
+slept 5000 ms
+tap 784,1482 at 10:17:43.175
+slept 5000 ms
+screencap 18g_settings_system_maintenance.png (397429 bytes) at 10:17:48.409
+ids: 78 nodes -> q/after_maint.txt

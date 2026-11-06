@@ -1,0 +1,12 @@
+tap 1280,924 at 13:00:51.612
+slept 2500 ms
+screencap P03_home.png (774622 bytes) at 13:00:54.654
+mark sessions hub at 13:00:54.654
+tap 179,320 at 13:00:54.772
+slept 3500 ms
+screencap P04_sessions_hub.png (559056 bytes) at 13:00:58.558
+ids: 104 nodes -> q/p_sessions_hub.txt
+tap 1353,310 at 13:01:00.911
+slept 3500 ms
+screencap P05_session_detail.png (928088 bytes) at 13:01:04.778
+ids: 139 nodes -> q/p_session_detail.txt

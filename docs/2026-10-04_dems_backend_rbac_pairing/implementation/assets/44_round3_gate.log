@@ -1,0 +1,32 @@
+# Step 66 (W44), third round (decision D100): final gate, from /Users/gsp-budi/Documents/DEMS (no cd; every command as written)
+## 2026-10-04 17:01:17 WIB $ npm run test -w @dems/shared -- --maxWorkers=2
+ Test Files  68 passed (68)
+      Tests  1807 passed (1807)
+   Start at  17:01:17
+   Duration  6.76s (tests 61%, import 31%, transform 7%, worker 1%)
+exit=0
+## 17:01:24 the 28 test files that exist at acaff20 (git ls-tree -r acaff20 --name-only packages/shared/test), alone
+ Test Files  28 passed (28)
+      Tests  517 passed (517)
+exit=0
+## 17:01:26 the ten files of this row, alone (every test name is in 44_round3_tests_verbose.log)
+exit=0
+ Test Files  10 passed (10)
+      Tests  383 passed (383)
+## 17:01:29 $ npm run typecheck -w @dems/shared
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+exit=0
+## 17:01:32 $ npm run lint -w @dems/shared
+> @dems/shared@0.1.0 lint
+> oxlint
+exit=0
+## 17:01:32 $ npm run typecheck -w @dems/core-web
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+exit=0
+## 17:01:41 $ npm run typecheck -w @dems/mobile
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+exit=0
+## 17:01:45 done

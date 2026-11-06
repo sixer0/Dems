@@ -1,0 +1,65 @@
+// W11b follow-up: how long does a request for the clone lock (advisory lock 442002, 0) wait while
+// test runs are in progress? A run of its own (label 33c, no database) asks for the lock through
+// the helper's own `withCloneLock`, holds it for nothing, and records the wait; again and again
+// until the stop file appears. It reads `pg_database` for the number of test runs at each sample.
+// Role dems_owner on 127.0.0.1:4432; prints counts and milliseconds only.
+import { existsSync } from 'node:fs';
+import { performance } from 'node:perf_hooks';
+import { TestRun } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/run';
+import { OwnerSession } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/session';
+import { DEFAULT_DATA_DIR, readOwnerCredentials } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/credentials';
+
+const STOP_FILE = process.argv[2] ?? '';
+const MAX_MS = Number(process.env['W11B_MAX_MS'] ?? 900_000);
+const PAUSE_MS = Number(process.env['W11B_PAUSE_MS'] ?? 100);
+if (STOP_FILE === '') throw new Error('usage: lockwait.mts <stop file>');
+
+function clock(): string {
+  const now = new Date();
+  return `${now.toTimeString().slice(0, 8)}.${String(now.getMilliseconds()).padStart(3, '0')}`;
+}
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function quantile(sorted: readonly number[], q: number): number {
+  if (sorted.length === 0) return Number.NaN;
+  return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? Number.NaN;
+}
+
+const run = await TestRun.start({ env: { DEMS_TEST_STEP: '33c' }, resolveDefinition: async () => null });
+const watcher = await OwnerSession.open(readOwnerCredentials(DEFAULT_DATA_DIR), { applicationName: 'dems-w11b-lockwait' });
+console.log(`[${clock()}] probe started; run prefix ${run.identity.prefix} (it creates no database)`);
+
+const waits: number[] = [];
+const long: Array<{ at: string; waitMs: number; otherRuns: number }> = [];
+let maxRuns = 0;
+const started = performance.now();
+try {
+  while (!existsSync(STOP_FILE) && performance.now() - started < MAX_MS) {
+    const { lockWaitMs } = await run.withCloneLock(async () => undefined);
+    waits.push(lockWaitMs);
+    if (lockWaitMs >= 1_000) {
+      const rows = await watcher.run<{ runs: number }>(
+        "SELECT count(DISTINCT substring(datname from '^dems_test_[a-z0-9]+(?:_[a-z0-9]+)?_[0-9a-z]{8}_'))::int AS runs FROM pg_database WHERE starts_with(datname, 'dems_test_')",
+      );
+      const otherRuns = rows[0]?.runs ?? 0;
+      maxRuns = Math.max(maxRuns, otherRuns);
+      long.push({ at: clock(), waitMs: Math.round(lockWaitMs), otherRuns });
+    }
+    await sleep(PAUSE_MS);
+  }
+} finally {
+  await watcher.close();
+  const sorted = [...waits].sort((a, b) => a - b);
+  const seconds = (performance.now() - started) / 1000;
+  const over = (ms: number): number => sorted.filter((wait) => wait >= ms).length;
+  console.log(
+    `[${clock()}] probe ended after ${seconds.toFixed(0)} s: ${sorted.length} requests for the clone lock; wait in ms: ` +
+      `median ${quantile(sorted, 0.5).toFixed(1)}, p90 ${quantile(sorted, 0.9).toFixed(1)}, p99 ${quantile(sorted, 0.99).toFixed(1)}, ` +
+      `max ${(sorted.at(-1) ?? Number.NaN).toFixed(1)}; waits of 250 ms or more: ${over(250)}, of 1 s or more: ${over(1_000)}, ` +
+      `of 2.5 s or more: ${over(2_500)}, of 5 s or more: ${over(5_000)}`,
+  );
+  for (const entry of long) console.log(`  ${entry.at}  waited ${entry.waitMs} ms; test runs with a database at that instant: ${entry.otherRuns}`);
+  const report = await run.teardown();
+  console.log(`[${clock()}] probe run torn down: dropped ${report.dropped.length}, remaining ${report.remaining.length}`);
+}

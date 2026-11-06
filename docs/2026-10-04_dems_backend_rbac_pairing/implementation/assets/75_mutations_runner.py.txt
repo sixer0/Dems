@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""W75 mutation check (rule M15: no file of the workspace tree is changed). W71's runner, adapted.
+
+Each mutation is ONE text replacement in ONE module, applied in memory by the transform plugin of
+vitest.mutation.config.mts. A mutation is DETECTED when the named tests fail while the mutation was
+really applied (the plugin leaves a marker file under TMPDIR). From the workspace root:
+
+    python3 .cache/w75/mut/run_mutations.py check
+    python3 .cache/w75/mut/run_mutations.py run [ids]
+"""
+import json, os, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+HERE = os.path.join(ROOT, '.cache/w75/mut')
+CONFIG = '.cache/w75/mut/vitest.mutation.config.mts'
+APPLIED = os.path.join(os.environ['TMPDIR'], 'w75-mut-applied')
+os.makedirs(APPLIED, exist_ok=True)
+
+S = 'apps/core-web/src/features/security-audit/'
+T_CHAIN = 'src/test/live-security-audit-chain.test.tsx'
+T_EXPORT = 'src/test/live-security-audit-export.test.tsx'
+T_PAGE = 'src/test/live-security-audit-page.test.tsx'
+T_FOLDER = 'src/features/security-audit'
+ALL = [T_CHAIN, T_EXPORT, T_PAGE, T_FOLDER]
+
+M = []
+def m(id, file, what, find, replace, tests):
+    M.append({'id': id, 'file': file, 'what': what, 'find': find, 'replace': replace, 'tests': tests})
+
+F = S + 'chain-panel.tsx'
+m('C01', F, 'A9: the presenter is not consulted first',
+  "          if (presentCoreError(error) !== null) return\n          logSecurityAudit('error', 'ChainPanel.verify'",
+  "          logSecurityAudit('error', 'ChainPanel.verify'", [T_CHAIN])
+m('C02', F, 'A9: the Live lines are never rendered', "{verified?.core ? <CoreChainLines check={verified.core} /> : null}", "{null}", [T_CHAIN])
+m('C03', F, 'A9: the stored/lineage of the Live handle are not read', "const status = live?.auditChain ?? null", "const status = null", [T_CHAIN])
+m('C04', F, 'C-6: the stamp is the browser clock, not the Live clock', "setVerified({ ...result, at: sim.store.getState().clock.now, core })", "setVerified({ ...result, at: Date.now() + 3_600_000, core })", [T_CHAIN])
+m('C05', F, 'B-5: the toast is shown at the press, before the answer',
+  "    runAcknowledge((release) =>\n", "    toast.info(t('securityAudit.chain.acknowledged'))\n    runAcknowledge((release) =>\n", [T_CHAIN])
+m('C06b', F, 'B-5: no press guard (a second press sends a second command; ASI-safe form)',
+  "    runAcknowledge((release) =>\n", "    void ((start: (release: () => void) => void) => start(() => undefined))((release) =>\n", [T_CHAIN])
+m('C07', F, 'B-5: the presenter is not consulted first',
+  "          if (presentCoreError(error) !== null) return\n          logSecurityAudit('error', 'ChainPanel.acknowledge'",
+  "          logSecurityAudit('error', 'ChainPanel.acknowledge'", [T_CHAIN])
+m('C08', F, 'B-5: the busy mark is not on the button', "                    ref={acknowledgeRef}\n", "", [T_CHAIN])
+m('C09', F, 'B-5: the spinner is never shown', "                    isPending={acknowledgePending}\n                    data-pending={acknowledgePending ? 'true' : undefined}\n", "", [T_CHAIN])
+
+F = S + 'chain-core-lines.tsx'
+m('L01', F, 'the lineage line is never shown', "{lineage.length > 0 ? <EarlierChains", "{lineage.length > 99 ? <EarlierChains", [T_CHAIN])
+m('L02', F, '"Earlier chains: n" counts the listed entries, not all discarded chains', "total={Math.max(lineageTotal, lineage.length)}", "total={lineage.length}", [T_CHAIN])
+m('L03', F, 'a broken stored chain reads as verified', "        {stored.ok\n", "        {true\n", [T_CHAIN])
+m('L04', F, 'a command-line reset is credited to an operator', "    if (actorId === null) return t('securityAudit.live.chain.commandLine')\n", "    if (actorId === null) return 'OPR-002'\n", [T_CHAIN])
+m('L05', F, 'the list drops all but the newest entry', "            {lineage.map((entry) => (", "            {lineage.slice(0, 1).map((entry) => (", [T_CHAIN])
+
+F = S + 'export-audit-dialog.tsx'
+m('X01', F, 'A7: the presenter is not consulted first',
+  "          if (presentCoreError(caught) !== null) return\n", "", [T_EXPORT])
+m('X02', F, 'A7: a Live 422 is not the reason field\'s error', "if (isLive && outcome.reason === 'INVALID_REASON')", "if (false && outcome.reason === 'INVALID_REASON')", [T_EXPORT])
+m('X03', F, 'A7: the Live success toast keeps the Simulated words', "t(isLive ? 'securityAudit.live.exportAudit.success' : 'securityAudit.exportAudit.success')", "t('securityAudit.exportAudit.success')", [T_EXPORT])
+m('X04', F, 'A7: Cancel is not held while the Core has not answered', "isDisabled={exportBusy}>", "isDisabled={false}>", [T_EXPORT])
+m('X05b', F, 'A7: no press guard (ASI-safe form)', "    runExport((release) =>\n", "    void ((start: (release: () => void) => void) => start(() => undefined))((release) =>\n", [T_EXPORT])
+m('X06', F, 'the file: a refused page is not handed to the presenter',
+  "caught instanceof AuditWalkError && caught.reason.kind === 'CALL' ? presentCoreError(caught.reason.failure) : null",
+  "null", [T_EXPORT])
+m('X07', F, 'the file is never handed to the browser', "          downloadAuditFile(fileName, built)\n", "", [T_EXPORT])
+m('X08', F, 'the pipeline does not wait for the file',
+  "          if (live !== null && resolved > BUILD_INDEX && fileRef.current.status !== 'ready') return current\n", "", [T_EXPORT])
+m('X09', F, 'the build step names no page', "    ...(id === 'build' && buildDescription !== undefined", "    ...(false && buildDescription !== undefined", [T_EXPORT])
+m('X10', F, 'the receipt counts the stored rows as Simulated does (the ring)', "auditExportOutcome(result, sim.store.getState().audit.rows, reasonText, isLive)", "auditExportOutcome(result, sim.store.getState().audit.rows, reasonText, false)", [T_EXPORT])
+m('X11', F, 'the dialog can be dismissed while the Core has not answered', "    if (!open && exportBusy) return\n", "", [T_EXPORT])
+
+F = S + 'export-file.ts'
+m('E01', F, 'pages of 50 rows', "export const AUDIT_PAGE_LIMIT = 200", "export const AUDIT_PAGE_LIMIT = 50", [T_EXPORT])
+m('E02', F, 'the walk stops after the first page', "    if (stop || cursor === null || (target.rows !== null && rows.length >= target.rows)) break", "    break", [T_EXPORT])
+m('E03', F, 'no head check (a moved chain gives a file)', "  if (target.head !== null && last !== null && last.hash !== target.head) fail()\n", "", [T_EXPORT])
+m('E04', F, 'the walk takes one row more than the export covers', "      if (target.rows !== null && rows.length >= target.rows) {", "      if (target.rows !== null && rows.length >= target.rows + 1) {", [T_EXPORT])
+m('E05', F, 'the cursor is not passed on', "    cursor = answer.data.nextCursor\n", "    cursor = cursor ?? answer.data.nextCursor\n", [T_EXPORT])
+
+F = S + 'rbac-panel.tsx'
+m('R01', F, 'Live renders the static nine-row matrix', "{live === null ? <RoleMatrix /> : <CoreRoleMatrix live={live} />}", "{<RoleMatrix />}", [T_PAGE])
+m('R02', F, 'Live grants from the static table', "const granted = grants.has(`${role}:${permission}`)", "const granted = roleGrants(role, permission)", [T_PAGE])
+m('R03', F, 'Retry is not rate-limited', "isDisabled={!canRetry || query.isFetching} onPress={retry}", "onPress={() => void query.refetch()}", [T_PAGE])
+m('R04', F, 'the presenter is not consulted first', "if (presentCoreError(answer) === null) logSecurityAudit(", "logSecurityAudit(", [T_PAGE])
+m('R05', F, 'the matrix is kept outside the runtime key', "queryKey: CORE_QUERY_KEYS.roleMatrix,", "queryKey: ['security-audit', 'role-matrix'],", [T_PAGE])
+m('R06', F, 'Live subtitle keeps the Simulated words', "live === null ? t('securityAudit.rbac.subtitle') : t('securityAudit.live.rbac.subtitle')", "t('securityAudit.rbac.subtitle')", [T_PAGE])
+
+m('R07', S + 'rbac-panel.tsx', 'the matrix is read again after the session ended (F75-2)', "    enabled: signedIn,\n", "", [T_PAGE])
+m('A01', S + 'auth-panel.tsx', 'the feed names a typed username as a signed-in actor', "      return isLive && namesTypedUsername(row) ? t('securityAudit.live.audit.typedActor', { name }) : name\n", "      return name\n", [T_PAGE])
+m('A02', S + 'auth-panel.tsx', 'the Live wording also in Simulated mode', "      return isLive && namesTypedUsername(row) ?", "      return namesTypedUsername(row) ?", [T_PAGE])
+m('A03', S + 'audit-log-panel.tsx', 'the table names a typed username as a signed-in actor', "        ? isLive && namesTypedUsername(row)\n", "        ? false && namesTypedUsername(row)\n", [T_PAGE])
+
+m('G01', S + 'log.ts', 'the record quotes the text of the error', "page.report(`SecurityAudit.${source}`, error, securityAuditStepMessage(source), context, level)", "page.report(`SecurityAudit.${source}`, error, String(error), context, level)", [T_EXPORT])
+m('G02', S + 'log.ts', 'the record has another prefix', "const page = createPageReporter('sa')", "const page = createPageReporter('page')", [T_EXPORT])
+
+m('S01', S + 'sim-adapter.ts', 'Live counts the entries as the ring (F-1)', "  const rowsValue = coreRows ? (row ? row.seq - 1 : null) : row?.details.rows\n", "  const rowsValue = row?.details.rows\n", [T_EXPORT])
+
+def check():
+    bad = 0
+    for mu in M:
+        text = open(os.path.join(ROOT, mu['file']), encoding='utf8').read()
+        count = text.count(mu['find'])
+        if count != 1:
+            bad += 1
+            print(f"{mu['id']}: the text occurs {count} times in {mu['file']}")
+    ids = [mu['id'] for mu in M]
+    assert len(ids) == len(set(ids)), 'duplicate id'
+    print(f"{len(M)} mutations; texts that do not occur exactly once: {bad}")
+    return bad
+
+def vitest(mid, tests):
+    env = dict(os.environ)
+    env['W75_APPLIED_DIR'] = APPLIED
+    if mid:
+        env['W75_MUT'] = mid
+    else:
+        env.pop('W75_MUT', None)
+    started = time.time()
+    done = subprocess.run(['npx', 'vitest', 'run', '--config', CONFIG, '--maxWorkers=2', *tests], cwd=ROOT, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    summary = ' | '.join(line.strip() for line in out.splitlines() if line.strip().startswith(('Test Files', 'Tests ')))
+    first = next((line.strip() for line in out.splitlines() if line.strip().startswith(('×', 'FAIL'))), '')
+    return done.returncode, summary, first[:200], time.time() - started
+
+def stamp():
+    return time.strftime('%Y-%m-%d %H:%M:%S WIB')
+
+def run(ids):
+    json.dump(M, open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+    if check():
+        sys.exit(2)
+    if not ids:
+        code, summary, _first, took = vitest('', ALL)
+        print(f"## {stamp()} baseline: the row's test files, no mutation\nbaseline exit={code} {summary} ({took:.1f} s)", flush=True)
+        if code != 0:
+            sys.exit(3)
+    chosen = [mu for mu in M if not ids or mu['id'] in ids]
+    survived, not_applied = [], []
+    for mu in chosen:
+        marker = os.path.join(APPLIED, mu['id'])
+        if os.path.exists(marker):
+            os.remove(marker)
+        code, summary, first, took = vitest(mu['id'], mu['tests'])
+        applied = os.path.exists(marker)
+        if not applied:
+            not_applied.append(mu['id']); verdict = 'NOT APPLIED'
+        elif code != 0:
+            verdict = 'DETECTED   '
+        else:
+            verdict = 'SURVIVED   '; survived.append(mu['id'])
+        print(f"{mu['id']} {verdict} exit={code} {mu['file'].split('/')[-1]}: {mu['what']} [{summary}] ({took:.0f} s) first: {first}", flush=True)
+    print(f"## {stamp()} {len(chosen)} mutations: {len(chosen) - len(survived) - len(not_applied)} detected, {len(survived)} survived {survived}, {len(not_applied)} not applied {not_applied}", flush=True)
+
+if __name__ == '__main__':
+    mode = sys.argv[1] if len(sys.argv) > 1 else 'check'
+    if mode == 'check':
+        json.dump(M, open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+        sys.exit(1 if check() else 0)
+    run(sys.argv[2:])

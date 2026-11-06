@@ -1,0 +1,4 @@
+mark R-T start: state before the relaunch at 12:42:59.025
+mCurrentFocus=Window{205729a u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+device-host clock offset ms: -347, -351, -350, -352, -353 at 12:42:59.196
+screencap 00_before_relaunch.png (3299803 bytes) at 12:43:00.708

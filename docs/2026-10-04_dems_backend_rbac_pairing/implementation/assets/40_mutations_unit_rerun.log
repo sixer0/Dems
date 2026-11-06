@@ -1,0 +1,3 @@
+M34 | 68: the validated body itself is the patch (equal for every body the schema lets through) | unit: Tests 180 passed (180) | db: -
+M48 | 68: the answer is the slice with the patch over it (equal after a commit) | unit: Tests 180 passed (180) | db: -
+M49 | 68: the answer always says presentation mode is off | unit: Tests 1 failed | 179 passed (180) | db: -

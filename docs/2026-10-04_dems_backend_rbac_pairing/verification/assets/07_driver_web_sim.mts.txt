@@ -1,0 +1,178 @@
+// W97 criterion 6 (web): a Simulated-mode walk on the MAIN console http://127.0.0.1:5173 (D210 / O-RW-6:
+// mock-core accepts the heartbeat only from the 5173 origin). Fresh profile; the Login Data mode selector is
+// switched to Simulated; Simulated sign-in as the dataset's SUPERVISOR; Dashboard -> Session -> Evidence ->
+// Devices (sidebar, in-app); sign out; close. BLOCKS NOTHING: every request and WebSocket is only recorded.
+// The browser only ever navigates to http://127.0.0.1:5173.
+// Browser: Playwright-cache chrome-headless-shell, --remote-debugging-port=0 (OS-assigned), owner checked
+// with lsof (+ /json/version) before connecting; profile under $TMPDIR, removed on close.
+// The demo password is imported from the dataset module and only handed to Input.insertText; never logged.
+import { spawn, execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../packages/shared/src/sim/dataset';
+
+const ORIGIN = 'http://127.0.0.1:5173';
+const OUT = process.argv[2]!;
+const SHELL = `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell`;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const lines: string[] = [];
+const scrub = (s: string) => s.split(DEMO_OPERATOR_PASSWORD).join('***');
+const log = (s: string) => { const l = `${new Date().toISOString()} ${scrub(s)}`; lines.push(l); console.log(l); };
+const marks: Record<string, number> = {};
+const mark = (k: string) => { marks[k] = Date.now(); log(`MARK ${k} ${marks[k]}`); };
+
+const profile = mkdtempSync(join(process.env.TMPDIR ?? '/tmp/claude-501', 'w97_profile_'));
+const child = spawn(SHELL, ['--headless', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run',
+  '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-sync',
+  '--hide-scrollbars', '--mute-audio', '--force-color-profile=srgb', 'about:blank'], { stdio: 'ignore' });
+const cleanup = () => { try { child.kill('SIGKILL'); } catch { /* gone */ } try { rmSync(profile, { recursive: true, force: true }); } catch { /* gone */ } };
+process.on('exit', cleanup);
+
+const portFile = join(profile, 'DevToolsActivePort');
+for (let i = 0; i < 150 && !existsSync(portFile); i += 1) await sleep(100);
+const [portLine, wsPath] = readFileSync(portFile, 'utf8').trim().split('\n');
+const port = Number(portLine);
+const owner = execFileSync('lsof', ['-nP', '-a', '-p', String(child.pid), `-iTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
+if (!owner.includes(String(child.pid))) throw new Error('CDP port not owned by the spawned browser');
+const version = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json() as { Browser: string; webSocketDebuggerUrl: string };
+if (!version.webSocketDebuggerUrl.endsWith(wsPath!)) throw new Error('DevTools endpoint does not name the spawned browser');
+log(`browser pid ${child.pid}, ${version.Browser}, CDP port ${port} (OS-assigned), owner verified (lsof + /json/version)`);
+
+const ws = new WebSocket(`ws://127.0.0.1:${port}${wsPath}`);
+await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
+let id = 0;
+const pending = new Map<number, (v: any) => void>();
+const events: any[] = [];
+let label = 'start';
+let sessionId = '';
+ws.onmessage = (ev) => {
+  const m = JSON.parse(String(ev.data));
+  if (m.id !== undefined) { pending.get(m.id)?.(m); pending.delete(m.id); return; }
+  if (m.sessionId !== sessionId) return;
+  const p = m.params;
+  const urlParts = (u: string) => { try { const x = new URL(u); return { origin: x.protocol === 'data:' || x.protocol === 'blob:' ? x.protocol : x.origin, path: x.protocol === 'data:' ? '' : x.pathname }; } catch { return { origin: 'unparsable', path: '' }; } };
+  if (m.method === 'Network.requestWillBeSent') events.push({ t: Date.now(), label, kind: 'request', method: p.request.method, ...urlParts(p.request.url) });
+  if (m.method === 'Network.webSocketCreated') events.push({ t: Date.now(), label, kind: 'ws', ...urlParts(p.url) });
+  if (m.method === 'Network.responseReceived' && p.response.status >= 400) events.push({ t: Date.now(), label, kind: 'resp4xx', status: p.response.status, ...urlParts(p.response.url) });
+  if (m.method === 'Runtime.exceptionThrown') events.push({ t: Date.now(), label, kind: 'exception', text: scrub(String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text ?? '').split('\n')[0]!.slice(0, 200)) });
+};
+const send = (method: string, params: object = {}, sid?: string): Promise<any> => new Promise((resolve, reject) => {
+  const i = ++id;
+  pending.set(i, (m) => (m.error ? reject(new Error(`${method}: ${m.error.message}`)) : resolve(m.result)));
+  ws.send(JSON.stringify({ id: i, method, params, ...(sid ? { sessionId: sid } : {}) }));
+});
+const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
+sessionId = (await send('Target.attachToTarget', { targetId, flatten: true })).sessionId;
+const s = (method: string, params: object = {}) => send(method, params, sessionId);
+await s('Page.enable'); await s('Runtime.enable'); await s('Network.enable');
+await s('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+
+const evaluate = async (expression: string) => { const r = await s('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); return r.exceptionDetails ? undefined : r.result.value; };
+const waitFn = async (expr: string, timeout = 20000) => { const until = Date.now() + timeout; while (Date.now() < until) { try { if (await evaluate(expr)) return true; } catch { /* navigating */ } await sleep(150); } return false; };
+const q = (sel: string) => (/[\[\].#\s>:,=]/.test(sel) ? sel : `[data-testid="${sel}"]`);
+const waitFor = (sel: string, timeout = 20000) => waitFn(`document.querySelector(${JSON.stringify(q(sel))}) !== null`, timeout);
+const click = async (sel: string) => {
+  const S = JSON.stringify(q(sel));
+  await evaluate(`document.querySelector(${S})?.scrollIntoView({ block: 'center', behavior: 'instant' })`);
+  await sleep(300);
+  const box = await evaluate(`(() => { const el = document.querySelector(${S}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+  if (!box) { log(`click ${sel}: not found`); return false; }
+  await s('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y });
+  await s('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 });
+  await sleep(60);
+  await s('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 });
+  await sleep(400);
+  log(`clicked ${sel}`);
+  return true;
+};
+const typeInto = async (sel: string, value: string) => {
+  const ok = await evaluate(`(() => { let el = document.querySelector(${JSON.stringify(q(sel))}); if (el && !['INPUT','TEXTAREA'].includes(el.tagName)) el = el.querySelector('input, textarea'); if (!el) return false; el.focus(); el.select?.(); return document.activeElement === el; })()`);
+  if (!ok) throw new Error(`cannot focus ${sel}`);
+  await s('Input.insertText', { text: value });
+  await sleep(200);
+};
+const shot = async (name: string) => { const { data } = await s('Page.captureScreenshot', { format: 'png' }); writeFileSync(join(OUT, name), Buffer.from(data, 'base64')); log(`screenshot ${name}`); };
+const facts = () => evaluate(`(() => ({ href: location.pathname, pages: [...document.querySelectorAll('[data-testid^="page-"]')].map((e) => e.getAttribute('data-testid')), mode: document.querySelector('[data-testid="shell-mode"]')?.innerText?.replace(/\\s+/g, ' ').trim() ?? null, coreMode: document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null, stored: localStorage.getItem('dems.core.mode.v1') }))()`);
+
+let status = 0;
+try {
+  mark('start');
+  label = 'A: fresh profile, Login in the default mode (before the switch)';
+  await s('Page.navigate', { url: `${ORIGIN}/login` });
+  await waitFn('document.readyState === "complete"');
+  await waitFor('login-mode-selector');
+  await sleep(1500);
+  log(`login (default): ${JSON.stringify(await facts())}`);
+  await click('login-mode-SIMULATED');
+  await waitFor('mode-switch-dialog', 8000);
+  await sleep(400);
+  label = 'B: switch confirmed';
+  mark('switchConfirm');
+  await click('mode-switch-confirm');
+  await sleep(1500);
+  await waitFn('document.readyState === "complete"');
+  await waitFor('page-login');
+  const enabled = await waitFn(`(() => { const b = document.querySelector('[data-testid="login-submit"]'); return !!b && !b.disabled && !b.hasAttribute('disabled'); })()`, 25000);
+  label = 'C: Simulated walk';
+  mark('simulatedReady');
+  log(`login (after switch): ${JSON.stringify(await facts())}; Sign In enabled: ${enabled}`);
+  await shot('07_web_01_login_simulated.png');
+  if (!enabled) throw new Error('Sign In not enabled in Simulated (mock-core heartbeat?)');
+  const sup = OPERATORS.find((o) => o.role === 'SUPERVISOR');
+  if (!sup) throw new Error('no SUPERVISOR in the dataset');
+  await typeInto('login-username-field', sup.username);
+  await typeInto('login-password-field', DEMO_OPERATOR_PASSWORD);
+  log(`typed username ${sup.username} and the demo password (not shown)`);
+  await click('login-submit');
+  if (!(await waitFor('page-dashboard', 25000))) throw new Error('Simulated sign-in did not reach the dashboard');
+  await sleep(2500);
+  log(`dashboard: ${JSON.stringify(await facts())}`);
+  await shot('07_web_02_dashboard.png');
+  for (const [href, page, name] of [['/session', 'page-session-monitor', '03_session'], ['/evidence', 'page-evidence', '04_evidence'], ['/devices', 'page-devices', '05_devices']] as const) {
+    await click(`aside a[href="${href}"], nav a[href="${href}"]`);
+    const ok = await waitFor(page, 15000);
+    await sleep(2500);
+    log(`${href}: reached ${page}=${ok} ${JSON.stringify(await facts())}`);
+    await shot(`07_web_${name}.png`);
+    if (!ok) status = 1;
+  }
+  await click('user-menu');
+  await sleep(700);
+  const out = await evaluate(`(() => { const el = [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].find((e) => /Sign out/.test(e.innerText)); if (!el) return false; el.setAttribute('data-w97', '1'); return true; })()`);
+  if (out) await click('[data-w97="1"]');
+  const back = await waitFor('page-login', 15000);
+  await sleep(1500);
+  log(`signed out: ${back} ${JSON.stringify(await facts())}`);
+  await shot('07_web_06_signed_out.png');
+  mark('end');
+} catch (error) {
+  status = 1;
+  log(`FAILED: ${error instanceof Error ? error.message : String(error)}`);
+  mark('end');
+} finally {
+  try { await s('Browser.close'); } catch { /* closing */ }
+  try { await send('Browser.close'); } catch { /* closing */ }
+  await sleep(600);
+  cleanup();
+  log(`browser closed (pid ${child.pid}); profile removed: ${!existsSync(profile)}`);
+  const sim = events.filter((e) => e.t >= (marks.simulatedReady ?? Infinity));
+  const summary = {
+    marks,
+    requestsByOriginAll: events.filter((e) => e.kind === 'request').reduce((a: any, e) => ((a[e.origin] = (a[e.origin] ?? 0) + 1), a), {}),
+    simulatedPhase: {
+      requestsByOrigin: sim.filter((e) => e.kind === 'request').reduce((a: any, e) => ((a[e.origin] = (a[e.origin] ?? 0) + 1), a), {}),
+      apiOrWsOn5173: sim.filter((e) => (e.kind === 'request' || e.kind === 'ws') && e.origin.endsWith('127.0.0.1:5173') && (e.path.startsWith('/api/') || e.path.startsWith('/ws'))).map((e) => `${e.kind} ${e.method ?? ''} ${e.path}`),
+      webSockets: sim.filter((e) => e.kind === 'ws').map((e) => `${e.origin}${e.path}`),
+      responses4xx: sim.filter((e) => e.kind === 'resp4xx').map((e) => `${e.status} ${e.origin}${e.path}`),
+      exceptions: sim.filter((e) => e.kind === 'exception').map((e) => e.text),
+    },
+    beforeSwitch: {
+      apiOrWsOn5173: events.filter((e) => e.t < (marks.simulatedReady ?? 0) && (e.kind === 'request' || e.kind === 'ws') && e.origin.endsWith('127.0.0.1:5173') && (e.path.startsWith('/api/') || e.path.startsWith('/ws'))).map((e) => `${new Date(e.t).toISOString()} ${e.kind} ${e.method ?? ''} ${e.path}`),
+    },
+  };
+  writeFileSync(join(OUT, '07_web_cdp_events.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+  writeFileSync(join(OUT, '07_web_summary.json'), JSON.stringify(summary, null, 1) + '\n');
+  writeFileSync(join(OUT, '07_web_driver_log.txt'), lines.join('\n') + '\n');
+  console.log(JSON.stringify(summary, null, 1));
+  process.exit(status);
+}

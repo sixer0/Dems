@@ -1,0 +1,26 @@
+// Background watcher (NO navigation): every 50 ms evaluates a page expression and stamps (host clock) each change.
+//   CTX=a node --import tsx watch_expr.mjs <tag> <maxSeconds> <expression>
+import { existsSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { SCRATCH, connect, hms, log, sleep, stamp, writeJson } from './lib.mjs'
+const [tag, maxSeconds, ...rest] = process.argv.slice(2)
+const expr = rest.join(' ')
+const STOP = join(SCRATCH, `stop_${tag}`)
+if (existsSync(STOP)) rmSync(STOP)
+const page = await connect()
+const origin0 = await page.evaluate('performance.timeOrigin', 'origin')
+const events = []
+let last = null
+const until = Date.now() + Number(maxSeconds) * 1000
+while (Date.now() < until && !existsSync(STOP)) {
+  const before = Date.now()
+  let v
+  try { v = JSON.stringify(await page.evaluate(expr, 'expr')) } catch (e) { v = `error ${e.message}` }
+  if (v !== last) { last = v; events.push({ at: stamp(before), atMs: before, value: v }); log(`change at ${hms(before)}: ${v}`) }
+  await sleep(50)
+}
+const origin1 = await page.evaluate('performance.timeOrigin', 'origin')
+log(`stopped; same document: ${origin0 === origin1}; at ${await page.href()}`)
+writeJson(`${tag}.json`, { tag, expr, sameDocument: origin0 === origin1, events, network: page.takeNetwork() })
+if (existsSync(STOP)) rmSync(STOP)
+page.close()

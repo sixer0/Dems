@@ -1,0 +1,95 @@
+RF2 Core log lines (method route status [code], host time) per run, read by the driver's 'serverlog' verb from .cache/manual/lane1-server.log (phone) and lane2-server.log (tablet); socket open/close lines included where logged.
+== S1
+    22:20:13.885 POST /api/v1/session/:id/summary/acknowledge 204
+    22:20:32.698 POST /api/v1/session 201
+    22:20:32.843 POST /api/v1/session/:id/precheck 202
+    22:20:45.297 [socket closed]
+    22:20:45.387 GET /api/v1/auth/session 200
+    22:20:45.391 [socket opened]
+    22:20:53.914 POST /api/v1/session/:id/start 200
+    22:21:22.395 POST /api/v1/session/:id/stop 202
+== S2
+    22:23:07.500 POST /api/v1/session/:id/summary/acknowledge 204
+    22:23:26.218 POST /api/v1/session 201
+    22:23:26.357 POST /api/v1/session/:id/precheck 202
+    22:23:38.768 [socket closed]
+    22:23:38.874 GET /api/v1/auth/session 200
+    22:23:38.877 [socket opened]
+    22:23:47.192 POST /api/v1/session/:id/start 200
+    22:24:16.119 POST /api/v1/session/:id/stop 202
+== S3
+    22:25:28.634 POST /api/v1/session/:id/summary/acknowledge 204
+    22:25:47.243 POST /api/v1/session 201
+    22:25:47.367 POST /api/v1/session/:id/precheck 202
+    22:25:59.910 [socket closed]
+    22:26:00.002 [socket opened]
+    22:26:00.003 GET /api/v1/auth/session 200
+    22:26:09.494 POST /api/v1/session/:id/start 200
+    22:26:38.468 POST /api/v1/session/:id/stop 202
+== X1
+    22:27:40.948 POST /api/v1/session/:id/summary/acknowledge 204
+    22:27:59.546 POST /api/v1/session 201
+    22:27:59.686 POST /api/v1/session/:id/precheck 202
+    22:28:12.128 [socket closed]
+    22:28:12.230 GET /api/v1/auth/session 200
+    22:28:12.233 [socket opened]
+    22:28:20.861 POST /api/v1/session/:id/start 200
+    22:28:21.277 POST /api/v1/session/:id/stop 202
+== X2
+    22:30:23.465 POST /api/v1/session/:id/summary/acknowledge 204
+    22:30:42.145 POST /api/v1/session 201
+    22:30:42.277 POST /api/v1/session/:id/precheck 202
+    22:30:54.739 [socket closed]
+    22:30:54.831 GET /api/v1/auth/session 200
+    22:30:54.834 [socket opened]
+    22:31:02.599 POST /api/v1/session/:id/start 200
+    22:31:03.061 POST /api/v1/session/:id/stop 202
+== X3
+    22:32:01.648 POST /api/v1/session/:id/summary/acknowledge 204
+    22:32:20.277 POST /api/v1/session 201
+    22:32:20.416 POST /api/v1/session/:id/precheck 202
+    22:32:32.793 [socket closed]
+    22:32:32.897 [socket opened]
+    22:32:32.898 GET /api/v1/auth/session 200
+    22:32:41.809 POST /api/v1/session/:id/start 200
+    22:32:42.208 POST /api/v1/session/:id/stop 202
+== T1
+    22:41:07.285 POST /api/v1/session 201
+    22:41:07.500 POST /api/v1/session/:id/precheck 202
+    22:41:20.356 [socket closed]
+    22:41:20.510 GET /api/v1/auth/session 200
+    22:41:20.512 [socket opened]
+    22:41:29.075 POST /api/v1/session/:id/start 200
+    22:41:39.827 POST /api/v1/session/:id/stop 202
+== T2
+    22:48:09.162 POST /api/v1/session 201
+    22:48:09.321 POST /api/v1/session/:id/precheck 202
+    22:48:22.268 [socket closed]
+    22:48:22.354 GET /api/v1/auth/session 200
+    22:48:22.356 [socket opened]
+    22:48:30.572 POST /api/v1/session/:id/start 200
+    22:48:41.677 POST /api/v1/session/:id/stop 202
+== T3
+    22:50:13.834 POST /api/v1/session/:id/summary/acknowledge 204
+    22:50:31.394 POST /api/v1/session 201
+    22:50:31.553 POST /api/v1/session/:id/precheck 202
+    22:50:44.619 [socket closed]
+    22:50:44.709 GET /api/v1/auth/session 200
+    22:50:44.711 [socket opened]
+    22:50:53.023 POST /api/v1/session/:id/start 200
+    22:51:04.450 POST /api/v1/session/:id/stop 202
+== phone end
+    22:34:29.080 POST /api/v1/auth/sign-out 204
+    22:34:38.969 GET /api/v1/session/current 200
+== tablet end
+    22:53:50.284 POST /api/v1/session/:id/summary/acknowledge 204
+    22:54:26.584 POST /api/v1/auth/sign-out 204
+    22:54:37.991 GET /api/v1/session/current 200
+== sign-ins
+    22:19:21.494 POST /api/v1/auth/sign-in 200
+    22:19:31.340 GET /api/v1/auth/session 401 NOT_SIGNED_IN
+    22:19:33.769 POST /api/v1/auth/sign-in 200
+    22:19:37.031 GET /api/v1/auth/session 200
+    22:35:46.555 POST /api/v1/auth/sign-in 200
+    22:35:53.842 GET /api/v1/auth/session 401 NOT_SIGNED_IN
+    22:35:56.259 POST /api/v1/auth/sign-in 200

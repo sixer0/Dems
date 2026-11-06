@@ -1,0 +1,115 @@
+=== BASELINE | no mutation: the file as it is, through the scratch configuration | 18:38:05
+exit 0
+ Test Files  1 passed (1)
+      Tests  31 passed (31)
+[test:db] teardown: dropped 2 database(s) in 88 ms; 0 remain with the run prefix dems_test_step_70_tmdsbi75_
+=== M1 | the revoke is skipped: the supervisor reads the registry instead of revoking the tablet | 18:38:10
+exit 1
+     × AC-B-38: the supervisor revokes the tablet while it records: 200, the device REVOKED; DEVICE_REVOKED names the supervisor, the device and the session it ended 5ms
+     × AC-B-38: its socket was told device.revoked and closed with 4403 within 1 s; the retired credential and the retired session token open no socket again 5003ms
+     × AC-B-38: its next REST calls answer 403 DEVICE_REVOKED, with the session token and with the device credential alike, each with one ACCESS_DENIED row that names the device 49ms
+     × AC-B-38: its session is ended with the reason DEVICE_REVOKED and its biometric token is revoked; the registry shows the device REVOKED, offline, with nobody signed in 1ms
+     × AC-B-39: the session STAYS IN RECORDING and goes on recording, with the Core link OFFLINE now that the device is gone 1ms
+     × AC-B-39: ANOTHER operator stops it from the web console with a reason: 202, RECORDING_STOPPED names the supervisor; the recording is sealed with the link still OFFLINE 3ms
+     × AC-B-38: the tablet is paired AGAIN: a new code, a new device ID, a new credential; the old credential and the old biometric token stay refused; the old device stays REVOKED in the registry 11ms
+     × the PASSWORD session of the same operator on the same device stays open, and so does its socket 1ms
+     × is exactly this sequence of types with their actors and devices; every row belongs to a step of this file; the chain verifies 1ms
+     × the scan is not blind: a code, half a credential and a token as hex, planted into columns of two tables as the owner role, are found, each in its form and its table; a token in a line of text is found in four forms 1ms
+     × the audit rows and the events of the journey, and every realtime frame every socket received 25ms
+     × the answers of every refusal: no code is echoed and no credential 0ms
+     × the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error 3ms
+ Test Files  1 failed (1)
+      Tests  13 failed | 18 passed (31)
+[test:db] teardown: dropped 2 database(s) in 67 ms; 0 remain with the run prefix dems_test_step_70_tmdsbmuu_
+=== M2 | a FRESH biometric token (the rotated one) is presented instead of the used one | 18:38:18
+exit 1
+     × the USED token presented again answers the generic 401; AUTH_FAILED says TOKEN_REUSE and that one session was ended 6ms
+     × the socket of the BIOMETRIC session was told session.ended with TOKEN_REUSE and closed with 4401 within 1 s 5001ms
+     × that session is ended with the reason TOKEN_REUSE and its token answers 401; the family is revoked: the rotated token signs nobody in 2ms
+     × is exactly this sequence of types with their actors and devices; every row belongs to a step of this file; the chain verifies 2ms
+     × the audit rows and the events of the journey, and every realtime frame every socket received 45ms
+     × the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error 5ms
+ Test Files  1 failed (1)
+      Tests  6 failed | 25 passed (31)
+[test:db] teardown: dropped 2 database(s) in 67 ms; 0 remain with the run prefix dems_test_step_70_tmdsbupe_
+=== M3 | the value of an issued code is planted into a column of the clone as the owner role (paired_devices.name), before the dump is taken | 18:38:25
+exit 1
+     × a dump of the clone, every table as the owner role: none of the codes, credentials and tokens in any form; each is there only as the hash it is stored as 17ms
+     × the scan is not blind: a code, half a credential and a token as hex, planted into columns of two tables as the owner role, are found, each in its form and its table; a token in a line of text is found in four forms 11ms
+ Test Files  1 failed (1)
+      Tests  2 failed | 29 passed (31)
+[test:db] teardown: dropped 2 database(s) in 66 ms; 0 remain with the run prefix dems_test_step_70_tmdsc2kf_
+=== M4 | the tablet's socket is closed and 6 s pass on the server clock before the recording is created: no paired device holds a socket | 18:38:28
+exit 1
+     × the investigator starts a recording from the tablet: the pre-check passes because the Core link is connected by the tablet's own socket 47ms
+     × AC-B-38: the supervisor revokes the tablet while it records: 200, the device REVOKED; DEVICE_REVOKED names the supervisor, the device and the session it ended 5002ms
+     × AC-B-38: its socket was told device.revoked and closed with 4403 within 1 s; the retired credential and the retired session token open no socket again 2ms
+     × AC-B-38: its next REST calls answer 403 DEVICE_REVOKED, with the session token and with the device credential alike, each with one ACCESS_DENIED row that names the device 44ms
+     × AC-B-38: its session is ended with the reason DEVICE_REVOKED and its biometric token is revoked; the registry shows the device REVOKED, offline, with nobody signed in 1ms
+     × AC-B-39: the session STAYS IN RECORDING and goes on recording, with the Core link OFFLINE now that the device is gone 1ms
+     × AC-B-39: ANOTHER operator stops it from the web console with a reason: 202, RECORDING_STOPPED names the supervisor; the recording is sealed with the link still OFFLINE 3ms
+     × AC-B-38: the tablet is paired AGAIN: a new code, a new device ID, a new credential; the old credential and the old biometric token stay refused; the old device stays REVOKED in the registry 12ms
+     × the PASSWORD session of the same operator on the same device stays open, and so does its socket 1ms
+     × is exactly this sequence of types with their actors and devices; every row belongs to a step of this file; the chain verifies 1ms
+     × the scan is not blind: a code, half a credential and a token as hex, planted into columns of two tables as the owner role, are found, each in its form and its table; a token in a line of text is found in four forms 1ms
+     × the audit rows and the events of the journey, and every realtime frame every socket received 22ms
+     × the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error 3ms
+ Test Files  1 failed (1)
+      Tests  13 failed | 18 passed (31)
+[test:db] teardown: dropped 2 database(s) in 67 ms; 0 remain with the run prefix dems_test_step_70_tmdsc4a4_
+=== M5 | code A is redeemed one millisecond BEFORE its 300 s have passed | 18:38:35
+exit 1
+     × AC-B-35: one millisecond before 300 s the code is still active; at 300 s on the manual clock the redeem answers the generic 401 INVALID_CODE and PAIRING_CODE_CLOSED says EXPIRED 9ms
+     × AC-B-36: three wrong codes lock redeeming for 60 s (423; the right code is then not even looked at: PAIRING_LOCKED); the fifth wrong code closes the code as EXHAUSTED 10ms
+     × AC-B-34: a new code is redeemed: 201 with a device ID and a credential; PAIRING_SUCCESS names the device; no later answer holds the credential; the same code and the exhausted one never pair again 3ms
+     × the registry lists the device as PAIRED; ONLINE while its real socket is open and offline after it closes; the first device socket connects the Core link 2ms
+     × AC-B-37: a password sign-in on the paired device creates a session bound to it: AUTH_SUCCESS and the registry name the device and the operator; the operator turns biometric sign-in on 24ms
+     × AC-B-38: its session is ended with the reason DEVICE_REVOKED and its biometric token is revoked; the registry shows the device REVOKED, offline, with nobody signed in 1ms
+     × AC-B-38: the tablet is paired AGAIN: a new code, a new device ID, a new credential; the old credential and the old biometric token stay refused; the old device stays REVOKED in the registry 3ms
+     × on the paired tablet the investigator signs in with the password, enrols, and signs in with the token: a PASSWORD and a BIOMETRIC session, each with its own real socket 0ms
+     × the USED token presented again answers the generic 401; AUTH_FAILED says TOKEN_REUSE and that one session was ended 1ms
+     × the socket of the BIOMETRIC session was told session.ended with TOKEN_REUSE and closed with 4401 within 1 s 0ms
+     × that session is ended with the reason TOKEN_REUSE and its token answers 401; the family is revoked: the rotated token signs nobody in 0ms
+     × the PASSWORD session of the same operator on the same device stays open, and so does its socket 0ms
+     × is exactly this sequence of types with their actors and devices; every row belongs to a step of this file; the chain verifies 2ms
+     × the test holds what it must look for: four codes, five guesses, two device credentials, five session tokens and three biometric tokens, all different 0ms
+     × the scan is not blind: a code, half a credential and a token as hex, planted into columns of two tables as the owner role, are found, each in its form and its table; a token in a line of text is found in four forms 1ms
+     × the audit rows and the events of the journey, and every realtime frame every socket received 23ms
+     × the answers of every refusal: no code is echoed and no credential 0ms
+     × the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error 3ms
+ Test Files  1 failed (1)
+      Tests  18 failed | 13 passed (31)
+[test:db] teardown: dropped 2 database(s) in 66 ms; 0 remain with the run prefix dems_test_step_70_tmdscc6n_
+=== M6 | the recording is stopped from the web console by the operator who started it (the investigator), not by another one | 18:38:38
+exit 1
+     × AC-B-39: ANOTHER operator stops it from the web console with a reason: 202, RECORDING_STOPPED names the supervisor; the recording is sealed with the link still OFFLINE 10ms
+     × is exactly this sequence of types with their actors and devices; every row belongs to a step of this file; the chain verifies 4ms
+     × the audit rows and the events of the journey, and every realtime frame every socket received 44ms
+ Test Files  1 failed (1)
+      Tests  3 failed | 28 passed (31)
+[test:db] teardown: dropped 2 database(s) in 102 ms; 0 remain with the run prefix dems_test_step_70_tmdscegq_
+=== M7 | a line that holds a session token is written into the captured log stream before the log is scanned | 18:38:41
+exit 1
+     × the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error 10ms
+ Test Files  1 failed (1)
+      Tests  1 failed | 30 passed (31)
+[test:db] teardown: dropped 2 database(s) in 145 ms; 0 remain with the run prefix dems_test_step_70_tmdscim3_
+=== M8 | the device that never paired opens its socket with the web console origin and the supervisor's cookie: it is no stranger | 18:38:46
+exit 1
+     × AC-B-32: before it is paired, the app reads the sign-in status and the service health, is refused the sign-in with 403 DEVICE_NOT_PAIRED with no Origin and with the own origin alike, gets 401 elsewhere, and its socket is told hello and heartbeat only 50ms
+     × is exactly this sequence of types with their actors and devices; every row belongs to a step of this file; the chain verifies 1ms
+     × the socket of the device that never paired received hello and heartbeat only, whatever happened on the server; the portal beside it was told of every change 1ms
+     × the test holds what it must look for: four codes, five guesses, two device credentials, five session tokens and three biometric tokens, all different 0ms
+     × each secret was handed out in exactly one answer of the journey: a code by its issue, a credential by its redeem, a token by its sign-in or enrolment; a web session token in none (the cookie); a guess in none 1ms
+ Test Files  1 failed (1)
+      Tests  5 failed | 26 passed (31)
+[test:db] teardown: dropped 2 database(s) in 84 ms; 0 remain with the run prefix dems_test_step_70_tmdscmyq_
+=== M9 | an answer of a refusal that echoes the expired code is handed to the test (a stand-in answer; the server sent none such) | 18:38:50
+exit 1
+     × AC-B-35: one millisecond before 300 s the code is still active; at 300 s on the manual clock the redeem answers the generic 401 INVALID_CODE and PAIRING_CODE_CLOSED says EXPIRED 12ms
+     × each secret was handed out in exactly one answer of the journey: a code by its issue, a credential by its redeem, a token by its sign-in or enrolment; a web session token in none (the cookie); a guess in none 2ms
+     × the answers of every refusal: no code is echoed and no credential 1ms
+     × the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error 8ms
+ Test Files  1 failed (1)
+      Tests  4 failed | 27 passed (31)
+[test:db] teardown: dropped 2 database(s) in 135 ms; 0 remain with the run prefix dems_test_step_70_tmdscqvh_

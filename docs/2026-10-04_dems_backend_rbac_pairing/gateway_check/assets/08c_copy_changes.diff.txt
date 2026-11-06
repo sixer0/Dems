@@ -1,0 +1,1058 @@
+--- a/packages/shared/src/i18n/en/session-new.ts	2026-10-05 20:33:09
++++ b/packages/shared/src/i18n/en/session-new.ts	2026-10-06 04:40:46
+@@ -189,5 +189,13 @@
+   live: {
+     coreLinkHint:
+       'No paired tablet is connected to the Core server. Open the DEMS app on the paired tablet so that it connects, then re-run the checks.',
++    /**
++     * Closing copy round (decision D164 DN-5; W83 ledger #89): one pair of Live words for both
++     * clients, in place of `devices.speakToTest` and `info.caseNumber.scan`, which say "(simulated)"
++     * and stay the Simulated words. The step 2 meters are the Core server's `meters` frames; the
++     * case-number button fills in the next number the Core server reserves (operation 32).
++     */
++    speakToTest: 'Microphone levels from the Core server',
++    scanCaseNumber: 'Fill in the next case number',
+   },
+ } as const satisfies ResourceTree;
+--- a/packages/shared/src/i18n/en/evidence.ts	2026-10-06 00:24:50
++++ b/packages/shared/src/i18n/en/evidence.ts	2026-10-06 04:54:21
+@@ -340,6 +340,12 @@
+     export: {
+       reasonRefused: 'The Core server did not accept this reason. Change it and try again.',
+       notCompleted: 'The Core server could not complete this export.',
++      /**
++       * The Live twin of `exportWizard.success`, which says "(simulated)" (closing copy round, decision
++       * D162 DN-5, W83 ledger #93; first written as the mobile app's own key in row W74). The
++       * destination labels keep "(simulated)" in both modes (D158 DC-4).
++       */
++      success: 'Export of {{id}} accepted by the Core',
+     },
+   },
+ } as const satisfies ResourceTree;
+--- a/packages/shared/src/i18n/en/security-audit.ts	2026-10-06 01:11:26
++++ b/packages/shared/src/i18n/en/security-audit.ts	2026-10-06 04:56:32
+@@ -236,7 +236,14 @@
+       head: 'Chain head',
+       chain: 'Chain at export',
+       reason: 'Reason',
+-      reasonNote: 'Shown here only: the demo simulator does not record the export reason yet.',
++      /**
++       * Simulated mode. Closing copy round (decision D176 DC-5, finding F75-7, W83 ledger #94): the one
++       * deliberate change of Simulated copy in the round. The former note ("Shown here only: the demo
++       * simulator does not record the export reason yet.") stopped being true at step 54, when the
++       * simulator began to write the reason into the export's `AUDIT_EXPORTED` row. Worded like the
++       * Live note `live.exportAudit.reasonNote`.
++       */
++      reasonNote: 'Recorded by the simulator in the audit row of the export.',
+     },
+     denied: 'Audit export needs the {{role}} role.',
+     notSignedIn: 'Sign in to export the audit log.',
+--- a/packages/shared/src/i18n/en/devices.ts	2026-10-06 00:20:26
++++ b/packages/shared/src/i18n/en/devices.ts	2026-10-06 05:12:10
+@@ -327,8 +327,14 @@
+     lcdLabel: 'Local status display, page {{page}}',
+     /** The camera picture's accessible name: the bundled demo loop (MS-1), not the Core's camera (plan row W0, item 7). */
+     feedAria: '{{name}}, bundled demo picture',
+-    samples_one: '{{count}} sample',
+-    samples_other: 'Last {{count}} samples',
++    /**
++     * The Health line's caption in Live mode, for both clients (closing copy round, decision D186 on
++     * W83 ledger #90): the Core serves no per-device health history, so the line is derived on the
++     * client from the Core's data. One sentence, true on the web and on the tablet. Simulated mode
++     * keeps `drawer.health.samples_*`.
++     */
++    samples_one: "Derived from the Core's data · {{count}} sample",
++    samples_other: "Derived from the Core's data · last {{count}} samples",
+     /** The tablet row of the device drawer in Live mode (note G6): the web console does not pair. */
+     pairedDevices: {
+       label: 'Paired devices',
+--- a/apps/core-web/src/features/session-new/devices-step.tsx	2026-10-05 20:35:11
++++ b/apps/core-web/src/features/session-new/devices-step.tsx	2026-10-06 04:42:09
+@@ -48,8 +48,9 @@
+   onRetry: () => void
+   /**
+    * Live mode (plan row W64): a blocked `CORE` check is worded as what it is there, "no paired
+-   * tablet is connected" (decision F69), because the console cannot clear it. False in Simulated
+-   * mode, where the step looks as before.
++   * tablet is connected" (decision F69), because the console cannot clear it. The meters' hint names
++   * the Core server as their source (`sessionNew.live.speakToTest`, shared with the mobile app: closing
++   * copy round, D164 DN-5). False in Simulated mode, where the step looks as before.
+    */
+   live?: boolean
+   /** Live mode (LB-1): "Re-run checks" is in flight for longer than the reveal time. Never true in Simulated mode. */
+@@ -221,7 +222,7 @@
+             <h2 className="sn-card-title">{t('sessionNew.devices.meters')}</h2>
+             <span className="sn-card-meta sn-speak">
+               <Mic className="size-3.5" aria-hidden="true" />
+-              {t('sessionNew.devices.speakToTest')}
++              {t(live ? 'sessionNew.live.speakToTest' : 'sessionNew.devices.speakToTest')}
+             </span>
+           </header>
+           <div className="sn-meters">
+--- a/apps/core-web/src/features/session-new/info-step.tsx	2026-10-05 20:34:43
++++ b/apps/core-web/src/features/session-new/info-step.tsx	2026-10-06 04:48:02
+@@ -58,6 +58,13 @@
+   scanPending?: boolean
+   /** The scan button's element (`aria-busy` while the scan is in flight, `usePendingControl`). */
+   scanRef?: RefObject<HTMLButtonElement | null>
++  /**
++   * Live mode: the scan button names what it does (the Core server reserves the next number,
++   * operation 32; nothing is scanned), with the words the mobile app shows
++   * (`sessionNew.live.scanCaseNumber`: closing copy round, D164 DN-5). False in Simulated mode, where
++   * the button keeps `sessionNew.info.caseNumber.scan`.
++   */
++  live?: boolean
+ }
+ 
+ function selectStartOperators(s: { operators: SimOperator[] }): SimOperator[] {
+@@ -80,8 +87,9 @@
+  * `FieldError`. React Hook Form with the shared `sessionCreateSchema` lives in the page so the
+  * values survive the step change. Motion (M-PG-NEW): rows stagger 30 ms; errors slide in (160).
+  */
+-export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs, scanPending = false, scanRef }: InfoStepProps) {
++export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs, scanPending = false, scanRef, live = false }: InfoStepProps) {
+   const { t } = useTranslation()
++  const scanLabel = t(live ? 'sessionNew.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')
+   const m = useMotionPolicy()
+   const errorText = useErrorText()
+   const operators = useSim(selectStartOperators)
+@@ -151,14 +159,14 @@
+                               isIconOnly
+                               size="sm"
+                               variant="ghost"
+-                              aria-label={t('sessionNew.info.caseNumber.scan')}
++                              aria-label={scanLabel}
+                               onPress={onScan}
+                               isPending={scanPending}
+                               data-testid="sn-scan"
+                             >
+                               {scanPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <ScanLine className="size-4" aria-hidden="true" />}
+                             </Button>
+-                            <Tooltip.Content placement="top">{t('sessionNew.info.caseNumber.scan')}</Tooltip.Content>
++                            <Tooltip.Content placement="top">{scanLabel}</Tooltip.Content>
+                           </Tooltip>
+                         </InputGroup.Suffix>
+                       </InputGroup>
+--- a/apps/core-web/src/features/session-new/index.tsx	2026-10-06 00:00:43
++++ b/apps/core-web/src/features/session-new/index.tsx	2026-10-06 04:42:23
+@@ -462,6 +462,7 @@
+         enterDelayMs={enterDelayMs}
+         scanPending={scanPending}
+         scanRef={scanRef}
++        live={live}
+       />
+     </FlowErrorBoundary>,
+     <FlowErrorBoundary key="devices" part="devices">
+--- a/apps/core-web/src/features/evidence/metadata-tab.tsx	2026-10-06 00:24:50
++++ b/apps/core-web/src/features/evidence/metadata-tab.tsx	2026-10-06 04:58:59
+@@ -20,6 +20,14 @@
+ 
+ export interface MetadataTabProps {
+   row: EvidenceRow
++  /**
++   * Live mode: the Core's media reference (operation 40) did not answer, so whether a DEMO package
++   * belongs to the item is not known. The empty state then says so in the header chip's words
++   * (`evidence.live.mediaUnavailable`), not "No DEMO package for this item", and the record's note
++   * claims no absence either (closing copy round, W83 ledger #95; observation of plan row W0, D165).
++   * False in Simulated mode and whenever the Core answered.
++   */
++  mediaUnavailable?: boolean
+ }
+ 
+ /**
+@@ -36,10 +44,12 @@
+  * the Core server's: it is labelled "Core record" and says so, never "simulated" (04_client_integration_spec
+  * §3.2; plan row W0, item 9, decision D158).
+  */
+-export function MetadataTab({ row }: MetadataTabProps) {
++export function MetadataTab({ row, mediaUnavailable = false }: MetadataTabProps) {
+   const { t } = useTranslation()
+   const m = useMotionPolicy()
+   const live = useCoreMode() === CoreMode.LIVE
++  // Live, operation 40 unanswered: whether a DEMO package joins the item is unknown (W83 ledger #95).
++  const packageUnknown = live && mediaUnavailable
+   const { load } = useEvidenceAssets()
+   const pkg = row.pkg
+   const documents = useMemo(() => (pkg ? getDemoEvidenceDocuments(pkg.evidenceSuffix) : null), [pkg])
+@@ -86,7 +96,12 @@
+     const record = JSON.stringify(
+       {
+         ...(live
+-          ? { record: 'CORE', note: "The Core server's record of this item; no DEMO package joins it." }
++          ? {
++              record: 'CORE',
++              note: packageUnknown
++                ? "The Core server's record of this item; its media reference is unavailable, so no DEMO package is shown."
++                : "The Core server's record of this item; no DEMO package joins it.",
++            }
+           : { simulated: true, note: 'SIMULATED record from the in-browser simulator; no DEMO package joins this item.' }),
+         evidenceId: row.item.id,
+         sessionId: row.item.sessionId,
+@@ -110,7 +125,7 @@
+       <div className="evi-metadata" data-testid="evidence-metadata" data-package={live ? 'core' : 'simulated'}>
+         <EmptyState className="evi-empty evi-empty-inline">
+           <FileX className="size-6 text-foreground-2" aria-hidden="true" />
+-          <p className="evi-empty-title">{t('evidence.metadata.noPackage')}</p>
++          <p className="evi-empty-title">{t(packageUnknown ? 'evidence.live.mediaUnavailable' : 'evidence.metadata.noPackage')}</p>
+         </EmptyState>
+         <JsonView text={record} label={t(live ? 'evidence.live.coreRecord' : 'evidence.metadata.simulatedRecord')} />
+       </div>
+--- a/apps/core-web/src/features/evidence/detail-page.tsx	2026-10-05 23:54:13
++++ b/apps/core-web/src/features/evidence/detail-page.tsx	2026-10-06 04:58:59
+@@ -336,7 +336,7 @@
+                   {key === 'media' ? (
+                     <MediaTab row={row} playToken={playToken} onPlayHandled={onPlayHandled} />
+                   ) : key === 'metadata' ? (
+-                    <MetadataTab row={row} />
++                    <MetadataTab row={row} mediaUnavailable={media.status === 'unavailable'} />
+                   ) : (
+                     <IntegrityTab row={row} verification={verification} />
+                   )}
+--- a/apps/mobile/src/features/session-new/device-previews.tsx	2026-10-06 00:10:20
++++ b/apps/mobile/src/features/session-new/device-previews.tsx	2026-10-06 04:41:04
+@@ -53,7 +53,8 @@
+   const micSignals = useMicSignals();
+   const testSwitch = useMotionState((s) => s.linkMotion === 'off');
+   const [liveIndex, setLiveIndex] = useState(0);
+-  // Live mode says where the levels come from instead of "(simulated)" (row M1, W67 F-2; §3.2).
++  // Live mode says where the levels come from instead of "(simulated)" (row M1, W67 F-2; §3.2); the words are
++  // shared with the web console (`sessionNew.live.*`, closing copy round, D164 DN-5).
+   const liveSource = useCoreLink().source === 'LIVE';
+   return (
+     <View testID={testID} style={styles.previews}>
+@@ -82,7 +83,7 @@
+         ))}
+       </View>
+       <Typography type="body-xs" color="muted" testID={`${testID}-hint`}>
+-        {t(liveSource ? 'features.session-new.live.speakToTest' : 'sessionNew.devices.speakToTest')}
++        {t(liveSource ? 'sessionNew.live.speakToTest' : 'sessionNew.devices.speakToTest')}
+       </Typography>
+     </View>
+   );
+--- a/apps/mobile/src/features/session-new/session-info-step.tsx	2026-10-06 00:10:29
++++ b/apps/mobile/src/features/session-new/session-info-step.tsx	2026-10-06 04:41:19
+@@ -80,7 +80,7 @@
+                 variant="ghost"
+                 size="sm"
+                 hitSlop={8}
+-                accessibilityLabel={t(live ? 'features.session-new.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')}
++                accessibilityLabel={t(live ? 'sessionNew.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')}
+                 onPress={onScan}
+               >
+                 <ScanLine size={ICON} color={palette.gold} />
+--- a/apps/mobile/src/features/session-new/i18n.ts	2026-10-06 00:10:20
++++ b/apps/mobile/src/features/session-new/i18n.ts	2026-10-06 04:41:31
+@@ -84,10 +84,8 @@
+     linkDownBody: 'This device is not connected to the Core server. Recording can start once the connection is back.',
+     // Decision F69: in Live mode the Core link of the pre-check is set by a paired device's own connection.
+     coreCheckHint: "In Live mode this check is this device's own connection to the Core server. Run the checks again once it is connected.",
+-    // Row M1 (W67 F-2; §3.2, MD-8): in Live mode the screen says what is true and nothing about a
+-    // simulation. The step 2 meters are the Core server's `meters` frames (the replica's audio slice).
+-    speakToTest: 'Microphone levels from the Core server',
+-    // The case-number button fills in the next free number from the replicated session records (S4-6): nothing is scanned.
+-    scanCaseNumber: 'Fill in the next case number',
++    // Row M1's two Live words (W67 F-2; §3.2, MD-8), the step 2 hint and the case-number button's label,
++    // moved to the shared `sessionNew.live.speakToTest` / `.scanCaseNumber` in the closing copy round
++    // (decision D164 DN-5, W83 ledger #89), so the web console says the same.
+   },
+ } as const satisfies ResourceTree;
+--- a/apps/mobile/src/features/session-new/live-session-new-followups.test.tsx	2026-10-06 00:42:00
++++ b/apps/mobile/src/features/session-new/live-session-new-followups.test.tsx	2026-10-06 04:41:48
+@@ -17,6 +17,7 @@
+ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+ import { act, fireEvent, screen, within } from '@testing-library/react-native';
+ import { router } from 'expo-router';
++import { en } from '@dems/shared/i18n';
+ import { OUTAGE } from '@dems/shared/live/testing';
+ import { PRECHECK_TOTAL_MAX_MS } from '@dems/shared/sim';
+ import { getMissingKeys, resetMissingKeys } from '@/i18n';
+@@ -229,9 +230,10 @@
+   }
+ 
+   it('the two Live texts say nothing about a simulation, and are not the Simulated ones', () => {
+-    expect(sessionNewEn.live.speakToTest).toBe(LIVE_HINT);
+-    expect(sessionNewEn.live.scanCaseNumber).toBe(LIVE_SCAN);
+-    for (const text of Object.values(sessionNewEn.live)) expect([text, SIMULATION.test(text)]).toEqual([text, false]);
++    // Closing copy round (D164 DN-5): the two Live texts are the shared `sessionNew.live.*` the web reads too.
++    expect(en.sessionNew.live.speakToTest).toBe(LIVE_HINT);
++    expect(en.sessionNew.live.scanCaseNumber).toBe(LIVE_SCAN);
++    for (const text of [...Object.values(sessionNewEn.live), ...Object.values(en.sessionNew.live)]) expect([text, SIMULATION.test(text)]).toEqual([text, false]);
+   });
+ 
+   it('LIVE: the case-number button\'s label and the step 2 hint say what is true; no text of steps 1 and 2 claims a simulation', async () => {
+--- a/apps/mobile/src/features/storage/storage-screen.tsx	2026-10-06 03:56:00
++++ b/apps/mobile/src/features/storage/storage-screen.tsx	2026-10-06 04:48:29
+@@ -193,7 +193,7 @@
+  * | Mode | The command | Success | A refusal |
+  * |---|---|---|---|
+  * | SIMULATED | the simulator, settled before `settle` returns (CL-25) | "Storage policy updated (simulated)", as before | "could not be updated", as before |
+- * | LIVE | operation 55 on the Core; `ok` runs once the replica holds the revision the answer named (CL-16) | "Storage policy updated": the Core applied it (rule 8) | the presenter first (a 403, an outage, a 429: LB-5 to LB-10), else the Core's 422 `POLICY_RANGE` keeps "could not be updated" |
++ * | LIVE | operation 55 on the Core; `ok` runs once the replica holds the revision the answer named (CL-16) | "Storage policy updated": the Core applied it (rule 8); the web console's shared key `storage.manage.live.applied` (closing copy round, D168 DN-2) | the presenter first (a 403, an outage, a 429: LB-5 to LB-10), else the Core's 422 `POLICY_RANGE` keeps "could not be updated" |
+  *
+  * The Core's 403 names the any-of permission in its own spelling (`EVIDENCE_REVIEW_OR_MAINTENANCE`,
+  * finding F64); the Live source maps every spelling to `A | B` (W83, ruling R-D1), so the denied toast
+@@ -211,7 +211,7 @@
+       settle(() => actions.setStoragePolicy({ retentionPolicy: draft.retentionPolicy, autoArchive: draft.autoArchive }), {
+         ok: () => {
+           reportRuntimeIssue('info', 'storage.manage.apply', 'Storage policy applied', { ...draft }, correlationId);
+-          toast.show({ variant: 'success', label: live ? t('features.storage.live.applied') : t('storage.manage.applied') });
++          toast.show({ variant: 'success', label: live ? t('storage.manage.live.applied') : t('storage.manage.applied') });
+           handlers.applied();
+         },
+         fail: (error) => {
+--- a/apps/mobile/src/features/storage/i18n.ts	2026-10-06 00:38:29
++++ b/apps/mobile/src/features/storage/i18n.ts	2026-10-06 04:48:34
+@@ -47,12 +47,7 @@
+     close: 'Close',
+     current: 'Current: {{policy}} · auto-archive {{autoArchive}}',
+   },
+-  /**
+-   * LIVE mode (backend task, plan row W79; rule 8, MD-8): the Core server applied the change, so the
+-   * words say nothing of a simulation. The web console's twin is the shared `storage.manage.live.*`
+-   * of row W71 (one shared key for both clients is the contract close-out's, W83).
+-   */
+-  live: {
+-    applied: 'Storage policy updated',
+-  },
++  // LIVE mode (backend task, plan row W79; rule 8, MD-8): the toast after the Core applied a policy change
++  // reads the shared `storage.manage.live.applied` of row W71, the web console's key. Row W79's own
++  // `live.applied` was merged into it in the closing copy round (decision D168 DN-2, W83 ledger #91).
+ } as const satisfies ResourceTree;
+--- a/apps/mobile/src/features/storage/storage-live-static.test.ts	2026-10-06 00:46:09
++++ b/apps/mobile/src/features/storage/storage-live-static.test.ts	2026-10-06 04:48:51
+@@ -19,6 +19,7 @@
+ import { createHash } from 'node:crypto';
+ import { readdirSync, readFileSync, statSync } from 'node:fs';
+ import { join, relative, sep } from 'node:path';
++import { en } from '@dems/shared/i18n';
+ import { storageEn } from './i18n';
+ 
+ const FOLDER = __dirname;
+@@ -142,10 +143,12 @@
+ 
+ describe('the copy (rule 8; §3.2)', () => {
+   it('the text LIVE mode adds says nothing about a simulation; the text it replaces did', () => {
+-    const live = leaves(storageEn.live);
++    // Closing copy round (D168 DN-2): the LIVE toast is the web console's shared key; the folder keeps no LIVE copy.
++    const live = leaves(en.storage.manage.live);
+     expect(live).toEqual([{ key: 'applied', text: 'Storage policy updated' }]);
+     expect(live.filter((leaf) => /simulat|demo\b|mock/i.test(leaf.text))).toEqual([]);
+-    expect(fileText('storage-screen.tsx')).toMatch(/live \? t\('features\.storage\.live\.applied'\) : t\('storage\.manage\.applied'\)/);
++    expect(leaves(storageEn).filter((leaf) => leaf.key.startsWith('live.'))).toEqual([]);
++    expect(fileText('storage-screen.tsx')).toMatch(/live \? t\('storage\.manage\.live\.applied'\) : t\('storage\.manage\.applied'\)/);
+   });
+ 
+   it('no `SIM-GAP` marker was added or removed: the folder keeps its 10 markers of `acaff20` (KI-07 stays 13 IDs / 62 markers)', () => {
+--- a/apps/mobile/src/features/settings/maintenance-section.tsx	2026-10-06 01:40:19
++++ b/apps/mobile/src/features/settings/maintenance-section.tsx	2026-10-06 04:51:08
+@@ -31,7 +31,8 @@
+  * refusal presenter first (a denial, an outage, a limit, `DEMO_DISABLED`); only what it leaves gets
+  * this screen's own message. In LIVE mode the Demo controls show only with DEMO_CONTROL and the
+  * Core's demo flag (`session.demoControls`, AC-C-52), otherwise one line says why; and the copy says
+- * nothing about a simulation (`features.settings.live.*`).
++ * nothing about a simulation (`features.settings.live.*`; the diagnostics subtitle, the Install label and
++ * the started toast are the web console's shared `system.live.*`: closing copy round, D177 DN-5).
+  */
+ import { settle, useCoreActions, useCorePermission, useLiveSelector } from '@dems/shared/live';
+ import { Accordion, Button, Chip, Spinner, TagGroup, useToast } from 'heroui-native';
+@@ -161,7 +162,7 @@
+   const diagnostics = useSim(selectDiagnostics);
+   const [open, setOpen] = useState(false);
+   const summary = summarizeDiagnostics(diagnostics);
+-  const subtitle = t(live ? 'features.settings.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle');
++  const subtitle = t(live ? 'system.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle');
+ 
+   // S2-7: the sheet opens in `ok`, once the simulator or the Core accepted the run.
+   const start = () => {
+@@ -269,7 +270,7 @@
+         refusedLabel: t('system.update.blockedBySession'),
+         ok: () => {
+           if (update.availableVersion) {
+-            toast.show({ variant: 'default', label: t(live ? 'features.settings.live.updateStarted' : 'system.update.startedToast', { version: update.availableVersion }) });
++            toast.show({ variant: 'default', label: t(live ? 'system.live.startedToast' : 'system.update.startedToast', { version: update.availableVersion }) });
+           }
+         },
+         done: release,
+@@ -316,7 +317,7 @@
+       {update.availableVersion && !running && update.state !== 'PASS' ? (
+         <Button testID="settings-update-install" variant="primary" size="lg" onPress={install} {...busyState(press.busy)}>
+           {press.pending ? <PendingSpinner color={palette.black} testID="settings-update-install-spinner" /> : <Download size={18} color={palette.black} />}
+-          <Button.Label>{t(live ? 'features.settings.live.install' : 'system.update.install')}</Button.Label>
++          <Button.Label>{t(live ? 'system.live.install' : 'system.update.install')}</Button.Label>
+         </Button>
+       ) : null}
+       {running ? (
+--- a/apps/mobile/src/features/settings/i18n.ts	2026-10-06 01:40:19
++++ b/apps/mobile/src/features/settings/i18n.ts	2026-10-06 04:51:40
+@@ -12,7 +12,8 @@
+  * copy (`mobile.*`). Only what this screen alone says lives here.
+  *
+  * Backend task W82 added, additively, `preferences.coreLinkHintLive*` (the third segment) and
+- * `live.*` (the words of LIVE mode); no existing value changed.
++ * `live.*` (the words of LIVE mode); no existing value changed. The closing copy round moved three of
++ * the `live.*` words to the shared `system.live.*` (D177 DN-5).
+  */
+ export const settingsEn = {
+   back: 'Back',
+@@ -127,11 +128,11 @@
+     // Core is seeded from, [SP:AC-B-17]); the Core decides every call.
+     permissions: 'Permissions',
+     permissionsNote: 'The Core server checks every action against your role.',
+-    // S2-7: the Core's diagnostics run and update.
+-    diagnosticsSubtitle: 'Eight health checks on the Core, one after another.',
++    // S2-7: the Core's diagnostics run and update. The diagnostics subtitle, the Install label and the
++    // started toast are the web console's shared `system.live.diagnosticsSubtitle`, `.install` and
++    // `.startedToast` (row W76): this row's own three keys were merged into them in the closing copy
++    // round (decision D177 DN-5, W83 ledger #92). The note has no web twin and stays here.
+     updateNote: 'The Core server runs a demonstration update: no software is installed.',
+-    install: 'Install update',
+-    updateStarted: 'Installing v{{version}}',
+     // AC-C-52: the Demo controls act on the Core, so every connected console sees them.
+     demoNote: 'Demo only. Faults are injected on the Core server, and every connected console sees them.',
+     demoFlagOff: 'Demo controls are turned off on the Core server. They appear when it runs with its demo flag on.',
+--- a/apps/mobile/src/features/settings/settings-live-static.test.ts	2026-10-06 01:58:21
++++ b/apps/mobile/src/features/settings/settings-live-static.test.ts	2026-10-06 04:52:07
+@@ -164,7 +164,7 @@
+   const live = leaves(settingsEn.live, ['live']);
+ 
+   it('the LIVE copy says nothing about a simulation, and the biometric LIVE note claims no hardware protection', () => {
+-    expect(live.length).toBe(10);
++    expect(live.length).toBe(7);
+     for (const { key, text } of live) expect({ key, simulated: SIMULAT.test(text) }).toEqual({ key, simulated: false });
+     expect(SIMULAT.test(settingsEn.preferences.coreLinkHintLive)).toBe(false);
+     const note = enMobile.mobile.biometric.identityNoteLiveProtected;
+--- a/apps/mobile/src/features/settings/live-settings-sites.test.tsx	2026-10-06 02:19:13
++++ b/apps/mobile/src/features/settings/live-settings-sites.test.tsx	2026-10-06 04:52:07
+@@ -63,7 +63,7 @@
+ describe('S2-7: Run diagnostics (operation 65)', () => {
+   it('success: the sheet opens only after the Core accepted the run; busy at once, spinner late (LB-1); one request; the Core\'s words', async () => {
+     const b = await openSection('maintenance', { answerDelayMs: 2_000 });
+-    expect(screen.getByText('Eight health checks on the Core, one after another.')).toBeTruthy();
++    expect(screen.getByText('Eight health checks on the Core server, one after another.')).toBeTruthy();
+     expect(saysSimulated()).toBe(false);
+     await press('settings-run-diagnostics', b);
+     expect(b.requests('runDiagnostics')).toHaveLength(1);
+--- a/apps/mobile/src/features/devices/diagnostics-sheet.tsx	2026-10-06 00:32:43
++++ b/apps/mobile/src/features/devices/diagnostics-sheet.tsx	2026-10-06 04:51:30
+@@ -60,7 +60,7 @@
+                 onClose={onClose}
+                 onRunAgain={onRunAgain}
+                 closeLabel={t('features.devices.diagnostics.close')}
+-                subtitleKey={live ? 'features.devices.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle'}
++                subtitleKey={live ? 'system.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle'}
+                 runAgainBusy={runAgainBusy}
+                 runAgainPending={runAgainPending}
+               />
+--- a/apps/mobile/src/features/devices/i18n.ts	2026-10-06 04:10:04
++++ b/apps/mobile/src/features/devices/i18n.ts	2026-10-06 05:12:28
+@@ -96,10 +96,10 @@
+       RESTART: 'Restart',
+       IDENTIFY: 'Identify',
+     },
+-    // Row M1 follow-up (D160, RESIDUAL-W78-2 (W83 ledger #57)): the Core serves no per-device health history, so the
+-    // LIVE line is computed on this device from the Core's data (§3.2: say what is true).
+-    samples_one: "Derived on this device from the Core's data · {{count}} sample",
+-    samples_other: "Derived on this device from the Core's data · last {{count}} samples",
+-    diagnosticsSubtitle: 'Eight health checks on the Core, one after another.',
++    // The LIVE health caption (row M1 follow-up, D160; RESIDUAL-W78-2, W83 ledger #57) is the shared
++    // `devices.live.samples`, one sentence for both clients ("Derived from the Core's data · last N samples"):
++    // row M1's own `samples_*` were merged into it in the closing copy round (decision D186).
++    // The LIVE diagnostics subtitle is the shared `system.live.diagnosticsSubtitle` (the web console's and
++    // Settings' words; closing copy round, D177 DN-5): row W78's own key was merged into it.
+   },
+ } as const satisfies ResourceTree;
+--- a/apps/mobile/src/features/devices/live-devices-sites.test.tsx	2026-10-06 04:10:40
++++ b/apps/mobile/src/features/devices/live-devices-sites.test.tsx	2026-10-06 05:12:43
+@@ -280,7 +280,7 @@
+     expect(within(sheet).getByText('All checks passed')).toBeTruthy();
+     expect(screen.getByTestId('device-diagnostics-SECURITY-PASS')).toBeTruthy();
+     expect(saysSimulated()).toBe(false);
+-    expect(screen.getByLabelText('Eight health checks on the Core, one after another.')).toBeTruthy();
++    expect(screen.getByLabelText('Eight health checks on the Core server, one after another.')).toBeTruthy();
+     expect(screen.queryByLabelText(/simulated/)).toBeNull();
+   });
+ 
+@@ -366,7 +366,7 @@
+     await press('device-tab-health', b);
+     expect(screen.getByText('Link quality (%)')).toBeTruthy();
+     // Row M1 follow-up (D160): the LIVE caption says the line is derived on this device (RESIDUAL-W78-2, W83 ledger #57).
+-    expect(screen.getByTestId('device-health-samples')).toHaveTextContent(/^(?:Derived on this device from the Core's data · last \d+ samples|Collecting samples…)$/);
++    expect(screen.getByTestId('device-health-samples')).toHaveTextContent(/^(?:Derived from the Core's data · last \d+ samples|Collecting samples…)$/);
+     expect(saysSimulated()).toBe(false);
+   });
+ });
+--- a/apps/mobile/src/features/devices/devices-live-static.test.ts	2026-10-05 23:43:36
++++ b/apps/mobile/src/features/devices/devices-live-static.test.ts	2026-10-06 05:12:43
+@@ -136,7 +136,7 @@
+ describe('the copy (rule 8; §3.2)', () => {
+   it('the text LIVE mode adds says nothing about a simulation; the texts it replaces did', () => {
+     const live = leaves(devicesEn.live);
+-    expect(live).toHaveLength(11);
++    expect(live).toHaveLength(8);
+     expect(live.filter((leaf) => /simulat|demo\b|mock/i.test(leaf.text))).toEqual([]);
+     expect(devicesEn.actions.testSignalBody).toMatch(/^Simulated\./);
+     expect(devicesEn.actions.restartBody).toMatch(/^Simulated\./);
+--- a/apps/mobile/src/features/devices/health-chart.tsx	2026-10-06 04:10:40
++++ b/apps/mobile/src/features/devices/health-chart.tsx	2026-10-06 05:12:28
+@@ -6,11 +6,11 @@
+  * config, so a new point redraws without a tween (the data is the motion, 03M R9).
+  *
+  * LIVE mode (backend task W78; 04_client_integration_spec §3.2): the line is drawn from the Core's
+- * replicated data, so the sample caption drops "Simulated" (`features.devices.live.samples`). The Core
+- * serves no per-device health history (RESIDUAL-W78-2, W83 ledger #57): the line of a camera, the tablet and the
+- * PoE switch is derived from the Core's network data, the lamp's from its session state, a
+- * microphone's from 1 s peaks of its meter frames, so the LIVE caption says the line is derived on this
+- * device (row M1 follow-up, D160).
++ * replicated data, so the sample caption drops "Simulated". The Core serves no per-device health
++ * history (RESIDUAL-W78-2, W83 ledger #57): the line of a camera, the tablet and the PoE switch is
++ * derived from the Core's network data, the lamp's from its session state, a microphone's from 1 s
++ * peaks of its meter frames, so the LIVE caption says the line is derived (row M1 follow-up, D160) in
++ * the web console's words: the shared `devices.live.samples` (closing copy round, decision D186).
+  */
+ import { useMemo } from 'react';
+ import { useTranslation } from 'react-i18next';
+@@ -91,7 +91,7 @@
+         )}
+       </View>
+       <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID={testID ? `${testID}-samples` : undefined}>
+-        {enough ? t(live ? 'features.devices.live.samples' : 'devices.drawer.health.samples', { count: data.length }) : t('devices.drawer.health.collecting')}
++        {enough ? t(live ? 'devices.live.samples' : 'devices.drawer.health.samples', { count: data.length }) : t('devices.drawer.health.collecting')}
+       </Text>
+     </View>
+   );
+--- a/apps/mobile/src/features/devices/live-devices-health-caption.test.tsx	2026-10-06 04:10:04
++++ b/apps/mobile/src/features/devices/live-devices-health-caption.test.tsx	2026-10-06 05:12:43
+@@ -14,9 +14,9 @@
+ 
+ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+ import { fireEvent, render, screen } from '@testing-library/react-native';
++import { en } from '@dems/shared/i18n';
+ import { getMissingKeys, resetMissingKeys } from '@/i18n';
+ import { HealthChart } from './health-chart';
+-import { devicesEn } from './i18n';
+ import { HEALTH_METRIC, type HealthMetric, type HealthSeries } from './sim-adapter';
+ import { renderDevicesApp, settle } from './testing/devices-harness';
+ import { renderLiveDevices, resetLiveDevicesBed, type LiveDevicesBed } from './testing/live-devices-bed';
+@@ -36,7 +36,7 @@
+   expect(getMissingKeys()).toEqual([]);
+ });
+ 
+-const LIVE_CAPTION = /^Derived on this device from the Core's data · last (\d+) samples$/;
++const LIVE_CAPTION = /^Derived from the Core's data · last (\d+) samples$/;
+ const SIMULATED_CAPTION = /^Simulated · last (\d+) samples$/;
+ const caption = (): string => {
+   const node = screen.getByTestId('device-health-samples');
+@@ -52,18 +52,19 @@
+ });
+ 
+ describe('the LIVE texts', () => {
+-  it('say the line is derived on this device from the Core\'s data, and nothing about a simulation', () => {
+-    expect(devicesEn.live.samples_other).toBe("Derived on this device from the Core's data · last {{count}} samples");
+-    expect(devicesEn.live.samples_one).toBe("Derived on this device from the Core's data · {{count}} sample");
+-    for (const text of [devicesEn.live.samples_one, devicesEn.live.samples_other]) expect(/simulat|demo\b|mock/i.test(text)).toBe(false);
++  // Closing copy round (decision D186): one shared sentence for both clients, `devices.live.samples`.
++  it('say the line is derived from the Core\'s data, and nothing about a simulation', () => {
++    expect(en.devices.live.samples_other).toBe("Derived from the Core's data · last {{count}} samples");
++    expect(en.devices.live.samples_one).toBe("Derived from the Core's data · {{count}} sample");
++    for (const text of [en.devices.live.samples_one, en.devices.live.samples_other]) expect(/simulat|demo\b|mock/i.test(text)).toBe(false);
+   });
+ });
+ 
+ describe('the chart caption, for every metric (D160)', () => {
+-  it('LIVE: "Derived on this device from the Core\'s data · last N samples"', () => {
++  it('LIVE: "Derived from the Core\'s data · last N samples"', () => {
+     for (const metric of METRICS) {
+       const view = render(<HealthChart series={seriesOf(metric, 7)} testID="device-health" live />);
+-      expect([metric, caption()]).toEqual([metric, "Derived on this device from the Core's data · last 7 samples"]);
++      expect([metric, caption()]).toEqual([metric, "Derived from the Core's data · last 7 samples"]);
+       view.unmount();
+     }
+     const one = render(<HealthChart series={seriesOf('linkQuality', 1)} testID="device-health" live />);
+--- a/apps/mobile/src/features/evidence/export-sheet.tsx	2026-10-06 04:10:40
++++ b/apps/mobile/src/features/evidence/export-sheet.tsx	2026-10-06 04:54:39
+@@ -228,8 +228,8 @@
+         setExportId(result.exportId);
+         setStep(5);
+         triggerHaptic('sealedStamp');
+-        // The shared success sentence says "(simulated)": Live mode has its own (rule 8).
+-        toast.show({ variant: 'success', label: t(live ? 'features.evidence.export.successLive' : 'evidence.exportWizard.success', { id: evidenceId }) });
++        // The shared success sentence says "(simulated)": Live mode has its shared twin (rule 8; closing copy round, D162 DN-5).
++        toast.show({ variant: 'success', label: t(live ? 'evidence.live.export.success' : 'evidence.exportWizard.success', { id: evidenceId }) });
+         return;
+       }
+       const reasonCode: FailureReason = result && !result.ok ? result.reason : 'UNKNOWN';
+--- a/apps/mobile/src/features/evidence/i18n.ts	2026-10-05 23:35:48
++++ b/apps/mobile/src/features/evidence/i18n.ts	2026-10-06 04:54:39
+@@ -225,7 +225,8 @@
+     zipSha: 'Package SHA-256 ({{file}})',
+     zipNote: 'Package built on the Core (simulated); its hash is recorded in the export manifest.',
+     zipNoteLive: 'The Core recorded this export. No file is sent to this tablet.',
+-    successLive: 'Export of {{id}} accepted by the Core',
++    // The LIVE success toast is the shared `evidence.live.export.success`: row W74's own `successLive` was
++    // merged into it in the closing copy round (decision D162 DN-5, W83 ledger #93).
+     destinationValue: 'Destination',
+     reasonValue: 'Reason',
+     doneTitle: 'Export accepted',
+--- a/apps/mobile/src/features/evidence/live-evidence-export.test.tsx	2026-10-05 23:56:48
++++ b/apps/mobile/src/features/evidence/live-evidence-export.test.tsx	2026-10-06 04:54:39
+@@ -14,6 +14,7 @@
+ 
+ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+ import { fireEvent, screen } from '@testing-library/react-native';
++import { en } from '@dems/shared/i18n';
+ import { EvidenceStatus } from '@dems/shared/sim';
+ import { runtimeLog } from '@/runtime';
+ import { EXPORT_AUTH_MS, EXPORT_BUILD_MS } from './export-sheet';
+@@ -177,7 +178,7 @@
+     expect(screen.getByTestId('evidence-export-id')).toHaveTextContent(/EXP-\d+/);
+     expect(screen.getByText(evidenceEn.export.zipNoteLive)).toBeTruthy();
+     // The Live success sentence names the Core, never a simulation (rule 8).
+-    expect(toastShown(evidenceEn.export.successLive.replace('{{id}}', id))).toBe(true);
++    expect(toastShown(en.evidence.live.export.success.replace('{{id}}', id))).toBe(true);
+     // The one text that says "simulated" is the destination the operator chose, the shared label the
+     // Core records as given (no transfer happens in either mode; finding F-4 of the row's report).
+     const simulatedTexts = screen.queryAllByText(/simulated/i).map((node) => String(node.props.children));
+--- a/apps/mobile/src/features/evidence/live-evidence-static.test.ts	2026-10-05 23:40:41
++++ b/apps/mobile/src/features/evidence/live-evidence-static.test.ts	2026-10-06 04:54:47
+@@ -19,6 +19,7 @@
+ import { createHash } from 'node:crypto';
+ import { readdirSync, readFileSync, statSync } from 'node:fs';
+ import { join, relative, sep } from 'node:path';
++import { en } from '@dems/shared/i18n';
+ import { evidenceEn } from './i18n';
+ 
+ const FOLDER = __dirname;
+@@ -58,7 +59,6 @@
+   'play.bundled',
+   'export.deniedBodyUnrecorded',
+   'export.zipNoteLive',
+-  'export.successLive',
+ ];
+ 
+ function leaves(tree: unknown, path: string[] = []): { key: string; text: string }[] {
+@@ -150,6 +150,8 @@
+     const live = all.filter((leaf) => LIVE_KEYS.includes(leaf.key));
+     expect(live.map((leaf) => leaf.key).sort()).toEqual([...LIVE_KEYS].sort());
+     expect(live.filter((leaf) => /simulat/i.test(leaf.text))).toEqual([]);
++    // Closing copy round (D162 DN-5): the Live success toast is the shared `evidence.live.export.success`.
++    expect(/simulat/i.test(en.evidence.live.export.success)).toBe(false);
+   });
+ 
+   it('the copy of Simulated mode is the copy of `acaff20` (185 texts, the same digest)', () => {
+--- a/apps/mobile/src/features/devices/device-detail.tsx	2026-10-06 05:07:38
++++ b/apps/mobile/src/features/devices/device-detail.tsx	2026-10-06 04:51:30
+@@ -29,8 +29,9 @@
+  * Every rejection goes to the refusal presenter first in Live mode (`useCoreErrorPresenter`, §6.2,
+  * LB-5 to LB-10), and only what it leaves gets the site's own message; every failure writes the
+  * persistent runtime log (`reportRuntimeIssue`). In LIVE mode the copy says nothing about a
+- * simulation (MD-8): the dialog bodies, the toasts, the log's command names, the health caption and
+- * the diagnostics subtitle take `features.devices.live.*`.
++ * simulation (MD-8): the dialog bodies, the toasts, the log's command names and the health caption
++ * take `features.devices.live.*`; the diagnostics subtitle is the shared `system.live.diagnosticsSubtitle`,
++ * the words of the web console and of Settings (closing copy round, D177 DN-5).
+  */
+ import { useIsFocused, useRouter } from 'expo-router';
+ import { Alert, Button, Tabs, useToast } from 'heroui-native';
+--- /dev/null (new file)	2026-10-06 05:07:38
++++ b/apps/core-web/src/features/session-new/__tests__/copy-round-live-words.test.tsx	2026-10-06 05:02:00
+@@ -0,0 +1,134 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Closing copy round (decision D164 DN-5; W83 ledger #89): the web console shows, in Live mode, the
++// same two words as the mobile app, from ONE shared pair of keys (`sessionNew.live.*`). Simulated
++// mode keeps its words (04_client_integration_spec §3.2).
++//
++// | Place | Simulated (unchanged) | Live |
++// |-------|-----------------------|------|
++// | Step 1, the case-number button (label and tooltip) | "Scan case number (simulated)" | "Fill in the next case number" |
++// | Step 2, the meters' hint | "Speak to test (simulated)" | "Microphone levels from the Core server" |
++import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
++import { useForm } from 'react-hook-form'
++import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
++import type { SessionCreateFormValues } from '@dems/shared/api'
++import { en } from '@dems/shared/i18n'
++import type { Sim } from '@dems/shared/sim'
++import { createTestSim, withProviders } from '@/components/composed/__tests__/test-utils'
++import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
++import { DevicesStep } from '../devices-step'
++import { InfoStep } from '../info-step'
++import { gateView } from '../model'
++import { clearToasts, CORE_START_MS, coreWithSession, mountSessionNew, settleAll, stubMediaForJsdom, type MountedSessionNew } from './live-session-new-bed'
++
++vi.setConfig({ testTimeout: 30_000 })
++
++const SIMULATION = /simulat/i
++const LIVE_HINT = en.sessionNew.live.speakToTest
++const LIVE_SCAN = en.sessionNew.live.scanCaseNumber
++const SIMULATED_HINT = en.sessionNew.devices.speakToTest
++const SIMULATED_SCAN = en.sessionNew.info.caseNumber.scan
++
++let live: MountedSessionNew | undefined
++const sims: Sim[] = []
++let restoreMedia: () => void = () => undefined
++
++beforeAll(() => {
++  restoreMedia = stubMediaForJsdom()
++})
++afterAll(() => restoreMedia())
++
++beforeEach(async () => {
++  resetMissingI18nKeys()
++  await clearToasts()
++})
++
++afterEach(async () => {
++  cleanup()
++  await clearToasts()
++  live?.bed.dispose()
++  live = undefined
++  for (const sim of sims.splice(0)) sim.stop()
++  vi.restoreAllMocks()
++})
++
++const FORM: SessionCreateFormValues = {
++  caseNumber: '',
++  subjectType: undefined as unknown as SessionCreateFormValues['subjectType'],
++  subjectName: '',
++  investigatorId: '',
++  room: '',
++  profileId: 'STANDARD_1080P25',
++  notes: '',
++}
++
++/** The scan button's tooltip, opened as a keyboard user opens it (focus after a Tab: React Aria's focus-visible). */
++async function scanTooltip(): Promise<HTMLElement> {
++  fireEvent.keyDown(document.body, { key: 'Tab' })
++  act(() => screen.getByTestId('sn-scan').focus())
++  return screen.findByRole('tooltip')
++}
++
++/** Step 1 alone, with the page's form shape; `live` as the page passes it. */
++function InfoStepHost({ live }: { live?: boolean }) {
++  const form = useForm<SessionCreateFormValues>({ defaultValues: FORM })
++  return <InfoStep control={form.control} submitted={false} onSubmit={() => undefined} onScan={() => undefined} enterDelayMs={0} live={live} />
++}
++
++describe('the words are one shared pair', () => {
++  it('the two Live texts are the mobile app\'s and say nothing about a simulation; the Simulated ones did', () => {
++    expect(LIVE_HINT).toBe('Microphone levels from the Core server')
++    expect(LIVE_SCAN).toBe('Fill in the next case number')
++    for (const text of [LIVE_HINT, LIVE_SCAN]) expect([text, SIMULATION.test(text)]).toEqual([text, false])
++    // The control: the Simulated words do say so, and are unchanged.
++    expect(SIMULATED_HINT).toBe('Speak to test (simulated)')
++    expect(SIMULATED_SCAN).toBe('Scan case number (simulated)')
++  })
++})
++
++describe('Simulated mode keeps its words (the steps without `live`, as the page renders them in Simulated mode)', () => {
++  it('step 1: the case-number button and its tooltip say "Scan case number (simulated)"', async () => {
++    const sim = createTestSim()
++    sims.push(sim)
++    render(withProviders(<InfoStepHost />, { sim }))
++    expect(screen.getByTestId('sn-scan')).toHaveAccessibleName(SIMULATED_SCAN)
++    expect(await scanTooltip()).toHaveTextContent(SIMULATED_SCAN)
++    expect(screen.queryByText(LIVE_SCAN)).not.toBeInTheDocument()
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++
++  it('step 2: the meters\' hint says "Speak to test (simulated)"', () => {
++    const sim = createTestSim()
++    sims.push(sim)
++    render(withProviders(<DevicesStep gate={gateView(null, null, false)} acknowledged={false} onAcknowledgedChange={() => undefined} onRetry={() => undefined} />, { sim }))
++    expect(screen.getByText(SIMULATED_HINT)).toBeInTheDocument()
++    expect(screen.queryByText(LIVE_HINT)).not.toBeInTheDocument()
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++})
++
++describe('Live mode: the page says what is true (real router, real Live source, fake transport)', () => {
++  it('step 1: the case-number button and its tooltip say "Fill in the next case number"; nothing on the step claims a simulation', async () => {
++    live = await mountSessionNew()
++    const button = await screen.findByTestId('sn-scan')
++    expect(button).toHaveAccessibleName(LIVE_SCAN)
++    expect(await scanTooltip()).toHaveTextContent(LIVE_SCAN)
++    expect(screen.queryByText(SIMULATED_SCAN)).not.toBeInTheDocument()
++    expect(screen.queryByLabelText(SIMULATED_SCAN)).not.toBeInTheDocument()
++    await settleAll(live.bed)
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++
++  it('step 2: the meters\' hint says "Microphone levels from the Core server"', async () => {
++    const core = coreWithSession(CORE_START_MS, 'WARN')
++    live = await mountSessionNew({ served: core.state() })
++    await waitFor(() => expect(screen.getByTestId('page-session-new')).toHaveAttribute('data-step', '2'))
++    const page = screen.getByTestId('page-session-new')
++    expect(within(page).getByText(LIVE_HINT)).toBeInTheDocument()
++    expect(within(page).queryByText(SIMULATED_HINT)).not.toBeInTheDocument()
++    await settleAll(live.bed)
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++})
+--- /dev/null (new file)	2026-10-06 05:07:38
++++ b/apps/core-web/src/features/security-audit/__tests__/copy-round-reason-note.test.ts	2026-10-06 04:57:27
+@@ -0,0 +1,42 @@
++// Closing copy round (decision D176 DC-5, finding F75-7; W83 ledger #94): the one deliberate change
++// of Simulated copy in the round. The audit export's result note in Simulated mode said the demo
++// simulator "does not record the export reason yet"; the simulator records it since step 54 (W51-1).
++// The note now says what is true, in the words of the Live note. The dialog renders the key itself
++// (`export-audit-dialog.tsx`); `live-security-audit-export.test.tsx` shows it on screen in both modes.
++import { afterEach, describe, expect, it } from 'vitest'
++import { en } from '@dems/shared/i18n'
++import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, OPERATOR_IDS, type Sim } from '@dems/shared/sim'
++import { exportAuditWithReason } from '../sim-adapter'
++
++const NOW = Date.parse('2026-10-01T10:00:00+07:00')
++const sims: Sim[] = []
++
++afterEach(() => {
++  for (const sim of sims.splice(0)) sim.stop()
++})
++
++/** A simulator with the Supervisor (AUDIT_EXPORT, OPR-002 as in `security-audit.test.tsx`) signed in; nothing runs on its own. */
++function supervisorSim(): Sim {
++  const authStorage = createMemoryAuthStorage()
++  authStorage.save({ operatorId: OPERATOR_IDS.ANDI, issuedAt: NOW })
++  const sim = createSim({ storage: null, authStorage, visibility: ALWAYS_VISIBLE, clock: createManualClock(NOW), scheduler: () => () => undefined })
++  sims.push(sim)
++  return sim
++}
++
++describe('the audit export\'s result note (Simulated mode)', () => {
++  it('says the reason is recorded, in the words of the Live note, and no longer that it is not', () => {
++    const note = en.securityAudit.exportAudit.result.reasonNote
++    expect(note).toBe('Recorded by the simulator in the audit row of the export.')
++    expect(note).not.toMatch(/does not record|not record|yet/i)
++    // One wording across the two modes: only the recorder differs.
++    expect(note.replace('the simulator', 'the Core')).toBe(en.securityAudit.live.exportAudit.reasonNote)
++  })
++
++  it('is true: the simulator writes the reason into the export\'s AUDIT_EXPORTED row', () => {
++    const sim = supervisorSim()
++    const result = exportAuditWithReason(sim, 'Quarterly audit review')
++    expect(result.ok).toBe(true)
++    expect(sim.store.getState().audit.rows.at(-1)).toMatchObject({ type: 'AUDIT_EXPORTED', details: { reason: 'Quarterly audit review' } })
++  })
++})
+--- /dev/null (new file)	2026-10-06 05:07:38
++++ b/apps/core-web/src/features/evidence/__tests__/copy-round-metadata-media.test.tsx	2026-10-06 04:59:31
+@@ -0,0 +1,114 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Closing copy round (W83 ledger #95; observation of plan row W0, decision D165): in Live mode, when
++// the Core's media reference (operation 40) does not answer, whether a DEMO package belongs to the item
++// is unknown. The Metadata tab then says so with the header chip's words, "Media reference
++// unavailable", instead of "No DEMO package for this item", and its record claims no absence.
++//
++// | Case | The tab's empty-state title | The record's note |
++// |------|------------------------------|-------------------|
++// | Simulated (unchanged, whatever the prop) | "No DEMO package for this item" | "SIMULATED record … no DEMO package joins this item." |
++// | Live, operation 40 answers NONE (unchanged) | "No DEMO package for this item" | "… no DEMO package joins it." |
++// | Live, operation 40 unanswered (new) | "Media reference unavailable" (the header chip's key) | "… its media reference is unavailable, so no DEMO package is shown." |
++import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { en } from '@dems/shared/i18n'
++import { SimProvider, type Sim } from '@dems/shared/sim'
++import { createTestSim } from '@/components/composed/__tests__/test-utils'
++import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
++import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
++import { resetCoreErrorPresenter } from '@/lib/core-errors'
++import { MetadataTab } from '../metadata-tab'
++import { buildEvidenceRow } from '../model'
++import { clearToasts, demoPackage, EV, findDetailBody, installJsdomStubs, openLiveEvidence, type LiveEvidence } from './live-evidence-bed'
++
++vi.setConfig({ testTimeout: 40_000 })
++const UI = { timeout: 15_000 }
++
++const NO_PACKAGE = en.evidence.metadata.noPackage
++const UNAVAILABLE = en.evidence.live.mediaUnavailable
++const NOTE_NONE = "The Core server's record of this item; no DEMO package joins it."
++const NOTE_UNKNOWN = "The Core server's record of this item; its media reference is unavailable, so no DEMO package is shown."
++
++let opened: LiveEvidence | undefined
++const sims: Sim[] = []
++
++beforeEach(() => {
++  resetMissingI18nKeys()
++  resetCoreErrorPresenter()
++  window.localStorage.clear()
++  window.sessionStorage.clear()
++  window.sessionStorage.setItem(SHELL_INTRO_STORAGE_KEY, '1')
++  installJsdomStubs()
++})
++
++afterEach(async () => {
++  cleanup()
++  await clearToasts()
++  opened?.bed.dispose()
++  opened = undefined
++  for (const sim of sims.splice(0)) sim.stop()
++  vi.restoreAllMocks()
++})
++
++/** The tab's empty state and its record (the JSON region), as the operator reads them. */
++async function metadataTab(): Promise<{ title: string; record: Record<string, unknown> }> {
++  const metadata = await screen.findByTestId('evidence-metadata', {}, UI)
++  const title = metadata.querySelector('.evi-empty-title')?.textContent ?? ''
++  const record = JSON.parse(within(metadata).getByRole('region').textContent ?? '') as Record<string, unknown>
++  return { title, record }
++}
++
++describe('Simulated mode keeps its words', () => {
++  it('the prop changes nothing: "No DEMO package for this item" and the SIMULATED record', async () => {
++    const sim = createTestSim()
++    sims.push(sim)
++    const state = sim.store.getState()
++    const item = state.evidence[0]
++    if (!item) throw new Error('the state holds no evidence item')
++    const row = { ...buildEvidenceRow(item, state.operators), pkg: null }
++    render(
++      <SimProvider sim={sim}>
++        <MetadataTab row={row} mediaUnavailable />
++      </SimProvider>,
++    )
++    const { title, record } = await metadataTab()
++    expect(title).toBe(NO_PACKAGE)
++    expect(record.simulated).toBe(true)
++    expect(record.note).toBe('SIMULATED record from the in-browser simulator; no DEMO package joins this item.')
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++})
++
++describe('Live mode: the Metadata tab says what is known', () => {
++  it('operation 40 answers NONE: "No DEMO package for this item", as before', async () => {
++    opened = await openLiveEvidence(`/evidence/${EV.sealed7}?tab=metadata`)
++    await findDetailBody()
++    expect(screen.getByTestId('evidence-package-chip')).toHaveAttribute('data-package', 'core')
++    const { title, record } = await metadataTab()
++    expect(title).toBe(NO_PACKAGE)
++    expect(record.note).toBe(NOTE_NONE)
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++
++  it('operation 40 unanswered: "Media reference unavailable", the header chip\'s words; nothing claims there is no package', async () => {
++    opened = await openLiveEvidence(`/evidence/${EV.sealed}?tab=metadata`, {
++      media: { [EV.sealed]: demoPackage('0001') },
++      before: (created) => created.fake.failOnce('getEvidence'),
++    })
++    await findDetailBody()
++    const chip = screen.getByTestId('evidence-package-chip')
++    await waitFor(() => expect(chip).toHaveAttribute('data-package', 'unavailable'))
++    expect(chip).toHaveTextContent(UNAVAILABLE)
++    const { title, record } = await metadataTab()
++    expect(title).toBe(UNAVAILABLE)
++    expect(record.record).toBe('CORE')
++    expect(record.note).toBe(NOTE_UNKNOWN)
++    const metadata = screen.getByTestId('evidence-metadata')
++    expect(metadata.textContent).not.toContain(NO_PACKAGE)
++    expect(metadata.textContent).not.toContain('no DEMO package joins')
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++})
+--- /dev/null (new file)	2026-10-06 05:07:38
++++ b/apps/core-web/src/features/devices/__tests__/copy-round-health-caption.test.tsx	2026-10-06 05:13:31
+@@ -0,0 +1,101 @@
++/**
++ * @vitest-environment jsdom
++ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
++ */
++// Closing copy round, decision D186 on W83 ledger #90: the Health line's caption in Live mode is ONE
++// sentence for both clients, the shared `devices.live.samples` ("Derived from the Core's data · last N
++// samples"): the Core serves no per-device health history, so the line is derived on the client from the
++// Core's data. Before, the web said "Last N samples" and the mobile app "Derived on this device from the
++// Core's data · …". Simulated mode keeps "Simulated · last N samples".
++import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
++import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
++import { en } from '@dems/shared/i18n'
++import type { Sim } from '@dems/shared/sim'
++import { createTestSim, withProviders } from '@/components/composed/__tests__/test-utils'
++import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
++import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
++import { resetCoreErrorPresenter } from '@/lib/core-errors'
++import { createLiveTestBed, SUPERVISOR_SESSION, type LiveTestBed } from '@/runtime/testing/live-harness'
++import { HealthChart } from '../health-chart'
++
++vi.setConfig({ testTimeout: 25_000 })
++
++const LIVE_CAPTION = /^Derived from the Core's data · (?:last \d+ samples|1 sample)$/
++const SIMULATED_CAPTION = /^Simulated · (?:last \d+ samples|1 sample)$/
++const caption = (root: HTMLElement): string => root.querySelector('.dev-health-source')?.textContent ?? ''
++
++let bed: LiveTestBed | undefined
++const sims: Sim[] = []
++
++const originalPlay = HTMLMediaElement.prototype.play
++const originalPause = HTMLMediaElement.prototype.pause
++const originalGetContext = HTMLCanvasElement.prototype.getContext
++beforeAll(() => {
++  HTMLCanvasElement.prototype.getContext = (() => null) as unknown as HTMLCanvasElement['getContext']
++  HTMLMediaElement.prototype.play = (() => Promise.resolve()) as unknown as HTMLMediaElement['play']
++  HTMLMediaElement.prototype.pause = (() => undefined) as unknown as HTMLMediaElement['pause']
++  Element.prototype.getAnimations ??= function getAnimations() {
++    return []
++  }
++})
++afterAll(() => {
++  HTMLCanvasElement.prototype.getContext = originalGetContext
++  HTMLMediaElement.prototype.play = originalPlay
++  HTMLMediaElement.prototype.pause = originalPause
++})
++
++beforeEach(() => {
++  resetMissingI18nKeys()
++  resetCoreErrorPresenter()
++  window.localStorage.clear()
++  window.sessionStorage.clear()
++  window.sessionStorage.setItem(SHELL_INTRO_STORAGE_KEY, '1')
++})
++
++afterEach(() => {
++  cleanup()
++  bed?.dispose()
++  bed = undefined
++  for (const sim of sims.splice(0)) sim.stop()
++  vi.restoreAllMocks()
++})
++
++describe('the Live caption is one shared sentence', () => {
++  it('says the line is derived from the Core\'s data, names no device or browser, and nothing about a simulation', () => {
++    expect(en.devices.live.samples_other).toBe("Derived from the Core's data · last {{count}} samples")
++    expect(en.devices.live.samples_one).toBe("Derived from the Core's data · {{count}} sample")
++    for (const text of [en.devices.live.samples_one, en.devices.live.samples_other]) {
++      expect([text, /simulat|this device|this browser/i.test(text)]).toEqual([text, false])
++    }
++    // The control: the Simulated caption is unchanged.
++    expect(en.devices.drawer.health.samples_other).toBe('Simulated · last {{count}} samples')
++  })
++})
++
++describe('Simulated mode keeps its caption', () => {
++  it('the Health chart says "Simulated · last N samples"', () => {
++    const sim = createTestSim()
++    sims.push(sim)
++    render(withProviders(<HealthChart deviceId="CAM-01" />, { sim }))
++    const health = screen.getByTestId('device-health')
++    expect(caption(health)).toMatch(SIMULATED_CAPTION)
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++})
++
++describe('Live mode: the drawer\'s Health tab (real router, real Live source, fake transport)', () => {
++  it('Camera 1: "Derived from the Core\'s data · …"; nothing on the tab claims a simulation', async () => {
++    const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
++    bed = created
++    const page = await created.load()
++    await created.mount(page, '/devices')
++    await screen.findByTestId('page-devices')
++    fireEvent.click(await screen.findByRole('button', { name: 'Open details for Camera 1' }))
++    const drawer = await screen.findByTestId('device-drawer')
++    fireEvent.click(within(drawer).getByRole('tab', { name: 'Health' }))
++    const health = await within(drawer).findByTestId('device-health')
++    await waitFor(() => expect(caption(health)).toMatch(LIVE_CAPTION))
++    expect(health.textContent ?? '').not.toMatch(/simulat/i)
++    expect(getMissingI18nKeys()).toEqual([])
++  })
++})

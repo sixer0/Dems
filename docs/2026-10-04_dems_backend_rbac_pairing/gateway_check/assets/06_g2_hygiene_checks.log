@@ -1,0 +1,28 @@
+=== stat -f '%Lp' (expected 700 .data, 600 credential files and logs) ===
+700 .data
+700 .data/postgres
+600 .data/pg.pwfile
+600 .data/pg.owner.env
+600 .data/pg.env
+600 .data/pg-scripts.log
+600 .data/postgres.log
+600 docs/2026-10-04_dems_backend_rbac_pairing/gateway_check/assets/06_d2_server.log
+600 docs/2026-10-04_dems_backend_rbac_pairing/gateway_check/assets/06_d1_server_attempt1.log
+600 docs/2026-10-04_dems_backend_rbac_pairing/gateway_check/assets/06_d3_server.log
+
+=== does apps/core-server/logs exist? ===
+ls: apps/core-server/logs: No such file or directory
+
+=== leftover listeners 4421-4423, 5176-5178, 8081-8086, 4420 ===
+
+=== my lock and pid files ===
+-rw-r--r--@ 1 gsp-budi  staff  0 Oct  5 17:43 .locks/core-server.lock
+-rw-r--r--@ 1 gsp-budi  staff  0 Oct  5 17:58 .locks/core-server.pid
+pid file content: []
+
+=== postgres untouched ===
+19121
+19121 Sun Oct  4 07:14:26 2026     /Users/gsp-budi/Documents/DEMS/node_modules/@embedded-postgres/darwin-arm64/native/bin/postgres
+
+=== who holds 4420 now ===
+  no listener on 4420

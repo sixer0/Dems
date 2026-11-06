@@ -1,0 +1,40 @@
+# D169: the stale-session resync
+## RED before (01:25:44), the new Live test on the pre-image
+    ✕ opens the summary of the session the snapshot brought (Y), not the one rendered before the outage (X) (213 ms)
+    ✓ a reconnect whose snapshot changed nothing navigates nowhere new: on the pending summary already, it stays (80 ms)
+Tests:       1 failed, 1 passed, 2 total
+    - Expected  - 1
+    + Received  + 1
+    -   "/session/summary/SES-20261001-0025",
+    +   "/session/summary/SES-20261001-0024",
+
+## W72's proposal applied (read the store at the signal), 01:26: STILL RED (same diff)
+FAIL src/runtime/session-route-sync-live.test.tsx
+PASS src/runtime/link-notice-static.test.ts
+PASS src/runtime/link-notice.test.ts
+PASS src/runtime/live-core-errors.test.tsx
+
+## probe lines observed at 01:27-01:34 (a temporary probe component inside the new test, removed afterwards):
+    emit session=SES-20261001-0024 lastSealed=SES-20261001-0024        <- the store at RESYNCED
+    store session SES-20261001-0024 -> SES-20261001-0025               <- right after the signal, before React rendered
+    emit ops=[getAuthSession,getDeviceRegistration,getSignInStatus,signIn] ... ; store change ops=[..., signIn, getAuthSession]  <- the session check of the new socket (CPC1-35) answered between
+    live link=OFFLINE session=s1 conn=2 | ... | live link=ONLINE session=s1 conn=4 | EMIT link=ONLINE session=s1 conn=4 store=...0024 | live link=ONLINE session=s2 conn=4 store=...0025
+
+## GREEN after the fix (01:35:41)
+PASS src/runtime/route-sync.test.ts
+PASS src/runtime/session-route-sync-live.test.tsx
+PASS src/runtime/session-route-sync.test.tsx
+Tests:       38 passed, 38 total
+
+## the final test file (01:36)
+    ✓ opens the summary of the session the snapshot brought (Y), not the one rendered before the outage (X) (154 ms)
+    ✓ a reconnect whose snapshot changed nothing navigates nowhere new: on the pending summary already, it stays (60 ms)
+    ✓ a recording, the operator elsewhere: after the confirmation it opens the monitor once (as before D169) (50 ms)
+    ✓ no outage seen: runs at once
+    ✓ a new socket after an outage: waits for the confirmation (another session object), then runs once (1 ms)
+    ✓ the session confirmed before the signal (the answer came before the snapshot): runs at once
+    ✓ the link back on the same socket (a STALE that recovered, no new session check): runs at once
+    ✓ the session ended while it waited: runs (the store is what the Live source left), once
+    ✓ a newer signal replaces an owed one; dispose drops what is owed and stops listening
+    ✓ reads no clock and starts no timer (1 ms)
+Tests:       10 passed, 10 total

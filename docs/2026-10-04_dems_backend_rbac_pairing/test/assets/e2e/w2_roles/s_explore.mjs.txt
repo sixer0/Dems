@@ -1,0 +1,13 @@
+const PAGES = ['/dashboard','/session','/session/new','/evidence','/devices','/storage','/network-time','/security-audit','/system','/admin/users','/admin/devices','/developer/api','/stack-check']
+export default async (c, lib) => {
+  const out = {}
+  for (const p of PAGES) {
+    await c.navigate(lib.ORIGIN + p, 3000)
+    const href = await c.evaluate('location.pathname')
+    const ids = await lib.pageId(c)
+    const ctr = await lib.controlFacts(c)
+    const reasons = await lib.reasonFacts(c)
+    out[p] = { landed: href, ids, reasons, controls: ctr.map((x) => `${x.enabled ? '+' : '-'}${x.kind}:${x.tid ?? ''}:${x.label}`).slice(0, 80) }
+  }
+  return out
+}

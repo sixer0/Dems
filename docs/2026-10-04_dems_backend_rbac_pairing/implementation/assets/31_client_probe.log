@@ -1,0 +1,35 @@
+2026-10-04 10:29:42 WIB
+## web (tsconfig extends apps/core-web/tsconfig.app.json; include: the probe only)
+$ npx tsc -p .cache/w31/probe-web/tsconfig.json --noEmit --listFiles | grep -E 'error TS|packages/shared/src/live/testing|probe.ts'
+packages/shared/src/live/testing/errors.ts
+packages/shared/src/live/testing/clock.ts
+packages/shared/src/live/testing/contract.ts
+packages/shared/src/live/testing/log.ts
+packages/shared/src/live/testing/http.ts
+packages/shared/src/live/testing/socket.ts
+packages/shared/src/live/testing/fake-transport.ts
+packages/shared/src/live/testing/install.ts
+packages/shared/src/live/testing/index.ts
+.cache/w31/probe-web/probe.ts
+exit=0
+## web: negative control (two wrong lines appended to the probe)
+probe.ts(58,32): error TS2345: Argument of type '{ body: {}; }' is not assignable to parameter of type 'FakeReply | FakeResponder'.
+probe.ts(59,14): error TS2322: Type 'string' is not assignable to type 'number'.
+exit=2
+## mobile (tsconfig extends apps/mobile/tsconfig.json; include: the probe only)
+$ npx tsc -p .cache/w31/probe-mobile/tsconfig.json --noEmit --listFiles | grep -E 'error TS|packages/shared/src/live/testing|probe.ts'
+packages/shared/src/live/testing/errors.ts
+packages/shared/src/live/testing/clock.ts
+packages/shared/src/live/testing/contract.ts
+packages/shared/src/live/testing/log.ts
+packages/shared/src/live/testing/http.ts
+packages/shared/src/live/testing/socket.ts
+packages/shared/src/live/testing/fake-transport.ts
+packages/shared/src/live/testing/install.ts
+packages/shared/src/live/testing/index.ts
+.cache/w31/probe-mobile/probe.ts
+exit=0
+## mobile: negative control (two wrong lines appended to the probe)
+probe.ts(58,32): error TS2345: Argument of type '{ body: {}; }' is not assignable to parameter of type 'FakeReply | FakeResponder'.
+probe.ts(59,14): error TS2322: Type 'string' is not assignable to type 'number'.
+exit=2

@@ -1,0 +1,71 @@
+== 012
+21:31:27.972 batch start; device time 10-06 21:31:27.000; host load 5.89
+21:31:28.060 mark D1 at 21:31:28.060
+21:31:28.144 declared screen summary
+21:31:28.218 tap 244,2252
+21:31:28.493 sumack 204 at device 10-06 21:31:28.089 (POST /api/v1/session/{id}/summary/acknowledge 204)
+21:31:28.591 slept 6000 ms
+21:31:34.683 declared screen home
+21:31:34.767 tap 107,2279
+21:31:34.998 slept 3000 ms
+21:31:38.090 tap 302,1239
+21:31:38.189 slept 4000 ms
+21:31:42.230 declared screen session-new
+21:31:42.262 tap 913,748
+21:31:42.374 slept 900 ms
+21:31:43.321 tap 229,994
+21:31:43.407 slept 700 ms
+21:31:44.140 tap 540,1309
+21:31:44.223 slept 900 ms
+21:31:45.159 text typed (CF2A D1); inputType 0x2001
+21:31:45.439 slept 800 ms
+21:31:46.276 key 111
+21:31:46.359 slept 800 ms
+21:31:47.192 viewdump D1_vd_step1: 1010 lines at 21:31:47.251
+21:31:47.276 tap 540,2257
+21:31:47.405 create 201 at device 10-06 21:31:47.000 (POST /api/v1/session 201)
+21:31:47.474 precheck 202 at device 10-06 21:31:47.087 (POST /api/v1/session/{id}/precheck 202)
+21:31:48.210 slept 9000 ms
+21:31:57.292 viewdump D1_vd_step2: 1111 lines at 21:31:57.513
+21:31:57.644 tap 540,2257
+21:31:57.877 slept 2500 ms
+21:32:00.416 nav /session load=true
+21:32:03.076 wait page-session-monitor present: 0 ms (at 21:32:03.076)
+21:32:03.105 js => "ARMED"
+21:32:03.149 declared screen live
+21:32:03.193 host load 6.11 7.48 7.65
+21:32:03.256 device-host clock offset ms: -420, -421, -421, -426, -421
+21:32:03.540 screencap D1_ready.png 21:32:03.540..21:32:04.149
+21:32:04.307 screenrecord D1 started (pid 38921) at 21:32:04.911; load 6.11 7.48 7.65
+21:32:04.977 tap 540,2257
+21:32:05.190 start 200 at device 10-06 21:32:07.971 (POST /api/v1/session/{id}/start 200)
+21:32:08.576 until true at 21:32:08.576 after 0 ms => "RECORDING"
+21:32:08.621 slept 6000 ms
+21:32:14.924 press sm-action-end ok at 21:32:14.955
+21:32:15.059 wait sm-end-dialog present: 1 ms (at 21:32:15.060)
+21:32:15.153 slept 400 ms
+21:32:15.815 type into [data-testid="sm-end-reason"]: "CF2A D1 web stop about 7 s after the start"
+21:32:15.963 press sm-end-confirm ok at 21:32:15.969
+21:32:16.043 until true at 21:32:16.071 after 28 ms => "STOPPING"
+21:32:16.224 slept 1200 ms
+21:32:17.624 declared screen finalizing
+21:32:17.797 viewdump D1_vd_finalizing: 980 lines at 21:32:18.056
+21:32:18.176 until true at 21:32:23.275 after 5099 ms => {"state":"SEALED","modal":"SEALED"}
+21:32:23.395 slept 5000 ms
+21:32:28.490 screenrecord D1 pulled; every frame extracted (passthrough)
+21:32:52.702 declared screen summary
+21:32:52.762 screencap D1_after.png 21:32:52.762..21:32:54.034
+21:32:54.290 native D1_native.txt pid 31182: 255908 lines; crash-class lines 1486: 10-06 21:31:47.214 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [26384] | 10-06 21:31:47.215 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [26358] | 10-06 21:31:47.215 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [26238] | 10-06 21:31:47.215 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [26084] | 10-06 21:31:47.216 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [26384] | 10-06 21:31:47.216 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [26358]
+21:32:55.878 appjs D1_js.txt: 55 lines since 10-06 21:31:27.000
+21:32:56.376 focused true; keyguard false; inputType 0x2001
+21:32:57.680 serverlog since D1 (8):
+    21:31:28.521 POST /api/v1/session/:id/summary/acknowledge 204
+    21:31:47.410 POST /api/v1/session 201
+    21:31:47.525 POST /api/v1/session/:id/precheck 202
+    21:32:00.426 [socket closed]
+    21:32:00.531 GET /api/v1/auth/session 200
+    21:32:00.536 [socket opened]
+    21:32:08.380 POST /api/v1/session/:id/start 200
+    21:32:15.993 POST /api/v1/session/:id/stop 202
+21:32:57.809 js => {"id":"SES-20261006-0081","state":"SEALED","subject":"CF2A D1","startedAt":"2026-10-06T21:32:08.375+07:00","stoppedAt":"2026-10-06T21:32:15.982+07:00","sealedAt":"2026-10-06T21:32:23.187+07:00","evidenceId":"EV-20261006-0068","elapsedMs":7607,"audit":[["AUD-001212","SESSION_CREATED","OPR-001","21:31:47.403",""],["AUD-001213","PRECHECK_PASSED","OPR-001","21:31:51.827",""],["AUD-001214","RECORDING_STARTED","OPR-001","21:32:08.375",""],["AUD-001215","RECORDING_STOPPED","OPR-002","21:32:15.982","CF2A D1 web stop about 7 s after the start"],["AUD-001216","EVIDENCE_SEALED",null,"21:32:23.187",""]]}
+21:32:57.921 nav /admin/devices load=true

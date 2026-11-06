@@ -1,0 +1,674 @@
+{
+  "tag": "net_ctx_a",
+  "started": "09:08:26.040 (epoch 1791338906.040)",
+  "stopped": "09:39:44.189 (epoch 1791340784.189)",
+  "originCounts": {
+    "http://127.0.0.1:5173": 3387,
+    "ws://127.0.0.1:5173": 17
+  },
+  "apiCounts": {
+    "GET /api/v1/auth/session 200": 8,
+    "POST /api/v1/session/case-number 200": 3,
+    "POST /api/v1/session 201": 3,
+    "POST /api/v1/session/:id/precheck 202": 3,
+    "POST /api/v1/session/:id/start 200": 3,
+    "POST /api/v1/session/:id/stop 202": 3,
+    "GET /api/v1/audit?… 200": 17,
+    "GET /api/v1/admin/users 200": 10,
+    "GET /api/v1/rbac/matrix 200": 1,
+    "POST /api/v1/auth/touch 200": 2,
+    "POST /api/v1/admin/users/:id/role 200": 4,
+    "GET /api/v1/session?… 405": 1,
+    "GET /api/v1/session/current 200": 1,
+    "GET /api/v1/pairing/code 200": 1,
+    "GET /api/v1/pairing/devices 200": 2,
+    "POST /api/v1/auth/sign-out 204": 1,
+    "GET /api/v1/auth/status 200": 1,
+    "GET /api/v1/health 200": 2,
+    "GET /api/v1/auth/session 401": 1
+  },
+  "sockets": [
+    {
+      "url": "ws://127.0.0.1:5173/?…",
+      "status": 101,
+      "frames": 1,
+      "types": [
+        "connected"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/ws",
+      "status": 101,
+      "frames": 2360,
+      "types": [
+        "delta",
+        "heartbeat",
+        "hello",
+        "meters",
+        "snapshot"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/?…",
+      "status": 101,
+      "frames": 1,
+      "types": [
+        "connected"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/ws",
+      "status": 101,
+      "frames": 1696,
+      "types": [
+        "delta",
+        "heartbeat",
+        "hello",
+        "meters",
+        "snapshot"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/?…",
+      "status": 101,
+      "frames": 1,
+      "types": [
+        "connected"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/ws",
+      "status": 101,
+      "frames": 4000,
+      "types": [
+        "delta",
+        "heartbeat",
+        "hello",
+        "meters",
+        "snapshot"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/?…",
+      "status": 101,
+      "frames": 1,
+      "types": [
+        "connected"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/ws",
+      "status": 101,
+      "frames": 4000,
+      "types": [
+        "delta",
+        "heartbeat",
+        "hello",
+        "meters",
+        "snapshot"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/?…",
+      "status": 101,
+      "frames": 1,
+      "types": [
+        "connected"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/ws",
+      "status": 101,
+      "frames": 3508,
+      "types": [
+        "delta",
+        "heartbeat",
+        "hello",
+        "meters",
+        "snapshot"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/?…",
+      "status": 101,
+      "frames": 1,
+      "types": [
+        "connected"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/ws",
+      "status": 101,
+      "frames": 1155,
+      "types": [
+        "delta",
+        "heartbeat",
+        "hello",
+        "meters",
+        "snapshot"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/?…",
+      "status": 101,
+      "frames": 1,
+      "types": [
+        "connected"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/ws",
+      "status": 101,
+      "frames": 4000,
+      "types": [
+        "delta",
+        "heartbeat",
+        "hello",
+        "meters",
+        "snapshot"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/?…",
+      "status": 101,
+      "frames": 1,
+      "types": [
+        "connected"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/ws",
+      "status": 101,
+      "frames": 94,
+      "types": [
+        "delta",
+        "heartbeat",
+        "hello",
+        "meters",
+        "session.ended",
+        "snapshot"
+      ]
+    },
+    {
+      "url": "ws://127.0.0.1:5173/ws",
+      "status": 101,
+      "frames": 15,
+      "types": [
+        "heartbeat",
+        "hello"
+      ]
+    }
+  ],
+  "api": [
+    {
+      "sent": "09:08:38.539 (epoch 1791338918.539)",
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "status": 200,
+      "done": "09:08:38.543 (epoch 1791338918.543)"
+    },
+    {
+      "sent": "09:08:42.580 (epoch 1791338922.580)",
+      "method": "POST",
+      "path": "/api/v1/session/case-number",
+      "status": 200,
+      "done": "09:08:42.587 (epoch 1791338922.587)"
+    },
+    {
+      "sent": "09:08:45.842 (epoch 1791338925.842)",
+      "method": "POST",
+      "path": "/api/v1/session",
+      "status": 201,
+      "done": "09:08:45.850 (epoch 1791338925.850)"
+    },
+    {
+      "sent": "09:08:45.873 (epoch 1791338925.873)",
+      "method": "POST",
+      "path": "/api/v1/session/SES-20261007-0026/precheck",
+      "status": 202,
+      "done": "09:08:45.878 (epoch 1791338925.878)"
+    },
+    {
+      "sent": "09:09:15.320 (epoch 1791338955.320)",
+      "method": "POST",
+      "path": "/api/v1/session/SES-20261007-0026/start",
+      "status": 200,
+      "done": "09:09:15.335 (epoch 1791338955.335)"
+    },
+    {
+      "sent": "09:10:26.728 (epoch 1791339026.728)",
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "status": 200,
+      "done": "09:10:26.732 (epoch 1791339026.732)"
+    },
+    {
+      "sent": "09:11:44.489 (epoch 1791339104.489)",
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "status": 200,
+      "done": "09:11:44.491 (epoch 1791339104.491)"
+    },
+    {
+      "sent": "09:11:53.261 (epoch 1791339113.261)",
+      "method": "POST",
+      "path": "/api/v1/session/SES-20261007-0027/stop",
+      "status": 202,
+      "done": "09:11:53.271 (epoch 1791339113.271)"
+    },
+    {
+      "sent": "09:12:54.411 (epoch 1791339174.411)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:12:54.417 (epoch 1791339174.417)"
+    },
+    {
+      "sent": "09:12:54.418 (epoch 1791339174.418)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:12:54.422 (epoch 1791339174.422)"
+    },
+    {
+      "sent": "09:12:54.424 (epoch 1791339174.424)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:12:54.427 (epoch 1791339174.427)"
+    },
+    {
+      "sent": "09:12:54.428 (epoch 1791339174.428)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:12:54.432 (epoch 1791339174.432)"
+    },
+    {
+      "sent": "09:13:33.043 (epoch 1791339213.043)",
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200,
+      "done": "09:13:33.050 (epoch 1791339213.050)"
+    },
+    {
+      "sent": "09:13:33.043 (epoch 1791339213.043)",
+      "method": "GET",
+      "path": "/api/v1/rbac/matrix",
+      "status": 200,
+      "done": "09:13:33.083 (epoch 1791339213.083)"
+    },
+    {
+      "sent": "09:13:47.727 (epoch 1791339227.727)",
+      "method": "POST",
+      "path": "/api/v1/auth/touch",
+      "status": 200,
+      "done": "09:13:47.760 (epoch 1791339227.760)"
+    },
+    {
+      "sent": "09:14:47.730 (epoch 1791339287.730)",
+      "method": "POST",
+      "path": "/api/v1/auth/touch",
+      "status": 200,
+      "done": "09:14:47.736 (epoch 1791339287.736)"
+    },
+    {
+      "sent": "09:15:17.521 (epoch 1791339317.521)",
+      "method": "POST",
+      "path": "/api/v1/admin/users/OPR-001/role",
+      "status": 200,
+      "done": "09:15:17.545 (epoch 1791339317.545)"
+    },
+    {
+      "sent": "09:15:17.540 (epoch 1791339317.540)",
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200,
+      "done": "09:15:17.704 (epoch 1791339317.704)"
+    },
+    {
+      "sent": "09:15:17.546 (epoch 1791339317.546)",
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200,
+      "done": "09:15:17.704 (epoch 1791339317.704)"
+    },
+    {
+      "sent": "09:16:04.492 (epoch 1791339364.492)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:16:04.496 (epoch 1791339364.496)"
+    },
+    {
+      "sent": "09:16:04.497 (epoch 1791339364.497)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:16:04.500 (epoch 1791339364.500)"
+    },
+    {
+      "sent": "09:18:30.257 (epoch 1791339510.257)",
+      "method": "POST",
+      "path": "/api/v1/admin/users/OPR-001/role",
+      "status": 200,
+      "done": "09:18:30.271 (epoch 1791339510.271)"
+    },
+    {
+      "sent": "09:18:30.268 (epoch 1791339510.268)",
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200,
+      "done": "09:18:30.387 (epoch 1791339510.387)"
+    },
+    {
+      "sent": "09:18:30.272 (epoch 1791339510.272)",
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200,
+      "done": "09:18:30.388 (epoch 1791339510.388)"
+    },
+    {
+      "sent": "09:19:36.919 (epoch 1791339576.919)",
+      "method": "POST",
+      "path": "/api/v1/admin/users/OPR-001/role",
+      "status": 200,
+      "done": "09:19:36.938 (epoch 1791339576.938)"
+    },
+    {
+      "sent": "09:19:36.934 (epoch 1791339576.934)",
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200,
+      "done": "09:19:37.063 (epoch 1791339577.063)"
+    },
+    {
+      "sent": "09:19:36.939 (epoch 1791339576.939)",
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200,
+      "done": "09:19:37.063 (epoch 1791339577.063)"
+    },
+    {
+      "sent": "09:20:32.305 (epoch 1791339632.305)",
+      "method": "POST",
+      "path": "/api/v1/admin/users/OPR-001/role",
+      "status": 200,
+      "done": "09:20:32.321 (epoch 1791339632.321)"
+    },
+    {
+      "sent": "09:20:32.316 (epoch 1791339632.316)",
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200,
+      "done": "09:20:32.459 (epoch 1791339632.459)"
+    },
+    {
+      "sent": "09:20:32.321 (epoch 1791339632.321)",
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200,
+      "done": "09:20:32.459 (epoch 1791339632.459)"
+    },
+    {
+      "sent": "09:20:44.295 (epoch 1791339644.295)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:20:44.301 (epoch 1791339644.301)"
+    },
+    {
+      "sent": "09:20:44.303 (epoch 1791339644.303)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:20:44.307 (epoch 1791339644.307)"
+    },
+    {
+      "sent": "09:20:44.491 (epoch 1791339644.491)",
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200,
+      "done": "09:20:44.494 (epoch 1791339644.494)"
+    },
+    {
+      "sent": "09:21:57.494 (epoch 1791339717.494)",
+      "method": "GET",
+      "path": "/api/v1/session?…",
+      "status": 405,
+      "done": "09:21:57.500 (epoch 1791339717.500)"
+    },
+    {
+      "sent": "09:25:08.781 (epoch 1791339908.781)",
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "status": 200,
+      "done": "09:25:08.797 (epoch 1791339908.797)"
+    },
+    {
+      "sent": "09:25:12.811 (epoch 1791339912.811)",
+      "method": "POST",
+      "path": "/api/v1/session/case-number",
+      "status": 200,
+      "done": "09:25:12.817 (epoch 1791339912.817)"
+    },
+    {
+      "sent": "09:25:16.075 (epoch 1791339916.075)",
+      "method": "POST",
+      "path": "/api/v1/session",
+      "status": 201,
+      "done": "09:25:16.089 (epoch 1791339916.089)"
+    },
+    {
+      "sent": "09:25:16.113 (epoch 1791339916.113)",
+      "method": "POST",
+      "path": "/api/v1/session/SES-20261007-0028/precheck",
+      "status": 202,
+      "done": "09:25:16.123 (epoch 1791339916.123)"
+    },
+    {
+      "sent": "09:25:34.513 (epoch 1791339934.513)",
+      "method": "POST",
+      "path": "/api/v1/session/SES-20261007-0028/start",
+      "status": 200,
+      "done": "09:25:34.525 (epoch 1791339934.525)"
+    },
+    {
+      "sent": "09:30:16.159 (epoch 1791340216.159)",
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "status": 200,
+      "done": "09:30:16.186 (epoch 1791340216.186)"
+    },
+    {
+      "sent": "09:30:25.719 (epoch 1791340225.719)",
+      "method": "POST",
+      "path": "/api/v1/session/SES-20261007-0028/stop",
+      "status": 202,
+      "done": "09:30:25.741 (epoch 1791340225.741)"
+    },
+    {
+      "sent": "09:32:47.562 (epoch 1791340367.562)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:32:47.568 (epoch 1791340367.568)"
+    },
+    {
+      "sent": "09:32:47.569 (epoch 1791340367.569)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:32:47.573 (epoch 1791340367.573)"
+    },
+    {
+      "sent": "09:32:47.578 (epoch 1791340367.578)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:32:47.585 (epoch 1791340367.585)"
+    },
+    {
+      "sent": "09:32:47.586 (epoch 1791340367.586)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:32:47.591 (epoch 1791340367.591)"
+    },
+    {
+      "sent": "09:33:00.242 (epoch 1791340380.242)",
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "status": 200,
+      "done": "09:33:00.247 (epoch 1791340380.247)"
+    },
+    {
+      "sent": "09:33:04.227 (epoch 1791340384.227)",
+      "method": "POST",
+      "path": "/api/v1/session/case-number",
+      "status": 200,
+      "done": "09:33:04.233 (epoch 1791340384.233)"
+    },
+    {
+      "sent": "09:33:07.443 (epoch 1791340387.443)",
+      "method": "POST",
+      "path": "/api/v1/session",
+      "status": 201,
+      "done": "09:33:07.455 (epoch 1791340387.455)"
+    },
+    {
+      "sent": "09:33:07.476 (epoch 1791340387.476)",
+      "method": "POST",
+      "path": "/api/v1/session/SES-20261007-0029/precheck",
+      "status": 202,
+      "done": "09:33:07.480 (epoch 1791340387.480)"
+    },
+    {
+      "sent": "09:33:25.744 (epoch 1791340405.744)",
+      "method": "POST",
+      "path": "/api/v1/session/SES-20261007-0029/start",
+      "status": 200,
+      "done": "09:33:25.753 (epoch 1791340405.753)"
+    },
+    {
+      "sent": "09:33:53.599 (epoch 1791340433.599)",
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "status": 200,
+      "done": "09:33:53.603 (epoch 1791340433.603)"
+    },
+    {
+      "sent": "09:34:02.399 (epoch 1791340442.399)",
+      "method": "POST",
+      "path": "/api/v1/session/SES-20261007-0029/stop",
+      "status": 202,
+      "done": "09:34:02.411 (epoch 1791340442.411)"
+    },
+    {
+      "sent": "09:39:23.246 (epoch 1791340763.246)",
+      "method": "GET",
+      "path": "/api/v1/session/current",
+      "status": 200,
+      "done": "09:39:23.261 (epoch 1791340763.261)"
+    },
+    {
+      "sent": "09:39:26.554 (epoch 1791340766.554)",
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "status": 200,
+      "done": "09:39:26.576 (epoch 1791340766.576)"
+    },
+    {
+      "sent": "09:39:26.738 (epoch 1791340766.738)",
+      "method": "GET",
+      "path": "/api/v1/pairing/code",
+      "status": 200,
+      "done": "09:39:26.780 (epoch 1791340766.780)"
+    },
+    {
+      "sent": "09:39:26.738 (epoch 1791340766.738)",
+      "method": "GET",
+      "path": "/api/v1/pairing/devices",
+      "status": 200,
+      "done": "09:39:26.781 (epoch 1791340766.781)"
+    },
+    {
+      "sent": "09:39:30.712 (epoch 1791340770.712)",
+      "method": "GET",
+      "path": "/api/v1/pairing/devices",
+      "status": 200,
+      "done": "09:39:30.714 (epoch 1791340770.714)"
+    },
+    {
+      "sent": "09:39:30.722 (epoch 1791340770.722)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:39:30.726 (epoch 1791340770.726)"
+    },
+    {
+      "sent": "09:39:30.727 (epoch 1791340770.727)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:39:30.730 (epoch 1791340770.730)"
+    },
+    {
+      "sent": "09:39:30.731 (epoch 1791340770.731)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:39:30.733 (epoch 1791340770.733)"
+    },
+    {
+      "sent": "09:39:30.735 (epoch 1791340770.735)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:39:30.738 (epoch 1791340770.738)"
+    },
+    {
+      "sent": "09:39:30.740 (epoch 1791340770.740)",
+      "method": "GET",
+      "path": "/api/v1/audit?…",
+      "status": 200,
+      "done": "09:39:30.743 (epoch 1791340770.743)"
+    },
+    {
+      "sent": "09:39:30.744 (epoch 1791340770.744)",
+      "method": "POST",
+      "path": "/api/v1/auth/sign-out",
+      "status": 204,
+      "done": "09:39:30.791 (epoch 1791340770.791)"
+    },
+    {
+      "sent": "09:39:30.795 (epoch 1791340770.795)",
+      "method": "GET",
+      "path": "/api/v1/auth/status",
+      "status": 200,
+      "done": "09:39:30.799 (epoch 1791340770.799)"
+    },
+    {
+      "sent": "09:39:31.114 (epoch 1791340771.114)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:39:31.140 (epoch 1791340771.140)"
+    },
+    {
+      "sent": "09:39:31.642 (epoch 1791340771.642)",
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "status": 401,
+      "done": "09:39:31.646 (epoch 1791340771.646)"
+    },
+    {
+      "sent": "09:39:41.216 (epoch 1791340781.216)",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "done": "09:39:41.219 (epoch 1791340781.219)"
+    }
+  ],
+  "console": []
+}

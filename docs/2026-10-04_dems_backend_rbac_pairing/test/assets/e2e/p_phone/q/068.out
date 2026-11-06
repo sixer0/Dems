@@ -1,0 +1,20 @@
+10:32:51.459 tap 302,1239
+10:32:51.713 slept 2500 ms
+10:32:54.248 declared screen live
+10:32:54.280 tap 539,2266
+10:32:54.392 slept 1800 ms
+10:32:56.220 tap 539,1279
+10:32:56.320 slept 900 ms
+10:32:57.255 text typed (SC3 stop on phone 2); inputType 0x24001
+10:32:57.769 slept 1000 ms
+10:32:58.805 screencap 70_sc3_s2b_phone_end_dialog.png 10:32:58.805..10:32:58.979
+10:32:59.009 js => {"state":"RECORDING"}
+10:32:59.052 mark b10 at 10:32:59.052
+10:32:59.075 tap 811,1622
+10:32:59.149 until true at 10:32:59.228 after 80 ms => "STOPPING"
+10:32:59.269 screenshot 71_sc3_s2b_web_after_phone_stop.png 10:32:59.269..10:32:59.564
+10:32:59.622 until true at 10:33:05.545 after 5923 ms => true
+10:33:05.793 slept 1500 ms
+10:33:07.669 screenshot 71b_sc3_s2b_web_sealed.png 10:33:07.669..10:33:07.824
+10:33:07.946 serverlog since b10 (1):
+    10:32:59.160 POST /api/v1/session/:id/stop 202 operator:OPR-001

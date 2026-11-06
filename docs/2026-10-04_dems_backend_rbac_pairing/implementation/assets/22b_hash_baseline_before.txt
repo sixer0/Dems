@@ -1,0 +1,25 @@
+marker (ASCII): MARKER_ADDED seq 220 hash 470b91cf38518ebfda54f0bbf4be4d3bec16e130673ff95064919e5807b869f6
+  label: "Marker label Marker label Marker label Marker label Marker label Marker label Ma"
+marker (BMP): MARKER_ADDED seq 221 hash bd6edf6e6cc9ee71e03a942bcaed8064a30a1bbca7bb3fb6166e3dd9fbafb75b
+  label: "Keterangan saksi — café, naïve, 日本語、한국어 · Keterangan saksi — café, naïve, 日本語、한국"
+note (ASCII): NOTE_ADDED seq 222 hash 5bdb082c4a98bf592b76924d17edff9ca6fa35ac1fdbbb6ef2c41e181f4a4f06
+  timeline detail: "The witness confirms the statement given earlier. The witness confirms the statement given earlier. The witness confirms the statement give…"
+note (BMP): NOTE_ADDED seq 223 hash 10d0de9e76d76023bf11172ccb2debafd4ed287e23225b1ea618f2ba4c2b6108
+  timeline detail: "Saksi menyatakan “benar” — façade, 東京都、서울 · Saksi menyatakan “benar” — façade, 東京都、서울 · Saksi menyatakan “benar” — façade, 東京都、서울 · Saksi m…"
+exportEvidence: {"ok":true,"status":202,"exportId":"EXP-000032"}
+evidence export (ASCII): EVIDENCE_EXPORTED seq 226 hash 2519943c2e039318b246b634f2e9abd69a674f4c415cd1c009d2e95ea3c0b8d5
+  destination: "/mnt/usb/CASE-FILES/export-/mnt/usb/CASE-FILES/export-/mnt/usb/CASE-FILES/export-/mnt/usb/CASE-FILES/export-/mnt/usb/CAS"
+exportEvidence: {"ok":true,"status":202,"exportId":"EXP-000033"}
+evidence export (BMP): EVIDENCE_EXPORTED seq 227 hash 535dd739ea14e3964a149818b269e2ff0b4e90a1c6b5c75d03a3e9394c432cbd
+  destination: "Jaksa Penuntut Umum — Kejaksaan Negeri · 東京 · Jaksa Penuntut Umum — Kejaksaan Negeri · 東京 · Jaksa Penuntut Umum — Kejaks"
+exportAudit: {"ok":true,"status":202,"exportId":"EXP-000034"}
+audit export (ASCII): AUDIT_EXPORTED seq 228 hash e0603b5a69ab8c30f7be7872c383e4bab23af53a1075428eeae42197765c8f5e
+exportAudit: {"ok":true,"status":202,"exportId":"EXP-000035"}
+audit export (BMP): AUDIT_EXPORTED seq 229 hash f4968a7889787c0e1c037244d193c2bd3ccd4caeb3fd92b9f0553668be954934
+exportLogs: {"ok":true,"status":202,"exportId":"EXP-000036"}
+log export (ASCII): AUDIT_EXPORTED seq 230 hash 3b2efcd066c54973f73070399e7aa1abb6afeb42bb8604ae1ee72a24e45677a9
+audit head: 3b2efcd066c54973f73070399e7aa1abb6afeb42bb8604ae1ee72a24e45677a9 | rows 230 | total 230
+digest audit   : f9829ef562736f7ab3f4bedb1a2751039883780b2f8cf77fd4ac6b3898144347
+digest events  : bc11449093751f2d00f2076adcf6506b67ac66db4c6df0b8f45f4fda53ed0f1a
+digest session : 83bb025c0634c2599a2e7ffebe777def20101f637c6281728f6357e78b568273
+digest evidence: 549c437f6807f622d82a657a615f4562863423c135a87cc1773ff2a8977eb1e8

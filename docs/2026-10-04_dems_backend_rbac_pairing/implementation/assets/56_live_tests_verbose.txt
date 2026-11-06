@@ -1,0 +1,213 @@
+# W56: every test name of the auth folder, 2026-10-04 21:39:14 WIB
+$ npm run test -w @dems/mobile -- --maxWorkers=2 --silent --verbose src/auth
+PASS src/auth/biometric.test.ts
+  T-M05 biometric branches
+    ✓ success → signed in as the bound operator; audit AUTH_SUCCESS with method BIOMETRIC (21 ms)
+    ✓ user_cancel → stay on Login; no audit row, still signed out (7 ms)
+    ✓ lockout → the "Biometrics locked — use your password" alert; no audit row (5 ms)
+    ✓ not_enrolled → the caption, whether the device says so up front or the prompt does (7 ms)
+    ✓ authentication_failed → one failure toward the §6.1 lockout; the fifth locks the console (11 ms)
+    ✓ no hardware → the button is hidden (unavailable); no prompt (9 ms)
+    ✓ a thrown OS error is contained (error), and so is a failing availability query (unavailable) (8 ms)
+  the §6.3 result table
+    ✓ success → success
+    ✓ user_cancel → cancel
+    ✓ system_cancel → cancel
+    ✓ app_cancel → cancel
+    ✓ user_fallback → cancel
+    ✓ lockout → lockout
+    ✓ not_enrolled → not-enrolled
+    ✓ passcode_not_set → not-enrolled
+    ✓ authentication_failed → failed
+    ✓ not_available → unavailable (1 ms)
+    ✓ timeout → error
+    ✓ unknown → error
+    ✓ cancel and lockout never call the simulator
+    ✓ omits an empty subtitle (1 ms)
+PASS src/auth/auth-provider.test.tsx
+  sign-in through the simulator (§6.1)
+    ✓ locks the console after 5 failures within 5 min, with a live countdown, and never keeps the password (163 ms)
+    ✓ refuses sign-in while the Core is offline in heartbeat mode (§4.1 L6), without an audit row (10 ms)
+  sign-out, Lock console and the idle lock (§3.3, §6.4, §4.19)
+    ✓ Lock console signs out with reason LOCK and never touches the recording (48 ms)
+    ✓ expires the sign-in after 15 min without a touch and opens "Session expired"; recording continues (172 ms)
+    ✓ counts a touch anywhere in the app as activity (124 ms)
+  biometric enable offer and sign-in (§6.3)
+    ✓ offers biometrics after a password sign-in; Enable binds the operator; the fingerprint then signs in (33 ms)
+    ✓ Not now stores nothing; the fingerprint button stays unavailable (26 ms)
+PASS src/auth/live-biometric.test.ts
+  how a new token is written (MB-5, MB-6a; decision D71 DN37-2)
+    ✓ isDevice false, debug build true: unprotected (1 ms)
+    ✓ isDevice false, debug build false: unprotected (1 ms)
+    ✓ isDevice true, debug build true: unprotected
+    ✓ isDevice true, debug build false: protected
+    ✓ where MB-6a allows it the token is stored without the authentication requirement, with no prompt, and the marker says so (3 ms)
+    ✓ a physical device in a build that is not a debug build: a failing protected write turns biometric sign-in off and stores no token (AC-C-105) (1 ms)
+    ✓ the same device: an earlier token without the requirement is not kept beside a failed protected write
+    ✓ the same device, a protected write that works: stored WITH the requirement; the read is then the one check (case a) (1 ms)
+  the marker of this pairing
+    ✓ while the tablet is not paired the storage is not asked at all
+    ✓ an enrolment of an earlier pairing is deleted with its token
+    ✓ a marker that cannot be parsed is deleted with its token; nothing is read back from it (1 ms)
+    ✓ reading the marker never shows a prompt and never reads the token
+  one token, one presentation (finding F72)
+    ✓ a token leaves the store only inside an attempt the auth layer opened (1 ms)
+    ✓ while one attempt is open no second one can be opened
+    ✓ the token of another operator is not handed out (3 ms)
+    ✓ `spent`: the token that was sent and not replaced is deleted with its marker; `kept`: it stays (1 ms)
+    ✓ an attempt in which nothing was asked changes nothing
+  the write after a rotation (MB-6)
+    ✓ the next token replaces the one that was sent, with the same options; the marker stays; `spent` then deletes nothing
+    ✓ a protected token is rotated as a protected token (1 ms)
+    ✓ a write that fails deletes both items: the session stays, the enrolment is gone
+    ✓ a sign-in this store handed no token to changes nothing: a password sign-in, and one without an open attempt (1 ms)
+    ✓ a sign-in that was answered without a next token: the used one is deleted at the end
+  a protected item: the read is the OS check (MB-4, MB-5 case a)
+    ✓ user-canceled → the check `cancel`; nothing is handed out and nothing is deleted
+    ✓ lockout → the check `lockout`; nothing is handed out and nothing is deleted (1 ms)
+    ✓ not-enrolled → the check `not-enrolled`; nothing is handed out and nothing is deleted
+    ✓ no-hardware → the check `unavailable`; nothing is handed out and nothing is deleted
+  an item that cannot be read turns biometric sign-in off (MB-6a: no silent fallback)
+    ✓ a stored value that is no token: both items are deleted and nothing is handed out (1 ms)
+    ✓ a marker without its token: the enrolment is void and is deleted
+  what the store leaves behind
+    ✓ `remove` deletes the token and the marker and leaves the device credential alone
+    ✓ no token is written to AsyncStorage or to the log, whatever happens (1 ms)
+PASS src/auth/live-auth-model.test.ts
+  the single-use token after operation 8 (implementation/41 section 8.2, finding F72)
+    ✓ 200: used up (the next one came with the answer)
+    ✓ 401 INVALID_CREDENTIALS: dead for good
+    ✓ 423 LOCKED: not looked at during the lock
+    ✓ 429: a limit
+    ✓ 429 by its code alone
+    ✓ 503 NOT_READY: the unit did not commit
+    ✓ no credential for the request: nothing was sent
+    ✓ the credential did not come in time: nothing was sent
+    ✓ 401 NOT_SIGNED_IN: the request`s credential did not resolve
+    ✓ 422: the body was refused before the token
+    ✓ 400 INVALID_JSON
+    ✓ 403 DEVICE_NOT_PAIRED (`DEVICE_CREDENTIAL_REQUIRED`): refused before the token (1 ms)
+    ✓ 403 DEVICE_REVOKED: revoked with the device
+    ✓ no answer
+    ✓ a time-out: the Core may have used it
+    ✓ the answer came and its data did not
+    ✓ the source was stopped while the request was out (1 ms)
+    ✓ 500
+    ✓ a 503 that is not the Core`s NOT_READY (a gateway)
+    ✓ an answer outside the contract
+    ✓ the storage port failed after the answer
+    ✓ a refusal by a code nobody listed
+    ✓ a 404, which operation 8 does not have
+    ✓ a programming error
+    ✓ something that is no error
+    ✓ nothing
+  a rejected sign-in for the Login screen (S1-1, LB-10)
+    ✓ an outage is CORE_OFFLINE without a toast: the Login screen has its own offline state (1 ms)
+    ✓ a 429 is UNAVAILABLE with the limit toast and its seconds: never an outage, never a wrong password (1 ms)
+    ✓ 500 is UNAVAILABLE
+    ✓ no credential for the request is UNAVAILABLE
+    ✓ the tablet`s storage failed is UNAVAILABLE
+    ✓ 403 DEVICE_NOT_PAIRED: an ordinary refused action is UNAVAILABLE
+    ✓ 401 NOT_SIGNED_IN: no "you are signed out" on a login screen is UNAVAILABLE (1 ms)
+    ✓ the source was stopped is UNAVAILABLE
+    ✓ an error that is not the Core`s is UNAVAILABLE, without a presentation and without a toast
+    ✓ an answer of `live.client.call` becomes the error class the Live source would build, without its message
+  the sign-in block (§9.5)
+    ✓ SIMULATED with the Core ONLINE → blocked false (1 ms)
+    ✓ SIMULATED with the Core OFFLINE → blocked false
+    ✓ HEARTBEAT with the Core ONLINE → blocked false
+    ✓ HEARTBEAT with the Core OFFLINE → blocked true
+    ✓ LIVE with the Core ONLINE → blocked false
+    ✓ LIVE with the Core OFFLINE → blocked true
+  why the session ended (§6.5)
+    ✓ nothing ended
+    ✓ Lock console, answered (1 ms)
+    ✓ Lock console with the link down (DR-11)
+    ✓ Sign out
+    ✓ the Core ended it as a sign-out
+    ✓ idle, said by the Core
+    ✓ idle, reckoned here while the Core could not be asked
+    ✓ the 8-hour limit
+    ✓ a disabled account (1 ms)
+    ✓ a reused biometric token
+    ✓ an invalid credential (no notice, §6.5 last row)
+    ✓ only the socket`s credential was refused: nobody was signed in
+    ✓ the pairing ended: the Pair screen`s, not the Login screen`s
+    ✓ the tablet unpaired itself: still the Pair screen`s, whatever else the end carries (5 ms)
+    ✓ a reuse is told by its reason, whoever was signed in
+    ✓ a notice is one stable object with its sentence and its status
+  which check the operator sees (MB-5)
+    ✓ protected true on a physical device true → read-is-prompt (1 ms)
+    ✓ protected true on a physical device false → os-prompt-first
+    ✓ protected false on a physical device true → os-prompt-first
+    ✓ protected false on a physical device false → os-prompt-first
+PASS src/auth/live-auth-static.test.ts
+  the production files of the auth layer
+    ✓ are the ones this test reads
+    ✓ take the Core`s actions from `useCoreActions()`: no `useSimActions`, no `.actions` read on a source (AC-C-53) (3 ms)
+    ✓ never import the fake transport or a test helper (2 ms)
+  what a release bundle holds of it (MD-6)
+    ✓ the secure-store wrapper is imported by the token storage alone; every other file names it as a type only (2 ms)
+    ✓ the token storage is loaded in ONE place, behind a literal `__DEV__` test; elsewhere it is a type (1 ms)
+    ✓ the Live source, the typed client and `expo-device` are loaded by no file that is part of every bundle (2 ms)
+  where the layer may keep anything (MP-2, SR-16)
+    ✓ AsyncStorage is named by the simulated binding alone (`auth-prefs.ts`): no LIVE file imports it (1 ms)
+  the copy (`features.auth.*`)
+    ✓ holds the sentences of the specification, word for word
+    ✓ resolves through the app`s i18n instance, and registering it twice changes nothing (1 ms)
+    ✓ adds no layer to the resource registry: its three layers and their top-level keys are as they were (2 ms)
+    ✓ no sentence says or implies that the token is protected by the device`s hardware, and none speaks of a simulation (MB-6a, AC-C-105) (1 ms)
+PASS src/auth/live-auth.test.tsx (6.625 s)
+  a cold start in LIVE mode (AC-C-67, §9.2)
+    ✓ a paired tablet opens the Login screen: nobody is signed in, the gate is open, and no sign-in request was sent (122 ms)
+    ✓ a paired tablet with an enrolment shows the fingerprint button from the marker alone: no prompt, no token read (21 ms)
+    ✓ a tablet that is not paired: the gate is closed and a sign-in sends nothing (17 ms)
+    ✓ the simulated binding is neither read nor written (MP-2) (137 ms)
+  password sign-in on a paired tablet (S1-1, §9.2)
+    ✓ signs in with the device credential as the bearer, takes the operator from the replica, and keeps the session token out of everything readable (62 ms)
+    ✓ a wrong password is the Core`s own result, with its attempts left; the lockout view follows it (22 ms)
+    ✓ lockout: the fifth failure locks the device for 60 s on the Core`s clock; during the lock even the right password is refused; then it opens (116 ms)
+    ✓ an outage: the result is CORE_OFFLINE, nothing is toasted twice, and with the link down no request is sent at all (64 ms)
+    ✓ a 429 is a limit: the limit toast with the seconds of `retry-after`, never a wrong password and never an outage (decision D116, LB-10) (60 ms)
+    ✓ 403 `DEVICE_NOT_PAIRED` is an ordinary failed action: UNAVAILABLE, the credential and the gate stay (24 ms)
+  sign out, Lock console and the server-driven idle (§6.5, §9.2, DR-11)
+    ✓ Sign out and Lock console: the notice is read from why the session ended; the pairing stays (74 ms)
+    ✓ Lock console with the link down ends the session here at once (DR-11) (139 ms)
+    ✓ the Core ends an idle session: the "Session expired" dialog opens and the Login notice says so (79 ms)
+    ✓ the 8-hour limit: the dialog and the Alert carry its own sentence, not the idle one (WS-14) (93 ms)
+    ✓ a disabled account: signed out, with the Alert of §6.4 (43 ms)
+    ✓ activity is reported to the Core: a touch inside the app becomes one `touchSession` of the session (63 ms)
+    ✓ without a touch nothing is reported: an open screen cannot keep a session alive (81 ms)
+  biometric enrolment (MB-1, MB-2, AC-C-68)
+    ✓ the offer after a password sign-in: Enable calls operation 7 once, in the password session; the token and its marker go into the secure store (64 ms)
+    ✓ Not now stores nothing and calls nothing (40 ms)
+    ✓ in a session created with the fingerprint nothing is offered, the switch is blocked, and turning it on sends NO operation 7 (31 ms)
+    ✓ the Settings switch in a password session: on calls operation 7 and stores; off calls it first and then deletes both items (44 ms)
+    ✓ turning it off while the Core cannot be told deletes nothing and rejects; the two sides stay equal (30 ms)
+    ✓ an enrolment the Core refuses: the presenter says so, nothing is stored (40 ms)
+  the DEPARTURE-6 conditions (MB-6a, AC-C-105)
+    ✓ a physical device in a build that is not a debug build: a failing protected write turns biometric sign-in off and stores no token (48 ms)
+    ✓ the same device with a protected write that works: the token is stored WITH the authentication requirement, and the marker says so (44 ms)
+    ✓ while the marker says `protected: false`, no rendered text says the token is protected by the device`s hardware (38 ms)
+  biometric sign-in with rotation (MB-3 to MB-6, AC-C-69, finding F72)
+    ✓ one OS check, then operation 8 with the stored token under the DEVICE credential; the next token is in the store BEFORE the action settles (39 ms)
+    ✓ every sign-in presents the token of the sign-in before it, never one twice; the marker stays (62 ms)
+    ✓ a double tap is ONE sign-in: one check, one request, one token (26 ms)
+    ✓ a 401 deletes the token and the marker, keeps the pairing, and the Login Alert says so (MB-3) (47 ms)
+    ✓ a lost answer is NOT retried with the same token: both items are deleted and the next press sends nothing (22 ms)
+    ✓ answers that say the token was not looked at keep it: a lock (423), a limit (429), a Core that is not ready (503) (51 ms)
+    ✓ while the device is locked nothing is asked and nothing is sent (17 ms)
+    ✓ a rotated token that cannot be written costs the enrolment, not the session (MB-6) (27 ms)
+    ✓ an enrolment of an earlier pairing of this tablet is deleted, not presented (10 ms)
+  the OS check (MB-4, AC-C-70)
+    ✓ a failed check calls operation 9 with the operator the marker names, and no operation 8; the fifth locks the device (86 ms)
+    ✓ a cancelled prompt calls nothing at all (14 ms)
+    ✓ an OS lockout and a device without an enrolled fingerprint call nothing either (15 ms)
+    ✓ a failure report that the Core limits is a limit: no result of a failed attempt is made up (19 ms)
+  `session.ended` with `TOKEN_REUSE` (AC-C-108, §6.5)
+    ✓ signs out to the Login screen, deletes the token and its marker, keeps the device credential, and shows the Alert (70 ms)
+  nothing secret is readable (AC-C-65, SR-16, SD-23)
+    ✓ after pairing, a wrong and a right password, enrolment and two biometric sign-ins: no token, no password and no pairing code in AsyncStorage, the log or the replica (70 ms)
+Test Suites: 6 passed, 6 total
+Tests:       172 passed, 172 total
+exit=0

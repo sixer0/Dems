@@ -1,0 +1,575 @@
+{
+ "at": "2026-10-04T14:16:08.722Z",
+ "widths": {
+  "1280": {
+   "before": {
+    "tier": "lg",
+    "collision": 94,
+    "spare": -94,
+    "date": true,
+    "tagline": false,
+    "chip": null,
+    "barOverflow": false,
+    "footerOverToggle": -22,
+    "footerOverLastItem": -62
+   },
+   "asBuilt": {
+    "tier": "lg",
+    "collision": 216,
+    "spare": -216,
+    "date": true,
+    "tagline": false,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -22,
+    "footerOverLastItem": -62
+   },
+   "widestChip": {
+    "tier": "lg",
+    "collision": 280,
+    "spare": -280,
+    "date": true,
+    "tagline": false,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -22,
+    "footerOverLastItem": -62
+   },
+   "widestChipNoDate": {
+    "tier": "lg",
+    "collision": 122,
+    "spare": -122,
+    "date": false,
+    "tagline": false,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -22,
+    "footerOverLastItem": -62
+   },
+   "simulatedNoDate": {
+    "tier": "lg",
+    "collision": 58,
+    "spare": -58,
+    "date": false,
+    "tagline": false,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -22,
+    "footerOverLastItem": -62
+   }
+  },
+  "1366": {
+   "before": {
+    "tier": "lg",
+    "collision": 17,
+    "spare": -17,
+    "date": true,
+    "tagline": true,
+    "chip": null,
+    "barOverflow": false,
+    "footerOverToggle": 10,
+    "footerOverLastItem": -30
+   },
+   "asBuilt": {
+    "tier": "lg",
+    "collision": 139,
+    "spare": -139,
+    "date": true,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": 10,
+    "footerOverLastItem": -30
+   },
+   "widestChip": {
+    "tier": "lg",
+    "collision": 202,
+    "spare": -202,
+    "date": true,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": 10,
+    "footerOverLastItem": -30
+   },
+   "widestChipNoDate": {
+    "tier": "lg",
+    "collision": 44,
+    "spare": -44,
+    "date": false,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": 10,
+    "footerOverLastItem": -30
+   },
+   "simulatedNoDate": {
+    "tier": "lg",
+    "collision": -19,
+    "spare": 19,
+    "date": false,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": 10,
+    "footerOverLastItem": -30
+   }
+  },
+  "1400": {
+   "before": {
+    "tier": "lg",
+    "collision": -17,
+    "spare": 17,
+    "date": true,
+    "tagline": true,
+    "chip": null,
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   },
+   "asBuilt": {
+    "tier": "lg",
+    "collision": 105,
+    "spare": -105,
+    "date": true,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   },
+   "widestChip": {
+    "tier": "lg",
+    "collision": 168,
+    "spare": -168,
+    "date": true,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   },
+   "widestChipNoDate": {
+    "tier": "lg",
+    "collision": 10,
+    "spare": -10,
+    "date": false,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   },
+   "simulatedNoDate": {
+    "tier": "lg",
+    "collision": -53,
+    "spare": 53,
+    "date": false,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   }
+  },
+  "1440": {
+   "before": {
+    "tier": "lg",
+    "collision": -57,
+    "spare": 57,
+    "date": true,
+    "tagline": true,
+    "chip": null,
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   },
+   "asBuilt": {
+    "tier": "lg",
+    "collision": 65,
+    "spare": -65,
+    "date": true,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   },
+   "widestChip": {
+    "tier": "lg",
+    "collision": 128,
+    "spare": -128,
+    "date": true,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   },
+   "widestChipNoDate": {
+    "tier": "lg",
+    "collision": -30,
+    "spare": 30,
+    "date": false,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   },
+   "simulatedNoDate": {
+    "tier": "lg",
+    "collision": -93,
+    "spare": 93,
+    "date": false,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   }
+  },
+  "1536": {
+   "before": {
+    "tier": "lg",
+    "collision": -153,
+    "spare": 153,
+    "date": true,
+    "tagline": true,
+    "chip": null,
+    "barOverflow": false,
+    "footerOverToggle": -86,
+    "footerOverLastItem": -126
+   },
+   "asBuilt": {
+    "tier": "lg",
+    "collision": -31,
+    "spare": 31,
+    "date": true,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -86,
+    "footerOverLastItem": -126
+   },
+   "widestChip": {
+    "tier": "lg",
+    "collision": 32,
+    "spare": -32,
+    "date": true,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -86,
+    "footerOverLastItem": -126
+   },
+   "widestChipNoDate": {
+    "tier": "lg",
+    "collision": -126,
+    "spare": 126,
+    "date": false,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -86,
+    "footerOverLastItem": -126
+   },
+   "simulatedNoDate": {
+    "tier": "lg",
+    "collision": -189,
+    "spare": 189,
+    "date": false,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -86,
+    "footerOverLastItem": -126
+   }
+  },
+  "1599": {
+   "before": {
+    "tier": "lg",
+    "collision": -216,
+    "spare": 216,
+    "date": true,
+    "tagline": true,
+    "chip": null,
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   },
+   "asBuilt": {
+    "tier": "lg",
+    "collision": -94,
+    "spare": 94,
+    "date": true,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   },
+   "widestChip": {
+    "tier": "lg",
+    "collision": -31,
+    "spare": 31,
+    "date": true,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   },
+   "widestChipNoDate": {
+    "tier": "lg",
+    "collision": -189,
+    "spare": 189,
+    "date": false,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   },
+   "simulatedNoDate": {
+    "tier": "lg",
+    "collision": -252,
+    "spare": 252,
+    "date": false,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -122,
+    "footerOverLastItem": -162
+   }
+  },
+  "1600": {
+   "before": {
+    "tier": "xl",
+    "collision": -155,
+    "spare": 155,
+    "date": true,
+    "tagline": true,
+    "chip": null,
+    "barOverflow": false,
+    "footerOverToggle": -24,
+    "footerOverLastItem": -64
+   },
+   "asBuilt": {
+    "tier": "xl",
+    "collision": -34,
+    "spare": 34,
+    "date": true,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -24,
+    "footerOverLastItem": -64
+   },
+   "widestChip": {
+    "tier": "xl",
+    "collision": 30,
+    "spare": -30,
+    "date": true,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -24,
+    "footerOverLastItem": -64
+   },
+   "widestChipNoDate": {
+    "tier": "xl",
+    "collision": -128,
+    "spare": 128,
+    "date": false,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -24,
+    "footerOverLastItem": -64
+   },
+   "simulatedNoDate": {
+    "tier": "xl",
+    "collision": -191,
+    "spare": 191,
+    "date": false,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -24,
+    "footerOverLastItem": -64
+   }
+  },
+  "1680": {
+   "before": {
+    "tier": "xl",
+    "collision": -235,
+    "spare": 235,
+    "date": true,
+    "tagline": true,
+    "chip": null,
+    "barOverflow": false,
+    "footerOverToggle": -174,
+    "footerOverLastItem": -214
+   },
+   "asBuilt": {
+    "tier": "xl",
+    "collision": -114,
+    "spare": 114,
+    "date": true,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -174,
+    "footerOverLastItem": -214
+   },
+   "widestChip": {
+    "tier": "xl",
+    "collision": -50,
+    "spare": 50,
+    "date": true,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -174,
+    "footerOverLastItem": -214
+   },
+   "widestChipNoDate": {
+    "tier": "xl",
+    "collision": -208,
+    "spare": 208,
+    "date": false,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -174,
+    "footerOverLastItem": -214
+   },
+   "simulatedNoDate": {
+    "tier": "xl",
+    "collision": -271,
+    "spare": 271,
+    "date": false,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -174,
+    "footerOverLastItem": -214
+   }
+  },
+  "1760": {
+   "before": {
+    "tier": "xl",
+    "collision": -315,
+    "spare": 315,
+    "date": true,
+    "tagline": true,
+    "chip": null,
+    "barOverflow": false,
+    "footerOverToggle": -24,
+    "footerOverLastItem": -64
+   },
+   "asBuilt": {
+    "tier": "xl",
+    "collision": -194,
+    "spare": 194,
+    "date": true,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -24,
+    "footerOverLastItem": -64
+   },
+   "widestChip": {
+    "tier": "xl",
+    "collision": -130,
+    "spare": 130,
+    "date": true,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -24,
+    "footerOverLastItem": -64
+   },
+   "widestChipNoDate": {
+    "tier": "xl",
+    "collision": -288,
+    "spare": 288,
+    "date": false,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -24,
+    "footerOverLastItem": -64
+   },
+   "simulatedNoDate": {
+    "tier": "xl",
+    "collision": -351,
+    "spare": 351,
+    "date": false,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -24,
+    "footerOverLastItem": -64
+   }
+  },
+  "1920": {
+   "before": {
+    "tier": "xl",
+    "collision": -475,
+    "spare": 475,
+    "date": true,
+    "tagline": true,
+    "chip": null,
+    "barOverflow": false,
+    "footerOverToggle": -204,
+    "footerOverLastItem": -244
+   },
+   "asBuilt": {
+    "tier": "xl",
+    "collision": -354,
+    "spare": 354,
+    "date": true,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -204,
+    "footerOverLastItem": -244
+   },
+   "widestChip": {
+    "tier": "xl",
+    "collision": -290,
+    "spare": 290,
+    "date": true,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -204,
+    "footerOverLastItem": -244
+   },
+   "widestChipNoDate": {
+    "tier": "xl",
+    "collision": -448,
+    "spare": 448,
+    "date": false,
+    "tagline": true,
+    "chip": "LIVE · RECONNECTING 152px",
+    "barOverflow": false,
+    "footerOverToggle": -204,
+    "footerOverLastItem": -244
+   },
+   "simulatedNoDate": {
+    "tier": "xl",
+    "collision": -511,
+    "spare": 511,
+    "date": false,
+    "tagline": true,
+    "chip": "SIMULATED 89px",
+    "barOverflow": false,
+    "footerOverToggle": -204,
+    "footerOverLastItem": -244
+   }
+  }
+ }
+}

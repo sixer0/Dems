@@ -1,0 +1,11 @@
+W54 gate run, performed fresh by coder-execution-local on 2026-10-05 (WIB) from /Users/gsp-budi/Documents/DEMS. Node v26.8.2, npm 11.19.1. Load at 11:34 was 3.92 4.36 4.78. One workspace at a time. No credential, token, cookie value or password appears below.
+
+$ python3 .cache/w54/mut/run_mutations.py run G05 W11 N39 N40   # the four survivors never re-tested by the row
+137 mutations in 18 modules; texts that do not occur exactly once: 0
+## 2026-10-05 11:36:23 WIB baseline: the three test files of the row, no mutation
+baseline exit=0 Test Files  3 passed (3) | Tests  84 passed (84) (21.9 s)
+W11 SURVIVED    exit=0 components/shell/mode-switch.tsx: a second press while switching sends a second switch [Test Files  2 passed (2) | Tests  62 passed (62)] failed tests: 0; first: - (9.8 s)
+N39 SURVIVED    exit=0 components/shell/live-notices.tsx: the first comparison after a sign-in reports a change [Test Files  2 passed (2) | Tests  62 passed (62)] failed tests: 0; first: - (15.9 s)
+N40 SURVIVED    exit=0 components/shell/live-notices.tsx: the notices are rendered in Simulated mode [Test Files  2 passed (2) | Tests  62 passed (62)] failed tests: 0; first: - (18.9 s)
+G05 SURVIVED    exit=0 routes/_app/admin/-guard.ts: the redirect leaves a history entry [Test Files  1 passed (1) | Tests  40 passed (40)] failed tests: 0; first: - (8.5 s)
+## 2026-10-05 11:37:38 WIB 4 mutations: 0 detected, 4 survived ['W11', 'N39', 'N40', 'G05'], 0 not applied []

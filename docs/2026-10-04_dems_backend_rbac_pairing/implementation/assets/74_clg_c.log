@@ -1,0 +1,20 @@
+## 23:54:01 CLG (c) over 24 production files of features/evidence
+-- grep -n useSimActions:
+   (grep exit 1; 1 = no match)
+-- grep -nE '<name containing sim/Sim>.actions':
+   (grep exit 1; 1 = no match)
+-- every '.actions' outside a quoted string, styles.actions excluded:
+   (end of list)
+-- useCoreActions() sites:
+   evidence-detail.tsx:13: * MS-2; AC-C-61). The Core's actions come from `useCoreActions()` in both modes (archive: site
+   evidence-detail.tsx:90:  const actions = useCoreActions();
+   evidence-list-screen.tsx:25: * comes from `useCoreActions()` in both modes; its result is handed to the dialog, which settles it.
+   evidence-list-screen.tsx:70:  const actions = useCoreActions();
+   export-sheet.tsx:22: * of `useCoreActions()` through `settle`, and the Core server is the judge:
+   export-sheet.tsx:109:  const actions = useCoreActions();
+   integrity-tab.tsx:19: * `useCoreActions()` (client gate CLG item (c)); in Simulated mode that is the same action.
+   integrity-tab.tsx:57:  const actions = useCoreActions();
+   live-integrity-tab.tsx:6: * `verify` action of `useCoreActions()`, through `settle`, in `use-core-verify.ts`) and shows its
+   sim-adapter.ts:24: * Backend task W74 (client gate CLG item (c), AC-C-53): the action comes from `useCoreActions()`
+   use-core-verify.ts:5: * - The ONE way in (rule 1 of the mobile page rows): the `verify` action of `useCoreActions()`
+   use-core-verify.ts:45:  const actions = useCoreActions();

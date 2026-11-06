@@ -1,0 +1,24 @@
+# Step 66 (W44): baseline before the first edit, from /Users/gsp-budi/Documents/DEMS
+## 2026-10-04 11:25:24 WIB $ npm run test -w @dems/shared -- --maxWorkers=2
+
+ Test Files  57 passed (57)
+      Tests  1406 passed (1406)
+   Start at  11:25:25
+   Duration  5.27s (tests 49%, import 39%, transform 11%, worker 1%)
+
+    Isolate  57 workers spawned · ~50ms startup each (spawn + environment, per file)
+             at least ~1.37s faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+## 11:25:30 $ npm run typecheck -w @dems/shared
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 11:25:33 $ npm run lint -w @dems/shared
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0

@@ -1,0 +1,13 @@
+10:10:42.661 tap 539,2028
+10:10:42.927 slept 900 ms
+10:10:43.894 text typed (E2E-P phone note); inputType 0x4001
+10:10:44.952 slept 800 ms
+10:10:45.797 screencap 31b_monitor_bookmark_label_typed.png 10:10:45.797..10:10:46.715
+10:10:46.952 key 66
+10:10:47.099 slept 2500 ms
+10:10:49.646 screencap 32_monitor_marker_added.png 10:10:49.646..10:10:50.390
+10:10:50.539 corelog (1): 10:10:46.979 POST /api/v1/session/{id}/markers 204
+10:10:50.609 serverlog since a26 (2):
+    10:10:17.950 POST /api/v1/auth/touch 200 operator:OPR-001
+    10:10:47.230 POST /api/v1/session/:id/markers 204 operator:OPR-001
+10:10:50.641 js => [[277,"MARKER_ADDED","OPR-001","SES-20261006-0030","10:10:47","null"],[276,"FRAME_HASH",null,"SES-20261006-0030","10:10:45","null"],[275,"WRITE_VERIFIED",null,"SES-20261006-0030","10:10:43","null"]]

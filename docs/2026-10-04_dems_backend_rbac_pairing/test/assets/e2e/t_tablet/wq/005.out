@@ -1,0 +1,5 @@
+typed into sm-note-input: Supervisor note E2E-T: confirm subject ID before questioning
+mark B4 web Save note at 10:39:51.387
+press sm-note-submit: true at 10:39:51.398
+waitgone sm-note-drawer: true at 10:39:51.707
+shot B13_web_note_saved.png at 10:39:51.950

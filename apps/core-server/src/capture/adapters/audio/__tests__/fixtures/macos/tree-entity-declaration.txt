@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist [
+  <!ENTITY a "DEMS DEMS DEMS DEMS DEMS DEMS DEMS DEMS DEMS DEMS">
+  <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">
+  <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">
+  <!ENTITY place SYSTEM "file:///synthetic/not-a-real-place">
+]>
+<plist version="1.0">
+<array>
+	<dict>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>bInterfaceClass</key>
+				<integer>1</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>2</integer>
+			</dict>
+		</array>
+		<key>IORegistryEntryLocation</key>
+		<string>01120000</string>
+		<key>USB Product Name</key>
+		<string>&c;&place;</string>
+		<key>idProduct</key>
+		<integer>6</integer>
+		<key>idVendor</key>
+		<integer>6699</integer>
+		<key>locationID</key>
+		<integer>17956864</integer>
+	</dict>
+</array>
+</plist>

@@ -1,0 +1,42 @@
+{
+  "label": "again",
+  "operator": {
+    "username": "budi.santoso",
+    "id": "OPR-001",
+    "role": "INVESTIGATOR"
+  },
+  "deviceT0": "10-06 10:14:04.000",
+  "clock": {
+    "offsetMs": -440,
+    "bracketMs": 96
+  },
+  "prefill": {
+    "file": "06_phone_login_prefilled.png",
+    "bytes": 1263424,
+    "at": "10:14:10.806 (epoch 1791256450.806)"
+  },
+  "submitAt": "10:14:10.892 (epoch 1791256450.892)",
+  "signIn": {
+    "deviceEpoch": 1791256451.168,
+    "method": "POST",
+    "path": "/api/v1/auth/sign-in",
+    "status": "200",
+    "deviceTime": "10:14:11.168 (epoch 1791256451.168)"
+  },
+  "after": {
+    "keyguard": "false",
+    "focus": "mCurrentFocus=Window{e557fa8 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}",
+    "appFocused": true
+  },
+  "afterShot": {
+    "file": "06_phone_signed_in.png",
+    "bytes": 202917,
+    "at": "10:14:19.295 (epoch 1791256459.295)"
+  },
+  "appRequests": [
+    "10:14:11.168 (epoch 1791256451.168) POST /api/v1/auth/sign-in 200",
+    "10:14:16.377 (epoch 1791256456.377) GET /api/v1/health 200"
+  ],
+  "credentialLinesDeviceJs": 0,
+  "passwordInDeviceJs": 0
+}

@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Mutation check of the CP-W1 fix round, on the SCRATCH copy only (rule M15): each mutation changes
+one file of the scratch tree under $TMPDIR, runs the tests named for it, counts the failed tests, and
+puts the file back. The workspace tree at /Users/gsp-budi/Documents/DEMS is never written. A mutation
+is DETECTED when at least one test fails. Usage: mutate_cpw1.py [ids...]"""
+import pathlib
+import re
+import subprocess
+import sys
+
+ROOT = pathlib.Path('/var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T/kilo/cpw1-mut')
+WEB = ROOT / 'apps' / 'core-web'
+assert str(ROOT).startswith('/private/var/folders/') or str(ROOT).startswith('/var/folders/'), ROOT
+
+IND = 'src/test/live-shell-indicator.test.tsx'
+LOGIN = 'src/test/live-login-page.test.tsx'
+PRES = 'src/test/live-login-presentation.test.tsx'
+MODEL = 'src/test/live-login-model.test.tsx'
+NOTI = 'src/test/live-shell-notices.test.tsx'
+ADMIN = 'src/test/live-shell-admin.test.tsx'
+
+# id, file (relative to apps/core-web), old, new, tests
+MUTATIONS = [
+    # ── item 1: one copy of the mode switch, with the login record discipline (D144(1), CPW1-1/-8) ──
+    ('R1 the sink writes the raw message of the error again (CPW1-8 undone)',
+     'src/components/shell/shell-report.ts',
+     '    message,\n',
+     '    message: error instanceof Error ? error.message : String(error),\n',
+     [IND, LOGIN]),
+    ('R2 the Login page stops naming itself: the source argument is dropped',
+     'src/features/login/index.tsx',
+     "useModeSwitch('login.modeSwitch')",
+     'useModeSwitch()',
+     [LOGIN]),
+    ('R3 the surviving copy renames its dialog test ID (the four pinning surfaces)',
+     'src/components/shell/mode-switch.tsx',
+     'data-testid="mode-switch-dialog"',
+     'data-testid="mode-switch-dialog-x"',
+     [IND, LOGIN, NOTI, ADMIN]),
+    ('R4 the switch no longer refuses a second press while it runs',
+     'src/components/shell/mode-switch.tsx',
+     'if (control === null || target === null || switching) return',
+     'if (control === null || target === null) return',
+     [IND]),
+    # ── item 2: the tone follows the link (D144(2), CPW1-6) ─────────────────────────────────────
+    ('T1 the tone ignores the link: every RECONNECTING reads warning',
+     'src/components/shell/mode-indicator.tsx',
+     "state === 'RECONNECTING' && isLinkUp(link)",
+     "state === 'RECONNECTING'",
+     [IND]),
+    ('T2 the tone comes from the label alone again (D144(2) undone)',
+     'src/components/shell/mode-indicator.tsx',
+     "const tone = state === 'RECONNECTING' && isLinkUp(link) ? 'warning' : CHIP_COLOR[state]",
+     'const tone = CHIP_COLOR[state]',
+     [IND]),
+    # ── item 3: the follow-up lives in runtime/presentation-follow.ts (D144(4), CPW1-4) ─────────
+    ('P1 the follow-up no longer writes the tab-local flag',
+     'src/runtime/presentation-follow.ts',
+     'if (enabled !== null && enabled !== getPresentationMode()) setPresentationMode(enabled)',
+     'if (false && enabled !== null) setPresentationMode(enabled)',
+     [PRES]),
+    ('P2 the follow-up does not fire at the load',
+     'src/runtime/presentation-follow.ts',
+     '{ fireImmediately: true },',
+     '{}',
+     [PRES]),
+    ('P3 the root installs it twice (the loose pin of CPW1-5 must catch it)',
+     'src/routes/__root.tsx',
+     '  useEffect(() => (live ? followServerPresentationMode(live) : undefined), [live])',
+     '  useEffect(() => (live ? followServerPresentationMode(live) : undefined), [live])\n  useEffect(() => (live ? followServerPresentationMode(live) : undefined), [live])',
+     [MODEL]),
+    # ── item 4: the bed owns the global fetch (CPW1-3) ──────────────────────────────────────────
+    ('H1 the bed no longer owns the global fetch (CPW1-3 undone)',
+     'src/runtime/testing/live-harness.ts',
+     '  const releaseFetch = holdGlobalFetch(fake.fetch as unknown as typeof globalThis.fetch)',
+     '  const releaseFetch = (): void => {}',
+     [LOGIN]),
+    ('H2 the bed leaves getServiceHealth unscripted',
+     'src/runtime/testing/live-harness.ts',
+     "  answered('getServiceHealth', () => ({ status: 200, body: coreHealth() }))\n",
+     '',
+     [LOGIN]),
+    # ── item 5: the widths are read, not string-matched (CPW1-5) ────────────────────────────────
+    ('C1 the date rule of 1520 px hides another item instead',
+     'src/components/shell/shell.css',
+     '  @media (width < 1520px) {\n    .dems-topbar-date,\n    .dems-topbar-date + .dems-topbar-sep {',
+     '  @media (width < 1520px) {\n    .dems-topbar-lockup,\n    .dems-topbar-lockup + .dems-topbar-sep {',
+     [IND]),
+    ('C2 the Live-only date rule loses its mode key',
+     'src/components/shell/shell.css',
+     "  @media (width < 1664px) {\n    .dems-shell[data-core-mode='LIVE'] .dems-topbar-date,\n    .dems-shell[data-core-mode='LIVE'] .dems-topbar-date + .dems-topbar-sep {",
+     '  @media (width < 1664px) {\n    .dems-shell .dems-topbar-date,\n    .dems-shell .dems-topbar-date + .dems-topbar-sep {',
+     [IND]),
+    ('C3 the date yields at another width than the measured one',
+     'src/components/shell/shell.css',
+     '  @media (width < 1520px) {\n    .dems-topbar-date,',
+     '  @media (width < 1200px) {\n    .dems-topbar-date,',
+     [IND]),
+    ('C4 the clock rule of 432 px disappears',
+     'src/components/shell/shell.css',
+     '  @media (width < 432px) {\n    .dems-topbar-clock {\n      display: none;\n    }\n  }\n',
+     '',
+     [IND]),
+]
+
+
+def run(tests: list[str]) -> tuple[int, int]:
+    """Runs the named files on the scratch tree; returns (failed, total) tests."""
+    proc = subprocess.run(
+        ['npx', 'vitest', 'run', *tests, '--maxWorkers=2'],
+        cwd=str(WEB), capture_output=True, text=True, timeout=1_800,
+    )
+    out = proc.stdout + proc.stderr
+    lines = [ln for ln in out.splitlines() if re.match(r'\s*Tests\s+\d', ln)]
+    if not lines:
+        raise RuntimeError('no runner summary:\n' + out[-3000:])
+    summary = lines[-1]
+    failed = sum(int(m) for m in re.findall(r'(\d+) failed', summary))
+    passed = sum(int(m) for m in re.findall(r'(\d+) passed', summary))
+    return failed, failed + passed
+
+
+def main() -> int:
+    wanted = set(sys.argv[1:])
+    detected = 0
+    rows = []
+    for mid, rel, old, new, tests in MUTATIONS:
+        if wanted and mid.split()[0] not in wanted:
+            continue
+        path = WEB / rel
+        text = path.read_text()
+        if text.count(old) != 1:
+            rows.append((mid, f'SKIPPED (anchor found {text.count(old)} times)'))
+            continue
+        path.write_text(text.replace(old, new, 1))
+        try:
+            failed, total = run(tests)
+        finally:
+            path.write_text(text)
+        ok = failed > 0
+        detected += 1 if ok else 0
+        rows.append((mid, f'{"DETECTED" if ok else "SURVIVED"} ({failed} of {total} tests fail)'))
+        print(f'{mid:78s} {"DETECTED" if ok else "SURVIVED"} ({failed}/{total})', flush=True)
+    print(f'\n{detected} of {len(rows)} mutations detected.')
+    for mid, verdict in rows:
+        print(f'  {verdict:28s} {mid}')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

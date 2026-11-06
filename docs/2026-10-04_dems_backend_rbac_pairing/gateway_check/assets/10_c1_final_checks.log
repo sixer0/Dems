@@ -1,0 +1,16 @@
+## final: gen-openapi --check, 09:23:07
+packages/shared/openapi/openapi.json is up to date (all (committed): 75 operations, 2 security schemes, version 0.2.1; offline: 10 operations, 0 security schemes, version 0.1.0)
+exit 0
+offline sha256 now: 360019bc02f8a4a0255d7a5df9bfe7d074d41f26f1a04a55551bf7b0d7263c10  -
+## the 78 protected test files against test/assets/01_protected_tests_sha256.txt
+shasum -c exit 0; files listed: 78
+## C1 files: SHA-256 now (pre-images in .cache/rollback/C1/C1.pre.sha256)
+54eae2034cd4fe074475ae51a614d93fb43e14b04a6851166874e5e14b498419  apps/mobile/src/runtime/log.ts
+343a7c4aedbe3d577d17948bfc881298e9f15d0107894af9b4bf06566e68cf18  apps/mobile/src/runtime/log-flush-timer.test.ts
+177a80f4d1e81506989e5e58b330adbdd39e31b1da2017c6c8ce7c0dd823bad6  apps/core-server/test/acceptance/shared-state.test.ts
+5aaaeea2124c3ae0c931b88a212bcfdfeff0f287861d637bc07b7871c4d4e216  packages/shared/src/api/examples.ts
+03c15d670dc22e0ad598e29a984be038fcf9ac2198ed3e3474477d6e10b87776  packages/shared/src/api/openapi.ts
+f6fa37626b23036f287443e127823acb4eb68826c09f969720044d3d1efe2d83  packages/shared/openapi/openapi.json
+2ca2b09139fe71e5275f003141cea0b0e505bfb046043e0a9b6c9b50d73a13b1  packages/shared/test/api-openapi-scope.test.ts
+2ad899e85234ce363f64651bcc35f35f065acd4ffbcf537e19fc691b0e5639aa  package.json
+64ec762b9d7faeb90db1986d68e91f752bd8dd4c7dde6e512ce278de68ab8dcc  README.md

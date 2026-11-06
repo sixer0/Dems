@@ -1,0 +1,22 @@
+2026-10-06T06:41:19.314Z browser pid 30135, CDP port 50626 (OS-assigned), owner verified
+2026-10-06T06:41:19.383Z viewport 1440x900
+2026-10-06T06:41:21.553Z signed in as andi.pratama (SUPERVISOR); landed on /dashboard
+2026-10-06T06:41:24.627Z inventory: 14 items; keys ["items","nextCursor"]
+2026-10-06T06:41:24.627Z   EV-20261006-0014 SEALED media="DEMO_PACKAGE" multiWord=[{"action":"RECORDING_STOPPED","detail":"R-W re-test: interview ended by the supervisor from the web console"}]
+2026-10-06T06:41:24.627Z   EV-20261006-0013 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:41:24.627Z   EV-20261006-0012 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:41:24.627Z   EV-20261006-0011 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:41:24.627Z   EV-20261006-0010 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:41:24.627Z   EV-20261006-0009 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:41:24.627Z   EV-20261006-0008 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:41:24.627Z   EV-20261006-0007 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:41:24.627Z   EV-20261005-0006 RECORDED media="DEMO_PACKAGE" multiWord=[{"action":"SESSION_INCOMPLETE","detail":"Power fail; recovered"}]
+2026-10-06T06:41:24.627Z   EV-20261005-0005 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:41:24.627Z   EV-20261005-0004 EXPORTED media="DEMO_PACKAGE" multiWord=[{"action":"EXPORTED","detail":"Case file transfer (simulated)"}]
+2026-10-06T06:41:24.627Z   EV-20261005-0003 UNDER_REVIEW media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:41:24.627Z   EV-20261004-0002 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:41:24.627Z   EV-20261004-0001 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:41:24.627Z target EV-20261006-0014
+2026-10-06T06:41:24.627Z exceptions: 0; blocked requests: 0
+2026-10-06T06:41:24.641Z sign-out POST /api/v1/auth/sign-out -> 204
+2026-10-06T06:41:25.180Z browser closed, profile removed

@@ -1,0 +1,8 @@
+10:18:25.804 tapid recovery-other-action at 540,1374 "Return to the session"
+10:18:28.813 slept 2500 ms
+10:18:31.363 declared screen live
+10:18:31.388 screencap 45_monitor_after_recovery_return.png 10:18:31.389..10:18:31.660
+10:18:31.688 tap 539,2266
+10:18:31.787 slept 1800 ms
+10:18:33.628 screencap 46_end_session_dialog.png 10:18:33.628..10:18:33.850
+10:18:33.892 focused true; keyguard false; inputType 0x0

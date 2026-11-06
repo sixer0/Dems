@@ -1,0 +1,56 @@
+// Scratch configuration of plan row W28, step c (finding CPS1-3). Outside the repository: the
+// harness of section 12 of the row's log, with two more modes. It is the workspace's own
+// configuration plus ONE load-time transform; no file of the tree is changed (rule M15).
+//
+//   W28C_MUTATION=<id>          one production file is given to Vitest with ONE text replaced
+//   W28C_STATE=no-evaluation    the three files of the guard as they were BEFORE the step (their
+//                               pre-images), on the contract as it is now: the condition is in
+//                               the registry and stage 6 does not evaluate it
+//   W28C_STATE=before-step      the same, and the three contract sources as they were before the
+//                               patch: the server as it was before the step
+import { readFileSync } from 'node:fs';
+import { mergeConfig } from 'vitest/config';
+import base from '/Users/gsp-budi/Documents/DEMS/apps/core-server/vitest.config.ts';
+
+const WORKSPACE = '/Users/gsp-budi/Documents/DEMS';
+const ROOT = `${WORKSPACE}/apps/core-server`;
+const PRE = `${WORKSPACE}/.cache/rollback/guard_condition_op23`;
+const preImageOf = (path) => `${PRE}/${path.replaceAll('/', '~')}.pre`;
+const GUARD = ['decision.ts', 'denial.ts', 'index.ts'].map((name) => `apps/core-server/src/plugins/permission-guard/${name}`);
+const CONTRACT = ['contract-model.ts', 'example-parts.ts', 'pairing.ts'].map((name) => `packages/shared/src/api/${name}`);
+
+const mutations = JSON.parse(readFileSync(new URL('./mutations.json', import.meta.url), 'utf8'));
+const chosen = process.env.W28C_MUTATION ?? '';
+const mutation = chosen === '' ? null : mutations.find((entry) => entry.id === chosen);
+if (chosen !== '' && !mutation) throw new Error(`no mutation ${chosen}`);
+const state = process.env.W28C_STATE ?? '';
+if (!['', 'no-evaluation', 'before-step'].includes(state)) throw new Error(`no state ${state}`);
+const replaced = state === '' ? [] : state === 'no-evaluation' ? GUARD : [...GUARD, ...CONTRACT];
+const served = new Set();
+
+const plugin = {
+  name: 'w28c-transform',
+  enforce: 'pre',
+  load(id) {
+    const file = id.split('?')[0];
+    for (const path of replaced) {
+      if (file === `${WORKSPACE}/${path}`) {
+        if (!served.has(path)) {
+          served.add(path);
+          console.info(`[w28c] ${state}: ${path} is served from its pre-image`);
+        }
+        return readFileSync(preImageOf(path), 'utf8');
+      }
+    }
+    if (mutation !== null && file === `${ROOT}/${mutation.file}`) {
+      const source = readFileSync(file, 'utf8');
+      if (!source.includes(mutation.from)) throw new Error(`mutation ${mutation.id}: the text to replace is not in ${mutation.file}`);
+      return source.replace(mutation.from, () => mutation.to);
+    }
+    return null;
+  },
+};
+
+const merged = mergeConfig(base, { root: ROOT, plugins: [plugin] });
+merged.test.projects = merged.test.projects.map((project) => ({ ...project, plugins: [plugin] }));
+export default merged;

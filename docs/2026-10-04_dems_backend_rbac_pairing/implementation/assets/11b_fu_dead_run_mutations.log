@@ -1,0 +1,41 @@
+# Mutations of TestRun.dropDeadRun and its guard, applied one at a time to the scratch copy OUTSIDE the repository (rule M15); test file: __tests__/dead-run.test.ts (project unit). 2026-10-04 18:11:31 WIB
+M0 unchanged:  Test Files 1 passed (1); Tests 69 passed (69);
+M1 a run that is alive is not refused [run.ts: 'if (!(await tryLivenessLock(this.#session, key))) {
+      throw new DbTestHelperError(
+        'RUN_ALIVE',' -> 'await tryLivenessLock(this.#session, key);
+    if (key < 0) {
+      throw new DbTestHelperError(
+        'RUN_ALIVE',']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 2 failed | 67 passed (69);
+M2 client sessions do not stop it [run.ts: 'if (busy !== '') {' -> 'if (busy === 'never') {']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 3 failed | 66 passed (69);
+M3 no second look after the settle time [run.ts: 'if (busy === '') {
+        await pause(settleMs);' -> 'if (busy === 'never') {
+        await pause(settleMs);']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 2 failed | 67 passed (69);
+M4 a session of the owner role does not count [run.ts: 'if ((await sessionRolesWithPrefix(this.#session, prefix)).length === 0) return '';' -> 'if ((await sessionRolesWithPrefix(this.#session, prefix)).filter((role) => role !== OWNER_ROLE).length === 0) return '';']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 1 failed | 68 passed (69);
+M5 the caller's own run is not refused [run.ts: 'if (dead.prefix === this.identity.prefix) {' -> 'if (dead.prefix === "never") {']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 1 failed | 68 passed (69);
+M6 a test file may call it [run.ts: 'this.#assertOwner('drop the databases of a dead run');' -> 'void 0;']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 1 failed | 68 passed (69);
+M7 the liveness lock is kept [run.ts: 'await releaseLivenessLock(this.#session, key).catch(() => undefined);
+    }
+  }' -> 'void key;
+    }
+  }']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 4 failed | 65 passed (69);
+M8 every test database is listed, not the named run's [run.ts: 'const rows = await listDatabasesWithPrefix(this.#session, dead.prefix);
+      for (const name of clonesFirst(rows.map((row) => row.name))) {
+        try {
+          await this.#dropGuarded(guardDeadRunDatabase' -> 'const rows = await listDatabasesWithPrefix(this.#session, TEST_DATABASE_PREFIX);
+      for (const name of clonesFirst(rows.map((row) => row.name))) {
+        try {
+          await this.#dropGuarded(guardDeadRunDatabase']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 3 failed | 66 passed (69);
+M9 a prefix may be followed by more text [names.ts: 'const RUN_PREFIX_PATTERN = /^dems_test_(local|step_[a-z0-9]{1,12})_([0-9a-z]{8})_$/;' -> 'const RUN_PREFIX_PATTERN = /^dems_test_(local|step_[a-z0-9]{1,12})_([0-9a-z]{8})_/;']: ⎯⎯⎯⎯⎯⎯ Failed Tests 10 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 10 failed | 59 passed (69);
+M10 the guard passes a database of another run [names.ts: 'if (!name.startsWith(claim.run.prefix) || name.length === claim.run.prefix.length) {
+    throw new DbGuardError(
+      'GUARD_FOREIGN_RUN',
+      name,
+      `refused before any statement: ${JSON.stringify(name)} is not a database of the run ${claim.run.prefix}* that was named.`,
+    );
+  }
+  // The same test as for a database of the caller's own run, against the run that was named.
+  return guardOwnDatabase(name, claim.run, 'drop');' -> 'const parsedRun = parseTestDatabaseName(name)?.run ?? claim.run;
+  return guardOwnDatabase(name, parsedRun, 'drop');']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 1 failed | 68 passed (69);
+M11 the guard passes the caller's own run when it is claimed [names.ts: 'if (claim.run.prefix === own.prefix) {' -> 'if (claim.run.prefix === "never") {']: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯; Test Files 1 failed (1); Tests 1 failed | 68 passed (69);
+restored:  Test Files 1 passed (1); Tests 69 passed (69);
+the scratch copy is as it was before the mutations

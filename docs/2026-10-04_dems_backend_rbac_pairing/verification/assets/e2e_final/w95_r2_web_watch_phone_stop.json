@@ -1,0 +1,35 @@
+{
+  "tag": "w95_r2_web_watch_phone_stop",
+  "expr": "[document.querySelector('[data-testid=page-session-monitor]')?.getAttribute('data-session-state') ?? null, document.querySelector('[data-testid=finalization-modal]') ? 'final-modal' : null, document.querySelector('[data-testid=sm-final-sealed]') ? 'sealed' : null]",
+  "sameDocument": true,
+  "events": [
+    {
+      "at": "09:09:59.092 (epoch 1791338999.092)",
+      "atMs": 1791338999092,
+      "value": "[\"RECORDING\",null,null]"
+    },
+    {
+      "at": "09:10:02.241 (epoch 1791339002.241)",
+      "atMs": 1791339002241,
+      "value": "[\"STOPPING\",\"final-modal\",null]"
+    },
+    {
+      "at": "09:10:03.814 (epoch 1791339003.814)",
+      "atMs": 1791339003814,
+      "value": "[\"FINALIZING\",\"final-modal\",null]"
+    },
+    {
+      "at": "09:10:09.410 (epoch 1791339009.410)",
+      "atMs": 1791339009410,
+      "value": "[\"SEALED\",\"final-modal\",\"sealed\"]"
+    }
+  ],
+  "network": {
+    "api": [],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [],
+    "console": []
+  }
+}

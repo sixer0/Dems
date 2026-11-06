@@ -1,0 +1,188 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+    "headless": true
+  },
+  "viewport": "1920x1080",
+  "steps": {
+    "simulated": {
+      "signOutOfLive": null,
+      "loginCoreMode": "SIMULATED",
+      "submitDisabledOnTheLoginPage": true,
+      "signInPath": "stored simulated sign-in (dems.auth), because Sign In is disabled while mock-core is offline",
+      "dashboardShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/dashboard",
+        "onDashboard": true,
+        "panels": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e",
+          "f",
+          "g",
+          "h",
+          "i",
+          "j"
+        ],
+        "shellMode": "SIMULATED",
+        "shellCoreMode": "SIMULATED",
+        "user": "Account menu: AKP Andi Pratama",
+        "strip": {
+          "cameras": "2 Cameras: Ready. Open Devices & Inputs",
+          "mics": "2 Microphones: Ready. Open Devices & Inputs",
+          "storage": "Storage: 3.2 TB Free. Open Storage",
+          "time": "GNSS / Time: Synchronized. Open Network & Time",
+          "security": "Security: Secure. Open Security & Audit",
+          "network": "Network: Connected. Open Network & Time"
+        },
+        "tiles": {
+          "CAM-01": "READY",
+          "CAM-02": "READY",
+          "MIC-01": "READY",
+          "MIC-02": "READY"
+        },
+        "sessionView": [
+          "session-idle"
+        ],
+        "sealedManifestSource": null,
+        "sealedToday": "7",
+        "recentEvents": 6,
+        "saysSimulated": true,
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/63_dashboard_simulated.png",
+      "menu": {
+        "opened": true,
+        "items": [
+          {
+            "text": "Details",
+            "disabled": false
+          },
+          {
+            "text": "Test signal (simulated)Requires the Technician role",
+            "disabled": true
+          },
+          {
+            "text": "Restart (simulated)Requires the Technician role",
+            "disabled": true
+          }
+        ]
+      },
+      "menuScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/63_dashboard_simulated_menu.png",
+      "apiRequestsToTheDevServer": 0,
+      "socketsToTheDevServerWs": 0,
+      "network": {
+        "api": [],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          }
+        ],
+        "console": []
+      }
+    }
+  },
+  "elapsedSeconds": 16
+}

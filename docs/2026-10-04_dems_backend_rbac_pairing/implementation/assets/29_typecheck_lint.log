@@ -1,0 +1,15 @@
+2026-10-04 11:41:06 WIB
+$ npm run typecheck -w @dems/core-server
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+exit=0
+$ npm run lint -w @dems/core-server
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+src/engine/__tests__/support.ts:60:31: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.
+src/plugins/readiness/__tests__/readiness.test.ts:251:11: warning eslint(no-unused-vars): Variable 'unit' is declared but never used. Unused variables should start with a '_'. help: Consider removing this declaration.
+exit=0

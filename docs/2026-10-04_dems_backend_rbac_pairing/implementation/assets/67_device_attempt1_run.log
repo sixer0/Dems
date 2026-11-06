@@ -1,0 +1,75 @@
+
+== 23:12:34 0. before (no reset): listeners free?; dems_lane_1 as W60/W66 left it
+   audit_log                119
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 23:12:34 1. start the lane backend (demo flag off)
+npm PID 94479, listener PID 94523
+   "port":4421,"database":"dems_lane_1","demoControls":false
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T16:12:35.918Z","uptimeMs":382,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 23:12:35 2. device session: phone, Metro 8083, tcp:4420 -> tcp:4421 (cap 570 s)
+[device-session phone 23:12:35] lock held; hard cap 570 s, until 23:22:05 (watchdog PID 94572)
+[device-session phone 23:12:35] session serial: emulator-5554 (dems2_phone)
+[device-session phone 23:12:36] emulator-5554: screen awake, no keyguard
+[device-session phone 23:12:36] Metro PID 94608 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session phone 23:12:38] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 23:12:38] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 23:12:38] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), lane port 4421, run w67231234
+== D1. cold launch in LIVE mode on the PAIRED phone (motion off for uiautomator) ==
+-- am start -W -d 'demsdemo:///?core=LIVE&motion=off'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 2 s for: runtime.live.ready
+-- waited 0 s for: DEMS-LIVE\] GET /api/v1/pairing/device 200
+== D2..D8: the UI driver (sign-in, Start Session, hand-off, End Session) ==
+ERROR: could not get idle state.
+cat: /sdcard/w67.xml: No such file or directory
+ERROR: could not get idle state.
+ERROR: could not get idle state.
+ERROR: could not get idle state.
+/Users/gsp-budi/Documents/DEMS/.cache/w67/device_w67.sh: line 30: 94998 Terminated: 15          node --import tsx .cache/w67/drive_w67.mts "$SERIAL" "$OUT" "$T0"
+-- driver exit: 143
+-- Core request lines this session (method, path template, status):
+     12 DEMS-LIVE] GET /api/v1/health 200
+      1 DEMS-LIVE] GET /api/v1/pairing/device 200
+      1 DEMS-LIVE] GET /api/v1/auth/status 200
+      1 DEMS-LIVE] GET /api/v1/auth/session 401
+-- live.misuse lines: 0; credential/token lines (must be 0): 0
+-- 'session is already active' lines in the JS log: 0
+== D9. leave the app in SIMULATED mode as found (D124) ==
+-- am start -W -d 'demsdemo:///?core=SIMULATED'
+   Status: ok
+   LaunchState: COLD
+   TotalTime: 9689
+-- waited 0 s for runtime.sim.hydrated; Core requests after (must be 0): 0
+-- prefs after: {"coreLinkSource":"SIMULATED"}
+
+-- screencap: 67_phone_after_simulated.png
+-- lock at end: isKeyguardShowing=false; fps "count":1
+[device-session phone 23:15:03] Metro 94608 stopped
+[device-session phone 23:15:03] session ended with status 143
+device session exit=143
+
+== 23:15:03 3. backend request log during the session
+      1 GET /api/v1/auth/session 401 principal=device
+      1 GET /api/v1/auth/status 200 principal=device
+     12 GET /api/v1/health 200 principal=device
+      1 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/device 200 principal=device
+-- audit rows of the session this run:
+-- bearer/cookie/credential lines in the server log this run (must be 0): 0
+
+== 23:15:03 4. stop the backend and check nothing is left
+-- shutdown complete lines: 1
+lsof exit 1 (1 = none)
+   audit_log                121
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 23:15:04 end of run w67231234
+run exit=143

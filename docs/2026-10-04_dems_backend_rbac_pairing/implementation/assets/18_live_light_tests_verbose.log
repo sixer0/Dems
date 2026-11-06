@@ -1,0 +1,109 @@
+$ npm run test -w @dems/shared -- --maxWorkers=2 --reporter=verbose test/live-light
+2026-10-04 07:51:00 WIB
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2 --reporter=verbose test/live-light
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+ ✓ test/live-light-mode.test.ts > mode values (§3.1) > has two data modes and SIMULATED as the default 1ms
+ ✓ test/live-light-mode.test.ts > mode values (§3.1) > has the five link states of the Live source (CL-15) 0ms
+ ✓ test/live-light-mode.test.ts > parseCoreMode (MD-2: any other value counts as absent) > accepts exactly the two stored values 0ms
+ ✓ test/live-light-mode.test.ts > parseCoreMode (MD-2: any other value counts as absent) > answers null for anything else: another case, padding, another word, another type 0ms
+ ✓ test/live-light-mode.test.ts > parseCoreMode (MD-2: any other value counts as absent) > gives the default when the stored value is absent or invalid 0ms
+ ✓ test/live-light-mode.test.ts > a simulator means SIMULATED (TS-3) > coreModeOf is SIMULATED; liveOf and liveLinkOf are null 5ms
+ ✓ test/live-light-mode.test.ts > a simulator means SIMULATED (TS-3) > corePermissionOf is false, signed out and signed in: the simulator keeps its own hint (selectCan) 2ms
+ ✓ test/live-light-mode.test.ts > a simulator means SIMULATED (TS-3) > only the exact marker makes a Live source 6ms
+ ✓ test/live-light-mode.test.ts > a Live source means LIVE > coreModeOf is LIVE and liveOf returns the source itself 1ms
+ ✓ test/live-light-mode.test.ts > a Live source means LIVE > liveLinkOf follows the link 1ms
+ ✓ test/live-light-mode.test.ts > a Live source means LIVE > corePermissionOf reads the server's effective permission list; false while signed out 1ms
+ ✓ test/live-light-mode.test.ts > a Live source means LIVE > onLiveChange reports every change and stops after its unsubscribe 1ms
+ ✓ test/live-light-mode.test.ts > mode helpers: types > liveOf returns the light handle by default and the named shape with a type argument 0ms
+ ✓ test/live-light-hooks.test.ts > Simulated mode: a simulator in SimContext (AC-C-06 identity part, TS-2, TS-3) > useCoreActions() returns sim.actions itself 10ms
+ ✓ test/live-light-hooks.test.ts > Simulated mode: a simulator in SimContext (AC-C-06 identity part, TS-2, TS-3) > useCoreActions() returns the very object useSimActions() returns, on every render 3ms
+ ✓ test/live-light-hooks.test.ts > Simulated mode: a simulator in SimContext (AC-C-06 identity part, TS-2, TS-3) > an action taken through the hook answers at once: a plain value, the effect already rendered state 3ms
+ ✓ test/live-light-hooks.test.ts > Simulated mode: a simulator in SimContext (AC-C-06 identity part, TS-2, TS-3) > useCoreMode() is SIMULATED, useLive() is null, useLiveLink() is null 5ms
+ ✓ test/live-light-hooks.test.ts > Simulated mode: a simulator in SimContext (AC-C-06 identity part, TS-2, TS-3) > useCorePermission() is false while the simulator's own hint (selectCan) stays as it is 2ms
+ ✓ test/live-light-hooks.test.ts > Simulated mode: a simulator in SimContext (AC-C-06 identity part, TS-2, TS-3) > the light API calls no network function and builds no connection object 12ms
+ ✓ test/live-light-hooks.test.ts > Live mode: a Live source in SimContext (CL-15) > useCoreMode() is LIVE and useLive() returns the source itself 1ms
+ ✓ test/live-light-hooks.test.ts > Live mode: a Live source in SimContext (CL-15) > useCoreActions() returns the source's actions object itself 1ms
+ ✓ test/live-light-hooks.test.ts > Live mode: a Live source in SimContext (CL-15) > useLiveLink() shows the link and renders again on every change 1ms
+ ✓ test/live-light-hooks.test.ts > Live mode: a Live source in SimContext (CL-15) > useCorePermission() follows the session: signed out, granted, role changed, signed out 2ms
+ ✓ test/live-light-hooks.test.ts > Live mode: a Live source in SimContext (CL-15) > does not render again when a change leaves the value as it was 1ms
+ ✓ test/live-light-hooks.test.ts > Live mode: a Live source in SimContext (CL-15) > subscribes once per hook and ends the subscription on unmount 1ms
+ ✓ test/live-light-hooks.test.ts > hooks: provider and types > needs a SimProvider, as useSimActions() does 2ms
+ ✓ test/live-light-hooks.test.ts > hooks: provider and types > types 0ms
+ ✓ test/live-light-settle.test.ts > settle: a plain value (Simulated mode), AC-C-09 > runs the action, then ok, then done, all before settle returns 1ms
+ ✓ test/live-light-settle.test.ts > settle: a plain value (Simulated mode), AC-C-09 > treats undefined, null and every falsy value as a plain value: a void action succeeds 0ms
+ ✓ test/live-light-settle.test.ts > settle: a plain value (Simulated mode), AC-C-09 > hands an object result over as it is: same reference, not a copy and not a promise 0ms
+ ✓ test/live-light-settle.test.ts > settle: a plain value (Simulated mode), AC-C-09 > queues no microtask of its own: a microtask queued before the call still runs after ok and done 0ms
+ ✓ test/live-light-settle.test.ts > settle: a plain value (Simulated mode), AC-C-09 > needs only fail: ok and done may be left out 1ms
+ ✓ test/live-light-settle.test.ts > settle: a synchronous throw (Simulated mode), AC-C-09 > runs fail, then done, before settle returns; ok does not run; settle does not throw 0ms
+ ✓ test/live-light-settle.test.ts > settle: a synchronous throw (Simulated mode), AC-C-09 > passes any thrown value through unchanged, an Error or not 0ms
+ ✓ test/live-light-settle.test.ts > settle: a native promise (Live mode) > fulfilment: no handler runs before settle returns; then ok and done, once, in that order 0ms
+ ✓ test/live-light-settle.test.ts > settle: a native promise (Live mode) > rejection: fail and done, once, in that order; ok does not run; the reason is the same object 0ms
+ ✓ test/live-light-settle.test.ts > settle: a native promise (Live mode) > marks a rejected result as handled: no unhandled rejection reaches the runner 2ms
+ ✓ test/live-light-settle.test.ts > settle: a native promise (Live mode) > adds no turn: the handlers run in the first microtask after the settlement 0ms
+ ✓ test/live-light-settle.test.ts > settle: a native promise (Live mode) > calls then exactly once, with both callbacks, and never wraps the result in another promise 0ms
+ ✓ test/live-light-settle.test.ts > settle: a Live result that calls back in its own turn (CL-16) > runs ok and done inside the turn of the settlement: read right after it, no await 0ms
+ ✓ test/live-light-settle.test.ts > settle: a Live result that calls back in its own turn (CL-16) > runs fail and done inside the turn of a rejection 0ms
+ ✓ test/live-light-settle.test.ts > settle: a Live result that calls back in its own turn (CL-16) > settles a site once: a second fulfilment and a late rejection are ignored (never both ok and fail) 0ms
+ ✓ test/live-light-settle.test.ts > settle: a Live result that calls back in its own turn (CL-16) > settles a site once: a fulfilment after a rejection is ignored 0ms
+ ✓ test/live-light-settle.test.ts > settle: a Live result that calls back in its own turn (CL-16) > takes a callable with a then method as a Live result too 0ms
+ ✓ test/live-light-settle.test.ts > settle: a Live result that calls back in its own turn (CL-16) > takes an object whose then is not a function as a plain value 0ms
+ ✓ test/live-light-settle.test.ts > settle: an exception of a handler is the handler's own > plain value: an error thrown by ok leaves through settle, is not passed to fail, and done still runs once 0ms
+ ✓ test/live-light-settle.test.ts > settle: an exception of a handler is the handler's own > synchronous throw: an error thrown by fail leaves through settle after done ran once 0ms
+ ✓ test/live-light-settle.test.ts > settle: an exception of a handler is the handler's own > native promise: an error thrown by ok rejects the derived promise only; fail does not run; done runs once 0ms
+ ✓ test/live-light-settle.test.ts > settle: an exception of a handler is the handler's own > turn result: an error thrown by ok leaves through the callback, is not passed to fail, and done runs once 0ms
+ ✓ test/live-light-settle.test.ts > settle: an exception of a handler is the handler's own > an error thrown by done leaves the same way and is not passed to fail 0ms
+ ✓ test/live-light-settle.test.ts > settle: sequences nest (the next settle is called inside ok) > plain values: the whole sequence runs before the outer settle returns 0ms
+ ✓ test/live-light-settle.test.ts > settle: sequences nest (the next settle is called inside ok) > a throw of the second action goes to the inner fail only 0ms
+ ✓ test/live-light-settle.test.ts > settle: sequences nest (the next settle is called inside ok) > Live results: the second request starts only when the first has settled 0ms
+ ✓ test/live-light-settle.test.ts > settle on a real simulator: the three site kinds of §8 > return-value site: the result of a result-union action arrives in ok, synchronously 6ms
+ ✓ test/live-light-settle.test.ts > settle on a real simulator: the three site kinds of §8 > throw site: a refused void action reaches fail as the simulator class, so instanceof branches hold 7ms
+ ✓ test/live-light-settle.test.ts > settle on a real simulator: the three site kinds of §8 > read-after-write site: the store already holds the effect when ok runs 1ms
+ ✓ test/live-light-settle.test.ts > settle: types > gives ok the awaited result type of a Core action, for a value and for a promise alike 0ms
+ ✓ test/live-light-settle.test.ts > settle: types > fits a generic call-site wrapper with a callback form (the web command wrapper, B-10; the mobile wrappers, S2) 0ms
+ ✓ test/live-light-settle.test.ts > settle: types > requires fail 0ms
+ ✓ test/live-light-core-actions.test.ts > coreActionsOf on a simulator (AC-C-06, identity part) > returns sim.actions itself: the same object, on every call 7ms
+ ✓ test/live-light-core-actions.test.ts > coreActionsOf on a simulator (AC-C-06, identity part) > adds no wrapper: every member is the very function of sim.actions 3ms
+ ✓ test/live-light-core-actions.test.ts > coreActionsOf on a simulator (AC-C-06, identity part) > returns plain values, never a promise: a result union, a string, a number and undefined 2ms
+ ✓ test/live-light-core-actions.test.ts > coreActionsOf on a simulator (AC-C-06, identity part) > adds no microtask: the effect is in the store when the call returns 1ms
+ ✓ test/live-light-core-actions.test.ts > CoreActions: the type > has exactly the members of SimActions 0ms
+ ✓ test/live-light-core-actions.test.ts > CoreActions: the type > keeps every parameter list 0ms
+ ✓ test/live-light-core-actions.test.ts > CoreActions: the type > widens every return type R to R | Promise<R> 0ms
+ ✓ test/live-light-core-actions.test.ts > CoreActions: the type > accepts the simulator actions and a fully asynchronous Live set alike 0ms
+ ✓ test/live-light-core-actions.test.ts > CoreActions: the type > coreActionsOf takes a Sim and returns CoreActions 0ms
+ ✓ test/live-light-platform-neutral.test.ts > static scan of the light Live API (src/live, top level) > scans the six files of the row 1ms
+ ✓ test/live-light-platform-neutral.test.ts > static scan of the light Live API (src/live, top level) > imports only React, the simulator module and its own files 1ms
+ ✓ test/live-light-platform-neutral.test.ts > static scan of the light Live API (src/live, top level) > no network code: imports no Node built-in, nothing under src/client, src/realtime or src/api, and neither heavy folder 0ms
+ ✓ test/live-light-platform-neutral.test.ts > static scan of the light Live API (src/live, top level) > no network code: names no request function and no connection class, comments included 0ms
+ ✓ test/live-light-platform-neutral.test.ts > static scan of the light Live API (src/live, top level) > nothing reachable from the light API, type-only imports included, lies under src/client, src/realtime, src/live/source or src/live/testing 5ms
+ ✓ test/live-light-platform-neutral.test.ts > static scan of the light Live API (src/live, top level) > AC-C-02: no file names node:, react-native, expo, window or document (comments included) 0ms
+ ✓ test/live-light-platform-neutral.test.ts > static scan of the light Live API (src/live, top level) > only hooks.ts imports React; the other files have no runtime import beyond the simulator error classes 1ms
+ ✓ test/live-light-platform-neutral.test.ts > static scan of the light Live API (src/live, top level) > reads no storage, starts no timer, writes nothing to the console and uses no global object 1ms
+ ✓ test/live-light-platform-neutral.test.ts > static scan of the light Live API (src/live, top level) > uses erasable syntax only: no enum, no namespace, no parameter property 1ms
+ ✓ test/live-light-platform-neutral.test.ts > the export subpath @dems/shared/live > resolves to src/live/index.ts: the same module objects as the file itself 0ms
+ ✓ test/live-light-platform-neutral.test.ts > the export subpath @dems/shared/live > exports the light API and nothing else 0ms
+ ✓ test/live-light-platform-neutral.test.ts > the export subpath @dems/shared/live > the package manifest maps ./live to the file and keeps the two heavy subpaths apart 0ms
+ ✓ test/live-light-errors.test.ts > class identity (ADQ-3 rule 1, CL-20) > the three simulator classes taken from the Live module are the simulator's own class objects 1ms
+ ✓ test/live-light-errors.test.ts > class identity (ADQ-3 rule 1, CL-20) > an error built through the Live module satisfies an instanceof written against the simulator module, and the reverse 0ms
+ ✓ test/live-light-errors.test.ts > class identity (ADQ-3 rule 1, CL-20) > a rejected Live result reaches fail as the same object, so its class, code and fields survive 0ms
+ ✓ test/live-light-errors.test.ts > LiveTransportError (CL-21, CL-22) > has the two reasons of the mobile sign-in contract 1ms
+ ✓ test/live-light-errors.test.ts > LiveTransportError (CL-21, CL-22) > carries the reason; every detail defaults to null 1ms
+ ✓ test/live-light-errors.test.ts > LiveTransportError (CL-21, CL-22) > keeps the status and the retry-after value, so a 429 can be worded as a limit (LB-10) 0ms
+ ✓ test/live-light-errors.test.ts > LiveTransportError (CL-21, CL-22) > tells a time-out from a server that is starting and from a command that was never sent (LB-6, LB-7) 0ms
+ ✓ test/live-light-errors.test.ts > LiveTransportError (CL-21, CL-22) > never puts a detail into the message: the text is fixed per reason 0ms
+ ✓ test/live-light-errors.test.ts > CoreRefusalError (CL-21) > carries the envelope code; the details default to null 0ms
+ ✓ test/live-light-errors.test.ts > CoreRefusalError (CL-21) > keeps the status and the request ID of the answer 0ms
+ ✓ test/live-light-errors.test.ts > CoreRefusalError (CL-21) > serves the client-side refusal of an action without an operation (NOT_AVAILABLE) 0ms
+ ✓ test/live-light-errors.test.ts > the two new classes beside the existing branches > are Errors, and are no simulator class: an existing branch does not take them by mistake 0ms
+ ✓ test/live-light-errors.test.ts > the two new classes beside the existing branches > a fail branch written as today (permission, transition, else generic) keeps its meaning, and gains two branches 0ms
+
+ Test Files  6 passed (6)
+      Tests  93 passed (93)
+   Start at  07:51:00
+   Duration  505ms (transform 42%, import 39%, tests 17%, worker 2%)
+
+exit=0

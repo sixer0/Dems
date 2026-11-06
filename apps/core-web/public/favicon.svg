@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
+  <!--
+    DEMS favicon, derived from src/assets/brand/emblem.svg (blueprint step 28).
+    Simplified for 16-48 px tabs: the outer shield rim only, filled with the canvas black #0B0D0F
+    so it reads on light and dark tab strips, and three heavier ridges (emblem arc-1, arc-3, arc-5).
+    Same gradient stops as the emblem: #FFE2A6 -> #FFC86B -> #C9802F.
+  -->
+  <defs>
+    <linearGradient id="favicon-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="4" x2="0" y2="124">
+      <stop offset="0" stop-color="#FFE2A6"/>
+      <stop offset="0.5" stop-color="#FFC86B"/>
+      <stop offset="1" stop-color="#C9802F"/>
+    </linearGradient>
+  </defs>
+  <path fill="#0B0D0F" stroke="url(#favicon-gradient)" stroke-width="9" stroke-linejoin="round" d="M64 6Q41 16.5 14 19.5V58C14 88 37 109.5 64 121.5C91 109.5 114 88 114 58V19.5Q87 16.5 64 6Z"/>
+  <g stroke="url(#favicon-gradient)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M61.4 94V64A2.6 2.6 0 0 1 66.6 64V66"/>
+    <path d="M51.4 90V64A12.6 12.6 0 0 1 76.6 64A12.6 12.6 0 0 1 72.1 73.65"/>
+    <path d="M41.4 88V64A22.6 22.6 0 0 1 86.6 64A22.6 22.6 0 0 1 71.73 85.24"/>
+  </g>
+</svg>

@@ -1,0 +1,921 @@
+RF2 tablet queue driver: every batch (command file, then the driver's redacted output). Times host clock.
+
+######## batch 001 — commands
+p top
+p shot t00_tablet_before_relaunch
+mark relaunch
+p forcestop
+sleep 1500
+p link demsdemo:///login?core=LIVE&motion=off
+sleep 15000
+p top
+p screen login
+p shot t01_tablet_login_after_relaunch
+######## batch 001 — output
+22:35:07.743 batch start; device time 10-06 22:35:07.000; host load 6.45
+22:35:07.901 mCurrentFocus=Window{d6e4127 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+22:35:08.135 screencap t00_tablet_before_relaunch.png 22:35:08.135..22:35:10.480
+22:35:10.588 mark relaunch at 22:35:10.588
+22:35:10.612 force-stopped the app
+22:35:10.725 slept 1500 ms
+22:35:12.253 deep link demsdemo:///login?core=LIVE&motion=off at 22:35:16.438: Status: ok LaunchState: COLD TotalTime: 4149
+22:35:16.468 slept 15000 ms
+22:35:31.515 mCurrentFocus=Window{7282f33 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+22:35:31.572 declared screen login
+22:35:31.593 screencap t01_tablet_login_after_relaunch.png 22:35:31.593..22:35:32.702
+
+######## batch 002 — commands
+mark signin1
+p tap 2022 346
+sleep 900
+p username budi.santoso
+sleep 600
+p tap 2022 466
+sleep 1500
+p focus
+p password
+sleep 400
+p key 66
+p waitlog signin 20
+sleep 6000
+p top
+p screen home
+p shot t02_tablet_after_signin
+w1 open 0
+w1 nav /login
+w1 signin andi.pratama
+serverlog signin1 sign|session
+######## batch 002 — output
+22:35:41.762 batch start; device time 10-06 22:35:41.000; host load 4.32
+22:35:41.788 mark signin1 at 22:35:41.788
+22:35:41.810 tap 2022,346
+22:35:41.921 slept 900 ms
+22:35:42.854 username typed (budi.santoso, INVESTIGATOR); inputType 0x80001
+22:35:43.309 slept 600 ms
+22:35:43.948 tap 2022,466
+22:35:44.024 slept 1500 ms
+22:35:45.555 focused true; keyguard false; inputType 0x80081
+22:35:45.720 password typed (not shown); inputType 0x80081
+22:35:46.021 slept 400 ms
+22:35:46.464 key 66
+22:35:46.562 signin 200 at device 10-06 22:35:46.095 (POST /api/v1/auth/sign-in 200)
+22:35:46.613 slept 6000 ms
+22:35:52.661 mCurrentFocus=Window{7282f33 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+22:35:52.712 declared screen home
+22:35:52.735 screencap t02_tablet_after_signin.png 22:35:52.735..22:35:52.951
+22:35:53.005 w1: HeadlessChrome/153.0.8010.12 headless=true pid 22111 devtools 127.0.0.1:61437 (OS-assigned, listener owned by pid 22111), fresh profile in TMPDIR
+22:35:53.384 nav /login load=true
+22:35:56.122 signin andi.pratama (SUPERVISOR) dashboard after 1097 ms
+22:35:59.352 serverlog since signin1 (3):
+    22:35:46.555 POST /api/v1/auth/sign-in 200
+    22:35:53.842 GET /api/v1/auth/session 401 NOT_SIGNED_IN
+    22:35:56.259 POST /api/v1/auth/sign-in 200
+
+######## batch 003 — commands
+p screen home
+p tap 1280 925
+sleep 2500
+p tap 180 424
+sleep 3500
+p screen evidence
+p shot t03_evidence_list
+p ids ^evidence-row-EV
+######## batch 003 — output
+22:36:09.377 batch start; device time 10-06 22:36:08.000; host load 4.22
+22:36:09.399 declared screen home
+22:36:09.422 tap 1280,925
+22:36:09.521 slept 2500 ms
+22:36:12.058 tap 180,424
+22:36:12.127 slept 3500 ms
+22:36:15.656 declared screen evidence
+22:36:15.678 screencap t03_evidence_list.png 22:36:15.678..22:36:15.963
+22:36:16.017 ids(6): evidence-row-EV-20261006-0020@867,480 "EV-20261006-0020, Uji Tiga, Sealed, recorded 6 Oct 2026 17:16, duratio" ; evidence-row-EV-20261006-0019@867,708 "EV-20261006-0019, Uji Dua, Sealed, recorded 6 Oct 2026 17:07, duration" ; evidence-row-EV-20261006-0018@867,936 "EV-20261006-0018, Uji Satu, Sealed, recorded 6 Oct 2026 16:52, duratio" ; evidence-row-EV-20261006-0017@867,1164 "EV-20261006-0017, Retno Wulandari, Sealed, recorded 6 Oct 2026 12:46, " ; evidence-row-EV-20261006-0016@867,1392 "EV-20261006-0016, Dewi Lestari, Sealed, recorded 6 Oct 2026 10:54, dur" ; evidence-row-EV-20261006-0015@867,1526 "EV-20261006-0015, Siti Rahmawati, Archived, recorded 6 Oct 2026 10:36,"
+
+######## batch 004 — commands
+p tap 867 708
+sleep 2500
+p shot E1_a_select_0019
+p tap 867 936
+sleep 2500
+p shot E1_b_select_0018
+p tap 867 1164
+sleep 2500
+p shot E1_c_select_0017
+p swipe 867 1300 867 500 500
+sleep 2000
+p shot E1_d_scrolled_down
+p swipe 867 500 867 1400 500
+sleep 2000
+p shot E1_e_scrolled_back
+p screen evidence
+p ids ^evidence-row-(card-)?EV
+######## batch 004 — output
+22:36:26.241 batch start; device time 10-06 22:36:25.000; host load 3.94
+22:36:26.312 tap 867,708
+22:36:26.478 slept 2500 ms
+22:36:29.010 screencap E1_a_select_0019.png 22:36:29.010..22:36:29.324
+22:36:29.379 tap 867,936
+22:36:29.442 slept 2500 ms
+22:36:31.966 screencap E1_b_select_0018.png 22:36:31.966..22:36:32.278
+22:36:32.335 tap 867,1164
+22:36:32.399 slept 2500 ms
+22:36:34.929 screencap E1_c_select_0017.png 22:36:34.929..22:36:35.238
+22:36:35.292 swipe 867,1300,867,500 500 ms
+22:36:35.869 slept 2000 ms
+22:36:37.937 screencap E1_d_scrolled_down.png 22:36:37.937..22:36:39.135
+22:36:39.268 swipe 867,500,867,1400 500 ms
+22:36:40.006 slept 2000 ms
+22:36:42.083 screencap E1_e_scrolled_back.png 22:36:42.083..22:36:43.116
+22:36:43.254 declared screen evidence
+22:36:43.304 ids(12): evidence-row-EV-20261006-0020@867,480 "EV-20261006-0020, Uji Tiga, Sealed, recorded 6 Oct 2026 17:16, duratio" ; evidence-row-card-EV-20261006-0020@867,480 ; evidence-row-EV-20261006-0019@867,708 "EV-20261006-0019, Uji Dua, Sealed, recorded 6 Oct 2026 17:07, duration" ; evidence-row-card-EV-20261006-0019@867,708 ; evidence-row-EV-20261006-0018@867,936 "EV-20261006-0018, Uji Satu, Sealed, recorded 6 Oct 2026 16:52, duratio" ; evidence-row-card-EV-20261006-0018@867,936 ; evidence-row-EV-20261006-0017@867,1164 "EV-20261006-0017, Retno Wulandari, Sealed, recorded 6 Oct 2026 12:46, " ; evidence-row-card-EV-20261006-0017@867,1164 ; evidence-row-EV-20261006-0016@867,1392 "EV-20261006-0016, Dewi Lestari, Sealed, recorded 6 Oct 2026 10:54, dur" ; evidence-row-card-EV-20261006-0016@867,1392 ; evidence-row-EV-20261006-0015@867,1526 "EV-20261006-0015, Siti Rahmawati, Archived, recorded 6 Oct 2026 10:36," ; evidence-row-card-EV-20261006-0015@867,1526
+
+######## batch 005 — commands
+p tap 867 480
+sleep 2500
+p shot E2_a_select_0020
+p tap 867 1392
+sleep 2500
+p shot E2_b_select_0016
+p tap 867 936
+sleep 2500
+p shot E2_c_select_0018
+p swipe 867 1300 867 500 500
+sleep 2000
+p tap 867 796
+sleep 2500
+p shot E2_d_scrolled_select_0014
+p swipe 867 500 867 1400 500
+sleep 2000
+p shot E2_e_scrolled_back
+sleep 1000
+p tap 867 1526
+sleep 2500
+p shot E3_a_select_0015
+p tap 867 708
+sleep 2500
+p shot E3_b_select_0019
+p tap 867 480
+sleep 2500
+p shot E3_c_select_0020
+p swipe 867 1300 867 500 500
+sleep 2000
+p shot E3_d_scrolled_down
+p swipe 867 500 867 1400 500
+sleep 2000
+p shot E3_e_scrolled_back
+######## batch 005 — output
+22:37:10.152 batch start; device time 10-06 22:37:09.000; host load 6.18
+22:37:10.220 tap 867,480
+22:37:10.510 slept 2500 ms
+22:37:13.042 screencap E2_a_select_0020.png 22:37:13.042..22:37:13.398
+22:37:13.454 tap 867,1392
+22:37:13.547 slept 2500 ms
+22:37:16.075 screencap E2_b_select_0016.png 22:37:16.075..22:37:16.426
+22:37:16.489 tap 867,936
+22:37:16.557 slept 2500 ms
+22:37:19.116 screencap E2_c_select_0018.png 22:37:19.116..22:37:19.881
+22:37:20.860 swipe 867,1300,867,500 500 ms
+22:37:22.555 slept 2000 ms
+22:37:24.823 tap 867,796
+22:37:24.982 slept 2500 ms
+22:37:27.519 screencap E2_d_scrolled_select_0014.png 22:37:27.519..22:37:27.872
+22:37:27.933 swipe 867,500,867,1400 500 ms
+22:37:28.505 slept 2000 ms
+22:37:30.547 screencap E2_e_scrolled_back.png 22:37:30.547..22:37:31.237
+22:37:31.397 slept 1000 ms
+22:37:32.473 tap 867,1526
+22:37:32.655 slept 2500 ms
+22:37:35.179 screencap E3_a_select_0015.png 22:37:35.179..22:37:35.494
+22:37:35.550 tap 867,708
+22:37:35.622 slept 2500 ms
+22:37:38.146 screencap E3_b_select_0019.png 22:37:38.146..22:37:38.457
+22:37:38.513 tap 867,480
+22:37:38.582 slept 2500 ms
+22:37:41.108 screencap E3_c_select_0020.png 22:37:41.108..22:37:41.406
+22:37:41.461 swipe 867,1300,867,500 500 ms
+22:37:42.044 slept 2000 ms
+22:37:44.134 screencap E3_d_scrolled_down.png 22:37:44.134..22:37:47.905
+22:37:48.062 swipe 867,500,867,1400 500 ms
+22:37:48.992 slept 2000 ms
+22:37:51.077 screencap E3_e_scrolled_back.png 22:37:51.077..22:37:52.265
+
+######## batch 006 — commands
+p tap 180 320
+sleep 3500
+p screen sessions
+p shot H0_sessions_hub_list
+p ids ^(pane-|session-row-SES)
+######## batch 006 — output
+22:38:09.899 batch start; device time 10-06 22:38:09.000; host load 9.17
+22:38:09.989 tap 180,320
+22:38:10.197 slept 3500 ms
+22:38:13.727 declared screen sessions
+22:38:13.757 screencap H0_sessions_hub_list.png 22:38:13.758..22:38:13.962
+22:38:14.023 ids(9): pane-filters@744,792 ; pane-list@1434,792 ; session-row-SES-20261006-0030@1434,280 "SES-20261006-0030, Uji Tiga, Sealed, 6 Oct 2026 17:16, duration 00:00:" ; session-row-SES-20261006-0029@1434,508 "SES-20261006-0029, Uji Dua, Sealed, 6 Oct 2026 17:07, duration 00:03:4" ; session-row-SES-20261006-0028@1434,736 "SES-20261006-0028, Uji Satu, Sealed, 6 Oct 2026 16:52, duration 00:00:" ; session-row-SES-20261006-0027@1434,964 "SES-20261006-0027, Retno Wulandari, Sealed, 6 Oct 2026 12:46, duration" ; session-row-SES-20261006-0026@1434,1192 "SES-20261006-0026, Dewi Lestari, Sealed, 6 Oct 2026 10:54, duration 00" ; session-row-SES-20261006-0025@1434,1420 "SES-20261006-0025, Siti Rahmawati, Sealed, 6 Oct 2026 10:36, duration " ; pane-detail@2186,792
+
+######## batch 007 — commands
+p tap 1434 736
+sleep 3000
+p shot H1_a_select_0028
+p tap 1434 964
+sleep 3000
+p shot H1_b_select_0027
+p swipe 2186 1350 2186 600 500
+sleep 2000
+p shot H1_c_detail_scrolled
+p tap 1434 280
+sleep 3000
+p shot H2_a_select_0030
+p tap 1434 1192
+sleep 3000
+p shot H2_b_select_0026
+p screen sessions
+p ids ^(pane-|session-detail)
+######## batch 007 — output
+22:38:26.477 batch start; device time 10-06 22:38:25.000; host load 11.04
+22:38:26.560 tap 1434,736
+22:38:26.851 slept 3000 ms
+22:38:29.933 screencap H1_a_select_0028.png 22:38:29.933..22:38:30.234
+22:38:30.293 tap 1434,964
+22:38:30.368 slept 3000 ms
+22:38:33.396 screencap H1_b_select_0027.png 22:38:33.396..22:38:33.656
+22:38:33.712 swipe 2186,1350,2186,600 500 ms
+22:38:34.293 slept 2000 ms
+22:38:36.354 screencap H1_c_detail_scrolled.png 22:38:36.354..22:38:37.177
+22:38:37.300 tap 1434,280
+22:38:37.444 slept 3000 ms
+22:38:40.468 screencap H2_a_select_0030.png 22:38:40.468..22:38:40.713
+22:38:40.770 tap 1434,1192
+22:38:40.834 slept 3000 ms
+22:38:43.862 screencap H2_b_select_0026.png 22:38:43.862..22:38:44.121
+22:38:44.173 declared screen sessions
+22:38:44.193 ids(17): pane-filters@744,792 ; pane-list@1434,792 ; pane-detail@2186,792 ; session-detail-pane@2186,792 ; session-detail-hero@2186,458 ; session-detail-status@2360,252 "Sealed" ; session-detail-id@2186,560 "SES-20261006-0026" ; session-detail-range@2186,628 "6 Oct 2026 10:54:01 – 10:54:41" ; session-detail-subject-chip@2245,688 "Tersangka" ; session-detail-details@2186,1154 ; session-detail-case@2186,904 "Case Number, LP/2026/1006-0010" ; session-detail-subject@2186,1029 "Subject, Dewi Lestari" ; session-detail-investigator@2186,1154 "Investigator, AKP Budi Santoso" ; session-detail-room@2186,1259 "Interview Room, Interview Room 1" ; session-detail-start@2186,1364 "Start Time, 6 Oct 2026 10:54:01" ; session-detail-end@2186,1469 "End Time, 6 Oct 2026 10:54:41" ; session-detail-duration@2186,1529 "Duration, 00:00:40"
+
+######## batch 008 — commands
+p tap 1434 1420
+sleep 3000
+p shot H3_a_select_0025
+p tap 1434 964
+sleep 3000
+p shot H3_b_select_0027_again
+p screen sessions
+p ids ^session-detail-subject
+p tap 173 527
+sleep 3000
+p tap 180 320
+sleep 3500
+p tap 1434 508
+sleep 3000
+p shot H3_c_after_devices_select_0029
+p tap 226 736
+sleep 3500
+p shot N1_network_time
+p tap 180 632
+sleep 3000
+p tap 226 736
+sleep 3500
+p shot N2_network_time
+p tap 180 424
+sleep 3000
+p tap 226 736
+sleep 3500
+p shot N3_network_time
+######## batch 008 — output
+22:39:10.042 batch start; device time 10-06 22:39:09.000; host load 7.30
+22:39:10.108 tap 1434,1420
+22:39:10.272 slept 3000 ms
+22:39:13.296 screencap H3_a_select_0025.png 22:39:13.296..22:39:13.647
+22:39:13.702 tap 1434,964
+22:39:13.770 slept 3000 ms
+22:39:16.794 screencap H3_b_select_0027_again.png 22:39:16.794..22:39:17.062
+22:39:17.117 declared screen sessions
+22:39:17.137 ids(2): session-detail-subject-chip@2245,688 "Tersangka" ; session-detail-subject@2186,1029 "Subject, Retno Wulandari"
+22:39:19.268 tap 173,527
+22:39:19.387 slept 3000 ms
+22:39:22.410 tap 180,320
+22:39:22.514 slept 3500 ms
+22:39:26.039 tap 1434,508
+22:39:26.109 slept 3000 ms
+22:39:29.134 screencap H3_c_after_devices_select_0029.png 22:39:29.134..22:39:29.391
+22:39:29.442 tap 226,736
+22:39:29.508 slept 3500 ms
+22:39:33.039 screencap N1_network_time.png 22:39:33.039..22:39:33.195
+22:39:33.246 tap 180,632
+22:39:33.335 slept 3000 ms
+22:39:36.364 tap 226,736
+22:39:36.487 slept 3500 ms
+22:39:40.012 screencap N2_network_time.png 22:39:40.012..22:39:40.169
+22:39:40.220 tap 180,424
+22:39:40.325 slept 3000 ms
+22:39:43.351 tap 226,736
+22:39:43.449 slept 3500 ms
+22:39:46.974 screencap N3_network_time.png 22:39:46.974..22:39:47.126
+
+######## batch 009 — commands
+mark T1
+p tap 180 320
+sleep 3500
+p tap 759 136
+sleep 5000
+p tap 1736 379
+sleep 1500
+p tap 760 568
+sleep 1000
+p tap 1178 808
+sleep 1200
+p screen session-new
+p text RF2 T1
+sleep 1000
+p tap 1178 248
+sleep 1500
+p shot T1_a_wizard_step1_filled
+######## batch 009 — output
+22:40:32.021 batch start; device time 10-06 22:40:31.000; host load 4.54
+22:40:32.053 mark T1 at 22:40:32.053
+22:40:32.083 tap 180,320
+22:40:32.238 slept 3500 ms
+22:40:35.765 tap 759,136
+22:40:35.829 slept 5000 ms
+22:40:40.856 tap 1736,379
+22:40:40.948 slept 1500 ms
+22:40:42.471 tap 760,568
+22:40:42.537 slept 1000 ms
+22:40:43.561 tap 1178,808
+22:40:43.637 slept 1200 ms
+22:40:44.859 declared screen session-new
+22:40:44.880 text typed (RF2 T1); inputType 0x2001
+22:40:45.132 slept 1000 ms
+22:40:46.157 tap 1178,248
+22:40:46.220 slept 1500 ms
+22:40:47.749 screencap T1_a_wizard_step1_filled.png 22:40:47.749..22:40:48.077
+
+######## batch 010 — commands
+mark T1
+p tap 1178 1455
+p waitlog create 20
+p waitlog precheck 20
+sleep 9000
+p tap 1178 1455
+sleep 3000
+w1 nav /session 2500
+w1 wait page-session-monitor present 15000
+w1 js document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state')
+p screen live
+load
+p clock
+p shot T1_b_ready
+p rec start T1 60
+p tap 1178 1455
+p waitlog start 25
+w1 until 15000 (()=>{const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return s==='RECORDING' ? s : false})()
+sleep 9000
+w1 press sm-action-end
+w1 wait sm-end-dialog present 5000
+sleep 400
+w1 type [data-testid="sm-end-reason"] RF2 T1 tablet web stop
+sleep 1000
+w1 press sm-end-confirm
+w1 until 15000 (()=>{const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return s && s!=='RECORDING' ? s : false})()
+sleep 1200
+w1 until 25000 (()=>{const m=document.querySelector('[data-testid="finalization-modal"]')?.getAttribute('data-state'); const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return (m==='SEALED'||s==='SEALED') ? {state:s, modal:m} : false})()
+sleep 5000
+p rec pull T1
+p screen summary
+p shot T1_after
+p native T1_native.txt
+p appjs T1_js.txt
+p focus
+serverlog T1 socket|session|markers|sign
+w1 js (async()=>{const c=await (await fetch('/api/v1/session/current',{credentials:'same-origin'})).json(); const s=c.session; const a=await (await fetch('/api/v1/audit?sessionId='+s.id+'&order=ASC&limit=50',{credentials:'same-origin'})).json(); return {id:s.id,state:s.state,subject:s.subjectName,startedAt:s.startedAt,stoppedAt:s.stoppedAt,sealedAt:s.sealedAt,evidenceId:s.evidenceId,elapsedMs:s.elapsedMs,audit:a.rows.map(r=>[r.id,r.type,r.actorId,new Date(r.at).toTimeString().slice(0,8)+'.'+String(r.at%1000).padStart(3,'0'),r.details&&r.details.reason||''])}})()
+w1 nav /admin/devices 500
+######## batch 010 — output
+22:41:06.991 batch start; device time 10-06 22:41:06.000; host load 3.61
+22:41:07.064 mark T1 at 22:41:07.064
+22:41:07.114 tap 1178,1455
+22:41:07.281 create 201 at device 10-06 22:41:06.866 (POST /api/v1/session 201)
+22:41:07.989 precheck 202 at device 10-06 22:41:07.032 (POST /api/v1/session/{id}/precheck 202)
+22:41:08.091 slept 9000 ms
+22:41:17.146 tap 1178,1455
+22:41:17.318 slept 3000 ms
+22:41:20.342 nav /session load=true
+22:41:23.017 wait page-session-monitor present: 1 ms (at 22:41:23.019)
+22:41:23.108 js => "ARMED"
+22:41:23.195 declared screen live
+22:41:23.290 host load 3.65 5.75 6.72
+22:41:23.394 device-host clock offset ms: -459, -460, -457, -452, -461
+22:41:23.670 screencap T1_b_ready.png 22:41:23.670..22:41:24.522
+22:41:24.719 screenrecord T1 started (pid 38687) at 22:41:25.323; load 3.65 5.75 6.72
+22:41:25.394 tap 1178,1455
+22:41:25.850 start 200 at device 10-06 22:41:28.617 (POST /api/v1/session/{id}/start 200)
+22:41:29.165 until true at 22:41:29.184 after 19 ms => "RECORDING"
+22:41:29.230 slept 9000 ms
+22:41:38.257 press sm-action-end ok at 22:41:38.279
+22:41:38.316 wait sm-end-dialog present: 0 ms (at 22:41:38.316)
+22:41:38.340 slept 400 ms
+22:41:38.764 type into [data-testid="sm-end-reason"]: "RF2 T1 tablet web stop"
+22:41:38.792 slept 1000 ms
+22:41:39.815 press sm-end-confirm ok at 22:41:39.819
+22:41:39.846 until true at 22:41:39.891 after 45 ms => "STOPPING"
+22:41:39.923 slept 1200 ms
+22:41:41.147 until true at 22:41:46.644 after 5497 ms => {"state":"SEALED","modal":"SEALED"}
+22:41:46.753 slept 5000 ms
+22:41:51.784 screenrecord T1 pulled; every frame extracted (passthrough)
+22:42:27.678 declared screen summary
+22:42:27.708 screencap T1_after.png 22:42:27.708..22:42:27.959
+22:42:28.016 native T1_native.txt pid 24946: 235312 lines; crash-class lines 1371: 10-06 22:41:07.181 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [11306] | 10-06 22:41:07.182 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [11186] | 10-06 22:41:07.182 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [11054] | 10-06 22:41:07.183 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [11332] | 10-06 22:41:07.183 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [11306] | 10-06 22:41:07.184 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [11186]
+22:42:28.298 appjs T1_js.txt: 29 lines since 10-06 22:41:06.000
+22:42:28.374 focused true; keyguard false; inputType 0x2001
+22:42:28.625 serverlog since T1 (7):
+    22:41:07.285 POST /api/v1/session 201
+    22:41:07.500 POST /api/v1/session/:id/precheck 202
+    22:41:20.356 [socket closed]
+    22:41:20.510 GET /api/v1/auth/session 200
+    22:41:20.512 [socket opened]
+    22:41:29.075 POST /api/v1/session/:id/start 200
+    22:41:39.827 POST /api/v1/session/:id/stop 202
+22:42:28.648 js => {"id":"SES-20261006-0031","state":"SEALED","subject":"RF2 T1","startedAt":"2026-10-06T22:41:29.072+07:00","stoppedAt":"2026-10-06T22:41:39.823+07:00","sealedAt":"2026-10-06T22:41:46.552+07:00","evidenceId":"EV-20261006-0021","elapsedMs":10751,"audit":[["AUD-000295","SESSION_CREATED","OPR-001","22:41:07.277",""],["AUD-000296","PRECHECK_PASSED","OPR-001","22:41:10.823",""],["AUD-000297","RECORDING_STARTED","OPR-001","22:41:29.072",""],["AUD-000298","WRITE_VERIFIED",null,"22:41:32.180",""],["AUD-000299","RECORDING_STOPPED","OPR-002","22:41:39.823","RF2 T1 tablet web stop"],["AUD-000300","EVIDENCE_SEALED",null,"22:41:46.552",""]]}
+22:42:28.682 nav /admin/devices load=true
+
+######## batch 011 — commands
+mark T2
+p screen summary
+p tap 1350 1431
+p waitlog sumack 15
+sleep 5000
+p tap 2210 1034
+sleep 5000
+p tap 1736 379
+sleep 1500
+p tap 760 568
+sleep 1000
+p tap 1178 808
+sleep 1200
+p screen session-new
+p text RF2 T2
+sleep 1000
+p tap 1178 248
+sleep 1500
+p shot T2_a_wizard_step1_filled
+p tap 1178 1455
+p waitlog create 20
+p waitlog precheck 20
+sleep 9000
+p tap 1178 1455
+sleep 3000
+w1 nav /session 2500
+w1 wait page-session-monitor present 15000
+w1 js document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state')
+p screen live
+load
+p clock
+p shot T2_b_ready
+p rec start T2 60
+p tap 1178 1455
+p waitlog start 25
+w1 until 15000 (()=>{const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return s==='RECORDING' ? s : false})()
+sleep 9000
+w1 press sm-action-end
+w1 wait sm-end-dialog present 5000
+sleep 400
+w1 type [data-testid="sm-end-reason"] RF2 T2 tablet web stop
+sleep 1000
+w1 press sm-end-confirm
+w1 until 15000 (()=>{const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return s && s!=='RECORDING' ? s : false})()
+sleep 1200
+w1 until 25000 (()=>{const m=document.querySelector('[data-testid="finalization-modal"]')?.getAttribute('data-state'); const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return (m==='SEALED'||s==='SEALED') ? {state:s, modal:m} : false})()
+sleep 5000
+p rec pull T2
+p screen summary
+p shot T2_after
+p native T2_native.txt
+p appjs T2_js.txt
+p focus
+serverlog T2 socket|session|markers|sign
+w1 js (async()=>{const c=await (await fetch('/api/v1/session/current',{credentials:'same-origin'})).json(); const s=c.session; const a=await (await fetch('/api/v1/audit?sessionId='+s.id+'&order=ASC&limit=50',{credentials:'same-origin'})).json(); return {id:s.id,state:s.state,subject:s.subjectName,startedAt:s.startedAt,stoppedAt:s.stoppedAt,sealedAt:s.sealedAt,evidenceId:s.evidenceId,elapsedMs:s.elapsedMs,audit:a.rows.map(r=>[r.id,r.type,r.actorId,new Date(r.at).toTimeString().slice(0,8)+'.'+String(r.at%1000).padStart(3,'0'),r.details&&r.details.reason||''])}})()
+w1 nav /admin/devices 500
+######## batch 011 — output
+22:43:17.773 batch start; device time 10-06 22:43:17.000; host load 3.32
+22:43:17.797 mark T2 at 22:43:17.797
+22:43:17.819 declared screen summary
+22:43:17.839 tap 1350,1431
+22:43:17.900 sumack NOT SEEN in 15 s
+22:43:34.281 slept 5000 ms
+22:43:39.324 tap 2210,1034
+22:43:39.395 slept 5000 ms
+22:43:44.434 tap 1736,379
+22:43:44.499 slept 1500 ms
+22:43:46.046 tap 760,568
+22:43:46.121 slept 1000 ms
+22:43:47.153 tap 1178,808
+22:43:47.219 slept 1200 ms
+22:43:48.458 declared screen session-new
+22:43:48.481 text typed (RF2 T2); inputType 0x2001
+22:43:48.774 slept 1000 ms
+22:43:49.815 tap 1178,248
+22:43:49.890 slept 1500 ms
+22:43:51.428 screencap T2_a_wizard_step1_filled.png 22:43:51.428..22:43:51.730
+22:43:51.781 tap 1178,1455
+22:43:51.838 create NOT SEEN in 20 s
+22:44:14.583 precheck NOT SEEN in 20 s
+22:44:37.718 slept 9000 ms
+22:44:46.773 tap 1178,1455
+22:44:47.058 slept 3000 ms
+22:44:50.133 nav /session load=true
+22:44:52.835 wait page-session-monitor present: 1 ms (at 22:44:52.836)
+22:44:52.921 js => "SEALED"
+22:44:52.997 declared screen live
+22:44:53.058 host load 2.80 4.38 5.92
+22:44:53.128 device-host clock offset ms: -460, -461, -462, -464, -462
+22:44:53.383 screencap T2_b_ready.png 22:44:53.383..22:44:54.082
+22:44:54.247 screenrecord T2 started (pid 43257) at 22:44:54.850; load 2.97 4.39 5.92
+22:44:54.927 tap 1178,1455
+22:44:55.156 start NOT SEEN in 25 s
+22:45:24.446 until TIMEOUT after 15000 ms
+22:45:39.529 slept 9000 ms
+22:45:48.596 press sm-action-end ok at 22:45:48.597
+22:45:48.676 wait sm-end-dialog present: TIMEOUT
+22:45:53.775 slept 400 ms
+22:45:54.246 type into [data-testid="sm-end-reason"]: NOT FOCUSED
+22:45:54.317 slept 1000 ms
+22:45:55.398 press sm-end-confirm NOT FOUND at 22:45:55.399
+22:45:55.461 until true at 22:45:55.461 after 0 ms => "SEALED"
+22:45:55.536 slept 1200 ms
+22:45:56.786 until true at 22:45:56.787 after 1 ms => {"state":"SEALED"}
+22:45:56.861 slept 5000 ms
+22:46:01.937 screenrecord T2 pulled; every frame extracted (passthrough)
+22:46:02.956 declared screen summary
+22:46:03.012 screencap T2_after.png 22:46:03.012..22:46:03.539
+22:46:03.696 native T2_native.txt pid 24946: 28 lines; crash-class lines 0
+22:46:03.930 appjs T2_js.txt: 4 lines since 10-06 22:43:17.000
+22:46:04.088 focused true; keyguard false; inputType 0x0
+22:46:04.586 serverlog since T2 (3):
+    22:44:50.145 [socket closed]
+    22:44:50.233 GET /api/v1/auth/session 200
+    22:44:50.235 [socket opened]
+22:46:04.652 js => {"id":"SES-20261006-0031","state":"SEALED","subject":"RF2 T1","startedAt":"2026-10-06T22:41:29.072+07:00","stoppedAt":"2026-10-06T22:41:39.823+07:00","sealedAt":"2026-10-06T22:41:46.552+07:00","evidenceId":"EV-20261006-0021","elapsedMs":10751,"audit":[["AUD-000295","SESSION_CREATED","OPR-001","22:41:07.277",""],["AUD-000296","PRECHECK_PASSED","OPR-001","22:41:10.823",""],["AUD-000297","RECORDING_STARTED","OPR-001","22:41:29.072",""],["AUD-000298","WRITE_VERIFIED",null,"22:41:32.180",""],["AUD-000299","RECORDING_STOPPED","OPR-002","22:41:39.823","RF2 T1 tablet web stop"],["AUD-000300","EVIDENCE_SEALED",null,"22:41:46.552",""]]}
+22:46:04.748 nav /admin/devices load=true
+
+######## batch 012 — commands
+p tap 2487 1288
+sleep 2000
+p swipe 1280 1300 1280 300 600
+sleep 800
+p swipe 1280 1300 1280 300 600
+sleep 1500
+p screen summary
+p shot T2_r1_summary_bottom
+######## batch 012 — output
+22:46:48.046 batch start; device time 10-06 22:46:47.000; host load 2.80
+22:46:48.142 tap 2487,1288
+22:46:48.344 slept 2000 ms
+22:46:50.375 swipe 1280,1300,1280,300 600 ms
+22:46:51.059 slept 800 ms
+22:46:51.891 swipe 1280,1300,1280,300 600 ms
+22:46:52.578 slept 1500 ms
+22:46:54.141 declared screen summary
+22:46:54.226 screencap T2_r1_summary_bottom.png 22:46:54.226..22:46:54.999
+
+######## batch 013 — commands
+p screen summary
+p tap 1350 1431
+p waitlog sumack 15
+sleep 5000
+p screen home
+p shot T2_r2_home_after_done
+######## batch 013 — output
+22:47:20.828 batch start; device time 10-06 22:47:20.000; host load 2.80
+22:47:20.907 declared screen summary
+22:47:20.957 tap 1350,1431
+22:47:21.137 sumack 204 at device 10-06 22:47:20.676 (POST /api/v1/session/{id}/summary/acknowledge 204)
+22:47:21.191 slept 5000 ms
+22:47:26.224 declared screen home
+22:47:26.247 screencap T2_r2_home_after_done.png 22:47:26.247..22:47:26.615
+
+######## batch 014 — commands
+mark T2
+p screen home
+p tap 2210 1034
+sleep 5000
+p tap 1736 379
+sleep 1500
+p tap 760 568
+sleep 1000
+p tap 1178 808
+sleep 1200
+p screen session-new
+p text RF2 T2
+sleep 1000
+p tap 1178 248
+sleep 1500
+p shot T2_a_wizard_step1_filled
+p tap 1178 1455
+p waitlog create 20
+p waitlog precheck 20
+sleep 9000
+p tap 1178 1455
+sleep 3000
+w1 nav /session 2500
+w1 wait page-session-monitor present 15000
+w1 js document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state')
+p screen live
+load
+p clock
+p shot T2_b_ready
+p rec start T2 60
+p tap 1178 1455
+p waitlog start 25
+w1 until 15000 (()=>{const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return s==='RECORDING' ? s : false})()
+sleep 9000
+w1 press sm-action-end
+w1 wait sm-end-dialog present 5000
+sleep 400
+w1 type [data-testid="sm-end-reason"] RF2 T2 tablet web stop
+sleep 1000
+w1 press sm-end-confirm
+w1 until 15000 (()=>{const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return s && s!=='RECORDING' ? s : false})()
+sleep 1200
+w1 until 25000 (()=>{const m=document.querySelector('[data-testid="finalization-modal"]')?.getAttribute('data-state'); const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return (m==='SEALED'||s==='SEALED') ? {state:s, modal:m} : false})()
+sleep 5000
+p rec pull T2
+p screen summary
+p shot T2_after
+p native T2_native.txt
+p appjs T2_js.txt
+p focus
+serverlog T2 socket|session|markers|sign
+w1 js (async()=>{const c=await (await fetch('/api/v1/session/current',{credentials:'same-origin'})).json(); const s=c.session; const a=await (await fetch('/api/v1/audit?sessionId='+s.id+'&order=ASC&limit=50',{credentials:'same-origin'})).json(); return {id:s.id,state:s.state,subject:s.subjectName,startedAt:s.startedAt,stoppedAt:s.stoppedAt,sealedAt:s.sealedAt,evidenceId:s.evidenceId,elapsedMs:s.elapsedMs,audit:a.rows.map(r=>[r.id,r.type,r.actorId,new Date(r.at).toTimeString().slice(0,8)+'.'+String(r.at%1000).padStart(3,'0'),r.details&&r.details.reason||''])}})()
+w1 nav /admin/devices 500
+######## batch 014 — output
+22:47:56.270 batch start; device time 10-06 22:47:55.000; host load 2.12
+22:47:56.340 mark T2 at 22:47:56.340
+22:47:56.410 declared screen home
+22:47:56.467 tap 2210,1034
+22:47:56.682 slept 5000 ms
+22:48:01.712 tap 1736,379
+22:48:01.823 slept 1500 ms
+22:48:03.358 tap 760,568
+22:48:03.427 slept 1000 ms
+22:48:04.459 tap 1178,808
+22:48:04.539 slept 1200 ms
+22:48:05.773 declared screen session-new
+22:48:05.800 text typed (RF2 T2); inputType 0x2001
+22:48:06.022 slept 1000 ms
+22:48:07.058 tap 1178,248
+22:48:07.133 slept 1500 ms
+22:48:08.671 screencap T2_a_wizard_step1_filled.png 22:48:08.671..22:48:09.021
+22:48:09.075 tap 1178,1455
+22:48:09.160 create 201 at device 10-06 22:48:08.715 (POST /api/v1/session 201)
+22:48:09.823 precheck 202 at device 10-06 22:48:08.845 (POST /api/v1/session/{id}/precheck 202)
+22:48:09.933 slept 9000 ms
+22:48:18.996 tap 1178,1455
+22:48:19.225 slept 3000 ms
+22:48:22.257 nav /session load=true
+22:48:24.943 wait page-session-monitor present: 1 ms (at 22:48:24.944)
+22:48:25.003 js => "ARMED"
+22:48:25.061 declared screen live
+22:48:25.130 host load 2.17 3.37 5.15
+22:48:25.251 device-host clock offset ms: -461, -462, -467, -462, -460
+22:48:25.509 screencap T2_b_ready.png 22:48:25.509..22:48:26.322
+22:48:26.505 screenrecord T2 started (pid 47222) at 22:48:27.108; load 2.17 3.37 5.15
+22:48:27.172 tap 1178,1455
+22:48:27.377 start 200 at device 10-06 22:48:30.115 (POST /api/v1/session/{id}/start 200)
+22:48:30.668 until true at 22:48:30.674 after 6 ms => "RECORDING"
+22:48:30.696 slept 9000 ms
+22:48:39.783 press sm-action-end ok at 22:48:39.811
+22:48:39.915 wait sm-end-dialog present: 0 ms (at 22:48:39.915)
+22:48:39.999 slept 400 ms
+22:48:40.477 type into [data-testid="sm-end-reason"]: "RF2 T2 tablet web stop"
+22:48:40.527 slept 1000 ms
+22:48:41.660 press sm-end-confirm ok at 22:48:41.666
+22:48:41.796 until true at 22:48:41.799 after 3 ms => "STOPPING"
+22:48:41.929 slept 1200 ms
+22:48:43.303 until true at 22:48:48.906 after 5603 ms => {"state":"SEALED","modal":"SEALED"}
+22:48:49.011 slept 5000 ms
+22:48:54.892 screenrecord T2 pulled; every frame extracted (passthrough)
+22:49:29.143 declared screen summary
+22:49:29.196 screencap T2_after.png 22:49:29.197..22:49:30.523
+22:49:30.654 native T2_native.txt pid 24946: 264663 lines; crash-class lines 1535: 10-06 22:48:08.979 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [20828] | 10-06 22:48:08.980 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [20682] | 10-06 22:48:08.980 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [20550] | 10-06 22:48:08.981 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [20802] | 10-06 22:48:08.982 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [20828] | 10-06 22:48:08.982 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [20682]
+22:49:31.287 appjs T2_js.txt: 29 lines since 10-06 22:47:55.000
+22:49:31.493 focused true; keyguard false; inputType 0x2001
+22:49:32.058 serverlog since T2 (7):
+    22:48:09.162 POST /api/v1/session 201
+    22:48:09.321 POST /api/v1/session/:id/precheck 202
+    22:48:22.268 [socket closed]
+    22:48:22.354 GET /api/v1/auth/session 200
+    22:48:22.356 [socket opened]
+    22:48:30.572 POST /api/v1/session/:id/start 200
+    22:48:41.677 POST /api/v1/session/:id/stop 202
+22:49:32.137 js => {"id":"SES-20261006-0032","state":"SEALED","subject":"RF2 T2","startedAt":"2026-10-06T22:48:30.569+07:00","stoppedAt":"2026-10-06T22:48:41.672+07:00","sealedAt":"2026-10-06T22:48:48.816+07:00","evidenceId":"EV-20261006-0022","elapsedMs":11103,"audit":[["AUD-000302","SESSION_CREATED","OPR-001","22:48:09.156",""],["AUD-000303","PRECHECK_PASSED","OPR-001","22:48:13.726",""],["AUD-000304","RECORDING_STARTED","OPR-001","22:48:30.569",""],["AUD-000305","WRITE_VERIFIED",null,"22:48:40.435",""],["AUD-000306","RECORDING_STOPPED","OPR-002","22:48:41.672","RF2 T2 tablet web stop"],["AUD-000307","EVIDENCE_SEALED",null,"22:48:48.816",""]]}
+22:49:32.220 nav /admin/devices load=true
+
+######## batch 015 — commands
+mark T3
+p screen summary
+p swipe 1280 1300 1280 300 600
+sleep 800
+p swipe 1280 1300 1280 300 600
+sleep 1500
+p tap 1350 1431
+p waitlog sumack 15
+sleep 5000
+p screen home
+p tap 2210 1034
+sleep 5000
+p tap 1736 379
+sleep 1500
+p tap 760 568
+sleep 1000
+p tap 1178 808
+sleep 1200
+p screen session-new
+p text RF2 T3
+sleep 1000
+p tap 1178 248
+sleep 1500
+p shot T3_a_wizard_step1_filled
+p tap 1178 1455
+p waitlog create 20
+p waitlog precheck 20
+sleep 9000
+p tap 1178 1455
+sleep 3000
+w1 nav /session 2500
+w1 wait page-session-monitor present 15000
+w1 js document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state')
+p screen live
+load
+p clock
+p shot T3_b_ready
+p rec start T3 60
+p tap 1178 1455
+p waitlog start 25
+w1 until 15000 (()=>{const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return s==='RECORDING' ? s : false})()
+sleep 9000
+w1 press sm-action-end
+w1 wait sm-end-dialog present 5000
+sleep 400
+w1 type [data-testid="sm-end-reason"] RF2 T3 tablet web stop
+sleep 1000
+w1 press sm-end-confirm
+w1 until 15000 (()=>{const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return s && s!=='RECORDING' ? s : false})()
+sleep 1200
+w1 until 25000 (()=>{const m=document.querySelector('[data-testid="finalization-modal"]')?.getAttribute('data-state'); const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return (m==='SEALED'||s==='SEALED') ? {state:s, modal:m} : false})()
+sleep 5000
+p rec pull T3
+p screen summary
+p shot T3_after
+p native T3_native.txt
+p appjs T3_js.txt
+p focus
+serverlog T3 socket|session|markers|sign
+w1 js (async()=>{const c=await (await fetch('/api/v1/session/current',{credentials:'same-origin'})).json(); const s=c.session; const a=await (await fetch('/api/v1/audit?sessionId='+s.id+'&order=ASC&limit=50',{credentials:'same-origin'})).json(); return {id:s.id,state:s.state,subject:s.subjectName,startedAt:s.startedAt,stoppedAt:s.stoppedAt,sealedAt:s.sealedAt,evidenceId:s.evidenceId,elapsedMs:s.elapsedMs,audit:a.rows.map(r=>[r.id,r.type,r.actorId,new Date(r.at).toTimeString().slice(0,8)+'.'+String(r.at%1000).padStart(3,'0'),r.details&&r.details.reason||''])}})()
+w1 nav /admin/devices 500
+######## batch 015 — output
+22:50:09.246 batch start; device time 10-06 22:50:08.000; host load 4.31
+22:50:09.317 mark T3 at 22:50:09.317
+22:50:09.392 declared screen summary
+22:50:09.446 swipe 1280,1300,1280,300 600 ms
+22:50:10.308 slept 800 ms
+22:50:11.180 swipe 1280,1300,1280,300 600 ms
+22:50:12.078 slept 1500 ms
+22:50:13.648 tap 1350,1431
+22:50:13.824 sumack 204 at device 10-06 22:50:13.359 (POST /api/v1/session/{id}/summary/acknowledge 204)
+22:50:13.880 slept 5000 ms
+22:50:18.913 declared screen home
+22:50:18.937 tap 2210,1034
+22:50:19.026 slept 5000 ms
+22:50:24.057 tap 1736,379
+22:50:24.149 slept 1500 ms
+22:50:25.680 tap 760,568
+22:50:25.751 slept 1000 ms
+22:50:26.781 tap 1178,808
+22:50:26.856 slept 1200 ms
+22:50:28.087 declared screen session-new
+22:50:28.114 text typed (RF2 T3); inputType 0x2001
+22:50:28.347 slept 1000 ms
+22:50:29.380 tap 1178,248
+22:50:29.456 slept 1500 ms
+22:50:30.995 screencap T3_a_wizard_step1_filled.png 22:50:30.995..22:50:31.242
+22:50:31.295 tap 1178,1455
+22:50:31.383 create 201 at device 10-06 22:50:30.944 (POST /api/v1/session 201)
+22:50:32.107 precheck 202 at device 10-06 22:50:31.084 (POST /api/v1/session/{id}/precheck 202)
+22:50:32.212 slept 9000 ms
+22:50:41.308 tap 1178,1455
+22:50:41.575 slept 3000 ms
+22:50:44.607 nav /session load=true
+22:50:47.313 wait page-session-monitor present: 1 ms (at 22:50:47.314)
+22:50:47.394 js => "ARMED"
+22:50:47.471 declared screen live
+22:50:47.544 host load 3.77 3.83 5.08
+22:50:47.638 device-host clock offset ms: -463, -464, -463, -462, -463
+22:50:47.882 screencap T3_b_ready.png 22:50:47.882..22:50:48.716
+22:50:48.856 screenrecord T3 started (pid 49890) at 22:50:49.458; load 3.71 3.82 5.06
+22:50:49.545 tap 1178,1455
+22:50:49.823 start 200 at device 10-06 22:50:52.572 (POST /api/v1/session/{id}/start 200)
+22:50:53.167 until true at 22:50:53.167 after 0 ms => "RECORDING"
+22:50:53.189 slept 9000 ms
+22:51:02.480 press sm-action-end ok at 22:51:02.510
+22:51:02.608 wait sm-end-dialog present: 0 ms (at 22:51:02.608)
+22:51:02.690 slept 400 ms
+22:51:03.196 type into [data-testid="sm-end-reason"]: "RF2 T3 tablet web stop"
+22:51:03.331 slept 1000 ms
+22:51:04.435 press sm-end-confirm ok at 22:51:04.441
+22:51:04.551 until true at 22:51:04.555 after 3 ms => "STOPPING"
+22:51:04.624 slept 1200 ms
+22:51:05.904 until true at 22:51:10.941 after 5037 ms => {"state":"SEALED","modal":"SEALED"}
+22:51:11.093 slept 5000 ms
+22:51:16.390 screenrecord T3 pulled; every frame extracted (passthrough)
+22:51:51.862 declared screen summary
+22:51:52.010 screencap T3_after.png 22:51:52.010..22:51:53.232
+22:51:53.457 native T3_native.txt pid 24946: 258931 lines; crash-class lines 1501: 10-06 22:50:31.213 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [30156] | 10-06 22:50:31.213 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [30130] | 10-06 22:50:31.214 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [30010] | 10-06 22:50:31.214 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [29878] | 10-06 22:50:31.215 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [30156] | 10-06 22:50:31.216 24946 24946 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [30130]
+22:51:54.766 appjs T3_js.txt: 31 lines since 10-06 22:50:08.000
+22:51:55.126 focused true; keyguard false; inputType 0x2001
+22:51:56.212 serverlog since T3 (8):
+    22:50:13.834 POST /api/v1/session/:id/summary/acknowledge 204
+    22:50:31.394 POST /api/v1/session 201
+    22:50:31.553 POST /api/v1/session/:id/precheck 202
+    22:50:44.619 [socket closed]
+    22:50:44.709 GET /api/v1/auth/session 200
+    22:50:44.711 [socket opened]
+    22:50:53.023 POST /api/v1/session/:id/start 200
+    22:51:04.450 POST /api/v1/session/:id/stop 202
+22:51:56.281 js => {"id":"SES-20261006-0033","state":"SEALED","subject":"RF2 T3","startedAt":"2026-10-06T22:50:53.017+07:00","stoppedAt":"2026-10-06T22:51:04.446+07:00","sealedAt":"2026-10-06T22:51:10.839+07:00","evidenceId":"EV-20261006-0023","elapsedMs":11429,"audit":[["AUD-000309","SESSION_CREATED","OPR-001","22:50:31.389",""],["AUD-000310","PRECHECK_PASSED","OPR-001","22:50:36.219",""],["AUD-000311","RECORDING_STARTED","OPR-001","22:50:53.017",""],["AUD-000312","FRAME_HASH",null,"22:51:04.003",""],["AUD-000313","RECORDING_STOPPED","OPR-002","22:51:04.446","RF2 T3 tablet web stop"],["AUD-000314","EVIDENCE_SEALED",null,"22:51:10.839",""]]}
+22:51:56.352 nav /admin/devices load=true
+
+######## batch 016 — commands
+mark tabletend
+p screen summary
+p swipe 1280 1300 1280 300 600
+sleep 800
+p swipe 1280 1300 1280 300 600
+sleep 1500
+p tap 1350 1431
+p waitlog sumack 15
+sleep 4000
+p tap 174 943
+sleep 3000
+p screen settings
+p ids [Aa]ccount|[Ss]ign text
+######## batch 016 — output
+22:53:45.724 batch start; device time 10-06 22:53:45.000; host load 3.86
+22:53:45.813 mark tabletend at 22:53:45.813
+22:53:45.859 declared screen summary
+22:53:45.906 swipe 1280,1300,1280,300 600 ms
+22:53:46.774 slept 800 ms
+22:53:47.651 swipe 1280,1300,1280,300 600 ms
+22:53:48.496 slept 1500 ms
+22:53:50.068 tap 1350,1431
+22:53:50.275 sumack 204 at device 10-06 22:53:49.806 (POST /api/v1/session/{id}/summary/acknowledge 204)
+22:53:50.338 slept 4000 ms
+22:53:54.385 tap 174,943
+22:53:54.495 slept 3000 ms
+22:53:57.535 declared screen settings
+22:53:57.591 ids(4): settings-account@784,316 ; View@784,216 "Account" ; settings-account-row@784,360 "Investigator, AKP Budi Santoso. Open profile" ; TextView@1776,737 "Hides demo hints, such as the demo operators on the sign-in page."
+
+######## batch 017 — commands
+p screen account
+p tapid settings-account-row
+sleep 3000
+p ids [Ss]ign text
+######## batch 017 — output
+22:54:06.075 batch start; device time 10-06 22:54:05.000; host load 3.63
+22:54:06.146 declared screen account
+22:54:06.226 tapid settings-account-row at 784,360 "Investigator, AKP Budi Santoso. Open profile"
+22:54:09.513 slept 3000 ms
+22:54:12.554 ids(4): TextView@1776,737 "Hides demo hints, such as the demo operators on the sign-in page." ; sheet-content-signal@1280,1136 ; settings-profile-sign-out@1907,1408 "Sign out" ; TextView@1935,1408 "Sign out"
+
+######## batch 018 — commands
+p screen account
+p tapid settings-profile-sign-out
+p waitlog signout 15
+sleep 4000
+p screen login
+p top
+p shot t20_tablet_end_login_signed_out_live
+p crash tablet_crash_scan.txt
+w1 api GET /api/v1/session/current
+serverlog tabletend sign|session
+w1 origins
+w1 console
+w1 signout
+w1 api GET /api/v1/auth/session
+done 0
+######## batch 018 — output
+22:54:22.944 batch start; device time 10-06 22:54:22.000; host load 3.48
+22:54:23.014 declared screen account
+22:54:23.089 tapid settings-profile-sign-out at 1907,1408 "Sign out"
+22:54:26.552 signout 204 at device 10-06 22:54:26.777 (POST /api/v1/auth/sign-out 204)
+22:54:27.696 slept 4000 ms
+22:54:31.745 declared screen login
+22:54:31.772 mCurrentFocus=Window{7282f33 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+22:54:31.873 screencap t20_tablet_end_login_signed_out_live.png 22:54:31.873..22:54:36.110
+22:54:36.271 crash tablet_crash_scan.txt since 10-06 22:35:07.000: crash-class lines 45; Reanimated SurfaceMountingManager lines 4458; app pid 24946
+22:54:37.987 api GET /api/v1/session/current => {"status":200,"body":{"session":{"id":"SES-20261006-0033","state":"SEALED","caseNumber":"LP/2026/1006-0017","subjectType":"TERSANGKA","subjectName":"RF2 T3","investigatorId":"OPR-001","investigatorName":"AKP Budi Santoso","room":"Interview Room 1","profileId":"STANDARD_1080P25","createdAt":"2026-10-06T22:50:31.389+07:00","startedAt":"2026-10-06T22:50:53.017+07:00","stoppedAt":"2026-10-06T22:51:04.446+07:00","sealedAt":"2026-10-06T22:51:10.839+07:00","elapsedMs":11429,"bytesWritten":26032722,"evidenceId":"EV-20261006-0023","precheck":{"outcome":"PASS","items":[{"id":"CORE","status":"PASS","value":"ONLINE","reason":null},{"id":"LENS_1","status":"PASS","value":"READY","reason":null},{"id":"LENS_2","status":"PASS","value":"READY","reason":null},{"id":"MIC_1","status":"PASS","value":"READY","reason":null},{"id":"MIC_2","status":"PASS","value":"READY","reason":null},{"id":"STORAGE","status":"PASS","value":"READY","reason":null},{"id":"TIME","status":"PASS","value":"GNSS","reason":null},{"id":"SECURITY","status":"PASS","value":"READY","reason":null}]},"fault":null},"serverTime":"2026-10-06T22:54:37.991+07:00"}}
+22:54:38.053 serverlog since tabletend (3):
+    22:53:50.284 POST /api/v1/session/:id/summary/acknowledge 204
+    22:54:26.584 POST /api/v1/auth/sign-out 204
+    22:54:37.991 GET /api/v1/session/current 200
+22:54:38.134 origins in w1_network.log: {"http://127.0.0.1:5177":3233,"ws://127.0.0.1:5177":19}
+22:54:38.194 console (0): 
+22:54:38.277 signout status 204
+22:54:38.405 api GET /api/v1/auth/session => {"status":401,"body":{"error":{"code":"NOT_SIGNED_IN","message":"Sign in first.","requestId":"d3f02212-4208-4313-9db2-01ab29ab7c59"}}}

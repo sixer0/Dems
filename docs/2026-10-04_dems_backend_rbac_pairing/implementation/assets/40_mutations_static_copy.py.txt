@@ -1,0 +1,23 @@
+# Scratch check of plan row W40: the REAL system/__tests__/static.test.ts against a copy of the
+# workspace in which ONE mutation is applied to ONE file. The repository is only read.
+import json, subprocess, sys, shutil
+S = sys.argv[1]
+REPO = '/Users/gsp-budi/Documents/DEMS/apps/core-server/'
+COPY = S + '/static_copy/apps/core-server/'
+VITEST = '/Users/gsp-budi/Documents/DEMS/node_modules/.bin/vitest'
+mutations = {m['id']: m for m in json.load(open(S + '/mut/mutations.json'))}
+def run(label):
+    out = subprocess.run([VITEST, 'run', '--root', COPY, '--project', 'unit', '--maxWorkers=2', 'src/modules/system/__tests__/static.test.ts'], capture_output=True, text=True)
+    text = out.stdout + out.stderr
+    tests = [l.strip() for l in text.splitlines() if l.strip().startswith('Tests ')]
+    failed = [l.strip() for l in text.splitlines() if l.strip().startswith('×')]
+    print(f"{label} | exit {out.returncode} | {' '.join(tests[0].split()) if tests else 'NO-SUMMARY'}")
+    for line in failed: print('    ' + line[:230])
+run('unmutated copy')
+for mid in sys.argv[2:]:
+    m = mutations[mid]
+    original = open(REPO + m['file']).read()
+    assert original.count(m['from']) == 1
+    open(COPY + m['file'], 'w').write(original.replace(m['from'], m['to']))
+    run(f"{mid} ({m['note']})")
+    shutil.copyfile(REPO + m['file'], COPY + m['file'])

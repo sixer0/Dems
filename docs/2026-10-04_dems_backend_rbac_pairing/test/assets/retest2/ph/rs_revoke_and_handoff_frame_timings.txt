@@ -1,0 +1,50 @@
+===== S1 offset -670 revoke200 17:29:07.108
+f_002.png host 17:29:03.106 login  mean 76.6 sd 46.9 title 0 gold 1487 red 0 (+-4002 ms)
+f_015.png host 17:29:07.680 other  mean 49.8 sd 27.7 title 0 gold 0 red 0 (+572 ms)
+f_018.png host 17:29:07.781 pair  mean 20.7 sd 32.0 title 263 gold 0 red 0 (+673 ms)
+{"preClass": "login", "firstChange": "17:29:07.680", "firstChangeMs": 572, "firstPair": "17:29:07.781", "firstPairFrame": "f_018.png", "toPairMs": 673, "emptyOrDarkBeforePair": [], "unreachableFrames": 0, "frames": 53}
+===== I1 offset -672 revoke200 17:33:06.284
+f_002.png host 17:33:02.312 pair  mean 23.2 sd 40.6 title 118 gold 0 red 0 (+-3972 ms)
+f_006.png host 17:33:07.119 other  mean 19.0 sd 21.5 title 0 gold 0 red 0 (+835 ms)
+f_008.png host 17:33:07.166 pair  mean 20.5 sd 30.1 title 225 gold 0 red 0 (+882 ms)
+{"preClass": "pair", "firstChange": "17:33:07.119", "firstChangeMs": 835, "firstPair": "17:33:07.014", "firstPairFrame": "f_003.png", "toPairMs": 730, "emptyOrDarkBeforePair": [], "unreachableFrames": 0, "frames": 43}
+===== S2 offset -672 revoke200 17:34:47.820
+f_002.png host 17:34:43.820 login  mean 76.6 sd 46.8 title 0 gold 1489 red 0 (+-4000 ms)
+f_014.png host 17:34:48.354 other  mean 50.1 sd 28.0 title 0 gold 0 red 0 (+534 ms)
+f_017.png host 17:34:48.436 pair  mean 21.3 sd 33.0 title 253 gold 0 red 0 (+616 ms)
+{"preClass": "login", "firstChange": "17:34:48.354", "firstChangeMs": 534, "firstPair": "17:34:48.436", "firstPairFrame": "f_017.png", "toPairMs": 616, "emptyOrDarkBeforePair": [], "unreachableFrames": 0, "frames": 54}
+===== I2 offset -676 revoke200 17:39:22.962
+f_002.png host 17:39:18.939 pair  mean 23.2 sd 40.6 title 118 gold 0 red 0 (+-4023 ms)
+f_006.png host 17:39:23.755 other  mean 19.1 sd 26.1 title 1 gold 0 red 0 (+793 ms)
+f_007.png host 17:39:23.785 pair  mean 20.4 sd 30.1 title 227 gold 0 red 0 (+823 ms)
+{"preClass": "pair", "firstChange": "17:39:23.755", "firstChangeMs": 793, "firstPair": "17:39:23.601", "firstPairFrame": "f_003.png", "toPairMs": 639, "emptyOrDarkBeforePair": [], "unreachableFrames": 0, "frames": 45}
+===== H1 offset -671 redeem201 
+17:30:16.043
+f_002.png host 17:30:16.963 pair  mean 28.1 sd 45.3 title 246 gold 86 red 0 (+920 ms)
+f_023.png host 17:30:18.985 other  mean 60.8 sd 35.0 title 0 gold 12 red 0 (+2942 ms)
+f_024.png host 17:30:19.000 login  mean 69.0 sd 41.5 title 0 gold 883 red 0 (+2957 ms)
+{"preClass": null, "firstChange": null, "firstChangeMs": null, "firstPair": "17:30:16.963", "firstPairFrame": "f_002.png", "toPairMs": 920, "emptyOrDarkBeforePair": [], "unreachableFrames": 0, "frames": 70}
+===== H2 offset -672 redeem201 
+17:34:12.498
+f_002.png host 17:34:13.163 pair  mean 28.1 sd 45.2 title 246 gold 86 red 0 (+665 ms)
+f_024.png host 17:34:15.304 other  mean 51.9 sd 27.9 title 0 gold 0 red 0 (+2806 ms)
+f_025.png host 17:34:15.320 login  mean 68.8 sd 41.4 title 0 gold 870 red 0 (+2822 ms)
+{"preClass": null, "firstChange": null, "firstChangeMs": null, "firstPair": "17:34:13.163", "firstPairFrame": "f_002.png", "toPairMs": 665, "emptyOrDarkBeforePair": [], "unreachableFrames": 0, "frames": 70}
+===== H3 offset -674 redeem201 17:35:28.171
+# On the original recording (17:35, before the redaction; analysis output copied verbatim):
+f_002.png host 17:35:28.513 pair  mean 22.2 sd 31.0 title 246 gold 65 red 0 (+342 ms)   <- this frame showed the 'Pairing...' code slots; blacked out since
+f_027.png host 17:35:31.254 other  mean 51.9 sd 27.9 title 0 gold 0 red 0 (+3083 ms)
+f_028.png host 17:35:31.286 login  mean 68.8 sd 41.3 title 0 gold 870 red 0 (+3115 ms)
+{"firstPair": "17:35:28.513", "firstPairFrame": "f_002.png", "toPairMs": 342, "unreachableFrames": 0, "frames": 63}
+# On the redacted recording (frames 1-2 black; re-encoding quantised the pts slightly):
+f_002.png host 17:35:28.437 blank EMPTY mean 0.0 sd 0.0 title None gold None red None (+266 ms)
+f_003.png host 17:35:28.904 pair  mean 16.7 sd 23.5 title 246 gold 10 red 0 (+733 ms)
+f_027.png host 17:35:31.237 other  mean 51.9 sd 27.9 title 0 gold 0 red 0 (+3066 ms)
+f_028.png host 17:35:31.237 login  mean 68.8 sd 41.3 title 0 gold 870 red 0 (+3066 ms)
+{"preClass": null, "firstChange": null, "firstChangeMs": null, "firstPair": "17:35:28.904", "firstPairFrame": "f_003.png", "toPairMs": 733, "emptyOrDarkBeforePair": [["f_002.png", "17:35:28.437", 0.0, 0.0, "empty"]], "unreachableFrames": 0, "frames": 63}
+===== H4 offset -676 redeem201 
+17:40:03.033
+f_002.png host 17:40:04.928 pair  mean 28.1 sd 45.1 title 246 gold 86 red 0 (+1895 ms)
+f_006.png host 17:40:05.922 other  mean 52.4 sd 27.8 title 0 gold 0 red 0 (+2889 ms)
+f_008.png host 17:40:05.971 login  mean 68.8 sd 41.4 title 0 gold 857 red 0 (+2938 ms)
+{"preClass": null, "firstChange": null, "firstChangeMs": null, "firstPair": "17:40:04.928", "firstPairFrame": "f_002.png", "toPairMs": 1895, "emptyOrDarkBeforePair": [], "unreachableFrames": 0, "frames": 55}

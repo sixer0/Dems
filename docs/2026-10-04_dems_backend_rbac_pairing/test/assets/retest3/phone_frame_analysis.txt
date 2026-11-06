@@ -1,0 +1,61 @@
+RF2 phone (emulator-5554) recordings: screenrecord --bugreport, every frame, analysed with CF2-A's tools (analyze_run.py, lag.py, blank2.py).
+Host time = device time - (device-host offset) from 5 bracketed reads per run. lag = (frame host time - Core start) - drawn timer seconds (a perfect whole-second timer reads 0..1 s behind).
+Stale monitor (xearly) = first monitor frame -> first Finalizing frame, when the Core had already stopped; Core stop -> Finalizing = Core stoppedAt to the host time of the first Finalizing frame.
+
+== S1 SES-20261006-0087 -> EV-20261006-0074  load 5.72  device-host offsets ms -443, -449, -447, -448, -447
+   Core start 22:20:53.909  stop 22:21:22.391  sealed 22:21:30.054 (host, from GET /session/current)
+   frames 1118 (22:20:49.611 .. 22:21:46.908 device); monitor frames 1025, timer decoded 1025, undecoded 0; timer first ['22:20:54.641', 0] last ['22:21:22.108', 28]
+   backward steps 0; forward jumps > 2 s 0; banner frames 0; red frames 0
+   lag: frames 1025, max 1.37 s at ['f_049.png', '22:20:55.282'], frames > 2 s 0
+   first monitor frame f_043.png device 22:20:54.641 host 22:20:55.084; frame before it f_042.png empty=False
+   hand-over: last monitor f_1067.png device 22:21:22.108 host 22:21:22.551 -> f_1068.png device 22:21:22.210 host 22:21:22.653 (empty=False); Core stop -> next frame 0.26 s
+   empty app-area frames (blank2): 0 []
+
+== S2 SES-20261006-0088 -> EV-20261006-0075  load 6.46  device-host offsets ms -451, -449, -451, -452, -450
+   Core start 22:23:47.186  stop 22:24:16.114  sealed 22:24:23.129 (host, from GET /session/current)
+   frames 572 (22:23:43.021 .. 22:24:33.861 device); monitor frames 479, timer decoded 479, undecoded 0; timer first ['22:23:47.406', 0] last ['22:24:17.212', 28]
+   backward steps 0; forward jumps > 2 s 0; banner frames 0; red frames 0
+   lag: frames 462, max 1.79 s at ['f_118.png', '22:23:50.980'], frames > 2 s 0
+   first monitor frame f_043.png device 22:23:47.406 host 22:23:47.857; frame before it f_042.png empty=False
+   hand-over: last monitor f_521.png device 22:24:17.212 host 22:24:17.663 -> f_522.png device 22:24:17.537 host 22:24:17.988 (empty=False); Core stop -> next frame 1.87 s
+   empty app-area frames (blank2): 1 [['f_560.png', '22:24:32.804', 10.0, 0.0]]
+
+== S3 SES-20261006-0089 -> EV-20261006-0076  load 6.75  device-host offsets ms -447, -455, -452, -453, -452
+   Core start 22:26:09.486  stop 22:26:38.463  sealed 22:26:45.593 (host, from GET /session/current)
+   frames 548 (22:26:05.305 .. 22:27:00.136 device); monitor frames 458, timer decoded 458, undecoded 0; timer first ['22:26:09.639', 0] last ['22:26:39.145', 28]
+   backward steps 0; forward jumps > 2 s 0; banner frames 0; red frames 0
+   lag: frames 446, max 1.53 s at ['f_131.png', '22:26:13.021'], frames > 2 s 0
+   first monitor frame f_042.png device 22:26:09.639 host 22:26:10.086; frame before it f_041.png empty=False
+   hand-over: last monitor f_499.png device 22:26:39.145 host 22:26:39.592 -> f_500.png device 22:26:39.322 host 22:26:39.769 (empty=False); Core stop -> next frame 1.31 s
+   empty app-area frames (blank2): 1 [['f_536.png', '22:26:54.872', 10.0, 0.0]]
+
+== X1 SES-20261006-0090 -> EV-20261006-0077  load 6.89  device-host offsets ms -457, -454, -453, -453, -454
+   Core start 22:28:20.855  stop 22:28:21.274  sealed 22:28:27.322 (host, from GET /session/current)
+   frames 114 (22:28:16.679 .. 22:29:41.242 device); monitor frames 15, timer decoded 15, undecoded 0; timer first ['22:28:21.043', 0] last ['22:28:21.557', 0]
+   backward steps 0; forward jumps > 2 s 0; banner frames 0; red frames 0
+   lag: frames 3, max 0.68 s at ['f_044.png', '22:28:21.531'], frames > 2 s 0
+   first monitor frame f_042.png device 22:28:21.043 host 22:28:21.500; frame before it f_041.png empty=False
+   hand-over: last monitor f_056.png device 22:28:21.557 host 22:28:22.014 -> f_057.png device 22:28:21.787 host 22:28:22.244 (empty=False); Core stop -> next frame 0.97 s
+   STALE monitor of the stopped session drawn 0.74 s (first monitor frame after the Core stop)
+   empty app-area frames (blank2): 1 [['f_096.png', '22:28:35.432', 10.0, 0.0]]
+
+== X2 SES-20261006-0091 -> EV-20261006-0078  load 7.06  device-host offsets ms -420, -452, -454, -452, -453
+   Core start 22:31:02.595  stop 22:31:03.055  sealed 22:31:10.417 (host, from GET /session/current)
+   frames 105 (22:30:58.437 .. 22:31:22.275 device); monitor frames 14, timer decoded 14, undecoded 0; timer first ['22:31:02.798', 0] last ['22:31:03.222', 0]
+   backward steps 0; forward jumps > 2 s 0; banner frames 0; red frames 0
+   lag: frames 6, max 0.73 s at ['f_048.png', '22:31:03.326'], frames > 2 s 0
+   first monitor frame f_043.png device 22:31:02.798 host 22:31:03.218; frame before it f_042.png empty=False
+   hand-over: last monitor f_056.png device 22:31:03.222 host 22:31:03.642 -> f_057.png device 22:31:03.424 host 22:31:03.844 (empty=False); Core stop -> next frame 0.79 s
+   STALE monitor of the stopped session drawn 0.63 s (first monitor frame after the Core stop)
+   empty app-area frames (blank2): 1 [['f_094.png', '22:31:17.693', 10.0, 0.0]]
+
+== X3 SES-20261006-0092 -> EV-20261006-0079  load 8.07  device-host offsets ms -455, -454, -452, -453, -455
+   Core start 22:32:41.804  stop 22:32:42.205  sealed 22:32:49.586 (host, from GET /session/current)
+   frames 120 (22:32:37.663 .. 22:33:00.987 device); monitor frames 28, timer decoded 28, undecoded 0; timer first ['22:32:42.057', 0] last ['22:32:43.076', 0]
+   backward steps 0; forward jumps > 2 s 0; banner frames 0; red frames 0
+   lag: frames 0, max None s at None, frames > 2 s 0
+   first monitor frame f_043.png device 22:32:42.057 host 22:32:42.512; frame before it f_042.png empty=False
+   hand-over: last monitor f_070.png device 22:32:43.076 host 22:32:43.531 -> f_071.png device 22:32:43.916 host 22:32:44.371 (empty=False); Core stop -> next frame 2.17 s
+   STALE monitor of the stopped session drawn 1.86 s (first monitor frame after the Core stop)
+   empty app-area frames (blank2): 1 [['f_109.png', '22:32:59.841', 10.0, 0.0]]
+

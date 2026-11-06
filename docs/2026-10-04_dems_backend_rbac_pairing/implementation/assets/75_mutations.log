@@ -1,0 +1,79 @@
+# W75 mutation check (rule M15: every mutation is applied in memory by the transform plugin of vitest.mutation.config.mts; no file of the tree is changed)
+
+### batch1
+42 mutations; texts that do not occur exactly once: 0
+C01 DETECTED    exit=1 chain-panel.tsx: A9: the presenter is not consulted first [Test Files  1 failed (1) | Tests  3 failed | 12 passed (15)] (30 s) first: × refusal: the documented 403 (ORIGIN_NOT_ALLOWED) is worded by the presenter with the address; no result, no line; Verify is idle again 8619ms
+C02 DETECTED    exit=1 chain-panel.tsx: A9: the Live lines are never rendered [Test Files  1 failed (1) | Tests  6 failed | 9 passed (15)] (42 s) first: × success: the Spinner holds until the Core answered; PASS from the view; the stored-chain line under it; no lineage line; the stamp is the Live clock 1172ms
+C03 DETECTED    exit=1 chain-panel.tsx: A9: the stored/lineage of the Live handle are not read [Test Files  1 failed (1) | Tests  6 failed | 9 passed (15)] (42 s) first: × success: the Spinner holds until the Core answered; PASS from the view; the stored-chain line under it; no lineage line; the stamp is the Live clock 1094ms
+C04 DETECTED    exit=1 chain-panel.tsx: C-6: the stamp is the browser clock, not the Live clock [Test Files  1 failed (1) | Tests  1 failed | 14 passed (15)] (10 s) first: × success: the Spinner holds until the Core answered; PASS from the view; the stored-chain line under it; no lineage line; the stamp is the Live clock 1062ms
+C05 DETECTED    exit=1 chain-panel.tsx: B-5: the toast is shown at the press, before the answer [Test Files  1 failed (1) | Tests  3 failed | 12 passed (15)] (14 s) first: × pending: busy at once with the same look, a second press sends nothing, the spinner only after the reveal time 534ms
+C06 DETECTED    exit=1 chain-panel.tsx: B-5: no press guard (a second press sends a second command) [Test Files  1 failed (1) | Tests  5 failed | 10 passed (15)] (42 s) first: × success: one POST of operation 70 for the tamper alert; the toast after the answer; the button leaves with the Core's delta 8181ms
+C07 DETECTED    exit=1 chain-panel.tsx: B-5: the presenter is not consulted first [Test Files  1 failed (1) | Tests  2 failed | 13 passed (15)] (26 s) first: × refusal: the documented 403 (ORIGIN_NOT_ALLOWED) by the presenter; no success toast; the button is idle and still offered 8203ms
+C08 DETECTED    exit=1 chain-panel.tsx: B-5: the busy mark is not on the button [Test Files  1 failed (1) | Tests  1 failed | 14 passed (15)] (10 s) first: × pending: busy at once with the same look, a second press sends nothing, the spinner only after the reveal time 170ms
+C09 DETECTED    exit=1 chain-panel.tsx: B-5: the spinner is never shown [Test Files  1 failed (1) | Tests  1 failed | 14 passed (15)] (13 s) first: × pending: busy at once with the same look, a second press sends nothing, the spinner only after the reveal time 3219ms
+L01 DETECTED    exit=1 chain-core-lines.tsx: the lineage line is never shown [Test Files  1 failed (1) | Tests  2 failed | 13 passed (15)] (26 s) first: × one discarded chain (the contract example): "Earlier chains: 1" opens a read-only list with its epoch, rows, head, time, operator and scenario 8679ms
+L02 DETECTED    exit=1 chain-core-lines.tsx: "Earlier chains: n" counts the listed entries, not all discarded chains [Test Files  1 failed (1) | Tests  1 failed | 14 passed (15)] (11 s) first: × three of 25 discarded chains: one entry per chain the Core returned, newest first, and the count of all; a command-line reset names no operator 691ms
+L03 DETECTED    exit=1 chain-core-lines.tsx: a broken stored chain reads as verified [Test Files  1 failed (1) | Tests  1 failed | 14 passed (15)] (10 s) first: × a stored chain that does not verify names its first bad entry 609ms
+L04 DETECTED    exit=1 chain-core-lines.tsx: a command-line reset is credited to an operator [Test Files  1 failed (1) | Tests  1 failed | 14 passed (15)] (10 s) first: × three of 25 discarded chains: one entry per chain the Core returned, newest first, and the count of all; a command-line reset names no operator 638ms
+L05 DETECTED    exit=1 chain-core-lines.tsx: the list drops all but the newest entry [Test Files  1 failed (1) | Tests  1 failed | 14 passed (15)] (10 s) first: × three of 25 discarded chains: one entry per chain the Core returned, newest first, and the count of all; a command-line reset names no operator 641ms
+## 2026-10-06 01:36:18 WIB 14 mutations: 14 detected, 0 survived [], 0 not applied []
+exit=0
+
+### batch2a
+42 mutations; texts that do not occur exactly once: 0
+X01 DETECTED    exit=1 export-audit-dialog.tsx: A7: the presenter is not consulted first [Test Files  1 failed (1) | Tests  2 failed | 8 passed (10)] (24 s) first: × no answer: the presenter's sentence once; no page toast; the dialog keeps the reason and offers Export again 8162ms
+X02 DETECTED    exit=1 export-audit-dialog.tsx: A7: a Live 422 is not the reason field's error [Test Files  1 failed (1) | Tests  1 failed | 9 passed (10)] (19 s) first: × a 422 is the reason field's error: the Core is the judge of the reason; typing clears it 8216ms
+X03 DETECTED    exit=1 export-audit-dialog.tsx: A7: the Live success toast keeps the Simulated words [Test Files  1 failed (1) | Tests  1 failed | 9 passed (10)] (19 s) first: × with 450 rows on the fake server the export file holds 450 rows: one POST, then all pages of operation 59 (200 a page), seq 1..450, ending on the export's head 9666ms
+X04 DETECTED    exit=1 export-audit-dialog.tsx: A7: Cancel is not held while the Core has not answered [Test Files  1 failed (1) | Tests  1 failed | 9 passed (10)] (9 s) first: × busy at once with the same look; a second press sends nothing; the spinner late; Cancel waits for the answer 306ms
+X05 DETECTED    exit=1 export-audit-dialog.tsx: A7: no press guard [Test Files  1 failed (1) | Tests  10 failed (10)] (90 s) first: × with 450 rows on the fake server the export file holds 450 rows: one POST, then all pages of operation 59 (200 a page), seq 1..450, ending on the export's head 8768ms
+X06 DETECTED    exit=1 export-audit-dialog.tsx: the file: a refused page is not handed to the presenter [Test Files  1 failed (1) | Tests  1 failed | 9 passed (10)] (15 s) first: × a page the Core does not answer: the presenter's sentence; the inline sentence names the export the Core recorded; no file; the build step failed 416ms
+X07 DETECTED    exit=1 export-audit-dialog.tsx: the file is never handed to the browser [Test Files  1 failed (1) | Tests  3 failed | 7 passed (10)] (54 s) first: × with 450 rows on the fake server the export file holds 450 rows: one POST, then all pages of operation 59 (200 a page), seq 1..450, ending on the export's head 16404ms
+X08 SURVIVED    exit=0 export-audit-dialog.tsx: the pipeline does not wait for the file [Test Files  1 passed (1) | Tests  10 passed (10)] (10 s) first: 
+X09 DETECTED    exit=1 export-audit-dialog.tsx: the build step names no page [Test Files  1 failed (1) | Tests  1 failed | 9 passed (10)] (18 s) first: × the step "Build export package" shows the page count while the pages are read 10296ms
+X10 DETECTED    exit=1 export-audit-dialog.tsx: the receipt counts the stored rows as Simulated does (the ring) [Test Files  1 failed (1) | Tests  3 failed | 7 passed (10)] (18 s) first: × with 450 rows on the fake server the export file holds 450 rows: one POST, then all pages of operation 59 (200 a page), seq 1..450, ending on the export's head 984ms
+X11 SURVIVED    exit=0 export-audit-dialog.tsx: the dialog can be dismissed while the Core has not answered [Test Files  1 passed (1) | Tests  10 passed (10)] (11 s) first: 
+## 2026-10-06 01:41:32 WIB 11 mutations: 9 detected, 2 survived ['X08', 'X11'], 0 not applied []
+exit=0
+
+### batch2b
+42 mutations; texts that do not occur exactly once: 0
+X05b DETECTED    exit=1 export-audit-dialog.tsx: A7: no press guard (ASI-safe form) [Test Files  1 failed (1) | Tests  1 failed | 9 passed (10)] (14 s) first: × busy at once with the same look; a second press sends nothing; the spinner late; Cancel waits for the answer 262ms
+E01 DETECTED    exit=1 export-file.ts: pages of 50 rows [Test Files  1 failed (1) | Tests  2 failed | 8 passed (10)] (22 s) first: × with 450 rows on the fake server the export file holds 450 rows: one POST, then all pages of operation 59 (200 a page), seq 1..450, ending on the export's head 1940ms
+E02 DETECTED    exit=1 export-file.ts: the walk stops after the first page [Test Files  1 failed (1) | Tests  3 failed | 7 passed (10)] (36 s) first: × with 450 rows on the fake server the export file holds 450 rows: one POST, then all pages of operation 59 (200 a page), seq 1..450, ending on the export's head 16576ms
+E03 DETECTED    exit=1 export-file.ts: no head check (a moved chain gives a file) [Test Files  1 failed (1) | Tests  1 failed | 9 passed (10)] (29 s) first: × a chain that moved (the walk does not end on the export's head): no file; the page's toast and one record with no text 12421ms
+E04 DETECTED    exit=1 export-file.ts: the walk takes one row more than the export covers [Test Files  1 failed (1) | Tests  3 failed | 7 passed (10)] (55 s) first: × with 450 rows on the fake server the export file holds 450 rows: one POST, then all pages of operation 59 (200 a page), seq 1..450, ending on the export's head 16221ms
+E05 DETECTED    exit=1 export-file.ts: the cursor is not passed on [Test Files  1 failed (1) | Tests  2 failed | 8 passed (10)] (38 s) first: × with 450 rows on the fake server the export file holds 450 rows: one POST, then all pages of operation 59 (200 a page), seq 1..450, ending on the export's head 15861ms
+G01 DETECTED    exit=1 log.ts: the record quotes the text of the error [Test Files  1 failed (1) | Tests  1 failed | 9 passed (10)] (9 s) first: × a chain that moved (the walk does not end on the export's head): no file; the page's toast and one record with no text 185ms
+G02 DETECTED    exit=1 log.ts: the record has another prefix [Test Files  1 failed (1) | Tests  1 failed | 9 passed (10)] (9 s) first: × a chain that moved (the walk does not end on the export's head): no file; the page's toast and one record with no text 169ms
+S01 DETECTED    exit=1 sim-adapter.ts: Live counts the entries as the ring (F-1) [Test Files  1 failed (1) | Tests  3 failed | 7 passed (10)] (15 s) first: × with 450 rows on the fake server the export file holds 450 rows: one POST, then all pages of operation 59 (200 a page), seq 1..450, ending on the export's head 592ms
+## 2026-10-06 01:48:56 WIB 9 mutations: 9 detected, 0 survived [], 0 not applied []
+exit=0
+
+### batch3
+42 mutations; texts that do not occur exactly once: 0
+C06b DETECTED    exit=1 chain-panel.tsx: B-5: no press guard (a second press sends a second command; ASI-safe form) [Test Files  1 failed (1) | Tests  1 failed | 14 passed (15)] (10 s) first: × pending: busy at once with the same look, a second press sends nothing, the spinner only after the reveal time 202ms
+R01 DETECTED    exit=1 rbac-panel.tsx: Live renders the static nine-row matrix [Test Files  1 failed (1) | Tests  6 failed | 13 passed (19)] (20 s) first: × Live: the Core's twelve permissions from operation 10, in its order, with its grants; one request; the cache entry is the runtime's key 646ms
+R02 DETECTED    exit=1 rbac-panel.tsx: Live grants from the static table [Test Files  1 failed (1) | Tests  1 failed | 18 passed (19)] (8 s) first: × Live: the matrix is shown as the Core grants it, not as the console's static table 186ms
+R03 DETECTED    exit=1 rbac-panel.tsx: Retry is not rate-limited [Test Files  1 failed (1) | Tests  1 failed | 18 passed (19)] (14 s) first: × Live, no answer: the presenter's sentence once, the inline message and Retry; Retry reads again and cools down; the third read shows the matrix 8286ms
+R04 DETECTED    exit=1 rbac-panel.tsx: the presenter is not consulted first [Test Files  1 failed (1) | Tests  2 failed | 17 passed (19)] (23 s) first: × Live, no answer: the presenter's sentence once, the inline message and Retry; Retry reads again and cools down; the third read shows the matrix 8261ms
+R05 DETECTED    exit=1 rbac-panel.tsx: the matrix is kept outside the runtime key [Test Files  1 failed (1) | Tests  3 failed | 16 passed (19)] (31 s) first: × Live: the Core's twelve permissions from operation 10, in its order, with its grants; one request; the cache entry is the runtime's key 938ms
+R06 DETECTED    exit=1 rbac-panel.tsx: Live subtitle keeps the Simulated words [Test Files  1 failed (1) | Tests  1 failed | 18 passed (19)] (11 s) first: × Live: the Core's twelve permissions from operation 10, in its order, with its grants; one request; the cache entry is the runtime's key 876ms
+A01 DETECTED    exit=1 auth-panel.tsx: the feed names a typed username as a signed-in actor [Test Files  1 failed (1) | Tests  1 failed | 18 passed (19)] (20 s) first: × Live: the authentication feed and the audit table name the operator whose username was typed, as unverified 8228ms
+A02 DETECTED    exit=1 auth-panel.tsx: the Live wording also in Simulated mode [Test Files  1 failed (1) | Tests  1 failed | 18 passed (19)] (7 s) first: × Simulated: the same history keeps the operator's name as before 149ms
+A03 DETECTED    exit=1 audit-log-panel.tsx: the table names a typed username as a signed-in actor [Test Files  1 failed (1) | Tests  1 failed | 18 passed (19)] (8 s) first: × Live: the authentication feed and the audit table name the operator whose username was typed, as unverified 146ms
+## 2026-10-06 01:51:38 WIB 10 mutations: 10 detected, 0 survived [], 0 not applied []
+exit=0
+
+### the two survivors of batch 2a after the tests were strengthened (01:42)
+X08 DETECTED    exit=1 export-audit-dialog.tsx: the pipeline does not wait for the file [Test Files  1 failed (1) | Tests  1 failed | 9 passed (10)] (8 s)
+X11 DETECTED    exit=1 export-audit-dialog.tsx: the dialog can be dismissed while the Core has not answered [Test Files  1 failed (1) | Tests  1 failed | 9 passed (10)] (10 s)
+## 2026-10-06 01:42:27 WIB 2 mutations: 2 detected, 0 survived [], 0 not applied []
+
+### the F75-2 fix (01:52)
+R07 DETECTED    exit=1 rbac-panel.tsx: the matrix is read again after the session ended (F75-2) [Test Files  1 failed (1) | Tests  1 failed | 18 passed (19)] (9 s)
+## 2026-10-06 01:52:23 WIB 1 mutations: 1 detected, 0 survived [], 0 not applied []
+
+### baseline under the mutation config, no mutation (01:52)
+ Test Files  4 passed (4)
+      Tests  62 passed (62)
+baseline exit=0

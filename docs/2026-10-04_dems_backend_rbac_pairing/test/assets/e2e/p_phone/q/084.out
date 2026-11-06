@@ -1,0 +1,11 @@
+10:44:51.187 mark d01 at 10:44:51.187
+10:44:51.296 screencap 95_sc4_phone_final_investigator_device_detail.png 10:44:51.296..10:44:52.445
+10:44:52.522 tap 972,2283
+10:44:52.884 slept 2500 ms
+10:44:55.434 declared screen more
+10:44:55.460 screencap 96_more_before_sign_out.png 10:44:55.460..10:44:55.590
+10:44:55.616 ids(1): more-operator-role@438,456 "Investigator"
+10:44:57.796 tapid more-sign-out at 776,663 "Sign out"
+10:45:00.609 slept 2000 ms
+10:45:02.635 screencap 97_sign_out_step.png 10:45:02.635..10:45:03.279
+10:45:03.310 ids(33): action_bar_root@540,1212 ; content@540,1212 ; auth-activity-boundary@540,1212 ; screen-login@540,1212 ; login-backdrop@540,1212 ; pane-auth@540,1315 ; login-brand@540,610 ; login-ring@541,468 "DEMS Edge Client emblem" ; login-emblem@541,468 "DEMS Edge Client" ; View@541,857 "DEMS EDGE CLIENT" ; TextView@540,824 "DEMS" ; TextView@541,908 "EDGE CLIENT" ; TextView@540,989 "Digital Evidence Recording Controller" ; login-auth@540,1751 ; login-card@540,1589 ; login-alert-signed-out@540,1184 ; View@540,1184 "You have been signed out." ; View@580,1185 "You have been signed out." ; login-username@540,1342 "Username" ; login-password@540,1499 "Password" ; login-password-toggle@912,1500 "Show password" ; login-submit@540,1668 "Sign In" ; TextView@540,1667 "Sign In" ; login-biometric-block@540,1925 ; login-biometric@541,1867 "Use biometric login" ; login-biometric-caption@540,2009 "Sign in with your password once to enable biometric sign-in on this ta" ; login-demo-operators@540,2213 ; login-demo-trigger@540,2214 "Demo operators" ; TextView@310,2214 "Demo operators" ; login-trust-line@540,2375 ; login-core-chip@541,2353 "Core online" ; TextView@562,2352 "Core online" ; login-trust-text@540,2412 "Core: DEMS-IR-01 • paired as DEV-0001"

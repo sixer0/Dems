@@ -1,0 +1,6 @@
+mark extra: TECHNICIAN deep link to /session/new (R2 entry guard) at 12:58:48.563
+deep link demsdemo:///session/new at 12:58:48.647: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 1500 ms
+screencap R2_f_technician_session_new_link_1500ms.png (483004 bytes) at 12:58:50.834
+slept 2500 ms
+screencap R2_g_technician_session_new_link_4s.png (783442 bytes) at 12:58:53.889

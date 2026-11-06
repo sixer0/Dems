@@ -1,0 +1,14 @@
+09:48:36.665 screencap 03b_after_signin_t2.png 09:48:36.665..09:48:37.497
+09:48:37.778 corelog (0): 
+09:48:37.870 jslog (0): 
+09:48:37.953 serverlog since a01 (10):
+    09:47:51.981 GET /api/v1/auth/session 401 NOT_SIGNED_IN null
+    09:47:51.985 [socket opened]
+    09:47:51.988 GET /api/v1/auth/status 200 null
+    09:47:52.384 GET /api/v1/health 200 null
+    09:47:54.681 POST /api/v1/auth/sign-in 200 null
+    09:47:54.683 [socket closed]
+    09:47:54.690 [socket opened] operator:OPR-002
+    09:48:10.659 POST /api/v1/auth/sign-in 200 device:DEV-0001
+    09:48:10.932 [socket closed] device:DEV-0001
+    09:48:10.967 [socket opened] operator:OPR-001

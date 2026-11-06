@@ -1,0 +1,424 @@
+// E2E-W2 Part A: one role's walk of every web console page in Live mode on the main instance.
+// Usage: TMPDIR=… node w2_part_a.mjs <INVESTIGATOR|TECHNICIAN> <assetsDir> [--no-session]
+// Browser: own headless shell, OS-chosen devtools port, fresh profile removed at the end.
+// Writes <assetsDir>/w2_part_a_<role>.json and appends to <assetsDir>/w2_driver.log.
+import * as lib from './w2_lib.mjs'
+import { join } from 'node:path'
+
+const [ROLE, ASSETS, ...flags] = process.argv.slice(2)
+const USER = { INVESTIGATOR: 'budi.santoso', TECHNICIAN: 'rina.wijaya' }[ROLE]
+if (!USER) throw new Error('role?')
+const role = ROLE.toLowerCase()
+const PERMS = {
+  INVESTIGATOR: ['SESSION_START', 'SESSION_NOTE', 'EVIDENCE_VIEW', 'DIAGNOSTICS_RUN'],
+  TECHNICIAN: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE'],
+}[ROLE]
+const has = (p) => PERMS.includes(p)
+const LOG = join(ASSETS, 'w2_driver.log')
+const { sleep, ORIGIN } = lib
+
+let shot = 0
+const nn = () => String(++shot).padStart(2, '0')
+const result = { role: ROLE, user: USER, startedAt: lib.nowIso(), checks: [], pages: {}, actions: [], refusals: [], screenshots: [] }
+const check = (page, control, expected, observed, note = '') => {
+  const pass = JSON.stringify(expected) === JSON.stringify(observed)
+  result.checks.push({ page, control, expected, observed, result: pass ? 'PASS' : 'FAIL', note })
+  return pass
+}
+
+const browser = await lib.launch(`a_${role}`)
+const c = await lib.connect(browser, role, ASSETS, LOG)
+result.browser = { product: browser.version.Browser, pid: browser.proc.pid, devtools: browser.http, profile: browser.profile }
+const snap = async (page, caption) => {
+  const name = `${nn()}_${role}_${page}.png`
+  await c.screenshot(name)
+  result.screenshots.push({ file: name, caption })
+  return name
+}
+const txt = (tid) => c.evaluate(`document.querySelector('[data-testid="${tid}"]')?.textContent?.replace(/\\s+/g,' ').trim().slice(0,240) ?? null`)
+const exists = (sel) => c.evaluate(`document.querySelector(${JSON.stringify(sel)}) !== null`)
+const enabledOf = (sel) =>
+  c.evaluate(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return 'absent'; const d = el.disabled === true || el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('data-disabled'); return d ? 'disabled' : 'enabled' })()`)
+const openMenu = async (triggerSel) => {
+  await c.clickSel(triggerSel, triggerSel)
+  const ok = await c.waitUntil(`document.querySelector('[role="menu"]') !== null`, 'menu', 5000)
+  await sleep(500)
+  if (!ok) return null
+  return c.evaluate(`(() => [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map((el) => ({
+    key: el.getAttribute('data-key'),
+    label: (el.querySelector('[slot="label"]')?.textContent ?? el.textContent).replace(/\\s+/g,' ').trim().slice(0,60),
+    description: el.querySelector('[slot="description"]')?.textContent?.trim() ?? null,
+    enabled: el.getAttribute('aria-disabled') !== 'true',
+  })))()`)
+}
+const closeOverlay = async () => {
+  await c.key('Escape', 'Escape', 27)
+  await sleep(500)
+}
+const menuItem = (items, key) => (items ?? []).find((i) => i.key === key || i.label.toLowerCase().startsWith(key.toLowerCase())) ?? null
+const navClick = async (id) => {
+  const at = await c.clickSel(`.dems-nav-list li[data-id="${id}"] a`, `nav ${id}`)
+  await sleep(2500)
+  return at
+}
+const where = async () => ({ path: await c.evaluate('location.pathname'), pageIds: await lib.pageId(c), nav: await lib.navFacts(c) })
+
+try {
+  // ── 0. Sign in through the Login form ──
+  result.signIn = await lib.signIn(c, USER)
+  await snap('dashboard_after_sign_in', `${ROLE} signed in through the Login form, Live mode, Dashboard`)
+  result.signIn.net = c.takeNet()
+  const auth = await c.pageFetch('GET', '/api/v1/auth/session')
+  result.signIn.serverRole = auth.body?.operator?.role
+  result.signIn.serverPermissions = auth.body?.permissions
+  check('shell', 'server role of the session', ROLE, auth.body?.operator?.role)
+  check('shell', 'server permission list', [...PERMS].sort(), [...(auth.body?.permissions ?? [])].sort())
+
+  // ── 1. Navigation entries ──
+  const nav = await lib.navFacts(c)
+  result.nav = nav
+  check('shell', 'navigation entries', ['dashboard', 'session', 'evidence', 'devices', 'storage', 'network-time', 'security-audit', 'system', 'api-reference'], nav.entries)
+  check('shell', 'ADMINISTRATION group (USER_ADMIN / PAIRING_MANAGE)', false, nav.adminGroup)
+
+  // ── 2. Every navigation entry, clicked ──
+  const NAV = [
+    ['dashboard', '/dashboard', 'page-dashboard'],
+    ['session', '/session', 'page-session-monitor'],
+    ['evidence', '/evidence', 'page-evidence'],
+    ['devices', '/devices', 'page-devices'],
+    ['storage', '/storage', 'page-storage'],
+    ['network-time', '/network-time', 'page-network-time'],
+    ['security-audit', '/security-audit', 'page-security-audit'],
+    ['system', '/system', 'page-system'],
+    ['api-reference', '/developer/api', 'page-api-reference'],
+  ]
+  for (const [id, path, pid] of NAV) {
+    await navClick(id)
+    const w = await where()
+    const controls = await lib.controlFacts(c)
+    const reasons = await lib.reasonFacts(c)
+    const file = await snap(id.replace('-', '_'), `${ROLE}: ${path} opened through the navigation entry "${id}"`)
+    result.pages[path] = { viaNav: { ...w, reasons, controls, screenshot: file } }
+    check(path, `navigation entry "${id}" opens the page`, [path, true], [w.path, w.pageIds.includes(pid)])
+  }
+
+  // ── 3. Every route by deep link (typed address, full load) ──
+  const evList = await c.pageFetch('GET', '/api/v1/evidence?limit=50')
+  const items = evList.body?.items ?? evList.body?.evidence ?? []
+  const sealed = items.find((i) => i.status === 'SEALED') ?? items[0]
+  result.evidenceUsed = sealed ? { id: sealed.id, status: sealed.status } : null
+  const DEEP = [
+    ['/dashboard', '/dashboard', 'page-dashboard'],
+    ['/session', '/session', 'page-session-monitor'],
+    ['/session/new', has('SESSION_START') ? '/session/new' : '/dashboard', has('SESSION_START') ? 'page-session-new' : 'page-dashboard'],
+    ['/evidence', '/evidence', 'page-evidence'],
+    [`/evidence/${sealed?.id}`, `/evidence/${sealed?.id}`, 'page-evidence-detail'],
+    ['/devices', '/devices', 'page-devices'],
+    ['/storage', '/storage', 'page-storage'],
+    ['/network-time', '/network-time', 'page-network-time'],
+    ['/security-audit', '/security-audit', 'page-security-audit'],
+    ['/system', '/system', 'page-system'],
+    ['/admin/users', '/dashboard', 'page-dashboard'],
+    ['/admin/devices', '/dashboard', 'page-dashboard'],
+    ['/developer/api', '/developer/api', 'page-api-reference'],
+    ['/stack-check', '/stack-check', 'page-stack-check'],
+  ]
+  for (const [url, expectPath, pid] of DEEP) {
+    await c.navigate(ORIGIN + url, 3500)
+    await c.waitUntil(`document.querySelector('[data-testid="${pid}"]') !== null`, pid, 8000)
+    const w = await where()
+    const slug = url === `/evidence/${sealed?.id}` ? 'evidence_detail' : url.replace(/^\//, '').replace(/[/-]/g, '_')
+    const file = await snap(`${slug}_deeplink`, `${ROLE}: address ${url} typed (full load) → ${w.path}`)
+    result.pages[url] = { ...(result.pages[url] ?? {}), viaDeepLink: { ...w, screenshot: file } }
+    check(url, 'deep link lands on', [expectPath, true], [w.path, w.pageIds.includes(pid)])
+    if (url === '/session/new' || url.startsWith('/admin/')) {
+      result.pages[url].viaDeepLink.navEntryShown = w.nav.entries.includes(url === '/admin/users' ? 'users-roles' : url === '/admin/devices' ? 'paired-devices' : 'none')
+    }
+  }
+
+  // ── 4. Page by page: controls against the matrix ──
+  // Dashboard
+  await c.navigate(ORIGIN + '/dashboard', 3500)
+  check('/dashboard', 'Start New Session (SESSION_START)', has('SESSION_START') ? 'enabled' : 'absent', await enabledOf('[data-testid="start-new-session"]'))
+  check('/dashboard', 'Start New Session locked chip', !has('SESSION_START'), await exists('[data-testid="start-new-session-locked"]'))
+  check('/dashboard', 'Quick action Export Evidence (EVIDENCE_EXPORT)', 'disabled', await enabledOf('[data-testid="quick-action-exportEvidence"]'))
+  check('/dashboard', 'Quick action Run Diagnostics (DIAGNOSTICS_RUN)', 'enabled', await enabledOf('[data-testid="quick-action-runDiagnostics"]'))
+  {
+    const items = await openMenu('[aria-label="Camera 1 actions"]')
+    result.pages['/dashboard'].cameraMenu = items
+    await snap('dashboard_camera1_menu', `${ROLE}: Dashboard, Camera 1 tile menu`)
+    const ts = menuItem(items, 'testSignal') ?? menuItem(items, 'Test signal')
+    const rs = menuItem(items, 'restart') ?? menuItem(items, 'Restart')
+    check('/dashboard', 'Camera 1 menu: Test signal (op 49 testDeviceSignal = DIAGNOSTICS_RUN)', 'enabled', ts ? (ts.enabled ? 'enabled' : 'disabled') : 'absent', 'F63-1 / D152: the console gates this item on DEVICE_MANAGE')
+    check('/dashboard', 'Camera 1 menu: Restart (op 48 restartDevice = DEVICE_MANAGE)', has('DEVICE_MANAGE') ? 'enabled' : 'disabled', rs ? (rs.enabled ? 'enabled' : 'disabled') : 'absent')
+    await closeOverlay()
+  }
+
+  // Session Monitor
+  await c.navigate(ORIGIN + '/session', 3500)
+  {
+    const cur = await c.pageFetch('GET', '/api/v1/session/current')
+    result.pages['/session'].currentSession = cur.body?.session ? { id: cur.body.session.id, state: cur.body.session.state } : null
+    check('/session', 'Start New Session link (SESSION_START)', has('SESSION_START'), await exists('[data-testid="sm-start-new-session"]'))
+    const endPermitted = await c.evaluate(`document.querySelector('[data-testid="sm-action-end"]')?.getAttribute('data-permitted') ?? null`)
+    check('/session', 'End Session data-permitted (SESSION_START)', has('SESSION_START') ? 'true' : 'false', endPermitted)
+    for (const tid of ['sm-action-marker', 'sm-action-note', 'sm-action-snapshot']) {
+      result.pages['/session'][tid] = await enabledOf(`[data-testid="${tid}"]`)
+    }
+  }
+
+  // Evidence list: row menu
+  await c.navigate(ORIGIN + '/evidence', 3500)
+  if (sealed) {
+    const items = await openMenu(`[data-testid="evidence-row-menu-${sealed.id}"]`)
+    result.pages['/evidence'].rowMenu = items
+    await snap('evidence_row_menu', `${ROLE}: Evidence list, row menu of ${sealed.id} (${sealed.status})`)
+    const st = (k) => {
+      const i = menuItem(items, k)
+      return i ? (i.enabled ? 'enabled' : 'disabled') : 'absent'
+    }
+    check('/evidence', 'row menu: View (EVIDENCE_VIEW)', 'enabled', st('view'))
+    check('/evidence', 'row menu: Verify (EVIDENCE_VIEW)', 'enabled', st('verify'))
+    check('/evidence', 'row menu: Export (wizard; the Core judges EVIDENCE_EXPORT, D-6)', 'enabled', st('export'), 'by design the wizard sends the export and the Core refuses (EXPORT_DENIED)')
+    check('/evidence', 'row menu: Archive (EVIDENCE_REVIEW)', 'disabled', st('archive'))
+    await closeOverlay()
+  }
+
+  // Evidence detail: every tab, More menu, Verify, Export wizard
+  if (sealed) {
+    await c.navigate(ORIGIN + `/evidence/${sealed.id}`, 4000)
+    for (const tab of ['media', 'metadata', 'integrity']) {
+      await c.click(`evidence-tab-${tab}`)
+      await sleep(1800)
+      const sel = await c.evaluate(`document.querySelector('[data-testid="evidence-tab-${tab}"]')?.getAttribute('aria-selected')`)
+      await snap(`evidence_detail_tab_${tab}`, `${ROLE}: Evidence ${sealed.id}, tab ${tab}`)
+      check(`/evidence/${sealed.id}`, `tab ${tab} opens`, 'true', sel)
+    }
+    const more = await openMenu('[data-testid="evidence-more"]')
+    result.pages[`/evidence/${sealed.id}`].moreMenu = more
+    await snap('evidence_detail_more_menu', `${ROLE}: Evidence detail, More menu`)
+    const ar = menuItem(more, 'archive')
+    check(`/evidence/${sealed.id}`, 'More menu: Archive (EVIDENCE_REVIEW)', 'disabled', ar ? (ar.enabled ? 'enabled' : 'disabled') : 'absent')
+    await closeOverlay()
+    check(`/evidence/${sealed.id}`, 'Export button (wizard; Core judges, D-6)', 'enabled', await enabledOf('[data-testid="evidence-export"]'))
+    // Allowed: Verify (op 41 verifyEvidence, EVIDENCE_VIEW)
+    await c.click('evidence-tab-integrity')
+    await sleep(1200)
+    c.takeNet()
+    check(`/evidence/${sealed.id}`, 'Verify (EVIDENCE_VIEW)', 'enabled', await enabledOf('[data-testid="evidence-verify"]'))
+    const vAt = await c.click('evidence-verify')
+    await sleep(5000)
+    const vNet = c.takeNet()
+    const verdict = await txt('evidence-verdict')
+    await snap('evidence_detail_verify_done', `${ROLE}: Evidence ${sealed.id}, Verify pressed (allowed: EVIDENCE_VIEW)`)
+    result.actions.push({ page: `/evidence/${sealed.id}`, action: 'Verify package (op 41)', allowed: true, pressedAt: vAt ? new Date(vAt).toISOString() : null, requests: vNet.api.filter((r) => r.includes('/verify')), verdict, console: vNet.console })
+    // Not allowed through the UI: the export wizard's Authorise step (op 42 exportEvidence → EXPORT_DENIED)
+    await c.click('evidence-export')
+    await c.waitFor('export-wizard', true, 6000)
+    await sleep(800)
+    await snap('evidence_export_wizard_reason', `${ROLE}: Export wizard opened, Reason step`)
+    const reasonSel = '[data-testid="export-reason"] textarea, [data-testid="export-reason"] input, textarea[data-testid="export-reason"]'
+    const hasReason = await exists(reasonSel)
+    if (hasReason) {
+      await c.typeInto(reasonSel, 'E2E-W2 role walk: export attempt by a role without EVIDENCE_EXPORT', 'export reason')
+      await sleep(300)
+      await c.click('export-next')
+      await sleep(1500)
+      c.takeNet()
+      const authAt = await c.click('export-authorise')
+      await sleep(4500)
+      const aNet = c.takeNet()
+      const denied = await txt('export-denied')
+      await snap('evidence_export_denied', `${ROLE}: Export wizard, Authorise → the Core refuses (EXPORT_DENIED), denied alert`)
+      result.actions.push({ page: `/evidence/${sealed.id}`, action: 'Export wizard Authorise (op 42, NOT allowed)', allowed: false, pressedAt: authAt ? new Date(authAt).toISOString() : null, requests: aNet.api.filter((r) => r.includes('/export')), denied, console: aNet.console })
+      check(`/evidence/${sealed.id}`, 'Export Authorise answered 403 and the denied alert shows', true, aNet.api.some((r) => r.includes('/export 403')) && denied !== null)
+    } else {
+      result.actions.push({ page: `/evidence/${sealed.id}`, action: 'Export wizard', note: 'reason field not found' })
+    }
+    await closeOverlay()
+    await closeOverlay()
+  }
+
+  // Devices: menus, drawer, allowed commands
+  await c.navigate(ORIGIN + '/devices', 3500)
+  {
+    const cam = await openMenu('[data-testid="device-menu-CAM-01"]')
+    result.pages['/devices'].cam01Menu = cam
+    await snap('devices_camera1_menu', `${ROLE}: Devices, Camera 1 menu`)
+    const st = (k) => {
+      const i = menuItem(cam, k)
+      return i ? (i.enabled ? 'enabled' : 'disabled') : 'absent'
+    }
+    check('/devices', 'Camera 1 menu: Test signal (DIAGNOSTICS_RUN)', 'enabled', st('testSignal'))
+    check('/devices', 'Camera 1 menu: Identify (DIAGNOSTICS_RUN)', 'enabled', st('identify'))
+    check('/devices', 'Camera 1 menu: Restart (DEVICE_MANAGE)', has('DEVICE_MANAGE') ? 'enabled' : 'disabled', st('restart'))
+    result.pages['/devices'].restartReason = menuItem(cam, 'restart')?.description ?? null
+    await closeOverlay()
+    // Allowed: Test signal on MIC 1
+    c.takeNet()
+    await openMenu('[data-testid="device-menu-MIC-01"]')
+    const tsAt = await c.clickSel('[role="menu"] [role="menuitem"][data-key="testSignal"]', 'MIC-01 testSignal')
+    await sleep(3000)
+    const tsNet = c.takeNet()
+    const tsToast = await lib.toastFacts(c)
+    await snap('devices_mic1_test_signal', `${ROLE}: Devices, MIC 1 → Test signal (allowed: DIAGNOSTICS_RUN)`)
+    result.actions.push({ page: '/devices', action: 'MIC 1 Test signal (op 49)', allowed: true, pressedAt: tsAt ? new Date(tsAt).toISOString() : null, requests: tsNet.api.filter((r) => r.includes('/device/')), toasts: tsToast, console: tsNet.console })
+    await sleep(1500)
+    if (has('DEVICE_MANAGE')) {
+      // Allowed for TECHNICIAN: Restart Camera 2
+      await openMenu('[data-testid="device-menu-CAM-02"]')
+      const rAt = await c.clickSel('[role="menu"] [role="menuitem"][data-key="restart"]', 'CAM-02 restart')
+      await sleep(3500)
+      const rNet = c.takeNet()
+      const rToast = await lib.toastFacts(c)
+      await snap('devices_camera2_restart', `${ROLE}: Devices, Camera 2 → Restart (allowed: DEVICE_MANAGE)`)
+      result.actions.push({ page: '/devices', action: 'Camera 2 Restart (op 48)', allowed: true, pressedAt: rAt ? new Date(rAt).toISOString() : null, requests: rNet.api.filter((r) => r.includes('/device/')), toasts: rToast, console: rNet.console })
+    } else {
+      // Allowed for INVESTIGATOR: Identify Camera 1
+      await openMenu('[data-testid="device-menu-CAM-01"]')
+      const iAt = await c.clickSel('[role="menu"] [role="menuitem"][data-key="identify"]', 'CAM-01 identify')
+      await sleep(3000)
+      const iNet = c.takeNet()
+      const iToast = await lib.toastFacts(c)
+      await snap('devices_camera1_identify', `${ROLE}: Devices, Camera 1 → Identify (allowed: DIAGNOSTICS_RUN)`)
+      result.actions.push({ page: '/devices', action: 'Camera 1 Identify (op 50)', allowed: true, pressedAt: iAt ? new Date(iAt).toISOString() : null, requests: iNet.api.filter((r) => r.includes('/device/')), toasts: iToast, console: iNet.console })
+    }
+    // Drawer of Camera 1, every tab
+    await c.click('camera-tile-VIDEO-01')
+    await c.waitFor('device-drawer', true, 6000)
+    await sleep(1200)
+    for (const tab of ['overview', 'health', 'log']) {
+      await c.click(`drawer-tab-${tab}`)
+      await sleep(1000)
+      await snap(`devices_drawer_${tab}`, `${ROLE}: Devices, Camera 1 drawer, tab ${tab}`)
+    }
+    await closeOverlay()
+    // Drawer of the tablet: the "Paired devices" row (PAIRING_MANAGE → op 19 summary + link; otherwise the link sentence)
+    await c.clickSel('[data-testid="other-TABLET"]', 'tablet row')
+    await c.waitFor('device-drawer', true, 6000)
+    await sleep(2000)
+    const paired = {
+      summary: await exists('[data-testid="drawer-paired-summary"]'),
+      openLink: await exists('[data-testid="drawer-paired-open"]'),
+      sentence: await txt('drawer-paired-link'),
+      connected: await c.evaluate(`document.querySelector('[data-testid="drawer-paired-link"]')?.getAttribute('data-connected') ?? null`),
+    }
+    await snap('devices_drawer_tablet', `${ROLE}: Devices, tablet drawer, "Paired devices" row`)
+    result.pages['/devices'].drawerPaired = paired
+    check('/devices', 'tablet drawer: paired-device count and link to Paired Devices (PAIRING_MANAGE)', false, paired.summary || paired.openLink)
+    check('/devices', 'tablet drawer: connected / not connected sentence instead', true, paired.sentence !== null)
+    await closeOverlay()
+  }
+
+  // Storage: Manage drawer
+  await c.navigate(ORIGIN + '/storage', 3500)
+  {
+    await c.click('storage-manage-open')
+    await c.waitFor('storage-manage-drawer', true, 6000)
+    await sleep(1000)
+    const before = { apply: await enabledOf('[data-testid="storage-policy-apply"]'), rbac: await txt('storage-policy-rbac') }
+    const autoBefore = await c.evaluate(`document.querySelector('[data-testid="storage-auto-archive"] input')?.checked ?? null`)
+    await c.clickSel('[data-testid="storage-auto-archive"] [data-slot="switch-control"]', 'auto-archive switch')
+    await sleep(600)
+    const after = { apply: await enabledOf('[data-testid="storage-policy-apply"]'), label: await txt('storage-policy-apply') }
+    await snap('storage_manage_drawer_changed', `${ROLE}: Storage, Manage drawer with the auto-archive switch changed`)
+    result.pages['/storage'].drawer = { before, autoBefore, after }
+    const canManage = has('EVIDENCE_REVIEW') || has('MAINTENANCE')
+    check('/storage', 'Apply with a changed draft (ANY-OF EVIDENCE_REVIEW, MAINTENANCE)', canManage ? 'enabled' : 'disabled', after.apply)
+    check('/storage', 'role sentence under the form', !canManage, before.rbac !== null)
+    if (canManage) {
+      c.takeNet()
+      const aAt = await c.click('storage-policy-apply')
+      await sleep(3500)
+      const n1 = c.takeNet()
+      await snap('storage_policy_applied', `${ROLE}: Storage, auto-archive changed and applied (allowed: MAINTENANCE)`)
+      // put it back
+      await c.click('storage-manage-open')
+      await c.waitFor('storage-manage-drawer', true, 6000)
+      await sleep(900)
+      await c.clickSel('[data-testid="storage-auto-archive"] [data-slot="switch-control"]', 'auto-archive switch back')
+      await sleep(500)
+      await c.click('storage-policy-apply')
+      await sleep(3500)
+      const n2 = c.takeNet()
+      const autoEnd = (await c.pageFetch('GET', '/api/v1/storage/status')).body
+      result.actions.push({ page: '/storage', action: 'Storage policy auto-archive toggled, then restored (op 55)', allowed: true, pressedAt: aAt ? new Date(aAt).toISOString() : null, requests: [...n1.api, ...n2.api].filter((r) => r.includes('/storage/policy')), console: [...n1.console, ...n2.console], restoredAutoArchive: JSON.stringify(autoEnd).match(/"autoArchive":(true|false)/)?.[1] ?? null, autoBefore })
+    } else {
+      await closeOverlay()
+    }
+  }
+
+  // Network & Time
+  await c.navigate(ORIGIN + '/network-time', 3500)
+  result.pages['/network-time'].commands = (await lib.controlFacts(c)).length
+  result.pages['/network-time'].tablet = await txt('network-time-tablet-state')
+
+  // Security & Audit
+  await c.navigate(ORIGIN + '/security-audit', 4000)
+  {
+    check('/security-audit', 'Export audit (AUDIT_EXPORT)', 'disabled', await enabledOf('[data-testid="export-audit"]'))
+    check('/security-audit', 'Verify chain (AUTHENTICATED)', 'enabled', await enabledOf('[data-testid="verify-chain"]'))
+    check('/security-audit', 'role matrix shown (op 10, AUTHENTICATED)', true, await exists('[data-testid="rbac-matrix"]'))
+    c.takeNet()
+    const vAt = await c.click('verify-chain')
+    await sleep(4000)
+    const vNet = c.takeNet()
+    const chain = await txt('chain-status')
+    await snap('security_audit_verify_chain', `${ROLE}: Security & Audit, Verify chain pressed (allowed: AUTHENTICATED)`)
+    result.actions.push({ page: '/security-audit', action: 'Verify chain (op 60)', allowed: true, pressedAt: vAt ? new Date(vAt).toISOString() : null, requests: vNet.api.filter((r) => r.includes('/audit')), chain, console: vNet.console })
+    await c.clickSel('[data-testid="rbac-matrix"]', 'matrix')
+    await sleep(800)
+    await snap('security_audit_role_matrix', `${ROLE}: Security & Audit, role matrix from the Core (read-only)`)
+  }
+
+  // System
+  await c.navigate(ORIGIN + '/system', 4000)
+  {
+    check('/system', 'Run Diagnostics (DIAGNOSTICS_RUN)', 'enabled', await enabledOf('[data-testid="system-run-diagnostics"]'))
+    check('/system', 'Restart services (MAINTENANCE)', has('MAINTENANCE') ? 'enabled' : 'disabled', await enabledOf('[data-testid="system-restart-services"]'))
+    check('/system', 'Install update (MAINTENANCE)', has('MAINTENANCE') ? 'enabled' : 'disabled', await enabledOf('[data-testid="system-update-install"]'))
+    check('/system', 'Export logs (AUDIT_EXPORT)', 'disabled', await enabledOf('[data-testid="system-export-logs"]'))
+    check('/system', 'Quick card Export Evidence (EVIDENCE_EXPORT)', 'disabled', await enabledOf('[data-testid="system-quick-exportEvidence"]'))
+    check('/system', 'Demo Control Panel (DEMO_CONTROL)', false, (await exists('[data-testid="system-demo-body"]')) || (await exists('[data-testid="system-demo-toggle"]')))
+    result.pages['/system'].reasons = await lib.reasonFacts(c)
+    c.takeNet()
+    const dAt = await c.click('system-run-diagnostics')
+    await sleep(6000)
+    const dNet = c.takeNet()
+    const modal = await txt('system-diagnostics-modal')
+    await snap('system_run_diagnostics', `${ROLE}: System, Run Diagnostics pressed (allowed: DIAGNOSTICS_RUN)`)
+    result.actions.push({ page: '/system', action: 'Run Diagnostics (op 65)', allowed: true, pressedAt: dAt ? new Date(dAt).toISOString() : null, requests: dNet.api.filter((r) => r.includes('/system/')), modal: modal?.slice(0, 160) ?? null, console: dNet.console })
+    await closeOverlay()
+    await c.clickSel('[data-testid="system-restart-services"]', 'scroll only') // never reached when disabled; for TECHNICIAN see below
+      .then(() => null)
+      .catch(() => null)
+  }
+} catch (e) {
+  result.error = String(e.message || e)
+  try {
+    await snap('error', `driver error: ${result.error.slice(0, 80)}`)
+  } catch {}
+}
+result.endedAt = lib.nowIso()
+result.allRequests = c.allRequests.map((r) => `${new Date(r.at).toISOString().slice(11, 23)} ${r.method} ${r.url} ${r.status}`)
+result.allConsole = c.allConsole
+result.inlineDataUrls = c.allRequests.filter((r) => /^(data|blob):/.test(r.url)).length
+result.origins = [...new Set(c.allRequests.filter((r) => !/^(data|blob):/.test(r.url)).map((r) => { try { return new URL(r.url.replace('?…', '')).origin } catch { return r.url.slice(0, 30) } }))]
+result.allRequests = result.allRequests.filter((r) => !/ (data|blob):/.test(r))
+lib.writeJson(join(ASSETS, `w2_part_a_${role}.json`), result)
+console.log(lib.sanitize(JSON.stringify({ role: ROLE, error: result.error ?? null, checks: result.checks.filter((x) => x.result === 'FAIL'), nChecks: result.checks.length, actions: result.actions.length, shots: shot, origins: result.origins }, null, 1)))
+// Keep the browser for the refusals and the sign-out (part A2); its descriptor is written for the next step.
+import('node:fs').then(({ writeFileSync }) =>
+  writeFileSync(`${process.env.TMPDIR}/w2_browser_a_${role}.json`, JSON.stringify({ http: browser.http, port: browser.port, pid: browser.proc.pid, profile: browser.profile, shot })),
+)
+c.close()
+if (flags.includes('--close')) {
+  await lib.shutdown(browser)
+  process.exit(0)
+}
+// stay alive so the browser (child) keeps running for part A2; ends on SIGTERM
+process.on('SIGTERM', async () => {
+  await lib.shutdown(browser)
+  process.exit(0)
+})
+setInterval(() => {}, 60000)

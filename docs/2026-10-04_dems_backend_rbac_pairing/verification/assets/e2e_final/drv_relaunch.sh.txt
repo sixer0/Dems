@@ -1,0 +1,36 @@
+#!/bin/sh
+# Step 1: force-stop the app on ONE device (5554/5556/5558) and relaunch it with
+# 'demsdemo:///login?core=LIVE&motion=off' (single-quoted for the device shell). Read-only checks, one screencap
+# (taken 8 s after runtime.live.ready; nothing was typed). No uiautomator dump. No lock/PIN/settings change.
+#   sh relaunch.sh <serial> <tag>
+set -u
+S=$1; TAG=$2
+case "$S" in emulator-5554|emulator-5556|emulator-5558) ;; *) echo "serial refused"; exit 64;; esac
+OUT=/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/verification/assets/e2e_final
+APP=com.dems.demo.tablet
+a() { adb -s "$S" "$@"; }
+now() { python3 -c 'import time; t=time.time(); print(time.strftime("%H:%M:%S", time.localtime(t)) + ".%03d" % int((t % 1) * 1000))'; }
+kg() { a shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1; }
+echo "== relaunch $S ($(a shell getprop ro.boot.qemu.avd_name | tr -d '\r')) — host $(now); $(kg); load $(uptime | sed 's/.*averages: //')"
+case "$(kg)" in *true*) echo "-- KEYGUARD showing: stop, nothing done"; exit 77;; esac
+echo "-- prefs before: $(a shell "run-as $APP sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" | tr -d '\r')"
+echo "-- secure-store entry NAMES before (values never read): $(a shell "run-as $APP sh -c 'grep -o \"name=\\\"[^\\\"]*\\\"\" shared_prefs/SecureStore.xml'" | tr -d '\r' | tr '\n' ' ')"
+T0=$(a shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+echo "-- device T0 $T0; host $(now) am force-stop"
+a shell am force-stop "$APP"; sleep 1
+echo "-- pid after force-stop: '$(a shell pidof $APP | tr -d '\r')'"
+echo "-- host $(now) am start -W -d 'demsdemo:///login?core=LIVE&motion=off'"
+a shell "am start -W -a android.intent.action.VIEW -d 'demsdemo:///login?core=LIVE&motion=off' $APP" 2>&1 | tr -d '\r' | grep -E "Status|LaunchState|TotalTime|Error" | sed 's/^/   /'
+js() { a logcat -d -v epoch -T "$T0" -s ReactNativeJS:V 2>/dev/null; }
+i=0; until js | grep -q -- 'runtime.live.ready' || [ "$i" -ge 240 ]; do i=$((i + 1)); sleep 1; done
+echo "-- waited $i s for runtime.live.ready (host $(now))"
+sleep 8
+case "$(kg)" in *true*) echo "-- KEYGUARD showing: no capture"; exit 77;; esac
+a exec-out screencap -p > "$OUT/${TAG}.png"
+echo "-- screencap ${TAG}.png at host $(now); $(kg); focus: $(a shell dumpsys window | tr -d '\r' | grep -m1 mCurrentFocus | sed 's/^ *//')"
+echo "-- app requests and runtime records since T0:"
+js | grep -E 'runtime\.(debug\.core|live\.ready)|DEMS-LIVE|sessionEnd|pairing|unpaired|DEVICE_' | sed -E 's/^ *([0-9.]+) .*ReactNativeJS: /   \1 /' | sed -E 's/ [0-9a-f]{8}-[0-9a-f-]{27}$//' | cut -c1-200 | head -30
+echo "-- prefs after: $(a shell "run-as $APP sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" | tr -d '\r')"
+echo "-- secure-store entry NAMES after: $(a shell "run-as $APP sh -c 'grep -o \"name=\\\"[^\\\"]*\\\"\" shared_prefs/SecureStore.xml'" | tr -d '\r' | tr '\n' ' ')"
+echo "-- credential/token lines in the device JS log since T0 (must be 0): $(js | grep -c -E 'dvc_|ses_|bio_')"
+echo "-- end host $(now)"

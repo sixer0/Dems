@@ -1,0 +1,21 @@
+# Gate brief — wave G (decision D193, 2026-10-10)
+
+You run ONE milestone gate as the INDEPENDENT verifier (+1). You check claims against evidence and drive the product through its real surfaces (web console in a browser, tablet / phone on the emulators, the Core's API). You change NO product or test file. You write one gate report (path in your task) and may keep screenshots / logs under the git-ignored `.cache/gates/<gate>/`. The tree is committed at `f293221`.
+
+## Binding rules
+- `delegation_progress/driver_rules_d94.md`, all of it. D122: a check that passed ONCE on the code under test is proven; run it again only after a fail. A check you could not run is NOT PROVEN — never "assumed".
+- LOCAL DEVICES — never select, pre-check or start a selector naming this Mac's camera / microphone (`CAM-03` / `MIC-03` or any LOCAL_DEVICE source); never set `DEMS_LOCAL_SESSION_ATTENDED` / `DEMS_USER_ATTENDED`; never run `adapters/local/__tests__/e2e/`; no TCC / System Settings. Where a flow is ABOUT the local-device notice, drive it only as far as the notice and CANCEL it ("Not now") — the confirm path is the user's and is listed as "user-attended, not run".
+- BIOMETRICS are skipped by the user's instruction (D151): never touch the fingerprint sensor (`adb emu finger` is forbidden), dismiss any biometric prompt and use the PIN / password path; list each biometric step as "skipped by the user's instruction", never as passed.
+- Emulator locks: never set, change or remove a PIN / lock / fingerprint. The devices are unlocked and stay awake; if one is locked again after a reboot, STOP that device's flows and report (do not unlock).
+- Never read / source / print `.data/pg*.env` or any pwfile; never print a credential or a token (sessions come from `npx tsx .cache/gate-env/gate-session.mts <lane> <ROLE>` which writes a 0600 cookie jar; UI sign-in uses the seed operators through the project's documented demo sign-in — do not paste the value into the report). Never touch ports 5173-5175, 8000, 5432. No installs, no sudo, no git writes. Never open or describe media under `.data/` except what the product's own player shows on generated test pictures (FAKE sources: a test pattern) — describing "a moving test pattern plays" is fine.
+- No real network discovery and no real camera credential: discovery / connect flows use the fake ONVIF stub on loopback (the project's own tooling starts it; fixture credentials only).
+- The environment is SHARED and stays up: read `initialization/05_gate_environment_up.md` (the operating sheet: lanes, URLs, devices, re-point = new pairing, relaunch commands, session helper, browser tooling, stop procedure — do not stop anything unless your task says so). One owner per device / lane at a time: you own what your task names. A `scripts/lane/lane.sh reset <lane>` is allowed only on a lane your task names as yours, and only with that lane's Core stopped by the script and started again after (pairings are kept).
+
+## How to judge
+- Entry condition: "0 Blocker / Major open" for the milestone — verify in the CODE that each BLOCKER / MAJOR of the milestone's review is fixed (read the fix + its test; run the one test file once if in doubt). A finding called fixed that you cannot confirm is OPEN.
+- Each named check of the gate row: PASS with the evidence (the quoted output line, the screenshot file + what it shows, the API answer), or FAIL, or NOT PROVEN with why. Software checks may be proven by a run made on unchanged code (show it is unchanged: the files' last commit against the run); device / browser checks are proven only by you driving them now.
+- A defect you meet while driving a flow is a FINDING even if no check names it: ID `G<gate>-NN`, severity (BLOCKER | MAJOR | MINOR | NOTE), exact steps, what you saw (screenshot path / log line), what the spec says.
+- Verdict: PASS | PASS WITH CONDITIONS (each with an owner) | FAIL (the blocking items). Do not soften.
+
+## Report shape (Tier 2)
+Verdict; entry condition table; the checks table (id | surface | result | evidence); findings; skipped (biometric / user-attended) list; what was not covered and why; the environment state you leave (which lanes / devices you changed, any re-pairing you did).

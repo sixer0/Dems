@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""M1 FOLLOW-UP mutation check (rule M15: nothing in the tree is written). Groups: P the helper, C the dialog hold and the second prop, D the LIVE caption.
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file)
+and runs the test files of its group. A mutation is DETECTED when jest exits non-zero. The hashes of
+the mutated files are compared before and after the whole run.
+
+Groups:
+  H  the pending-press hook (`runtime/use-pending-press.ts`): the press guard and the reveal delay
+  S  the seeded first render (`runtime/link-notice.ts` `initialOfflineNotice`, `runtime/use-core-link-notice.ts`,
+     the W66 chip's first-render line)
+  B  the `busy` prop of `navigation/back-guard.tsx` and W67's call
+  T  the truthful copy of Start Session
+
+  python3 mutate.py control            the unmutated test files of every group, once
+  python3 mutate.py H                  every mutant of group H (or S, B, T); ids also work (H1 S3 …)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = '/Users/gsp-budi/Documents/DEMS/.cache/m1/mut/jest.mut.config.cjs'
+
+HELPER = 'src/runtime/pending-control.tsx'
+GUARD = 'src/navigation/back-guard.tsx'
+SCREEN = 'src/features/session-new/session-new-screen.tsx'
+DEV_I18N = 'src/features/devices/i18n.ts'
+CHART = 'src/features/devices/health-chart.tsx'
+
+TESTS = {
+    'P': ['src/runtime/pending-control.test.tsx', 'src/features/devices/live-devices-sites.test.tsx', 'src/features/session-new/live-session-new-handoff.test.tsx'],
+    'C': ['src/navigation/__tests__/back-guard-busy.test.tsx', 'src/features/session-new/live-session-new-followups.test.tsx'],
+    'D': ['src/features/devices/live-devices-health-caption.test.tsx', 'src/features/devices/live-devices-sites.test.tsx'],
+}
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+BUSY = 'return busy ? { accessibilityState: { busy: true, disabled } } : {};'
+M = [
+  # P: the helper
+  ('P1', HELPER, 'busyState marks an idle control too', [e(BUSY, 'return { accessibilityState: { busy: true, disabled } };')]),
+  ('P2', HELPER, 'busyState drops the disabled flag', [e(BUSY, 'return busy ? { accessibilityState: { busy: true, disabled: false } } : {};')]),
+  ('P3', HELPER, 'busyState never marks a control busy', [e(BUSY, 'return {};')]),
+  ('P4', HELPER, 'PendingSpinner drops the colour it is given', [e('{...(color === undefined ? {} : { color })}', '{...{}}')]),
+  ('P5', HELPER, 'PendingSpinner is the md size', [e('<Spinner size="sm"', '<Spinner size="md"')]),
+  ('P6', HELPER, 'PendingSpinner drops the test ID', [e('{...(testID === undefined ? {} : { testID })}', '{...{}}')]),
+  ('P7', HELPER, 'PendingSpinner forces a colour when none is given', [e('{...(color === undefined ? {} : { color })}', "{...{ color: color ?? '#0B0D0F' }}")]),
+  # C: the dialog hold (F5) and the second prop (F4)
+  # C1 (a second, handler-level guard of Stay) survived the first run: it was dead code behind the disabled flag and was removed from the dialog.
+  ('C2', GUARD, 'Stay is not disabled while busy', [e('{...(busy ? { isDisabled: true } : {})}', '{...{}}')]),
+  ('C3', GUARD, 'the dialog can be dismissed while busy', [e('(open || busy ? undefined : guard.stay())', '(open ? undefined : guard.stay())')]),
+  ('C4', GUARD, 'Stay is always disabled (the default dialog changes)', [e('{...(busy ? { isDisabled: true } : {})}', '{...{ isDisabled: true }}')]),
+  ('C5', GUARD, 'pending defaults to false (a caller of the first form loses its spinner)', [e('busy = false, pending = busy }', 'busy = false, pending = false }')]),
+  ('C6', GUARD, 'the spinner follows busy, not pending (spinner at the press)', [e('{pending ? <PendingSpinner', '{busy ? <PendingSpinner')]),
+  ('C7', GUARD, 'the busy state follows pending (busy only after the reveal delay: DN-4 undone)', [e('{...busyState(busy)}', '{...busyState(pending)}')]),
+  ('C8', GUARD, 'the leave button takes a press while busy', [e('                if (busy) return;\n', '')]),
+  ('C9', SCREEN, 'W67 passes the first form (busy from the reveal only)', [e('busy={cancelPress.busy} pending={cancelPress.pending}', 'busy={cancelPress.pending}')]),
+  ('C10', SCREEN, 'W67 passes only pending (the dialog never holds)', [e('busy={cancelPress.busy} pending={cancelPress.pending}', 'pending={cancelPress.pending}')]),
+  # D: the LIVE health caption
+  ('D1', DEV_I18N, 'the LIVE caption says "Last N samples" again', [e('samples_other: "Derived on this device from the Core\'s data · last {{count}} samples",', "samples_other: 'Last {{count}} samples',")]),
+  ('D2', CHART, 'the chart takes the Simulated caption in LIVE', [e("t(live ? 'features.devices.live.samples' : 'devices.drawer.health.samples'", "t('devices.drawer.health.samples'")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = sys.argv[1:]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# M1 follow-up mutation check, %s; the tree is not edited' % time.strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+    if 'control' in wanted:
+        tests = sorted({t for group in TESTS.values() for t in group})
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'), tests)
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation, %d test files): exit=%d %s (%.0f s)' % (len(tests), run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-4000:])
+            sys.exit(1)
+    chosen = [m for m in M if m[0] in wanted or m[0].rstrip('0123456789') in wanted]
+    detected = missed = unapplied = 0
+    for mid, file, what, edits in chosen:
+        group = mid.rstrip('0123456789')
+        with open(SPEC, 'w') as f:
+            json.dump({'id': mid, 'file': file, 'edits': edits}, f)
+        started = time.time()
+        run = jest(dict(os.environ, CI='1', M1_MUT_SPEC=SPEC), TESTS[group])
+        tail, failed, first = summary(run.stdout)
+        if 'expected exactly 1' in run.stdout:
+            unapplied += 1
+            verdict = 'NOT APPLIED'
+        elif run.returncode != 0:
+            detected += 1
+            verdict = 'DETECTED'
+        else:
+            missed += 1
+            verdict = 'not detected'
+        print('%-4s %-12s %s | %s | %s | failing files: %s | first: %s (%.0f s)' % (mid, verdict, what, file, tail, ', '.join(failed) or '-', ' / '.join(first) or '-', time.time() - started), flush=True)
+    if chosen:
+        print('## %d detected, %d not detected, %d not applied, of %d' % (detected, missed, unapplied, len(chosen)), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    same = before == after
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if same else 'CHANGED'), flush=True)
+    for f in files:
+        print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+
+if __name__ == '__main__':
+    main()

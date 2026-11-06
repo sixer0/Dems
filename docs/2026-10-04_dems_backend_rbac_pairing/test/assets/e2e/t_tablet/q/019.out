@@ -1,0 +1,6 @@
+tap 1853,1060 at 09:56:25.314
+slept 2500 ms
+screencap 10e_evidence_tab_hash_integrity.png (1050658 bytes) at 09:56:31.234
+swipe 1920,1350,1920,450 600 ms
+slept 1500 ms
+screencap 10f_evidence_tab_hash_integrity_scrolled.png (723329 bytes) at 09:56:36.459

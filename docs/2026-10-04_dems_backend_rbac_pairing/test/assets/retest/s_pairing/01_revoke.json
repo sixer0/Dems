@@ -1,0 +1,278 @@
+{
+  "deviceId": "DEV-0002",
+  "reason": "R-S re-test",
+  "clockBefore": {
+    "offsetMs": -533,
+    "bracketMs": 36
+  },
+  "dialog": {
+    "openedAt": "12:49:19.943 (epoch 1791265759.943)",
+    "shown": true,
+    "text": "Revoke deviceRevoke DEV-0002? The device is signed out at once and must be paired again. A recording in progress continues on the Core.ReasonR-S re-testKeep deviceRevoke device",
+    "screenshot": "01_web_revoke_dialog.png"
+  },
+  "web": {
+    "confirmAt": "12:49:21.160 (epoch 1791265761.160)",
+    "confirmAtMs": 1791265761160,
+    "call": {
+      "method": "POST",
+      "path": "/api/v1/pairing/devices/DEV-0002/revoke",
+      "status": 200,
+      "sentAtMs": 1791265761168,
+      "doneAtMs": 1791265761244,
+      "sent": "12:49:21.168 (epoch 1791265761.168)",
+      "done": "12:49:21.244 (epoch 1791265761.244)"
+    },
+    "dialogClosed": true,
+    "facts": {
+      "href": "http://127.0.0.1:5173/admin/devices",
+      "onPage": true,
+      "issueState": "IDLE",
+      "codeShown": false,
+      "codeDigitCount": 0,
+      "qrShown": false,
+      "countdownSeconds": null,
+      "attempts": null,
+      "redeemedText": null,
+      "activeElsewhere": false,
+      "list": "table",
+      "rows": [
+        {
+          "id": "DEV-0002",
+          "state": "Revoked",
+          "online": "Offline",
+          "operator": "—",
+          "lastSeen": "2 min ago",
+          "revokeShown": false
+        },
+        {
+          "id": "DEV-0001",
+          "state": "Revoked",
+          "online": "Offline",
+          "operator": "—",
+          "lastSeen": "2 h ago",
+          "revokeShown": false
+        }
+      ],
+      "summary": {
+        "paired": "0",
+        "online": "0",
+        "text": "0 paired · 0 online0 paired · 0 online"
+      },
+      "toasts": [
+        "DEV-0002 revoked"
+      ]
+    },
+    "screenshot": "01_web_revoked.png"
+  },
+  "phone": {
+    "state": {
+      "keyguard": "false",
+      "focus": "mCurrentFocus=Window{325dcc2 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}",
+      "appFocused": true
+    },
+    "screencap": {
+      "file": "01_phone_after_revoke_pair.png",
+      "bytes": 338324,
+      "at": "12:49:29.385 (epoch 1791265769.385)"
+    },
+    "requestsSinceT0": [
+      "12:49:23.295 (epoch 1791265763.295) GET /api/v1/auth/status 200"
+    ]
+  },
+  "clockAfter": {
+    "offsetMs": -536,
+    "bracketMs": 30
+  },
+  "serverLines": [
+    {
+      "at": "12:49:21.196 (epoch 1791265761.196)",
+      "atMs": 1791265761196,
+      "method": "POST",
+      "route": "/api/v1/pairing/devices/:id/revoke",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "12:49:21.206 (epoch 1791265761.206)",
+      "atMs": 1791265761206,
+      "method": "GET",
+      "route": "/api/v1/pairing/devices",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "12:49:21.207 (epoch 1791265761.207)",
+      "atMs": 1791265761207,
+      "method": null,
+      "route": null,
+      "status": null,
+      "principal": "device:DEV-0002",
+      "msg": "socket closed",
+      "code": 4403,
+      "closedBy": "server",
+      "kind": null
+    },
+    {
+      "at": "12:49:21.225 (epoch 1791265761.225)",
+      "atMs": 1791265761225,
+      "method": "GET",
+      "route": "/api/v1/pairing/code",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "12:49:21.318 (epoch 1791265761.318)",
+      "atMs": 1791265761318,
+      "method": "GET",
+      "route": "/api/v1/pairing/devices",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "12:49:21.381 (epoch 1791265761.381)",
+      "atMs": 1791265761381,
+      "method": "GET",
+      "route": "/api/v1/pairing/devices",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "12:49:23.596 (epoch 1791265763.596)",
+      "atMs": 1791265763596,
+      "method": null,
+      "route": null,
+      "status": null,
+      "principal": null,
+      "msg": "socket opened",
+      "code": null,
+      "closedBy": null,
+      "kind": "ANONYMOUS"
+    },
+    {
+      "at": "12:49:23.705 (epoch 1791265763.705)",
+      "atMs": 1791265763705,
+      "method": "GET",
+      "route": "/api/v1/auth/status",
+      "status": 200,
+      "principal": null,
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    }
+  ],
+  "audit": {
+    "DEVICE_REVOKED": {
+      "status": 200,
+      "total": 177,
+      "rows": [
+        {
+          "seq": 176,
+          "id": "AUD-000176",
+          "at": "2026-10-06T05:49:21.180Z",
+          "atMs": 1791265761180,
+          "type": "DEVICE_REVOKED",
+          "category": "PAIRING",
+          "severity": "WARNING",
+          "actorId": "OPR-002",
+          "deviceId": "DEV-0002",
+          "sessionId": null,
+          "message": "Device DEV-0002 revoked",
+          "details": {
+            "reason": "R-S re-test",
+            "sessionsEnded": 0
+          }
+        },
+        {
+          "seq": 142,
+          "id": "AUD-000142",
+          "at": "2026-10-06T03:08:24.583Z",
+          "atMs": 1791256104583,
+          "type": "DEVICE_REVOKED",
+          "category": "PAIRING",
+          "severity": "WARNING",
+          "actorId": "OPR-002",
+          "deviceId": "DEV-0001",
+          "sessionId": null,
+          "message": "Device DEV-0001 revoked",
+          "details": {
+            "reason": "E2E-S check: revoke the reserved phone2 pairing",
+            "sessionsEnded": 1
+          }
+        }
+      ]
+    }
+  },
+  "network": {
+    "api": [
+      {
+        "sent": "12:49:21.168 (epoch 1791265761.168)",
+        "method": "POST",
+        "path": "/api/v1/pairing/devices/DEV-0002/revoke",
+        "status": 200,
+        "done": "12:49:21.244 (epoch 1791265761.244)"
+      },
+      {
+        "sent": "12:49:21.195 (epoch 1791265761.195)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "12:49:21.244 (epoch 1791265761.244)"
+      },
+      {
+        "sent": "12:49:21.195 (epoch 1791265761.195)",
+        "method": "GET",
+        "path": "/api/v1/pairing/code",
+        "status": 200,
+        "done": "12:49:21.245 (epoch 1791265761.245)"
+      },
+      {
+        "sent": "12:49:21.312 (epoch 1791265761.312)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "12:49:21.443 (epoch 1791265761.443)"
+      },
+      {
+        "sent": "12:49:21.369 (epoch 1791265761.369)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "12:49:21.447 (epoch 1791265761.447)"
+      },
+      {
+        "sent": "12:49:29.471 (epoch 1791265769.471)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "12:49:29.486 (epoch 1791265769.486)"
+      }
+    ],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [],
+    "console": []
+  }
+}

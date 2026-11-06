@@ -1,0 +1,414 @@
+// W76 lane check: the System page and its Demo Control Panel in Live mode in a real headless
+// Chromium, over raw CDP (Node's built-in WebSocket; no install). The helpers are W71's driver
+// (W55's as W63 used it) unchanged, except that a `snapshot` or `hello` frame keeps its epoch; the
+// steps are this row's. Sign-ins go THROUGH THE FORM, from the project's own seed constants.
+// Usage: node --import tsx .cache/w76/lane/cdp-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+//
+// What is never stored or printed: a request body, a cookie value, the seeded password, a
+// `Runtime.evaluate` expression. Cookie values are cut to their length; URLs lose their query
+// values; only named elements and booleans are read from the pages.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+// The seeded demo operator, read from the project's own seed source (never printed).
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+const investigator = OPERATORS.find((operator) => operator.role === 'INVESTIGATOR')
+if (!supervisor || !investigator || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source has no SUPERVISOR, no INVESTIGATOR or no demo password constant')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map() // requestId -> { method, url, status }
+let sockets = new Map() // requestId -> { url, status, frames: [type...], cookieSent }
+let consoleLines = []
+let loadFired = false
+
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+const typeOf = (payload) => {
+  try {
+    const message = JSON.parse(payload)
+    const type = message.type ?? '(no type)'
+    // W76: the epoch of a snapshot (CL-18) and of a hello, nothing else of the frame.
+    return type === 'snapshot' || type === 'hello' ? `${type}@epoch=${message.epoch ?? message.state?.meta?.epoch ?? '?'}` : type
+  } catch {
+    return '(not JSON)'
+  }
+}
+const pick = (headers, name) => {
+  for (const [key, value] of Object.entries(headers ?? {})) if (key.toLowerCase() === name) return value
+  return null
+}
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    // The error of a failed call is reported by its code only: its text can quote the expression.
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      // Never `p.request.postData`.
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Network.webSocketCreated':
+      sockets.set(p.requestId, { url: cleanUrl(p.url), status: null, frames: [] })
+      break
+    case 'Network.webSocketWillSendHandshakeRequest': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.cookieSent = pick(p.request.headers, 'cookie') ? 'yes (value not recorded)' : 'no'
+      break
+    }
+    case 'Network.webSocketHandshakeResponseReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.webSocketFrameReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry && entry.frames.length < 4000) entry.frames.push(typeOf(p.response.payloadData))
+      break
+    }
+    case 'Network.webSocketClosed': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.closed = true
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 420)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+
+/** Runs page script. A failure is reported without the expression and without the page's own message. */
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs) // the dev client's socket, the lazy route chunk, the entrance motion
+  return loadFired
+}
+
+/** Waits until the page holds (or no longer holds) an element with this test ID. Returns whether it did in time. */
+const waitFor = async (testId, present = true, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`document.querySelector('[data-testid="${testId}"]') !== null`, `wait ${testId}`)
+    if (found === present) return true
+    await sleep(150)
+  }
+  return false
+}
+
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  const file = join(assetsDir, name)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return file
+}
+
+/** Types into the input of a field by script: focus, select what is there, insert. The text is not echoed. */
+const typeInto = async (fieldTestId, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector('[data-testid="${fieldTestId}"] input'); if (!el) return false; el.focus(); el.select(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const press = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`)
+
+/** What the page did since the last call, and a new record for what follows. */
+const takeNetwork = () => {
+  const taken = {
+    api: [...requests.values()].filter((entry) => entry.url.includes('/api/v1/')),
+    origins: [...new Set([...requests.values()].map((entry) => { try { return new URL(entry.url).origin } catch { return '(other)' } }))].sort(),
+    sockets: [...sockets.values()]
+      .filter((entry) => entry.url.endsWith('/ws'))
+      .map((entry) => ({ url: entry.url, status: entry.status, cookieSent: entry.cookieSent ?? null, closed: entry.closed === true, frameCount: entry.frames.length, firstTypes: entry.frames.slice(0, 4), distinctTypes: [...new Set(entry.frames)].sort() })),
+    console: consoleLines,
+  }
+  requests = new Map()
+  sockets = new Map()
+  consoleLines = []
+  return taken
+}
+
+
+
+
+const waitToast = async (needle, timeoutMs = 10000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`[...document.querySelectorAll('[data-slot="toast"]')].some((el) => (el.textContent ?? '').includes(${JSON.stringify(needle)}))`, 'toast')
+    if (found) return true
+    await sleep(150)
+  }
+  return false
+}
+const signInThroughTheForm = async (operator, label) => {
+  await waitFor('page-login', true, 15000)
+  await typeInto('login-username-field', operator.username, `${label} username`)
+  await typeInto('login-password-field', DEMO_OPERATOR_PASSWORD, `${label} password`)
+  await press('login-submit')
+  const arrived = await waitFor('page-dashboard', true, 25000)
+  await sleep(2500) // the hand-off and the shell's entrance
+  return arrived
+}
+const signOutByPage = async () => {
+  const answer = await evaluate(
+    `(async () => { const r = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return { status: r.status } })()`,
+    'sign-out',
+  )
+  const back = await waitFor('page-login', true, 15000)
+  await sleep(1500)
+  return { ...answer, loginShown: back }
+}
+/** Goes to a page of the console by a full load (the session cookie carries the sign-in). */
+const openPage = async (path, testId, lastPanel) => {
+  await navigate(`${ORIGIN}${path}`, 2500)
+  const shown = await waitFor(testId, true, 20000)
+  if (lastPanel) await waitFor(lastPanel, true, 15000)
+  await sleep(3000) // the panels' beats and the lazily loaded charts
+  return shown
+}
+/** The Core's policy, read by a page request with the page's own cookie (no body is sent). */
+
+// ════════════════════════════════════ W76: the steps ════════════════════════════════════
+
+/** Named facts of the System page, and booleans over its words (the page holds no credential). */
+const systemFacts = (label) =>
+  evaluate(
+    `(() => {
+      const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+      const text = (id) => q(id)?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+      const words = (id) => q(id)?.textContent ?? ''
+      return {
+        href: location.origin + location.pathname,
+        onSystem: q('page-system') !== null,
+        shellMode: text('shell-mode'),
+        shellCoreMode: document.querySelector('.dems-shell')?.getAttribute('data-core-mode') ?? null,
+        user: q('user-menu')?.getAttribute('aria-label') ?? null,
+        panels: ['quick','services','health','update','maintenance','about','settings','demo'].filter((id) => q('system-panel-' + id) !== null),
+        banner: text('system-banner'),
+        services: document.querySelectorAll('[data-testid^="system-service-SVC-"]').length,
+        updateCurrent: text('system-update-current'),
+        installText: text('system-update-install'),
+        maintenanceSaysSimulated: /simulat/i.test(words('system-panel-maintenance')),
+        updateSaysSimulated: /simulat/i.test(words('system-panel-update')),
+        demoPanel: q('system-panel-demo') !== null,
+        demoBody: q('system-demo-body') !== null,
+        demoClock: q('system-demo-asof') ? text('system-demo-asof') : null,
+        activeFaults: text('system-demo-active-count'),
+        toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((el) => el.textContent?.replace(/\\s+/g, ' ').trim()),
+      }
+    })()`,
+    label,
+  )
+
+/** `getDemoStatus` (operation 71) by a page request with the page's own cookie: the Core's epoch and scenario. */
+const demoStatus = () =>
+  evaluate(
+    `(async () => { const r = await fetch('/api/v1/demo/status', { credentials: 'same-origin' }); let body = null; try { body = await r.json() } catch {} return { status: r.status, code: body?.error?.code ?? null, epoch: body?.epoch ?? null, scenario: body?.scenario ?? null, lastResetAt: body?.lastResetAt ?? null, activeFaults: Array.isArray(body?.activeFaults) ? body.activeFaults.length : null } })()`,
+    'demo status',
+  )
+/** The stored chain's row count and head (operation 59, one row). */
+const auditTotal = () =>
+  evaluate(
+    `(async () => { const r = await fetch('/api/v1/audit?limit=1&order=DESC', { credentials: 'same-origin' }); let body = null; try { body = await r.json() } catch {} return { status: r.status, total: body?.total ?? null, head: typeof body?.head === 'string' ? body.head.slice(0, 12) : null } })()`,
+    'audit total',
+  )
+const snapshotsOf = (network) => network.sockets.flatMap((socket) => socket.distinctTypes.filter((type) => type.startsWith('snapshot@') || type.startsWith('hello@')))
+const clickSwitch = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"] input, [data-testid="${testId}"] [role="switch"]'); if (!el) return false; el.click(); return true })()`, `switch ${testId}`)
+const typeIntoTextArea = async (testId, text, label) => {
+  const focused = await evaluate(`(() => { const el = document.querySelector('textarea[data-testid="${testId}"], [data-testid="${testId}"] textarea'); if (!el) return false; el.focus(); el.select(); return document.activeElement === el })()`, `focus ${label}`)
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const stamp = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Jakarta', hour12: false })
+
+const started = Date.now()
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
+// The log file stays inside the page: the driver reads what the page built; nothing is written to disk.
+await send('Page.setDownloadBehavior', { behavior: 'deny' }).catch(() => null)
+const version = await send('Browser.getVersion')
+const result = { browser: { product: version.product, userAgent: version.userAgent, headless: /Headless/i.test(version.userAgent) }, viewport: '1440x900', steps: {} }
+
+// ── 1. Live, the seeded SUPERVISOR (DEMO_CONTROL) through the form; the System page on the Core's data ──
+await navigate(`${ORIGIN}/login`)
+const loginMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+takeNetwork()
+const supervisorIn = await signInThroughTheForm(supervisor, 'supervisor')
+const systemShown = await openPage('/system', 'page-system', 'system-panel-settings')
+result.steps.liveSupervisor = {
+  loginCoreMode: loginMode,
+  signedIn: supervisorIn,
+  systemShown,
+  coreDemoStatus: await demoStatus(),
+  facts: await systemFacts('live system supervisor'),
+  screenshot: await screenshot('76_system_live_supervisor.png'),
+  network: takeNetwork(),
+}
+
+// ── 2. Settle site A10: Run Diagnostics; the modal opens on the Core's 202 and follows its slice ──
+{
+  const pressed = await press('system-run-diagnostics')
+  const opened = await waitFor('system-diagnostics-modal', true, 10000)
+  await sleep(4500)
+  const checks = await evaluate(`[...document.querySelectorAll('[data-testid^="system-diag-"]')].map((el) => (el.getAttribute('data-testid') ?? '').replace('system-diag-', '') + ':' + el.getAttribute('data-status'))`, 'diag checks')
+  const modalSaysSimulated = await evaluate(`/simulat/i.test(document.querySelector('[data-testid="system-diagnostics-modal"]')?.textContent ?? '')`, 'modal words')
+  const shot = await screenshot('76_diagnostics_live.png')
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await sleep(800)
+  result.steps.a10Diagnostics = { pressed, opened, checks, modalSaysSimulated, screenshot: shot, network: takeNetwork() }
+}
+
+// ── 3. Settle site A8: Export logs with a reason; the file from every page of operations 59 and 63 ──
+{
+  await evaluate(
+    `(() => { window.__w76Files = []; const original = URL.createObjectURL.bind(URL); URL.createObjectURL = (blob) => { blob.text().then((t) => { try { const f = JSON.parse(t); window.__w76Files.push({ kind: f.kind, source: f.source, exportId: f.exportId, scope: f.scope, reasonLength: (f.reason ?? '').length, auditRows: f.audit?.rows?.length ?? null, auditTotal: f.audit?.total ?? null, firstSeq: f.audit?.rows?.[0]?.seq ?? null, lastSeq: f.audit?.rows?.at(-1)?.seq ?? null, head: (f.audit?.head ?? '').slice(0, 12), events: f.events?.length ?? null, services: f.services?.length ?? null, saysSimulatedNotice: /simulated log export/i.test(f.notice ?? ''), bytes: t.length }) } catch { window.__w76Files.push({ parsed: false }) } }); return original(blob) }; return true })()`,
+    'instrument the file',
+  )
+  const chainBefore = await auditTotal()
+  takeNetwork()
+  const opened = (await press('system-export-logs')) && (await waitFor('system-export-dialog', true, 8000))
+  await sleep(600)
+  await typeIntoTextArea('system-export-reason', 'W76 lane check: weekly review of the device logs', 'reason')
+  await sleep(300)
+  const dialogShot = await screenshot('76_export_dialog_live.png')
+  await press('system-export-submit')
+  const done = await waitToast('Logs exported', 20000)
+  await sleep(1500)
+  const files = await evaluate('window.__w76Files', 'files')
+  const toast = (await systemFacts('after export')).toasts.find((entry) => entry?.includes('Logs exported')) ?? null
+  const shot = await screenshot('76_export_done_live.png')
+  const network = takeNetwork()
+  const chainAfter = await auditTotal()
+  takeNetwork()
+  result.steps.a8ExportLogs = {
+    dialogOpened: opened,
+    dialogScreenshot: dialogShot,
+    toastShown: done,
+    toast,
+    files,
+    chainBefore,
+    chainAfter,
+    requests: {
+      exportLogs: network.api.filter((entry) => entry.url.includes('/logs/export')).map((entry) => entry.status),
+      listAuditRowsPages: network.api.filter((entry) => /\/api\/v1\/audit\?/.test(entry.url)).length,
+      listEventsPages: network.api.filter((entry) => /\/api\/v1\/events/.test(entry.url)).length,
+    },
+    screenshot: shot,
+    network,
+  }
+}
+
+// ── 4. ONE demo action on lane 3: a reset (rebuilds dems_lane_3 from the seed; lane 3 holds no paired device) ──
+{
+  const before = await demoStatus()
+  const toggled = await clickSwitch('system-demo-toggle')
+  const bodyShown = await waitFor('system-demo-body', true, 8000)
+  await sleep(900)
+  const panelShot = await screenshot('76_demo_panel_live.png')
+  console.log(`== ${stamp()} WIB DEMO ACTION ANNOUNCED: resetDemo (operation 75) on LANE 3 only (127.0.0.1:4423, dems_lane_3), epoch before ${before.epoch}`)
+  const pressed = await press('system-demo-reset')
+  const confirmShown = await waitFor('system-demo-confirm', true, 8000)
+  await sleep(500)
+  const confirmShot = await screenshot('76_demo_reset_confirm_live.png')
+  takeNetwork()
+  await press('system-demo-confirm-go')
+  const done = await waitToast('Demo reset', 30000)
+  await sleep(2000)
+  const after = await demoStatus()
+  const facts = await systemFacts('after reset')
+  const shot = await screenshot('76_demo_reset_done_live.png')
+  const network = takeNetwork()
+  console.log(`== ${stamp()} WIB DEMO ACTION DONE: epoch ${before.epoch} -> ${after.epoch}; snapshot frames seen: ${JSON.stringify(snapshotsOf(network))}`)
+  result.steps.d4Reset = {
+    announcedAt: stamp(),
+    statusBefore: before,
+    toggled,
+    bodyShown,
+    panelScreenshot: panelShot,
+    pressed,
+    confirmShown,
+    confirmScreenshot: confirmShot,
+    toastShown: done,
+    statusAfter: after,
+    snapshotFrames: snapshotsOf(network),
+    facts: { activeFaults: facts.activeFaults, toasts: facts.toasts, demoClock: facts.demoClock },
+    screenshot: shot,
+    resetRequests: network.api.filter((entry) => entry.url.includes('/demo/reset')).map((entry) => entry.status),
+    network,
+  }
+}
+
+// ── 5. The seeded INVESTIGATOR (no DEMO_CONTROL): the same page has no Demo Control Panel ──
+{
+  const signOut = await signOutByPage()
+  takeNetwork()
+  const signedIn = await signInThroughTheForm(investigator, 'investigator')
+  const shown = await openPage('/system', 'page-system', 'system-panel-settings')
+  const facts = await systemFacts('live system investigator')
+  result.steps.liveInvestigator = { signOutOfSupervisor: signOut, signedIn, shown, facts, screenshot: await screenshot('76_system_live_investigator.png'), network: takeNetwork() }
+  result.steps.finalSignOut = await signOutByPage()
+}
+
+result.durationMs = Date.now() - started
+writeFileSync(outJson, JSON.stringify(result, null, 2))
+console.log(`driver done in ${Math.round(result.durationMs / 1000)} s`)
+ws.close()
+process.exit(0)

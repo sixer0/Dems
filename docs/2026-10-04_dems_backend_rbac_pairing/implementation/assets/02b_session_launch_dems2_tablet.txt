@@ -1,0 +1,40 @@
+== W02b step 9 tablet 2026-10-04 10:44:46 WIB
+$ METRO_PORT=8085 DEVICE_SESSION_MAX_SECONDS=540 apps/mobile/scripts/device-session.sh tablet "/bin/sh '<assets>/02b_launch_check.sh'"
+[device-session tablet 10:44:46] lock held; hard cap 540 s, until 10:53:46 (watchdog PID 73781)
+[device-session tablet 10:44:46] session serial: emulator-5556 (dems2_tablet)
+[device-session tablet 10:44:47] emulator-5556: screen awake, no keyguard
+[device-session tablet 10:44:47] Metro PID 73813 (own process group) on 127.0.0.1:8085 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8085.log)
+[device-session tablet 10:44:49] emulator-5556: bundler location set to localhost:8081 (H-MB-09)
+[device-session tablet 10:44:49] Metro ready; device tcp:8081 -> host tcp:8085, tcp:4400 -> tcp:4400 on emulator-5556
+== dems2_tablet emulator-5556 10:44:49; METRO_PORT=8085; user state: State: RUNNING_UNLOCKED
+versionCode=100 minSdk=24 targetSdk=36
+lastUpdateTime=2026-10-04 10:43:24
+signatures=PackageSignatures{d0aae2d version:2, signatures:[51ed3f60], past signatures:[]}
+firstInstallTime=2026-10-04 10:43:24
+base.apk on the device: d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec
+-- LAUNCH 10:44:50
+Status: timeout
+LaunchState: UNKNOWN (-1)
+-- bundle wait: 6s
+Android Bundled 15317ms node_modules/expo-router/entry.js (6084 modules)
+-- pidof after launch: [5213]
+mCurrentFocus=Window{5f6c51b u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-rw-r--r--@ 1 gsp-budi  staff  3294065 Oct  4 10:45 /Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/13_dems2_tablet_launch.png
+-- logcat of the app process: FATAL / JS error lines
+10-04 10:44:51.502  5213  5213 E unknown:ReactNative: Unable to display loading message because react activity isn't active, message: Loading from localhost:8081…
+10-04 10:44:51.518  5213  5213 E unknown:ReactNative: Unable to display loading message because react activity isn't active, message: Reloading...
+   (end of logcat filter)
+== dems2_tablet end 10:45:22
+-- 13_launch_check.sh status: 0
+-rw-r--r--@ 1 gsp-budi  staff  3294065 Oct  4 10:45 /Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/02b_dems2_tablet_launch.png
+screencap sha256: 49b76c5e9826eff2ebb1ff9c9148a046a8498895bea1692dbdb4ff0711ff39b6
+-- texts on screen (read-only: uiautomator dump /dev/tty)
+   (0 distinct texts)
+isKeyguardShowing=false
+lastUpdateTime=2026-10-04 10:43:24
+firstInstallTime=2026-10-04 10:43:24
+[device-session tablet 10:45:35] Metro 73813 stopped
+[device-session tablet 10:45:35] session ended with status 0
+session exit=0
+reverse rules AFTER the session: [;]
+Metro after the session (listeners 8081-8089): []

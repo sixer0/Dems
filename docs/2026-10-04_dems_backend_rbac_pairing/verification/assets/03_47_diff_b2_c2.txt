@@ -1,0 +1,33 @@
+10c10
+< core_state                  1  0f49f2102c280a684e5c4de1f36c84cb
+---
+> core_state                  1  9e0a51ea1a24f99aa88ac146b3b87cc0
+18c18
+< hardware_snapshot           1  5bd49a744277837ce8131ae6136e47f0
+---
+> hardware_snapshot           1  2ce863b61517ed27f4403db4550129c3
+36c36
+< core_state.epoch                        bigint                     c81e728d9d4c2f636f067f89cc14862c  value 2
+---
+> core_state.epoch                        bigint                     eccbc87e4b5ce2fe28308fd9f2a7baf3  value 3
+42c42
+< core_state.updated_at                   bigint                     2c4231bb2275d4ebe02b895f8f97e2c4  value 1791325996518
+---
+> core_state.updated_at                   bigint                     c32b4f61f17acc3d413eb4d5937fe9a1  value 1791326036299
+49,51c49,51
+< hardware_snapshot.storage                      jsonb                      2b4563a80d616d9a060cacef0fc0440c
+< hardware_snapshot.time_status                  jsonb                      de5e730296d6b0cd6907cb531157d544
+< hardware_snapshot.network                      jsonb                      36781cfa3cab83630bb693dfa7bd8fd6
+---
+> hardware_snapshot.storage                      jsonb                      1bc756f761449b3544bb9e8984289c1d
+> hardware_snapshot.time_status                  jsonb                      bdc6b641c68541ce2382b8d1f65e00a4
+> hardware_snapshot.network                      jsonb                      8986eba8e909aa8f9d1b7a8bd066ccf3
+54c54
+< hardware_snapshot.health                       jsonb                      21e7ff563e996b2be24e430a85886b0f
+---
+> hardware_snapshot.health                       jsonb                      f85e3f46f05c3d63d9e076d390056981
+60c60
+< hardware_snapshot.written_at                   bigint                     51aeba86aa418ba9bed2065306f7398f  value 1791326034028
+---
+> hardware_snapshot.written_at                   bigint                     80680b64dca7a0c56ce8c09bdee3a5f3  value 1791326036357
+diff exit=1

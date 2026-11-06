@@ -1,0 +1,6 @@
+mousetext "View in Evidence" A at 927,835 10:43:30.947
+slept 4000
+shot B23_web_evidence_detail.png at 10:43:35.040
+testids evi (12): evidence-back evidence-detail-body evidence-detail-header evidence-package-chip evidence-detail-id evidence-play evidence-export evidence-more evidence-tab-media evidence-tab-metadata evidence-tab-integrity evidence-media-empty
+testids evidence (12): evidence-back evidence-detail-body evidence-detail-header evidence-package-chip evidence-detail-id evidence-play evidence-export evidence-more evidence-tab-media evidence-tab-metadata evidence-tab-integrity evidence-media-empty
+eval: "/evidence/EV-20261006-0015"

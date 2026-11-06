@@ -1,0 +1,336 @@
+== emulator-user-lock.sh stub tests 2026-10-04 11:19:02
+script sha256: 84365bdcc53941e5d8b0a78bebaff003173cc6c7a0b8c14eafbf509ba3eb9703
+shell: /bin/sh; stdin of this harness is a terminal: no; stdout: no
+default PIN of the script: read from the script, 4 digits, masked below
+
+A. The terminal check (the script EXECUTED, no terminal): setup, unlock, remove refuse with 77 before any adb call
+ setup
+  PASS  exit status 77
+  PASS  nothing was sent to adb (the stub's call log is empty)
+  PASS  output has: this action is the user's; run it in your own Terminal
+ unlock
+  PASS  exit status 77
+  PASS  nothing was sent to adb (the stub's call log is empty)
+  PASS  output has: this action is the user's; run it in your own Terminal
+ remove
+  PASS  exit status 77
+  PASS  nothing was sent to adb (the stub's call log is empty)
+  PASS  output has: this action is the user's; run it in your own Terminal
+ setup phone
+  PASS  exit status 77
+  PASS  nothing was sent to adb (the stub's call log is empty)
+  PASS  output has: this action is the user's; run it in your own Terminal
+ unlock tablet
+  PASS  exit status 77
+  PASS  nothing was sent to adb (the stub's call log is empty)
+  PASS  output has: this action is the user's; run it in your own Terminal
+ remove all
+  PASS  exit status 77
+  PASS  nothing was sent to adb (the stub's call log is empty)
+  PASS  output has: this action is the user's; run it in your own Terminal
+ __locked setup phone
+  PASS  exit status 77
+  PASS  nothing was sent to adb (the stub's call log is empty)
+  PASS  output has: this action is the user's; run it in your own Terminal
+ __locked unlock phone2
+  PASS  exit status 77
+  PASS  nothing was sent to adb (the stub's call log is empty)
+  PASS  output has: this action is the user's; run it in your own Terminal
+ __locked remove tablet
+  PASS  exit status 77
+  PASS  nothing was sent to adb (the stub's call log is empty)
+  PASS  output has: this action is the user's; run it in your own Terminal
+  -- output
+     emulator-user-lock.sh setup: this action is the user's; run it in your own Terminal (no agent sets, opens or removes a device lock)
+ DEMS_USER_LOCK_LIB=1 with the script EXECUTED (not sourced): it must do nothing
+  PASS  exit status 0
+  PASS  nothing was sent to adb (the stub's call log is empty)
+  PASS  no output
+
+B. Usage and bad values (exit 64, before any adb call)
+ args: []
+  PASS  exit status 64
+  PASS  nothing was sent to adb (the stub's call log is empty)
+ args: [bogus]
+  PASS  exit status 64
+  PASS  nothing was sent to adb (the stub's call log is empty)
+ args: [setup nosuch]
+  PASS  exit status 64
+  PASS  nothing was sent to adb (the stub's call log is empty)
+ args: [status phone extra]
+  PASS  exit status 64
+  PASS  nothing was sent to adb (the stub's call log is empty)
+ args: [__locked setup all]
+  PASS  exit status 64
+  PASS  nothing was sent to adb (the stub's call log is empty)
+ DEMS_EMULATOR_PIN=12ab status
+  PASS  exit status 64
+  PASS  nothing was sent to adb (the stub's call log is empty)
+ DEMS_EMULATOR_PIN=123 status
+  PASS  exit status 64
+  PASS  nothing was sent to adb (the stub's call log is empty)
+ DEMS_EMULATOR_PIN=123456789 status
+  PASS  exit status 64
+  PASS  nothing was sent to adb (the stub's call log is empty)
+ DEMS_AVD_PREFIX=dems-;x status
+  PASS  exit status 64
+  PASS  nothing was sent to adb (the stub's call log is empty)
+ LOCK_WAIT=soon status
+  PASS  exit status 64
+  PASS  nothing was sent to adb (the stub's call log is empty)
+  -- output
+     DEMS_EMULATOR_PIN must be 4 to 8 digits (the value is not shown)
+  PASS  the bad PIN value is not echoed
+
+C. status (the script EXECUTED, any caller): three devices, read-only
+  PASS  exit status 69
+  PASS  read-only calls only
+  -- output
+     phone (emulator-5554): AVD dems2_phone, isKeyguardShowing=false, CredentialType=PIN, fingerprint count=1, lock screen disabled=false
+     phone2 (emulator-5558): not running, or not booted yet
+     tablet (emulator-5556): AVD dems2_tablet, isKeyguardShowing=true, CredentialType=PIN, fingerprint count=1, lock screen disabled=false
+  -- stub call log (PIN masked)
+     adb -s emulator-5554 get-state
+     adb -s emulator-5554 shell getprop sys.boot_completed
+     adb -s emulator-5554 emu avd name
+     adb -s emulator-5554 shell dumpsys lock_settings
+     adb -s emulator-5554 shell dumpsys window
+     adb -s emulator-5554 shell dumpsys fingerprint
+     adb -s emulator-5558 get-state
+     adb -s emulator-5556 get-state
+     adb -s emulator-5556 shell getprop sys.boot_completed
+     adb -s emulator-5556 emu avd name
+     adb -s emulator-5556 shell dumpsys lock_settings
+     adb -s emulator-5556 shell dumpsys window
+     adb -s emulator-5556 shell dumpsys fingerprint
+  PASS  exit status 0
+  PASS  read-only calls only
+  PASS  output has: not dems2_phone: another AVD holds this port
+  -- output
+     phone (emulator-5554): AVD dems_phone, isKeyguardShowing=true, CredentialType=PIN, fingerprint count=1, lock screen disabled=false   <- not dems2_phone: another AVD holds this port
+
+D. setup on a phone (no lock, no fingerprint; the enrolment needs 3 touches)
+  PASS  exit status 0
+  PASS  exact adb call sequence (24 adb calls)
+  PASS  output has: phone (emulator-5554, dems2_phone): set up: PIN yes, fingerprint count 1
+  PASS  the script's output does not contain the PIN
+  -- output
+     phone (emulator-5554, dems2_phone): set up: PIN yes, fingerprint count 1 (3 sensor touches)
+  -- stub call log (PIN masked)
+     adb -s emulator-5554 get-state
+     adb -s emulator-5554 shell getprop sys.boot_completed
+     adb -s emulator-5554 emu avd name
+     adb -s emulator-5554 shell dumpsys lock_settings
+     adb -s emulator-5554 shell dumpsys fingerprint
+     adb -s emulator-5554 shell dumpsys window
+     adb -s emulator-5554 shell locksettings set-pin <PIN>
+     adb -s emulator-5554 shell dumpsys lock_settings
+     adb -s emulator-5554 shell am start -a android.settings.BIOMETRIC_ENROLL
+     sleep 2
+     adb -s emulator-5554 shell input text <PIN>
+     adb -s emulator-5554 shell input keyevent 66
+     sleep 2
+     adb -s emulator-5554 shell input tap 911 2266
+     sleep 2
+     adb -s emulator-5554 shell input tap 911 2266
+     sleep 2
+     adb -s emulator-5554 shell input tap 911 2266
+     sleep 2
+     adb -s emulator-5554 emu finger touch 1
+     sleep 1
+     adb -s emulator-5554 emu finger remove 1
+     sleep 1
+     adb -s emulator-5554 shell dumpsys fingerprint
+     adb -s emulator-5554 emu finger touch 1
+     sleep 1
+     adb -s emulator-5554 emu finger remove 1
+     sleep 1
+     adb -s emulator-5554 shell dumpsys fingerprint
+     adb -s emulator-5554 emu finger touch 1
+     sleep 1
+     adb -s emulator-5554 emu finger remove 1
+     sleep 1
+     adb -s emulator-5554 shell dumpsys fingerprint
+     adb -s emulator-5554 shell input keyevent KEYCODE_HOME
+ setup again on the same device (idempotence)
+  PASS  exit status 0
+  PASS  exact adb call sequence (6 adb calls)
+  PASS  output has: already set up: PIN yes, fingerprint count 1
+  PASS  read-only calls only
+  -- output
+     phone (emulator-5554, dems2_phone): already set up: PIN yes, fingerprint count 1
+
+E. setup on the tablet (tap position 1776 1280) and on phone2 (911 2266)
+  PASS  exit status 0
+  PASS  exact adb call sequence (24 adb calls)
+  PASS  output has: tablet (emulator-5556, dems2_tablet): set up: PIN yes, fingerprint count 1
+  -- output
+     tablet (emulator-5556, dems2_tablet): set up: PIN yes, fingerprint count 1 (3 sensor touches)
+  PASS  exit status 0
+  PASS  exact adb call sequence (24 adb calls)
+  PASS  output has: phone2 (emulator-5558, dems2_phone2): set up: PIN yes, fingerprint count 1
+
+F. setup with the script's default PIN (DEMS_EMULATOR_PIN unset)
+  PASS  exit status 0
+  PASS  the PIN the device received is the script's default
+  PASS  the script's output does not contain the PIN
+
+G. setup: the skips and refusals
+ already set up (credential and fingerprint exist)
+  PASS  exit status 0
+  PASS  read-only calls only
+  PASS  output has: already set up: PIN yes, fingerprint count 1
+ LOCKED at the start (keyguard shows, credential set)
+  PASS  exit status 1
+  PASS  read-only calls only
+  PASS  output has: LOCKED (the keyguard shows). Skipped; run 'unlock phone' first
+  -- output
+     phone (emulator-5554, dems2_phone): LOCKED (the keyguard shows). Skipped; run 'unlock phone' first, then 'setup phone' again
+ another AVD on the port (dems_phone on emulator-5554, prefix dems2_)
+  PASS  exit status 69
+  PASS  exact adb call sequence (3 adb calls)
+  PASS  output has: REFUSED. The emulator on this port is 'dems_phone', not dems2_phone
+  -- output
+     phone (emulator-5554): REFUSED. The emulator on this port is 'dems_phone', not dems2_phone (DEMS_AVD_PREFIX=dems2_). Nothing was sent to it
+ DEMS_AVD_PREFIX=dems_ while dems2_phone runs on the port
+  PASS  exit status 69
+  PASS  exact adb call sequence (3 adb calls)
+  PASS  output has: REFUSED. The emulator on this port is 'dems2_phone', not dems_phone
+ device not running
+  PASS  exit status 69
+  PASS  exact adb call sequence (1 adb calls)
+  PASS  output has: not running, or not booted yet. Nothing done
+ a lock of another kind (PATTERN)
+  PASS  exit status 1
+  PASS  read-only calls only
+  PASS  output has: has a lock of another kind (PATTERN)
+ lock state unreadable
+  PASS  exit status 69
+  PASS  read-only calls only
+ set-pin fails
+  PASS  exit status 1
+  PASS  output has: the PIN was NOT set (CredentialType NONE). Nothing else done
+  PASS  no enrolment step followed
+ a PIN from an earlier, unfinished run (credential PIN, no fingerprint)
+  PASS  exit status 0
+  PASS  exact adb call sequence (22 adb calls)
+
+H. setup: the bounded loop (the enrolment never completes)
+  PASS  exit status 1
+  PASS  exact adb call sequence (39 adb calls)
+  PASS  exactly 8 sensor touches, then it stops
+  PASS  output has: set up: PIN yes, fingerprint count 0
+  PASS  output has: To finish by hand, in the window of that emulator
+  PASS  the script's output does not contain the PIN
+  -- output
+     phone (emulator-5554, dems2_phone): set up: PIN yes, fingerprint count 0 (8 sensor touches)
+       The PIN is set, but no fingerprint is enrolled yet (the enrolment screens are FLAG_SECURE, so this helper works blind).
+       To finish by hand, in the window of that emulator:
+         1. Settings > Security & privacy > Device unlock > Fingerprint Unlock, and enter the PIN;
+         2. on "Set up Pixel Imprint" press MORE until the button reads I AGREE, then I AGREE;
+         3. at "Touch the sensor", in a Terminal:  adb -s emulator-5554 emu finger touch 1; adb -s emulator-5554 emu finger remove 1
+            repeat it until "Fingerprint added" shows, then DONE;
+         4. check:  docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/02b_user_lock_test.sh status phone   (fingerprint count=1)
+       Or start over:  docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/02b_user_lock_test.sh remove phone  and then  docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/02b_user_lock_test.sh setup phone
+
+I. unlock
+ locked, right PIN
+  PASS  exit status 0
+  PASS  exact adb call sequence (10 adb calls)
+  PASS  output has: phone (emulator-5554, dems2_phone): unlocked (isKeyguardShowing=false)
+  PASS  the script's output does not contain the PIN
+  -- output
+     phone (emulator-5554, dems2_phone): unlocked (isKeyguardShowing=false)
+ locked, the device holds another PIN
+  PASS  exit status 1
+  PASS  exactly one PIN attempt
+  PASS  output has: STILL LOCKED (isKeyguardShowing=true). One attempt was made and no more
+ not locked
+  PASS  exit status 0
+  PASS  read-only calls only
+  PASS  output has: not locked (isKeyguardShowing=false); nothing to do
+ a keyguard without a credential: dismissed, no PIN typed
+  PASS  exit status 0
+  PASS  no PIN typed
+ another AVD on the port
+  PASS  exit status 69
+  PASS  exact adb call sequence (3 adb calls)
+
+J. remove
+ lock and fingerprint present, right PIN
+  PASS  exit status 0
+  PASS  exact adb call sequence (9 adb calls)
+  PASS  output has: phone (emulator-5554, dems2_phone): lock removed: CredentialType NONE, fingerprint count 0
+  PASS  the script's output does not contain the PIN
+  -- output
+     phone (emulator-5554, dems2_phone): lock removed: CredentialType NONE, fingerprint count 0
+ no lock set
+  PASS  exit status 0
+  PASS  read-only calls only
+  PASS  output has: no lock set; nothing to remove
+ the device holds another PIN
+  PASS  exit status 1
+  PASS  exactly one attempt
+  PASS  output has: NOT removed (CredentialType PIN). One attempt was made and no more
+ LOCKED at the start
+  PASS  exit status 1
+  PASS  read-only calls only
+  PASS  output has: LOCKED (the keyguard shows). Skipped; run 'unlock phone' first
+ another AVD on the port
+  PASS  exit status 69
+  PASS  exact adb call sequence (3 adb calls)
+
+K. the device lock: run_locked uses .locks/dems_<target>.lock and waits behind a holder
+  -- output
+     lockf: <root>/.locks/dems_phone.lock: already locked
+     phone: the device lock .locks/dems_phone.lock stayed busy for 1 s (a device session is running). Nothing done; try again, or raise LOCK_WAIT
+     run_locked while another process holds dems_phone.lock: status 75
+     emulator-user-lock.sh setup: this action is the user's; run it in your own Terminal (no agent sets, opens or removes a device lock)
+     run_locked with the lock free: status 77 (the locked inner call is reached; with no terminal it refuses)
+     dems_phone.lock
+  PASS  busy lock: 75, and the action did not run
+  PASS  free lock: the inner call ran under the lock and stopped at the terminal check (77)
+  PASS  nothing was sent to adb (the stub's call log is empty)
+
+== result: 123 passed, 0 failed
+
+---- the same harness under dash: == result: 123 passed, 0 failed
+
+---- shellcheck: not installed on this host (not run)
+
+== the SHIPPED script, run from this agent's tool shell 2026-10-04 11:18:34 WIB
+script: apps/mobile/scripts/emulator-user-lock.sh  sha256 84365bdcc53941e5d8b0a78bebaff003173cc6c7a0b8c14eafbf509ba3eb9703
+this shell: stdin is a terminal: no; stdout is a terminal: no
+adb for these runs: the stub (<stub sdk>/platform-tools/adb), so that nothing could reach a device even if the check failed
+$ ANDROID_HOME=<stub sdk> apps/mobile/scripts/emulator-user-lock.sh setup
+emulator-user-lock.sh setup: this action is the user's; run it in your own Terminal (no agent sets, opens or removes a device lock)
+exit=77
+$ ANDROID_HOME=<stub sdk> apps/mobile/scripts/emulator-user-lock.sh unlock
+emulator-user-lock.sh unlock: this action is the user's; run it in your own Terminal (no agent sets, opens or removes a device lock)
+exit=77
+$ ANDROID_HOME=<stub sdk> apps/mobile/scripts/emulator-user-lock.sh remove
+emulator-user-lock.sh remove: this action is the user's; run it in your own Terminal (no agent sets, opens or removes a device lock)
+exit=77
+$ ANDROID_HOME=<stub sdk> apps/mobile/scripts/emulator-user-lock.sh setup phone
+emulator-user-lock.sh setup: this action is the user's; run it in your own Terminal (no agent sets, opens or removes a device lock)
+exit=77
+$ ANDROID_HOME=<stub sdk> apps/mobile/scripts/emulator-user-lock.sh unlock all
+emulator-user-lock.sh unlock: this action is the user's; run it in your own Terminal (no agent sets, opens or removes a device lock)
+exit=77
+$ ANDROID_HOME=<stub sdk> apps/mobile/scripts/emulator-user-lock.sh remove tablet
+emulator-user-lock.sh remove: this action is the user's; run it in your own Terminal (no agent sets, opens or removes a device lock)
+exit=77
+stub adb call log after the six runs: EMPTY (no adb call was made)
+
+== status against the three real emulators (read-only) 2026-10-04 11:18:42 WIB
+$ apps/mobile/scripts/emulator-user-lock.sh status
+phone (emulator-5554): AVD dems2_phone, isKeyguardShowing=false, CredentialType=NONE, fingerprint count=0, lock screen disabled=true
+phone2 (emulator-5558): AVD dems2_phone2, isKeyguardShowing=false, CredentialType=NONE, fingerprint count=0, lock screen disabled=true
+tablet (emulator-5556): AVD dems2_tablet, isKeyguardShowing=false, CredentialType=NONE, fingerprint count=0, lock screen disabled=true
+exit=0
+$ apps/mobile/scripts/emulator-user-lock.sh status tablet
+tablet (emulator-5556): AVD dems2_tablet, isKeyguardShowing=false, CredentialType=NONE, fingerprint count=0, lock screen disabled=true
+exit=0
+$ DEMS_AVD_PREFIX=dems_ apps/mobile/scripts/emulator-user-lock.sh status phone      (the old prefix, while dems2_phone holds the port)
+phone (emulator-5554): AVD dems2_phone, isKeyguardShowing=false, CredentialType=NONE, fingerprint count=0, lock screen disabled=true   <- not dems_phone: another AVD holds this port
+exit=0

@@ -1,0 +1,90 @@
+$ npm run test -w @dems/core-server -- --maxWorkers=2 --reporter=verbose src/modules/identity/biometric   (16:51:19)
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 --reporter=verbose src/modules/identity/biometric
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > the token (SR-36): 256 bits of the platform's random source in the contract's form > is `bio_` and 43 base64url characters: 47 in all, the form of the contract and of no other credential 4ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > the token (SR-36): 256 bits of the platform's random source in the contract's form > asks its random source for 32 bytes, once, and is those bytes: nothing else goes into it 2ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > the token (SR-36): 256 bits of the platform's random source in the contract's form > two thousand tokens and two thousand families are all different 7ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > the token (SR-36): 256 bits of the platform's random source in the contract's form > is stored as the SHA-256 of the WHOLE value, prefix included: 32 bytes 1ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > the token (SR-36): 256 bits of the platform's random source in the contract's form > ID-P11: 30 days 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > what a failed claim is refused for (spec §5.6 step 6; database contract §5.2) > no stored token: nobody is named, no reason 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > what a failed claim is refused for (spec §5.6 step 6; database contract §5.2) > a token that was used before is a REUSE, whoever presents it and whatever else is true of it 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > what a failed claim is refused for (spec §5.6 step 6; database contract §5.2) > an unused token: another device, then revoked, then expired; each names the token's operator and changes nothing 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > what a failed claim is refused for (spec §5.6 step 6; database contract §5.2) > a token that looks usable and was not claimed is still no use: named, without a reason 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > what a failed claim is refused for (spec §5.6 step 6; database contract §5.2) > the reasons are a closed set of six codes 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > what a refused enrolment answers > no session, an ended session, a disabled operator: 401 NOT_SIGNED_IN, whatever else holds 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > what a refused enrolment answers > a session without a device: 403 DEVICE_NOT_PAIRED; a device that is not PAIRED: 403 DEVICE_REVOKED 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > what a refused enrolment answers > a session that was created with a token: 403 DEVICE_NOT_PAIRED with details.reason PASSWORD_SESSION_REQUIRED, as the contract words it 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > what a refused enrolment answers > a session that fits every condition and still got no token: 401, never a token 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > the answers of a refused token > one text, one code, the attempts that remain, and nothing about why 2ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > the rows (SR-54, ENG-12) > BIOMETRIC_ENROLLMENT_CHANGED: the operator, the device, enabled; exactly the keys the audit writer allows for the type; no event 1ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > the rows (SR-54, ENG-12) > a sign-in with a token: AUTH_SUCCESS and AUTH_LOGIN with the method, and `replaced` only when a session was presented 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > the rows (SR-54, ENG-12) > a refused token: AUTH_FAILED as a failed password attempt, with the reason and, for a reuse, what it ended 1ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/tokens.test.ts > the rows (SR-54, ENG-12) > a reported failure and an attempt during the lock: the actor is what the caller of the builder decided, the device is the reporting one 0ms
+stdout | src/modules/identity/biometric/__tests__/routes.test.ts > MODG: the route list of the folder equals the registry operations it owns > the routes under /api/v1/auth/biometric are exactly registry operations 7 to 9, with the method, the path and the operation ID of the registry
+[w41] MODG routes of src/modules/identity/biometric:
+  POST /api/v1/auth/biometric setBiometricEnrollment
+  POST /api/v1/auth/biometric/sign-in signInWithBiometric
+  POST /api/v1/auth/biometric/failure reportBiometricFailure
+[w41] MODG registry, operations 7 to 9:
+  POST /api/v1/auth/biometric setBiometricEnrollment
+  POST /api/v1/auth/biometric/sign-in signInWithBiometric
+  POST /api/v1/auth/biometric/failure reportBiometricFailure
+
+ ✓ |unit| src/modules/identity/biometric/__tests__/routes.test.ts > MODG: the route list of the folder equals the registry operations it owns > the routes under /api/v1/auth/biometric are exactly registry operations 7 to 9, with the method, the path and the operation ID of the registry 70ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/routes.test.ts > MODG: the route list of the folder equals the registry operations it owns > the three operations are numbered 7, 8 and 9 in the registry, and every registry operation under /api/v1/auth/biometric is one of them 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/routes.test.ts > MODG: the route list of the folder equals the registry operations it owns > the rule the guard applies to each route is the registry's: AUTHENTICATED with DEVICE_SESSION for the enrolment, DEVICE for the sign-in and the report; no permission, and a retired device is refused on all three 8ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/routes.test.ts > MODG: the route list of the folder equals the registry operations it owns > no route carries a check of its own: no hook beside the stage hooks, no attached validation 8ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/routes.test.ts > who may call is stage 6: one refused call per operation, before the body is read and without the database > nobody without a principal: 401 NOT_SIGNED_IN on all three, also with a body that breaks its schema or is no JSON 30ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/routes.test.ts > who may call is stage 6: one refused call per operation, before the body is read and without the database > a paired device without an operator: 401 on the enrolment (it needs a session); it reaches the sign-in and the report 12ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/routes.test.ts > who may call is stage 6: one refused call per operation, before the body is read and without the database > an operator on the web console, whatever the role: 403 DEVICE_NOT_PAIRED on all three, and no query 12ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/routes.test.ts > who may call is stage 6: one refused call per operation, before the body is read and without the database > an operator on a paired device, whatever the role, passes stage 6 on all three: none carries a permission 17ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/routes.test.ts > what the body holds is stage 7: a refused body takes no attempt and asks the database nothing > every body that breaks its schema answers 422 INVALID_INPUT; malformed JSON answers 400 INVALID_JSON; the device's lockout is untouched 18ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/routes.test.ts > what the body holds is stage 7: a refused body takes no attempt and asks the database nothing > the longest value the schema lets through is 256 characters, and it counts as an attempt like any other value 16ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/routes.test.ts > the database is not there: 503, and nothing leaves the server > the sign-in and the report answer 503 NOT_READY; the answer and the log hold nothing of the body; the attempt was taken before the database was asked (ENG-24), so the device is counted, never opened 15ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > the scan itself > reads the production sources of the folder 2ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 4ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 1 (M3): who may call is stage 6, only > no file checks a permission, compares a role, reads the kind of the principal or a retired device 1ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 1 (M3): who may call is stage 6, only > no file writes or answers a denial of the guard 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 1 (M3): who may call is stage 6, only > no route carries a hook, every route is built from its registry entry, and nothing replaces a stage or a seam 1ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 1 (M3): who may call is stage 6, only > the session that turning biometric sign-in ON needs is stated by the issuing statement, not checked by a handler 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 2 (SR-37, SR-65): who acts is what stage 4 resolved > the readers of stage 4 are called in the routes and, for the presented session, in the sign-in; nowhere else 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 2 (SR-37, SR-65): who acts is what stage 4 resolved > a handler reads three members of a body, each once, and no header, query string, path parameter or raw URL 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 2 (SR-37, SR-65): who acts is what stage 4 resolved > the operator a failure report names becomes the actor of its row only behind the enrolment lookup 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 2 (SR-37, SR-65): who acts is what stage 4 resolved > the sign-in names no operator of the request: the operator of a session is the claimed token's, and the device is the request's credential 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 3 (M4, M5): server-native only, in units, with publications after the commit > no simulator action, no hosted command, no engine state: the engine is read for the two headers of API-7 only 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 3 (M4, M5): server-native only, in units, with publications after the commit > every state change is a unit of the pipeline, with a label of its own; nothing reads or writes outside a unit 1ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 3 (M4, M5): server-native only, in units, with publications after the commit > a publication leaves only after the commit of its unit: every `app.publish` of the folder is inside an `afterCommit` task 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 3 (M4, M5): server-native only, in units, with publications after the commit > the sessions of a reuse are ended through the registry, and with the device and the operator of the TOKEN 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 3 (M4, M5): server-native only, in units, with publications after the commit > the attempt is taken as the first step of a unit, before the claim and before any statement 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 3 (M4, M5): server-native only, in units, with publications after the commit > the place in the denial budget is taken before each refusal row, inside the unit, and the 429 is thrown after it 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 4 (M8): one clock, no timer of its own > no file reads the system time, starts a timer, reads the environment or listens 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 5: one random source, one hash, no comparison > only tokens.ts names the crypto module, and nothing uses a weak random source 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 5: one random source, one hash, no comparison > the token is drawn with randomBytes, the family with randomUUID, the hash is SHA-256 over the whole value 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 5: one random source, one hash, no comparison > no token and no hash is compared in this process: a presented value is found by its hash, by the database 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 5: one random source, one hash, no comparison > SR-61: no signing secret and no pepper 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 6 (M8, decision D69): no cookie > no file sets, clears or reads a cookie 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 7 (M14, SR-48): logging > no file of the folder logs: no log call, no console call, no entry of the persistent error log 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 7 (M14, SR-48): logging > the only errors caught are the denial budget's 429, handed on unchanged 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 7 (M14, SR-48): logging > no answer of a refusal is built from a value: every text of an ApiFailure is a constant 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 8: the statements > are constant texts: every exported statement of the store is listed here 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 8: the statements > name every table with its schema, hold no value (only bind parameters and two fixed words of the schema), and are single statements 1ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 8: the statements > THE CLAIM is one compare-and-set: it states the hash, the device, not used, not revoked and not expired, and returns what it changed (AT-C4) 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 8: the statements > every revocation is a compare-and-set on `revoked_at IS NULL`; the two scopes for other modules revoke live tokens only 1ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 8: the statements > a token is inserted by two statements: the rotation, and the enrolment, which takes the device and the operator from the open password session 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 8: the statements > the hash is written by the two inserts and is a WHERE parameter of two statements; it is never selected and never returned 1ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 8: the statements > the enrolment lookup of a failure report asks for the device and the operator together, and for a token that was not revoked 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 8: the statements > no statement is written outside the store 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 9 (M5): one audit path > nothing here inserts into the audit table or the events table itself: the rows go through the unit's writers 0ms
+ ✓ |unit| src/modules/identity/biometric/__tests__/static.test.ts > rule 9 (M5): one audit path > no builder of a row takes a secret: none has a parameter for a token, a hash or a family 0ms
+
+ Test Files  3 passed (3)
+      Tests  65 passed (65)
+   Start at  16:51:19
+   Duration  2.39s (transform 50%, import 44%, tests 6%)
+
+exit=0

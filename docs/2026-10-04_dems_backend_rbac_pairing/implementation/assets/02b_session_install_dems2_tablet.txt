@@ -1,0 +1,29 @@
+== W02b step 8 tablet 2026-10-04 10:43:19 WIB
+$ NO_METRO=1 DEVICE_SESSION_MAX_SECONDS=600 apps/mobile/scripts/device-session.sh tablet "/bin/sh '<assets>/02b_install.sh'"
+[device-session tablet 10:43:19] lock held; hard cap 600 s, until 10:53:19 (watchdog PID 72835)
+[device-session tablet 10:43:19] session serial: emulator-5556 (dems2_tablet)
+[device-session tablet 10:43:19] emulator-5556: screen awake, no keyguard
+[device-session tablet 10:43:19] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5556
+== dems2_tablet emulator-5556 10:43:19
+emu avd name: dems2_tablet
+isKeyguardShowing=false
+State: RUNNING_UNLOCKED
+host APK: 324537405 bytes, sha256 d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec
+package before: []
+-- INSTALL_START 10:43:21: adb -s emulator-5556 install <app-debug.apk>
+Performing Streamed Install
+Success
+-- INSTALL_END 10:43:24
+package after: [package:com.dems.demo.tablet]
+versionCode=100 minSdk=24 targetSdk=36
+versionName=0.1.0
+lastUpdateTime=2026-10-04 10:43:24
+signatures=PackageSignatures{d0aae2d version:2, signatures:[51ed3f60], past signatures:[]}
+firstInstallTime=2026-10-04 10:43:24
+base.apk on the device: d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec
+base.apk: MATCH (= host APK)
+app process after install (not started by this script): []
+== dems2_tablet end 10:43:25
+[device-session tablet 10:43:25] session ended with status 0
+session exit=0
+reverse rules AFTER the session: [;]

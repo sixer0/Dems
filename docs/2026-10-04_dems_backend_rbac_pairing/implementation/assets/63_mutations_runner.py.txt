@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""W63 mutation check (rule M15: no file of the workspace tree is changed). W55's runner, cut down.
+
+Each mutation is ONE text replacement in ONE module, applied in memory by the transform plugin of
+vitest.mutation.config.mts (W55's, renamed). A mutation is DETECTED when the row's tests fail while
+the mutation was really applied (the plugin leaves a marker file under TMPDIR). From the workspace root:
+
+    python3 .cache/w63/mut/run_mutations.py check
+    python3 .cache/w63/mut/run_mutations.py run [ids]
+"""
+import json, os, subprocess, sys, time
+
+ROOT = os.getcwd()
+HERE = os.path.join(ROOT, '.cache/w63/mut')
+CONFIG = '.cache/w63/mut/vitest.mutation.config.mts'
+APPLIED = os.path.join(os.environ['TMPDIR'], 'w63-mut-applied')
+os.makedirs(APPLIED, exist_ok=True)
+
+D = 'apps/core-web/src/features/dashboard/'
+T_DEV = 'src/test/live-dashboard-devices.test.tsx'
+T_PAGE = 'src/test/live-dashboard-page.test.tsx'
+ALL = [T_DEV, T_PAGE]
+
+M = []
+def m(id, file, what, find, replace, tests):
+    M.append({'id': id, 'file': D + file, 'what': what, 'find': find, 'replace': replace, 'tests': tests})
+
+F = 'devices-panel.tsx'
+m('P01', F, 'the presenter is not consulted first', "          if (presentCoreError(error) !== null) return\n", "", [T_DEV])
+m('P02', F, 'the success toast is shown at the press (optimistic), not after the answer',
+  "      settle(() => actions.deviceCommand(deviceId, command), {\n        ok: () => {\n          toast.success(t(words[command], { name }))\n        },",
+  "      toast.success(t(words[command], { name }))\n      settle(() => actions.deviceCommand(deviceId, command), {\n        ok: () => undefined,", [T_DEV])
+m('P03', F, 'the commands stay enabled while one is out', "disabledKeys={canManage && !busy ? [] : ['test', 'restart']}", "disabledKeys={canManage ? [] : ['test', 'restart']}", [T_DEV])
+m('P04', F, 'Live toasts use the Simulated words', "const words = COMMAND_WORDS[useCoreMode()]\n  const m = useMotionPolicy()", "const words = COMMAND_WORDS[CoreMode.SIMULATED]\n  const m = useMotionPolicy()", [T_DEV])
+m('P05', F, 'the Live menu uses the Simulated words', "const words = COMMAND_WORDS[useCoreMode()]\n  const canManage", "const words = COMMAND_WORDS[CoreMode.SIMULATED]\n  const canManage", [T_DEV])
+m('P06', F, 'the control is never busy', "      setBusy(true)\n", "", [T_DEV])
+m('P07', F, 'the spinner is never revealed', "const timer = setTimeout(() => setRevealed(true), delayMs)", "const timer = setTimeout(() => setRevealed(false), delayMs)", [T_DEV])
+m('P08', F, 'the spinner shows at once', "  return busy && revealed\n", "  return busy\n", [T_DEV])
+m('P09', F, 'the control does not return to idle', "          inFlight.current = false\n          setBusy(false)\n", "          inFlight.current = false\n", [T_DEV])
+m('P10', F, 'the page record of a 409 is not written', "          reportDashboardError('features/dashboard.DeviceMenu', error, COMMAND_FAILED_RECORD, { deviceId, command })\n", "", [T_DEV])
+m('P11', F, 'the DEVICE_MANAGE gate is dropped', "disabledKeys={canManage && !busy ? [] : ['test', 'restart']}", "disabledKeys={!busy ? [] : ['test', 'restart']}", [T_DEV])
+m('P12', F, 'the tile head is not marked busy', "aria-busy={control.busy || undefined}", "data-mutated={control.busy || undefined}", [T_DEV])
+m('P13', F, 'the two commands are swapped', "const command = key === 'test' ? DeviceCommand.TEST_SIGNAL : DeviceCommand.RESTART", "const command = key === 'test' ? DeviceCommand.RESTART : DeviceCommand.TEST_SIGNAL", [T_DEV])
+m('P14', F, 'the in-flight flag is dropped (the disabled items still block a second press)', "      if (inFlight.current) return\n", "", [T_DEV])
+F = 'sim-adapter.ts'
+m('S01', F, 'Live: the hash suffix says SIMULATED', "return mode === CoreMode.LIVE ? 'dashboard.activeSession.sealed.noPackage' : 'common.simulated.chip'", "return 'common.simulated.chip'", [T_PAGE])
+m('S02', F, 'a package digest gets a suffix', "  if (source !== 'simulated') return null\n", "  if (source === 'pending') return null\n", [T_PAGE])
+F = 'active-session-panel.tsx'
+m('A01', F, 'the predecessor label line comes back', "{manifestSuffix === null ? '' : ` · ${t(manifestSuffix)}`}", "{manifest.source === 'simulated' ? ` · ${t('common.simulated.chip')}` : ''}", [T_PAGE])
+F = 'report.ts'
+m('R01', F, 'the record loses its correlation ID', "      correlationId: newDashboardCorrelationId(),\n", "", [T_DEV])
+m('R02', F, 'the record quotes the text of the error', "    message,\n    at: Date.now(),", "    message: error instanceof Error ? error.message : message,\n    at: Date.now(),", [T_DEV, T_PAGE])
+m('R03', F, 'the record loses the code of the cause', "    ...(typeof code === 'string' || typeof code === 'number' ? { code } : {}),\n", "", [T_DEV])
+F = 'panel-boundary.tsx'
+m('B01', F, 'a panel crash is not recorded', "    reportDashboardError(`features/dashboard.panel-${this.props.panel}`", "    void (`features/dashboard.panel-${this.props.panel}`", [T_PAGE])
+
+def check():
+    bad = 0
+    for mu in M:
+        text = open(os.path.join(ROOT, mu['file']), encoding='utf8').read()
+        count = text.count(mu['find'])
+        if count != 1:
+            bad += 1
+            print(f"{mu['id']}: the text occurs {count} times in {mu['file']}")
+    ids = [mu['id'] for mu in M]
+    assert len(ids) == len(set(ids)), 'duplicate id'
+    print(f"{len(M)} mutations; texts that do not occur exactly once: {bad}")
+    return bad
+
+def vitest(mid, tests):
+    env = dict(os.environ)
+    env['W63_APPLIED_DIR'] = APPLIED
+    if mid:
+        env['W63_MUT'] = mid
+    else:
+        env.pop('W63_MUT', None)
+    started = time.time()
+    done = subprocess.run(['npx', 'vitest', 'run', '--config', CONFIG, '--maxWorkers=2', *tests], cwd=ROOT, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    summary = ' | '.join(line.strip() for line in out.splitlines() if line.strip().startswith(('Test Files', 'Tests ')))
+    first = next((line.strip() for line in out.splitlines() if line.strip().startswith(('×', 'FAIL'))), '')
+    return done.returncode, summary, first[:200], time.time() - started
+
+def stamp():
+    return time.strftime('%Y-%m-%d %H:%M:%S WIB')
+
+def run(ids):
+    json.dump(M, open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+    if check():
+        sys.exit(2)
+    if not ids:
+        code, summary, _first, took = vitest('', ALL)
+        print(f"## {stamp()} baseline: the two test files of the row, no mutation\nbaseline exit={code} {summary} ({took:.1f} s)", flush=True)
+        if code != 0:
+            sys.exit(3)
+    chosen = [mu for mu in M if not ids or mu['id'] in ids]
+    survived, not_applied = [], []
+    for mu in chosen:
+        marker = os.path.join(APPLIED, mu['id'])
+        if os.path.exists(marker):
+            os.remove(marker)
+        code, summary, first, took = vitest(mu['id'], mu['tests'])
+        applied = os.path.exists(marker)
+        if not applied:
+            not_applied.append(mu['id']); verdict = 'NOT APPLIED'
+        elif code != 0:
+            verdict = 'DETECTED   '
+        else:
+            verdict = 'SURVIVED   '; survived.append(mu['id'])
+        print(f"{mu['id']} {verdict} exit={code} {mu['file'].split('/')[-1]}: {mu['what']} [{summary}] ({took:.0f} s) first: {first}", flush=True)
+    print(f"## {stamp()} {len(chosen)} mutations: {len(chosen) - len(survived) - len(not_applied)} detected, {len(survived)} survived {survived}, {len(not_applied)} not applied {not_applied}", flush=True)
+
+if __name__ == '__main__':
+    mode = sys.argv[1] if len(sys.argv) > 1 else 'check'
+    if mode == 'check':
+        json.dump(M, open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+        sys.exit(1 if check() else 0)
+    run(sys.argv[2:])

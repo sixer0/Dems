@@ -1,0 +1,11 @@
+role connected: dems_app  (values not printed)
+databases in the cluster: 7
+  dems_demo  owner=dems_owner
+  dems_lane_1  owner=dems_owner
+  dems_lane_2  owner=dems_owner
+  dems_lane_3  owner=dems_owner
+  postgres  owner=dems_admin
+  template0  owner=dems_admin
+  template1  owner=dems_admin
+databases with the prefix "dems_test_": 0
+LEFTOVER databases of this run (prefix "dems_test_step_80_"): 0

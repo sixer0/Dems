@@ -1,0 +1,4 @@
+PRE 18:42:01 uptime:  18:42:01 up  2:34,  2 users,  load average: 0.27, 0.20, 0.10
+START 18:42:01 CMD: npm run typecheck
+END 18:43:37 rc=2 duration=96s
+POST uptime:  18:43:37 up  2:35,  3 users,  load average: 1.67, 0.73, 0.30

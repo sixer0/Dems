@@ -1,0 +1,3 @@
+shot B2a2_evidence_list_recheck_blank_row
+ids blank_row_check
+noshot

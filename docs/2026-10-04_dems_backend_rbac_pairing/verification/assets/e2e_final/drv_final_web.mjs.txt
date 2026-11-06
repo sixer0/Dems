@@ -1,0 +1,24 @@
+// R-S end: the audit rows of this row's moments (newest of each type), then THIS page's own SUPERVISOR session
+// signs out (no other session is touched) and the Login page is captured. Adapted from round 1's
+// drv_08_final_web.mjs.txt (no reload of Paired Devices first: the page was watched without reload until now).
+//   node --import tsx final_web.mjs
+import { auditRows, connect, fmtAudit, log, pdFacts, registry, stamp, writeJson } from './lib.mjs'
+
+const page = await connect()
+const facts = await pdFacts(page)
+const reg = await registry(page)
+log(`final list (open page): ${JSON.stringify(facts.rows)}; summary ${JSON.stringify(facts.summary)}`)
+log(`registry: ${JSON.stringify(reg.devices)}`)
+const audit = {}
+for (const type of ['DEVICE_REVOKED', 'PAIRING_CODE_ISSUED', 'PAIRING_SUCCESS', 'AUTH_SUCCESS', 'AUTH_SIGNED_OUT']) {
+  audit[type] = await auditRows(page, type, 12)
+  const mine = audit[type].rows.filter((r) => r.atMs >= Date.parse('2026-10-07T01:45:00Z'))
+  for (const row of mine) log(`audit ${fmtAudit(row)}`)
+}
+const out = await page.evaluate(`(async () => { const r = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return r.status })()`, 'sign-out')
+const back = await page.waitFor('page-login', true, 15000)
+const shot = await page.screenshot('end_web_a_signed_out_login.png')
+const session = await page.evaluate(`(async () => (await fetch('/api/v1/auth/session', { credentials: 'same-origin' })).status)()`, 'session')
+log(`this page's SUPERVISOR session signed out: POST /api/v1/auth/sign-out ${out}; login shown ${back}; GET /api/v1/auth/session ${session}`)
+writeJson('end_web_a_final.json', { at: stamp(), facts, registry: reg, audit, signOut: { status: out, loginShown: back, sessionAfter: session }, screenshot: shot, network: page.takeNetwork() })
+page.close()

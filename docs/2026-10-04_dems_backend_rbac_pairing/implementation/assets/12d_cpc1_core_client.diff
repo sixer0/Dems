@@ -1,0 +1,315 @@
+--- .cache/rollback/W12e.core-client.ts.pre	2026-10-04 13:12:01
++++ packages/shared/src/client/core-client.ts	2026-10-04 13:13:33
+@@ -11,12 +11,12 @@
+  *
+  * | Rule | How it is met here |
+  * |------|--------------------|
+- * | CL-1 | `call` resolves with a success or a failure for every answer and for "no answer". It rejects only with `CoreClientUsageError`, a programming error |
++ * | CL-1 | `call` resolves with a success or a failure for every answer, for "no answer" and for a credential provider that fails or does not answer. It rejects only with `CoreClientUsageError`, a programming error |
+  * | CL-2 | Built from `{ baseUrl, fetch, credentials }`. `'browser-cookie'`: same-origin cookie, never an `Authorization` header. A function: its value becomes `Authorization: Bearer <value>`; no cookie is sent |
+  * | CL-3 | The body is read with `text()` and `JSON.parse`; the response stream is never touched |
+  * | CL-4 | A 2xx body is parsed with the registry schema of that status, any other body with `ApiErrorSchema`. A body that fails becomes the failure `CONTRACT_VIOLATION` and is reported; its content is never returned. A success the registry gives no schema (204) has no body and no data: nothing is parsed |
+  * | CL-5 | A success carries `epoch` and `revision`, the integers of `x-dems-epoch` and `x-dems-revision` |
+- * | CL-6 | The exchange is abandoned after `timeoutMs` (default 8,000 ms). Nothing is retried |
++ * | CL-6 | One budget of `timeoutMs` (default 8,000 ms) bounds the whole call: the credential provider first, then the exchange with what is left. Nothing is retried, and nothing is sent once the budget is spent |
+  * | CL-6a | A credential in a path parameter or a query value is refused before any request. The debug log holds method, route template, status and request ID only |
+  *
+  * The request ID of an answer is the `x-request-id` header; an error envelope's `error.requestId`
+@@ -56,7 +56,17 @@
+ /** The response header that carries the request ID (pinned by the contract). */
+ export const DEFAULT_REQUEST_ID_HEADER = REQUEST_ID_HEADER_NAME;
+ 
+-/** Prefixes of the values that must never travel in a URL (01_specs §4.1, §5.6; CL-6a). */
++/**
++ * Prefixes of the values that must never travel in a URL (01_specs §4.1, §5.6; CL-6a): the three
++ * bearer secrets of the contract.
++ *
++ * CONTRACT-GAP-4: the contract states the secrets as three whole patterns (`SESSION_TOKEN_PATTERN`,
++ * `DEVICE_CREDENTIAL_PATTERN`, `BIOMETRIC_TOKEN_PATTERN` in `../api/patterns`) and exports no list of
++ * their prefixes, so the three are written here once more. `test/client-credentials.test.ts` reads
++ * the literal head of every token pattern the contract exports and holds this guard to it; a fourth
++ * secret in the contract turns that test red. When the contract exports the prefixes, build this
++ * expression from them.
++ */
+ const CREDENTIAL_PREFIX = /^(?:dvc|ses|bio)_/;
+ 
+ // ═══════════════════════════════════════════════════════════════════════════════════════
+@@ -94,7 +104,7 @@
+ 
+ /**
+  * The class of a failure. An HTTP status maps to exactly one kind (`coreErrorKindForStatus`);
+- * the last three have no contract envelope from the server.
++ * the last four have no contract envelope from the server.
+  */
+ export const CoreErrorKind = {
+   /** 400, and any 4xx without a kind of its own (405, 413). */
+@@ -123,13 +133,20 @@
+   TIMEOUT: 'TIMEOUT',
+   /** An answer that is not the contract's: not JSON, an undocumented 2xx status, or a body its schema refuses. */
+   CONTRACT_VIOLATION: 'CONTRACT_VIOLATION',
++  /**
++   * The credential provider gave no value: it rejected (`error.code` `CREDENTIALS_UNAVAILABLE`) or it
++   * did not answer within `timeoutMs` (`CREDENTIALS_TIMEOUT`). **No request was sent**, so nothing
++   * was changed: unlike `TIMEOUT`, where the command may have been applied.
++   */
++  CREDENTIALS: 'CREDENTIALS',
+ } as const;
+ export type CoreErrorKind = (typeof CoreErrorKind)[keyof typeof CoreErrorKind];
+ 
+ /**
+  * The two transport reasons of CL-21, precomputed for the Live source: `CORE_OFFLINE` (no answer,
+- * time-out, 503, a gateway answer without an envelope) and `UNAVAILABLE` (429, 500, a contract
+- * violation). `null` for a refusal that is the operation's own answer (400 to 423).
++ * time-out, 503, a gateway answer without an envelope, no credential from the provider) and
++ * `UNAVAILABLE` (429, 500, a contract violation). `null` for a refusal that is the operation's own
++ * answer (400 to 423).
+  */
+ export type CoreTransportReason = 'CORE_OFFLINE' | 'UNAVAILABLE';
+ 
+@@ -155,7 +172,8 @@
+   readonly status: number | null;
+   /**
+    * The server's envelope member as `ApiErrorSchema` parses it: `code`, `message` and, when the server
+-   * sent them, `details` and `requestId`. For `NETWORK`, `TIMEOUT` and `CONTRACT_VIOLATION` it is built here.
++   * sent them, `details` and `requestId`. For `NETWORK`, `TIMEOUT`, `CONTRACT_VIOLATION` and `CREDENTIALS`
++   * it is built here.
+    */
+   readonly error: ApiError['error'];
+   /** `retry-after` in whole seconds (delta-seconds or an HTTP date), on any status that carries it; else `null`. */
+@@ -271,7 +289,7 @@
+   readonly requestId: string | null;
+ }
+ 
+-/** A failure the client reports (CL-4): no answer, a time-out, a contract violation. Holds no body, header or URL. */
++/** A failure the client reports (CL-4): no answer, a time-out, a contract violation, no credential. Holds no body, header, URL or provider text. */
+ export interface CoreClientReport {
+   readonly level: 'error' | 'warn';
+   readonly source: 'CoreClient.call';
+@@ -365,6 +383,7 @@
+     case CoreErrorKind.NETWORK:
+     case CoreErrorKind.TIMEOUT:
+     case CoreErrorKind.NOT_READY:
++    case CoreErrorKind.CREDENTIALS:
+       return 'CORE_OFFLINE';
+     case CoreErrorKind.RATE_LIMITED:
+     case CoreErrorKind.SERVER:
+@@ -407,9 +426,26 @@
+   return match[1];
+ }
+ 
+-function assertNoCredential(where: string, value: string, bearer: string | null): void {
+-  if (CREDENTIAL_PREFIX.test(value) || (bearer !== null && bearer.length >= 8 && value.includes(bearer))) {
+-    throw usage(`${where} must not hold a credential: a secret never travels in a URL (CL-6a)`);
++/** One value that goes into the URL, with the words that name it in an error. */
++interface UrlValue {
++  readonly where: string;
++  readonly value: string;
++}
++
++function credentialInUrl(where: string): CoreClientUsageError {
++  return usage(`${where} must not hold a credential: a secret never travels in a URL (CL-6a)`);
++}
++
++/** First half of the guard, while the path is built: a value with the form of a bearer secret. */
++function assertNoCredentialPrefix({ where, value }: UrlValue): void {
++  if (CREDENTIAL_PREFIX.test(value)) throw credentialInUrl(where);
++}
++
++/** Second half, once the provider has answered: the current bearer value itself, anywhere in a value. */
++function assertBearerNotInUrl(values: readonly UrlValue[], bearer: string | null): void {
++  if (bearer === null || bearer.length < 8) return;
++  for (const { where, value } of values) {
++    if (value.includes(bearer)) throw credentialInUrl(where);
+   }
+ }
+ 
+@@ -443,12 +479,19 @@
+   return members as Readonly<Record<string, unknown>>;
+ }
+ 
++/** The path with its query, and every value that went into it (for the second half of the credential guard). */
+ function buildPath(
+   operation: CoreApiOperation,
+   input: CoreLooseCallInput,
+-  bearer: string | null,
+   schemas: Readonly<Record<string, z.ZodType>>,
+-): string {
++): { readonly path: string; readonly urlValues: readonly UrlValue[] } {
++  const urlValues: UrlValue[] = [];
++  const guarded = (where: string, value: string): string => {
++    const entry = { where, value };
++    assertNoCredentialPrefix(entry);
++    urlValues.push(entry);
++    return encodeURIComponent(value);
++  };
+   const params = input.params ?? {};
+   const expected = operation.pathParam?.name;
+   for (const name of Object.keys(params)) {
+@@ -459,8 +502,7 @@
+     if (typeof value !== 'string' || value === '') {
+       throw usage(`${operation.operationId} needs the path parameter "${name}"`);
+     }
+-    assertNoCredential(`Path parameter "${name}"`, value, bearer);
+-    return encodeURIComponent(value);
++    return guarded(`Path parameter "${name}"`, value);
+   });
+ 
+   const pairs: string[] = [];
+@@ -469,11 +511,9 @@
+     if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+       throw usage(`Query parameter "${name}" of ${operation.operationId} is not a string, a number or a boolean`);
+     }
+-    const text = String(value);
+-    assertNoCredential(`Query parameter "${name}"`, text, bearer);
+-    pairs.push(`${encodeURIComponent(name)}=${encodeURIComponent(text)}`);
++    pairs.push(`${encodeURIComponent(name)}=${guarded(`Query parameter "${name}"`, String(value))}`);
+   }
+-  return pairs.length > 0 ? `${path}?${pairs.join('&')}` : path;
++  return { path: pairs.length > 0 ? `${path}?${pairs.join('&')}` : path, urlValues };
+ }
+ 
+ function issuesOf(error: z.ZodError): string[] {
+@@ -552,9 +592,10 @@
+     const operation = byId.get(operationId);
+     if (!operation) throw usage(`Unknown operation "${operationId}"`);
+     const method = operation.method === 'get' ? 'GET' : 'POST';
+-    const bearer = await bearerValue();
+-    const path = buildPath(operation, input, bearer, schemas);
+ 
++    // Everything that can be refused without the credential is refused first: an invalid call asks
++    // the provider for nothing and sends nothing.
++    const { path, urlValues } = buildPath(operation, input, schemas);
+     const headers: Record<string, string> = { accept: 'application/json' };
+     let body: string | undefined;
+     if (input.body !== undefined) {
+@@ -565,17 +606,8 @@
+     } else if (operation.requestBody?.required) {
+       throw usage(`${operationId} needs a request body`);
+     }
+-    if (bearer !== null) headers.authorization = `Bearer ${bearer}`;
+-
+     const send = transport();
+     const controller = typeof AbortController === 'function' ? new AbortController() : null;
+-    const init: CoreFetchInit = {
+-      method,
+-      headers,
+-      credentials: credentials === 'browser-cookie' ? 'same-origin' : 'omit',
+-      ...(body !== undefined ? { body } : {}),
+-      ...(controller ? { signal: controller.signal } : {}),
+-    };
+ 
+     const failure = (
+       kind: CoreErrorKind,
+@@ -597,7 +629,12 @@
+         requestId,
+         ...(issues ? { issues } : {}),
+       };
+-      if (kind === CoreErrorKind.NETWORK || kind === CoreErrorKind.TIMEOUT || kind === CoreErrorKind.CONTRACT_VIOLATION) {
++      if (
++        kind === CoreErrorKind.NETWORK ||
++        kind === CoreErrorKind.TIMEOUT ||
++        kind === CoreErrorKind.CONTRACT_VIOLATION ||
++        kind === CoreErrorKind.CREDENTIALS
++      ) {
+         report({
+           level: kind === CoreErrorKind.CONTRACT_VIOLATION ? 'error' : 'warn',
+           source: 'CoreClient.call',
+@@ -614,23 +651,71 @@
+       return result;
+     };
+ 
+-    // CL-6: the timer bounds the whole exchange, the body read included. The race settles the call
+-    // even when a transport ignores the abort signal.
++    // CL-6: ONE budget for the whole call. The timer starts before the credential provider is asked
++    // and bounds the provider, the request and the body read together. The race settles the call even
++    // when the provider never answers or a transport ignores the abort signal.
++    const progress: { expired: boolean; sent: boolean } = { expired: false, sent: false };
+     let timer: ReturnType<typeof setTimeout> | undefined;
+     const timedOut = new Promise<'TIMEOUT'>((resolve) => {
+       timer = setTimeout(() => {
++        progress.expired = true;
+         resolve('TIMEOUT');
+         controller?.abort();
+       }, timeoutMs);
+     });
+-    const pending = exchange(baseUrl + path, init, send).then(
+-      (value) => ({ answered: true as const, value }),
+-      (error: unknown) => ({ answered: false as const, error }),
+-    );
+-    const outcome = await Promise.race([pending, timedOut]);
++
++    type Work =
++      | { readonly step: 'usage'; readonly error: CoreClientUsageError }
++      | { readonly step: 'no-credential' }
++      | { readonly step: 'expired' }
++      | { readonly step: 'no-answer' }
++      | { readonly step: 'answered'; readonly value: Exchange };
++    // Never rejects: every way the provider or the transport can fail becomes a value, so nothing is
++    // left unhandled when the race has already been decided by the timer.
++    const work = (async (): Promise<Work> => {
++      let bearer: string | null;
++      try {
++        bearer = await bearerValue();
++      } catch (error) {
++        // A value that cannot be a bearer token is the caller's error; anything the provider itself
++        // throws is "no credential". The provider's own words are not passed on: they can name a secret.
++        return error instanceof CoreClientUsageError ? { step: 'usage', error } : { step: 'no-credential' };
++      }
++      // The provider answered after the budget was spent: the call has settled, nothing is sent.
++      if (progress.expired) return { step: 'expired' };
++      try {
++        assertBearerNotInUrl(urlValues, bearer);
++      } catch (error) {
++        return { step: 'usage', error: error as CoreClientUsageError };
++      }
++      if (bearer !== null) headers.authorization = `Bearer ${bearer}`;
++      const init: CoreFetchInit = {
++        method,
++        headers,
++        credentials: credentials === 'browser-cookie' ? 'same-origin' : 'omit',
++        ...(body !== undefined ? { body } : {}),
++        ...(controller ? { signal: controller.signal } : {}),
++      };
++      progress.sent = true;
++      try {
++        return { step: 'answered', value: await exchange(baseUrl + path, init, send) };
++      } catch {
++        return { step: 'no-answer' };
++      }
++    })();
++    const outcome = await Promise.race([work, timedOut]);
+     clearTimeout(timer);
+ 
++    const noCredentialInTime = (): CoreCallFailure =>
++      failure(
++        CoreErrorKind.CREDENTIALS,
++        null,
++        { code: 'CREDENTIALS_TIMEOUT', message: `The credential for this request was not available within ${timeoutMs} ms. Nothing was sent.` },
++        null,
++        null,
++      );
+     if (outcome === 'TIMEOUT') {
++      if (!progress.sent) return noCredentialInTime();
+       return failure(
+         CoreErrorKind.TIMEOUT,
+         null,
+@@ -639,7 +724,18 @@
+         null,
+       );
+     }
+-    if (!outcome.answered) {
++    if (outcome.step === 'usage') throw outcome.error;
++    if (outcome.step === 'expired') return noCredentialInTime();
++    if (outcome.step === 'no-credential') {
++      return failure(
++        CoreErrorKind.CREDENTIALS,
++        null,
++        { code: 'CREDENTIALS_UNAVAILABLE', message: 'The credential for this request could not be read. Nothing was sent.' },
++        null,
++        null,
++      );
++    }
++    if (outcome.step === 'no-answer') {
+       // The transport's own message can name the URL; it is not passed on (CL-6a).
+       return failure(CoreErrorKind.NETWORK, null, { code: 'NETWORK', message: 'The Core server did not answer.' }, null, null);
+     }

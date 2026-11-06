@@ -1,0 +1,7 @@
+tap 2022,406 at 12:57:10.769
+slept 1200 ms
+username typed (rina.wijaya); editor inputType 0x80001
+slept 500 ms
+tap 2022,526 at 12:57:12.866
+slept 1200 ms
+focused true; keyguard false; editor inputType 0x80081
