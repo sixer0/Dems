@@ -18,7 +18,7 @@
  *
  * | Adapter | Mobile implementation |
  * |---|---|
- * | Transport | The typed client (`@dems/shared/client`) on the app's global `fetch`, to `http://127.0.0.1:4420`; `credentials: 'omit'` is the client's own, so no cookie is sent or stored (D69). No other code of the app calls the Core server |
+ * | Transport | The typed client (`@dems/shared/client`) on the app's global `fetch`, to the configured Core server address (`./core-address.ts`, D263; default `127.0.0.1:4420`), read once when the source is built; `credentials: 'omit'` is the client's own, so no cookie is sent or stored (D69). No other code of the app calls the Core server |
  * | Bearer value | The session token when signed in, else the device credential. The two operations of `DEVICE_CREDENTIAL_OPERATIONS` always carry the device credential (D118) |
  * | Socket | React Native's `WebSocket`, with the bearer header as its third argument (CL-8); no subprotocol |
  * | Credentials | Held IN MEMORY. The stored device credential is read once, at start, through the wrapper `./secure-credentials`; the client's credential provider and the socket's header provider read memory only (D81) |
@@ -37,7 +37,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 import { createJSONStorage, type StateStorage } from 'zustand/middleware';
-import { CORE_SERVER_HTTP_ORIGIN, CORE_SERVER_WS_URL, type PairingRedeemed } from '@dems/shared/api';
+import type { PairingRedeemed } from '@dems/shared/api';
 import type { CoreClient, CoreClientLogLine, CoreClientReport, CoreFetch } from '@dems/shared/client';
 import type { LiveDeviceDescription, LiveSecretsPort, LiveSessionEnd, LiveSim } from '@dems/shared/live/source';
 import type { LiveSocketFactory, LiveSocketLike, LiveSocketTimers } from '@dems/shared/realtime';
@@ -52,6 +52,7 @@ import {
   type VisibilityAdapter,
 } from '@dems/shared/sim';
 import { PAIRING_CHECKING, type PairingInfo, type PairingNotice } from './contract';
+import { coreOriginOf, getCoreAddress, hydrateCoreAddress, isCoreAddressHydrated, sameCoreAddress } from './core-address';
 import { reportRuntimeIssue } from './log';
 import { createMobileOwedSignOut } from './owed-sign-out';
 import { notePairingGate, releasePairingGate } from './pairing-gate-snapshot';
@@ -432,6 +433,10 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
     // (`stall-tolerant-timers.ts`).
     const timers = createStallTolerantTimers(options.timers ?? DEFAULT_LIVE_TIMERS, now);
     const visibility = options.visibility ?? createAppStateVisibility();
+    // D263 (row 236): the Core this source talks to, fixed for its life. A changed address is a new source (the
+    // runtime provider keys its Live source on the address), never a re-pointed one.
+    const coreAddress = getCoreAddress();
+    const coreOrigin = coreOriginOf(coreAddress);
 
     // ── Memory: the only place a request or a socket reads a credential from (D81). ──
     const memory: { device: PairingRedeemed | null; session: string | null } = { device: null, session: null };
@@ -512,7 +517,7 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
     };
 
     const transport = {
-      baseUrl: CORE_SERVER_HTTP_ORIGIN,
+      baseUrl: coreOrigin.http,
       ...(options.fetch ? { fetch: options.fetch } : {}),
       now,
       report: reportClientFailure,
@@ -719,7 +724,7 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
     const mediaTransport = (): MobileMediaTransport | null => {
       const value = memory.session;
       if (value === null) return null;
-      const transport = { origin: CORE_SERVER_HTTP_ORIGIN } as MobileMediaTransport;
+      const transport = { origin: coreOrigin.http } as MobileMediaTransport;
       Object.defineProperty(transport, 'headers', { value: Object.freeze({ Authorization: `Bearer ${value}` }), enumerable: false });
       return transport;
     };
@@ -727,7 +732,7 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
     const live: MobileLiveSim = Object.assign(createLiveSim({
       client,
       socket: {
-        url: CORE_SERVER_WS_URL,
+        url: coreOrigin.ws,
         factory: options.socketFactory ?? createMobileSocketFactory(),
         // Synchronous, from memory, asked whenever a socket is opened.
         headers: () => {
@@ -855,6 +860,10 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
       async start() {
         wanted = true;
         notePairingGate(gateOwner, pairing);
+        // D263 (R225-F3): built before the stored address was read, for another address: it never reads the
+        // credential and never connects. The runtime builds the source of the stored address instead.
+        if (!isCoreAddressHydrated()) await hydrateCoreAddress();
+        if (!wanted || !sameCoreAddress(getCoreAddress(), coreAddress)) return;
         await load();
         if (!wanted) return;
         if (memory.device !== null) live.setPairing({ core: memory.device.core, pairedAt: memory.device.pairedAt });

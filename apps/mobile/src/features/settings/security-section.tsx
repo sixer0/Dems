@@ -5,7 +5,8 @@
  *   operator through the runtime auth (`useAuthSession().setBiometricEnabled`).
  * - Auto-lock 5 / 15 / 30 min: the simulator's idle timeout is a fixed 15-minute policy, so 15 is
  *   selected and the other values are shown disabled (SIM-GAP-M88-1).
- * - Core pairing → `/pair`, Operator audit → `/audit`.
+ * - Core pairing → `/pair`, Operator audit → `/audit`. LIVE: beside the pairing row, the Core server address in
+ *   force, read-only (row 236, D263; it is set on the Pair screen before pairing).
  * - Lock console and Sign out (brief; also in the Profile sheet). Neither touches a recording.
  *
  * LIVE mode (backend task W82, finding CPM1-1; 04_client_integration_spec §9.3 MB-1, MB-6a; AC-C-68):
@@ -21,9 +22,9 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSim, type SimState } from '@dems/shared/sim';
-import { palette, spacing } from '@dems/shared/tokens';
+import { fontFamily, palette, spacing } from '@dems/shared/tokens';
 import { useAuthSession } from '@/auth';
-import { reportRuntimeIssue, useAuth, useCoreLink } from '@/runtime';
+import { formatCoreAddress, reportRuntimeIssue, useAuth, useCoreAddress, useCoreLink } from '@/runtime';
 import { AUTO_LOCK_CHOICES, AUTO_LOCK_POLICY_MINUTES, biometricSwitchView } from './settings-model';
 import { GroupCard, NavRow, SectionStack, SegmentRow, SwitchRow, settingsStyles } from './settings-controls';
 
@@ -37,6 +38,7 @@ export function SecuritySection() {
   const session = useAuthSession();
   const pairingState = useSim(selectPairingState);
   const live = useCoreLink().source === 'LIVE';
+  const coreAddress = formatCoreAddress(useCoreAddress());
   const operator = auth.operator;
   const { refreshBiometricAvailability } = session;
 
@@ -106,6 +108,17 @@ export function SecuritySection() {
           description={t(`mobile.pairing.state.${pairingState}`, { defaultValue: pairingState })}
           onPress={() => router.push('/pair')}
         />
+        {live ? (
+          // D263: read-only here; the address changes on the Pair screen, before pairing.
+          <View key="coreAddress" style={styles.infoRow} testID="settings-security-core-address" accessible accessibilityLabel={`${t('features.settings.security.coreAddress')}, ${coreAddress}`}>
+            <Text maxFontSizeMultiplier={1.2} style={settingsStyles.strong}>
+              {t('features.settings.security.coreAddress')}
+            </Text>
+            <Text maxFontSizeMultiplier={1.2} style={[settingsStyles.muted, styles.mono]} testID="settings-security-core-address-value">
+              {coreAddress}
+            </Text>
+          </View>
+        ) : null}
         <NavRow
           key="audit"
           testID="settings-security-audit"
@@ -137,4 +150,6 @@ export function SecuritySection() {
 
 const styles = StyleSheet.create({
   actions: { gap: spacing[2] },
+  infoRow: { gap: 2, paddingHorizontal: spacing[3], paddingVertical: spacing[2] },
+  mono: { fontFamily: fontFamily.native.mono },
 });

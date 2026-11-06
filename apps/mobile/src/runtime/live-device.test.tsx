@@ -14,7 +14,6 @@ import { Pressable, Text } from 'react-native';
 import type { Metrics } from 'react-native-safe-area-context';
 import {
   CORE_API_EXAMPLES,
-  CORE_SERVER_HTTP_ORIGIN,
   pickReplicatedState,
   type AuthSessionInfo,
   type DeviceRegistration,
@@ -31,6 +30,7 @@ import { AppProviders } from '@/providers';
 import { useConnectionBanner } from './connection-banner';
 import { isPairingBlocked, useCoreLink, usePairing, useRuntimeStatus } from './contract';
 import { describeCoreError, resetCoreErrorPresenterForTests, useCoreErrorPresenter, type CoreErrorOutcome } from './core-errors';
+import { DEFAULT_CORE_ADDRESS, coreOriginOf } from './core-address';
 import { resetCoreLinkPrefsForTests } from './core-link';
 import { resetDebugLaunchForTests } from './debug';
 import { useRuntimeInternals } from './internals';
@@ -1253,7 +1253,8 @@ describe('what the runtime exposes (MP-3)', () => {
     expect(live.live.mediaTransport()).toBeNull();
     await signIn(live);
     const transport = live.live.mediaTransport();
-    expect(transport?.origin).toBe(CORE_SERVER_HTTP_ORIGIN);
+    // D263 (row 236): the origin of the runtime's address source (its default here). Moved pin: was CORE_SERVER_HTTP_ORIGIN.
+    expect(transport?.origin).toBe(coreOriginOf(DEFAULT_CORE_ADDRESS).http);
     // NEGATIVE CONTROL: the header is there, read by name.
     expect(transport?.headers).toEqual({ Authorization: `Bearer ${FAKE_CREDENTIALS.sessionToken}` });
     expect(Object.keys(transport ?? {})).toEqual(['origin']);

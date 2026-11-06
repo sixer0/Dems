@@ -24,9 +24,11 @@
  * | The request is out | Cancel is disabled: a request that left cannot be taken back |
  * | The gate holds, debug build | "Use Simulated mode" in place of Cancel (`flow.simulatedOffered`, the dev-build gate of `core-link.ts`) |
  * | The gate holds, release build | No second button before an attempt; Cancel while an attempt runs. No way out of LIVE (row 223, D174, D186, RT-1) |
+ * | Before pairing (row 236, D263) | The "Core server address" card above the code card (`core-address-field.tsx`); while it holds an address that is not in force, Pair stays disabled, so the code goes to the address the card shows |
  */
 import { Alert, Button, InputOTP, REGEXP_ONLY_DIGITS, Spinner } from 'heroui-native';
 import { CircleCheck } from 'lucide-react-native';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, ReduceMotion } from 'react-native-reanimated';
@@ -37,6 +39,7 @@ import { RollingNumber } from '@/components/composed/rolling-number';
 import { SectionCard, StatusChip } from '@/components/kit';
 import { EASING, REDUCED_FADE_MS, durationMs, type MotionSettings } from '@/motion';
 import type { MobileLiveSim } from '@/runtime';
+import { CoreAddressField } from './core-address-field';
 import { noticeStatusFor } from './pairing-live-model';
 import type { PairingFlow } from './use-pairing-flow';
 
@@ -54,6 +57,8 @@ export interface PairingCodePanelProps {
 }
 
 export function PairingCodePanel({ flow, device, deviceReported, signedIn, settings, onRequestUnpair }: PairingCodePanelProps) {
+  // D263 (row 236): the address card holds an address that is not in force; Pair waits for it.
+  const [addressPending, setAddressPending] = useState(false);
   if (flow.view === 'paired') {
     return <PairedPanel flow={flow} device={device} deviceReported={deviceReported} signedIn={signedIn} settings={settings} onRequestUnpair={onRequestUnpair} />;
   }
@@ -61,7 +66,8 @@ export function PairingCodePanel({ flow, device, deviceReported, signedIn, setti
   return (
     <View style={styles.stack} testID="pairing-live-stack">
       <GateNotice flow={flow} settings={settings} />
-      <CodeEntry flow={flow} settings={settings} />
+      <CoreAddressField disabled={flow.sent || flow.view === 'pairing'} onPendingChange={setAddressPending} />
+      <CodeEntry flow={addressPending ? { ...flow, canPair: false, pair: () => undefined } : flow} settings={settings} />
     </View>
   );
 }

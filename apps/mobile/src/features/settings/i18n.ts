@@ -72,6 +72,8 @@ export const settingsEn = {
     autoLockMinutes: '{{count}} min',
     autoLockHint: 'Fixed at 15 minutes by the demo policy. Other values need Core support.',
     pairing: 'Core pairing',
+    // D263 (row 236): read-only; set on the Pair screen before pairing.
+    coreAddress: 'Core server address',
     audit: 'Operator audit',
     auditHint: 'Sign-in, export and fault records',
     sessionGroup: 'This console',

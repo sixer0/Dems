@@ -20,7 +20,7 @@ import { FAKE_CREDENTIALS, OUTAGE, createFakeTransport, rateLimited, refusal, ty
 import type { SocketLike } from '@dems/shared/realtime';
 import { DEFAULT_SEED, createIdleState, type SimState } from '@dems/shared/sim';
 import { AppProviders } from '@/providers';
-import { applyLaunchCoreSource, createMobileLive, getCoreLinkSource, resetCoreErrorPresenterForTests, resetCoreLinkPrefsForTests, resetDebugLaunchForTests, runtimeLog, useAuth, useCoreLink, usePairing, type AuthContract, type MobileLive } from '@/runtime';
+import { DEFAULT_CORE_ADDRESS, applyLaunchCoreSource, createMobileLive, formatCoreAddress, getCoreLinkSource, resetCoreErrorPresenterForTests, resetCoreLinkPrefsForTests, resetDebugLaunchForTests, runtimeLog, useAuth, useCoreLink, usePairing, type AuthContract, type MobileLive } from '@/runtime';
 import { SECURE_ITEM_KEYS } from '@/runtime/secure-credentials';
 import { FakeHeartbeatSocket, createTestSim } from '@/runtime/testing/test-sim';
 import { MOBILE_PREFS_KEY, resetMotionStateForTests } from '@/motion';
@@ -337,8 +337,10 @@ describe('the sign-in settle site on the fake transport (CLG (b), S1-1)', () => 
     expect(screen.getByTestId('login-core-retry')).toBeTruthy();
     expect(screen.getByTestId('login-submit')).toBeDisabled();
     const texts = screen.UNSAFE_getAllByType(Text).map((node) => String(node.props.children));
-    // LIVE names no address: only the runtime's adapters name the Core server.
-    expect(texts.some((text) => /127\.0\.0\.1|localhost|:44\d\d/.test(text))).toBe(false);
+    // D263 (row 236; moved pin, was "LIVE names no address"): the one address is the configured Core server address,
+    // read from the runtime's address source (its default here), in its own line; no other text names an address.
+    expect(screen.getByTestId('login-core-address')).toHaveTextContent(`Core server address: ${formatCoreAddress(DEFAULT_CORE_ADDRESS)}`);
+    expect(texts.filter((text) => /127\.0\.0\.1|localhost|:44\d\d/.test(text))).toEqual([`Core server address: ${formatCoreAddress(DEFAULT_CORE_ADDRESS)}`]);
     // No rendered text offers the simulator (the shared key stays for the web console only).
     expect(texts.some((text) => /Use Simulated mode/.test(text))).toBe(false);
   });

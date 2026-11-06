@@ -22,6 +22,7 @@ import { MOBILE_PREFS_KEY } from '@/motion';
 import { AppProviders } from '@/providers';
 import { useConnectionBanner } from './connection-banner';
 import { useActiveSession, useCoreLink, usePairing, useRuntimeStatus } from './contract';
+import { DEFAULT_CORE_ADDRESS, coreOriginOf } from './core-address';
 import { resetCoreLinkPrefsForTests, setCoreLinkSource } from './core-link';
 import { resetDebugLaunchForTests } from './debug';
 import { runtimeLog } from './log';
@@ -40,7 +41,10 @@ const METRICS: Metrics = {
   insets: { top: 24, right: 0, bottom: 16, left: 0 },
 };
 const AUTH_PREFS_KEY = 'dems.mobile.auth.v1';
-const CORE_SOCKET_URL = 'ws://127.0.0.1:4420/ws';
+// D263 (row 236): the origins of the runtime's address source (its default here). Moved pins: were 'ws://127.0.0.1:4420/ws' and
+// 'http://127.0.0.1:4420/api/v1/'.
+const CORE_SOCKET_URL = coreOriginOf(DEFAULT_CORE_ADDRESS).ws;
+const CORE_API_PREFIX = `${coreOriginOf(DEFAULT_CORE_ADDRESS).http}/api/v1/`;
 
 type DevGlobal = typeof globalThis & { __DEV__: boolean };
 const devGlobal = globalThis as DevGlobal;
@@ -237,7 +241,7 @@ describe('LIVE: the Live source is the data source (MD-5, AC-C-29)', () => {
     expect(coreSockets()[0]!.headers).toEqual({});
     expect(fake.log.operationIds()).toEqual(expect.arrayContaining(['getAuthSession', 'getSignInStatus']));
     for (const call of fake.calls) {
-      expect(call.url.startsWith('http://127.0.0.1:4420/api/v1/')).toBe(true);
+      expect(call.url.startsWith(CORE_API_PREFIX)).toBe(true);
       expect(call.credentials).toBe('omit');
       expect(call.headers.authorization).toBeUndefined();
       expect(call.headers.cookie).toBeUndefined();
@@ -345,7 +349,7 @@ describe('release build: LIVE only, the Live source is built (RT-1, D163; AC-C-2
     // The one Core socket, with no credential (nothing is stored); every request goes to the loopback Core.
     expect(coreSockets()).toHaveLength(1);
     expect(coreSockets()[0]!.headers).toEqual({});
-    for (const call of fake.calls) expect(call.url.startsWith('http://127.0.0.1:4420/api/v1/')).toBe(true);
+    for (const call of fake.calls) expect(call.url.startsWith(CORE_API_PREFIX)).toBe(true);
     // MD-5 holds in release too: the simulator's snapshot is neither read nor written.
     expect(reads.mock.calls.map(([key]) => key)).not.toContain(SIM_STORAGE_KEY);
     expect(writes.mock.calls.map(([key]) => key)).not.toContain(SIM_STORAGE_KEY);

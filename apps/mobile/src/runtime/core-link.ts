@@ -8,7 +8,8 @@
  *   simulator's `tabletLink` from it, so the precheck CORE check blocks while mock-core is down
  *   (MA-10, S32-5) and the Devices screen shows the tablet offline.
  * - **LIVE (the only source since 2026-11-05):** the Core server is the
- *   Core (`ws://127.0.0.1:4420/ws` over `adb reverse`). The data is the server's replica, not the
+ *   Core, at the configured Core server address (`core-address.ts`, D263; default `ws://127.0.0.1:4420/ws`
+ *   over `adb reverse`). The data is the server's replica, not the
  *   simulator's, and the link follows the heartbeat of that one socket: LIVE → ONLINE, anything
  *   else → OFFLINE. SIMULATED and HEARTBEAT remain in the type for the shared simulator and the
  *   web console; on this device they are no longer selectable and a stored value of them is read

@@ -65,7 +65,9 @@ export const loginEn = {
       unpaired: 'Core server • not paired',
       details: 'Pairing details',
     },
-    // L9, Core offline (§3.5, §9.2). No address: the runtime's adapters alone name it.
+    // L9, Core offline (§3.5, §9.2).
     offlineBody: 'Sign-in needs the Core server. Nothing is sent while it cannot be reached.',
+    // D263 (row 236): the configured Core server address, set on the Pair screen.
+    offlineAddress: 'Core server address: {{address}}',
   },
 } as const satisfies ResourceTree;

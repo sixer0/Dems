@@ -41,6 +41,7 @@ import Animated, {
   useSharedValue,
   type AnimatedStyle,
 } from 'react-native-reanimated';
+import { CORE_HTTP_ORIGIN } from '@dems/shared/api';
 import { AUTH_IDLE_TIMEOUT_MS, isOwnCaptureCoreState, useSim, type SimState } from '@dems/shared/sim';
 import { derived, fontFamily, motion, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
 import { AuthNoticeAlert } from '@/auth';
@@ -446,18 +447,22 @@ function NoticeAlert({ notice, settings, delayMs, coreRetry, live }: NoticeAlert
           </Button.Label>
         </Button>
       );
-      // LIVE (§3.5): the Core server, no address (the runtime's adapters alone name it), and Retry.
+      // LIVE (§3.5): the Core server, the configured Core server address (D263, row 236: a user setting, so it is
+      // shown; `coreAddress()` reads it from the runtime), and Retry.
       // M3-01 L6 (D47, D160): no "Use Simulated mode" way out - the tablet runs LIVE only; the
       // older sources stay reachable to the debug `core=` link and the tests, never to a control.
       title = live ? t('mobile.live.refusal.offline') : t('login.errors.coreOfflineTitle');
       body = live ? (
         <View style={styles.alertBody}>
           <Text style={styles.alertText}>{t('features.login.live.offlineBody')}</Text>
+          <Text style={styles.alertText} testID="login-core-address">
+            {t('features.login.live.offlineAddress', { address: coreAddress() })}
+          </Text>
           <View style={styles.alertActions}>{retry}</View>
         </View>
       ) : (
         <View style={styles.alertBody}>
-          <Text style={styles.alertText}>{t('login.errors.coreOfflineBody', { address: coreAddress() })}</Text>
+          <Text style={styles.alertText}>{t('login.errors.coreOfflineBody', { address: coreAddress(CORE_HTTP_ORIGIN) })}</Text>
           {retry}
         </View>
       );

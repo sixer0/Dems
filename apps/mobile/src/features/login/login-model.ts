@@ -14,10 +14,9 @@
  * `useAuth().signIn` by the screen, nothing else (§6.1 "Never").
  */
 import { z } from 'zod';
-import { CORE_HTTP_ORIGIN } from '@dems/shared/api';
 import type { GlowRingState } from '@/components/composed/glow-ring.math';
 import type { AuthNoticeKind, BiometricAvailability } from '@/auth';
-import { coreLinkViewOf, type CoreErrorText, type CoreLinkInfo, type CoreLinkView, type SignOutReason } from '@/runtime';
+import { coreLinkViewOf, formatCoreAddress, getCoreAddress, type CoreErrorText, type CoreLinkInfo, type CoreLinkView, type SignOutReason } from '@/runtime';
 
 // ---------------------------------------------------------------------------------------------
 // Form
@@ -130,8 +129,13 @@ export function isCoreBlocked(coreLink: CoreLinkInfo): boolean {
   return coreLink.source !== 'SIMULATED' && coreLink.state === 'OFFLINE';
 }
 
-/** `host:port` of the Core for the offline Alert ("Core service unreachable at 127.0.0.1:4400."). */
-export function coreAddress(origin: string = CORE_HTTP_ORIGIN): string {
+/**
+ * `host:port` for the offline Alert. Default (D263, row 236): the configured Core server address of the runtime
+ * (`core-address.ts`; `127.0.0.1:4420` until it is set on the Pair screen). Given an origin (the heartbeat
+ * source's mock-core, `CORE_HTTP_ORIGIN`): that origin without its scheme ("Core service unreachable at 127.0.0.1:4400.").
+ */
+export function coreAddress(origin?: string): string {
+  if (origin === undefined) return formatCoreAddress(getCoreAddress());
   return origin.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/\/+$/, '');
 }
 

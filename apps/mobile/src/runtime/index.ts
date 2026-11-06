@@ -147,6 +147,25 @@ export {
   useCoreLinkSourceSetting,
   type CoreLinkSourceSetting,
 } from './core-link';
+// D263 (row 236): the Core server address. `coreOriginOf` is NOT re-exported: only the Live source's adapters
+// build an origin (the D69 guard, rule 2).
+export {
+  DEFAULT_CORE_ADDRESS,
+  formatCoreAddress,
+  getCoreAddress,
+  hydrateCoreAddress,
+  resetCoreAddressForTests,
+  sameCoreAddress,
+  setCoreAddress,
+  useCoreAddress,
+  useCoreAddressSetting,
+  validateCoreAddress,
+  type CoreAddress,
+  type CoreAddressChange,
+  type CoreAddressCheck,
+  type CoreHostProblem,
+  type CorePortProblem,
+} from './core-address';
 export { hrefPath, isForcedTransition, resyncNavigation, resyncTarget, type ResyncContext, type ResyncTrigger, type SessionHref } from './route-sync';
 export {
   ATTENDED_KEEP,

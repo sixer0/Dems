@@ -17,6 +17,7 @@ import type { SocketLike } from '@dems/shared/realtime';
 import { HomeScreen } from '@/features/home/home-screen';
 import { useHealth } from '@/features/home/use-health';
 import { AppProviders } from '@/providers';
+import { DEFAULT_CORE_ADDRESS, coreOriginOf } from './core-address';
 import { resetCoreLinkPrefsForTests } from './core-link';
 import { resetDebugLaunchForTests } from './debug';
 import { createMobileLive, type MobileLive } from './sim-adapters';
@@ -137,7 +138,8 @@ describe('Stack Check in LIVE mode: the health of the Core server (FC-9, D69)', 
     expect(calls.length).toBeGreaterThan(0);
     for (const call of calls) {
       expect(call.method).toBe('GET');
-      expect(call.url).toBe('http://127.0.0.1:4420/api/v1/health');
+      // D263 (row 236): the origin of the runtime's address source (its default here). Moved pin: was 'http://127.0.0.1:4420/api/v1/health'.
+      expect(call.url).toBe(`${coreOriginOf(DEFAULT_CORE_ADDRESS).http}/api/v1/health`);
       expect(call.credentials).toBe('omit');
       expect(call.headers.cookie).toBeUndefined();
       // An unpaired tablet has no credential: health is public.

@@ -162,5 +162,37 @@ export const pairingEn = {
     unpair: {
       body: 'You will be signed out. It needs a new pairing code from a supervisor to be used again. A recording in progress continues on the Core.',
     },
+    // D263 (row 236): the Core server address, set before pairing. No shared key exists for it.
+    address: {
+      title: 'Core server address',
+      description: 'Where this device reaches the Core server. Pairing uses this address. A new address removes the pairing with the previous Core.',
+      host: 'Host',
+      hostA11y: 'Core server host: an IPv4 address or a host name',
+      hostPlaceholder: '192.168.1.20',
+      port: 'Port',
+      portA11y: 'Core server port',
+      apply: 'Use this address',
+      applying: 'Applying…',
+      inUse: 'In use: {{address}}',
+      pending: 'Use this address before pairing, or put back {{address}}.',
+      resetFailed: 'The pairing with the previous Core could not be removed, so the address was not changed. Try again.',
+      problems: {
+        host: {
+          empty: 'Enter the host of the Core server.',
+          scheme: 'Enter the host only, without http:// or ws://.',
+          path: 'Enter the host only, without a path.',
+          withPort: 'Put the port in the Port field.',
+          ipv6: 'IPv6 addresses are not supported. Use an IPv4 address or a host name.',
+          badIpv4: 'This is not a valid IPv4 address.',
+          notPrivateIpv4: 'Use a private (10.x, 172.16-31.x, 192.168.x), loopback (127.x) or link-local (169.254.x) address.',
+          badHost: 'Use letters, digits, dots and hyphens only.',
+        },
+        port: {
+          empty: 'Enter the port.',
+          notNumber: 'The port must be a number.',
+          range: 'The port must be between 1 and 65535.',
+        },
+      },
+    },
   },
 } as const satisfies ResourceTree;

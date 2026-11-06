@@ -1,7 +1,7 @@
 // Login view model and ambient maths (step 75; 04_mobile_specs §4.1, §6.1–§6.3, §7.3): the pure
 // state table behind T-M04, the ring tone, the biometric button, the seeded dust and the beam.
 import { describe, expect, it } from '@jest/globals';
-import type { CoreLinkInfo } from '@/runtime';
+import { DEFAULT_CORE_ADDRESS, formatCoreAddress, type CoreLinkInfo } from '@/runtime';
 import { BEAM_LENGTH, DUST_COUNT, beamOpacity, beamWindows, dustPosition, dustSeeds } from './login-ambient.math';
 import {
   alertStatusFor,
@@ -62,7 +62,10 @@ describe('L2 ring tone and L11 chip', () => {
     expect(isSubmitDisabled({ locked: false, pending: false, coreBlocked: true })).toBe(true);
   });
   it('prints the Core address without the scheme', () => {
-    expect(coreAddress()).toBe('127.0.0.1:4400');
+    // D263 (row 236): the default is the configured Core server address of the runtime (its default here); an origin
+    // given (the heartbeat source's mock-core) is printed without its scheme, as before. Moved pin: was '127.0.0.1:4400'.
+    expect(coreAddress()).toBe(formatCoreAddress(DEFAULT_CORE_ADDRESS));
+    expect(coreAddress('http://127.0.0.1:4400')).toBe('127.0.0.1:4400');
     expect(coreAddress('ws://127.0.0.1:4400/')).toBe('127.0.0.1:4400');
   });
 });

@@ -75,6 +75,7 @@ import {
   tabletLinkForHeartbeat,
   useCoreLinkSource,
 } from './core-link';
+import { useCoreAddressKey } from './core-address';
 import { applyLaunchCoreSource, useDebugHandle, useDebugScenarioLinks, type RuntimeDebugSnapshot } from './debug';
 import { heartbeatWhileEnded, isLinkSettling } from './ended-link';
 import { RuntimeInternalsContext, useRuntimeInternals, type RuntimeInternals } from './internals';
@@ -170,8 +171,12 @@ export function SimRuntimeProvider({ children, sim, simOptions, resyncBus }: Sim
   // turns LIVE and dropped when it leaves ("adjusting state when a prop changes": no effect, no
   // extra commit). Creating it sends nothing and reads nothing; `LiveRuntime` starts it.
   const wantsLive = sim === undefined && effectiveCoreLinkSource(preferred) === 'LIVE';
-  const [owned, setOwned] = useState<{ readonly mobile: MobileLive | null } | null>(null);
-  if (wantsLive && owned === null) setOwned({ mobile: createMobileLive() });
+  // D263 (row 236): one Live source per Core server address. A changed address (the Pair screen's field, or the
+  // stored address read after the first frame) drops the source of the old address with its replica and builds
+  // a new one; `setCoreAddress` has forgotten the old pairing before the address changes.
+  const coreAddressKey = useCoreAddressKey();
+  const [owned, setOwned] = useState<{ readonly mobile: MobileLive | null; readonly address: string } | null>(null);
+  if (wantsLive && (owned === null || owned.address !== coreAddressKey)) setOwned({ mobile: createMobileLive(), address: coreAddressKey });
   if (!wantsLive && owned !== null) setOwned(null);
 
   if (sim !== undefined && liveOf(sim) !== null && mobileLiveOf(sim) === null) {
