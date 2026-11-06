@@ -23,6 +23,8 @@ The listen host is the constant `127.0.0.1` (`LISTEN_HOST` in `src/config.ts`); 
 
 ## Folder layout of `src/`
 
+Per-folder documentation: [src/README.md](src/README.md).
+
 | Folder or file | What it holds |
 |---|---|
 | `index.ts` | Entry point: loads the configuration, builds the app, runs the boot steps, listens. The only file that reads `process.env` |

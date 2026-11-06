@@ -17,6 +17,8 @@ The dev server binds `127.0.0.1:5173` (strict port). Open it as `http://127.0.0.
 
 ## Folder layout of `src/`
 
+A README in every source folder describes its files, exports and tests: start at [`src/README.md`](src/README.md).
+
 | Folder or file | What it holds |
 |---|---|
 | `main.tsx`, `router.tsx`, `routeTree.gen.ts` | App entry, router setup and the generated route tree |
