@@ -15,6 +15,8 @@ Data sources:
 
 ## Folder layout of `src/`
 
+Every folder of `src/` has its own README with its files, exports, tests and decisions; start at [src/README.md](src/README.md).
+
 | Folder | What it holds |
 |---|---|
 | `app/` | Expo Router routes: `_layout.tsx`, `index.tsx`, `pair.tsx`, the `(auth)` group (login) and the `(app)` group (tabs and session screens) |
